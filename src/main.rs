@@ -3,7 +3,8 @@ use pest_derive::Parser;
 use std::env;
 use std::fs;
 mod ast; // ast 모듈을 가져옵니다.
-mod error; // error 모듈을 추가합니다.
+mod csharp_generator;
+mod error; // error 모듈을 추가합니다. // csharp_generator 모듈을 추가합니다.
 
 // `polygen.pest` 파일에 정의된 문법 규칙을 사용하기 위한 파서 구조체입니다.
 #[derive(Parser)]
@@ -43,11 +44,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // AST를 빌드합니다.
             match ast::build_ast_from_pairs(main_pair) {
-                Ok(ast_root) => {
+                Ok(ref ast_root) => {
                     // 빌드된 AST를 출력합니다. (디버깅 목적)
                     println!("\n--- Abstract Syntax Tree (AST) ---");
                     for def in ast_root {
                         println!("{:#?}", def); // Debug 출력으로 AST 구조를 확인합니다.
+                    }
+                    println!("----------------------------------");
+
+                    println!("\n--- Generating C# Code from template ---");
+                    let template_path = "templates/csharp_template.cs.tera";
+                    let template_str = fs::read_to_string(template_path)?;
+
+                    let output_dir = std::path::Path::new("output/csharp");
+                    fs::create_dir_all(output_dir)?;
+                    let output_file_path = output_dir.join("GeneratedFromTemplate.cs");
+
+                    match csharp_generator::generate_code(ast_root, &template_str) {
+                        Ok(csharp_code) => {
+                            fs::write(&output_file_path, csharp_code)?;
+                            println!(
+                                "C# code successfully generated to: {}",
+                                output_file_path.display()
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("\n--- C# Code Generation Failed ---");
+                            eprintln!("{}", e);
+                            eprintln!("---------------------------------");
+                        }
                     }
                     println!("----------------------------------");
                 }
