@@ -1,6 +1,9 @@
 [package]
 name = "PolyGen"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+pest = "2.7"
+pest_derive = "2.7"
+thiserror = "1.0"
