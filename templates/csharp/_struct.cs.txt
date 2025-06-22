@@ -1,3 +1,4 @@
+    
     /// <summary>
     {%- for line in s.info.comment.unwrap_or("").split('\n') %}
     /// {{ line.trim() }}

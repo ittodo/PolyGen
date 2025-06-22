@@ -113,13 +113,34 @@ fn build_csharp_model<'a>() -> CSharpFile<'a> {
                 name: "game.junction",
                 types: vec![
                     TypeDef::Class(ClassDef {
-                        info: TypeInfo { name: "PlayerSkill", comment: Some("플레이어와 스킬의 다대다(N:M) 관계를 위한 연결 테이블입니다.") },
-                        properties: vec![PropertyDef { name: "PlayerId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "SkillId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "SkillLevel", type_name: "ushort", attributes: vec![] }],
+                        info: TypeInfo {
+                            name: "PlayerSkill",
+                            comment: Some("플레이어와 스킬의 다대다(N:M) 관계를 위한 연결 테이블입니다."),
+                        },
+                        properties: vec![
+                            PropertyDef { name: "PlayerId", type_name: "uint", attributes: vec![] },
+                            PropertyDef { name: "SkillId", type_name: "uint", attributes: vec![] },
+                            PropertyDef { name: "SkillLevel", type_name: "ushort", attributes: vec![] },
+                            // 탐색 속성 추가
+                            PropertyDef { name: "Player", type_name: "Player", attributes: vec!["[ForeignKey(\"PlayerId\")]"] },
+                            PropertyDef { name: "Skill", type_name: "Skill", attributes: vec!["[ForeignKey(\"SkillId\")]"] },
+                        ],
                         nested_classes: vec![],
                     }),
                     TypeDef::Class(ClassDef {
-                        info: TypeInfo { name: "InventoryItem", comment: Some("플레이어 인벤토리 항목을 나타내는 테이블입니다. (1:N 관계의 'N'쪽)") },
-                        properties: vec![PropertyDef { name: "Id", type_name: "uint", attributes: vec!["[Key]"] }, PropertyDef { name: "PlayerId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "ItemId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "Quantity", type_name: "uint", attributes: vec![] }],
+                        info: TypeInfo {
+                            name: "InventoryItem",
+                            comment: Some("플레이어 인벤토리 항목을 나타내는 테이블입니다. (1:N 관계의 'N'쪽)"),
+                        },
+                        properties: vec![
+                            PropertyDef { name: "Id", type_name: "uint", attributes: vec!["[Key]"] },
+                            PropertyDef { name: "PlayerId", type_name: "uint", attributes: vec![] },
+                            PropertyDef { name: "ItemId", type_name: "uint", attributes: vec![] },
+                            PropertyDef { name: "Quantity", type_name: "uint", attributes: vec![] },
+                            // 탐색 속성 추가
+                            PropertyDef { name: "Player", type_name: "Player", attributes: vec!["[ForeignKey(\"PlayerId\")]"] },
+                            PropertyDef { name: "Item", type_name: "Item", attributes: vec!["[ForeignKey(\"ItemId\")]"] },
+                        ],
                         nested_classes: vec![],
                     }),
                 ],

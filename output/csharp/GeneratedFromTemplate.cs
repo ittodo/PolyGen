@@ -4,7 +4,8 @@ using System.ComponentModel.DataAnnotations;
 
  
 namespace game.common
-{    /// <summary>
+{    
+    /// <summary>
     /// 스킬이나 공격의 속성을 나타내는 열거형입니다.
     /// </summary>
     public enum Element
@@ -13,7 +14,8 @@ namespace game.common
         FIRE,
         ICE,
         LIGHTNING,
-    }     /// <summary>
+    }     
+    /// <summary>
     /// 게임 월드 내의 2D 좌표를 나타내는 복합 타입입니다.
     /// `embed`를 사용하여 여러 테이블에서 재사용할 수 있습니다.
     /// </summary>
@@ -21,7 +23,8 @@ namespace game.common
     {
         public float X { get; set; }
         public float Y { get; set; }
-    }     /// <summary>
+    }     
+    /// <summary>
     /// 캐릭터의 기본 능력치를 묶은 구조체입니다.
     /// </summary>
     public struct StatBlock
@@ -37,7 +40,8 @@ namespace game.common
 
  
 namespace game.item
-{    /// <summary>
+{    
+    /// <summary>
     /// 아이템의 종류를 나타내는 열거형입니다.
     /// </summary>
     public enum ItemType
@@ -46,7 +50,8 @@ namespace game.item
         ARMOR,
         POTION,
         MATERIAL,
-    }     /// <summary>
+    }     
+    /// <summary>
     /// 아이템 정보를 정의하는 테이블입니다.
     /// </summary>
     public class Item
@@ -63,7 +68,8 @@ namespace game.item
 
  
 namespace game.character
-{    /// <summary>
+{    
+    /// <summary>
     /// 플레이어 캐릭터 정보를 정의하는 테이블입니다.
     /// </summary>
     public class Player
@@ -74,7 +80,8 @@ namespace game.character
         public string Name { get; set; }
         public ushort Level { get; set; }
         public StatBlock Stats { get; set; }
-    }     /// <summary>
+    }     
+    /// <summary>
     /// 몬스터 정보를 정의하는 테이블입니다.
     /// 모든 테이블은 `@taggable` 어노테이션을 통해 자유로운 태그를 붙일 수 있습니다.
     /// </summary>
@@ -100,7 +107,8 @@ namespace game.character
 
  
 namespace game.character.skill
-{    /// <summary>
+{    
+    /// <summary>
     /// 스킬 정보를 정의하는 테이블입니다.
     /// </summary>
     public class Skill
@@ -118,7 +126,8 @@ namespace game.character.skill
 
  
 namespace game.junction
-{    /// <summary>
+{    
+    /// <summary>
     /// 플레이어와 스킬의 다대다(N:M) 관계를 위한 연결 테이블입니다.
     /// </summary>
     public class PlayerSkill
@@ -126,7 +135,12 @@ namespace game.junction
         public uint PlayerId { get; set; }
         public uint SkillId { get; set; }
         public ushort SkillLevel { get; set; }
-    }     /// <summary>
+        [ForeignKey("PlayerId")]
+        public Player Player { get; set; }
+        [ForeignKey("SkillId")]
+        public Skill Skill { get; set; }
+    }     
+    /// <summary>
     /// 플레이어 인벤토리 항목을 나타내는 테이블입니다. (1:N 관계의 'N'쪽)
     /// </summary>
     public class InventoryItem
@@ -136,6 +150,10 @@ namespace game.junction
         public uint PlayerId { get; set; }
         public uint ItemId { get; set; }
         public uint Quantity { get; set; }
+        [ForeignKey("PlayerId")]
+        public Player Player { get; set; }
+        [ForeignKey("ItemId")]
+        public Item Item { get; set; }
     } 
 }
  
