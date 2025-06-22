@@ -3,7 +3,7 @@ use pest::iterators::Pair;
 use crate::error::AstBuildError;
 use crate::Rule;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Definition {
     Namespace(Namespace),
     Table(Table),
@@ -11,13 +11,13 @@ pub enum Definition {
     Embed(Embed),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Namespace {
     pub path: Vec<String>,
     pub definitions: Vec<Definition>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Table {
     pub doc_comment: Option<String>,
     pub annotations: Vec<Annotation>,
@@ -25,31 +25,31 @@ pub struct Table {
     pub members: Vec<TableMember>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TableMember {
     Field(FieldDefinition),
     Embed(Embed), // Named embed definition within a table
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Annotation {
     pub name: String,
     pub params: Vec<AnnotationParam>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AnnotationParam {
     pub key: String,
     pub value: Literal,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum FieldDefinition {
     Regular(RegularField),
     InlineEmbed(InlineEmbedField),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RegularField {
     pub doc_comment: Option<String>,
     pub name: String,
@@ -58,25 +58,25 @@ pub struct RegularField {
     pub field_number: Option<u32>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TypeWithCardinality {
     pub base_type: TypeName,
     pub cardinality: Option<Cardinality>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TypeName {
     Path(Vec<String>),
     Basic(BasicType),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Cardinality {
     Optional, // ?
     Array,    // []
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum BasicType {
     String,
     I8,
@@ -93,7 +93,7 @@ pub enum BasicType {
     Bytes,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Constraint {
     PrimaryKey,
     Unique,
@@ -104,7 +104,7 @@ pub enum Constraint {
     ForeignKey(Vec<String>, Option<String>), // path, optional 'as' identifier
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct InlineEmbedField {
     pub doc_comment: Option<String>,
     pub name: String,
@@ -113,21 +113,21 @@ pub struct InlineEmbedField {
     pub field_number: Option<u32>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Enum {
     pub doc_comment: Option<String>,
     pub name: String,
     pub variants: Vec<String>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Embed {
     pub doc_comment: Option<String>,
     pub name: String,
     pub fields: Vec<FieldDefinition>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     String(String),
     Integer(i64),
