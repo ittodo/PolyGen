@@ -43,6 +43,8 @@ namespace game.item {
     }
 
     /// 아이템 정보를 정의하는 테이블입니다.
+    @load(type: "DB", path: "ItemsTable") // DB에서 읽어옴
+    @save(type: "CSV", path: "exports/items.csv") // CSV로 내보낼 수 있음
     @taggable
     table Item {
         id: u32 primary_key;

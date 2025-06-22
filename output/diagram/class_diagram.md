@@ -37,6 +37,7 @@ class game.common.StatBlock {
 }
 
 class game.item.Item {
+    <<taggable>>
     +u32 id
     +string name
     +ItemType item_type
@@ -45,6 +46,7 @@ class game.item.Item {
 }
 
 class game.character.Player {
+    <<taggable>>
     +u32 id
     +string name
     +u16 level
@@ -53,6 +55,7 @@ class game.character.Player {
 }
 
 class game.character.Monster {
+    <<taggable>>
     +u32 id
     +string name
     +StatBlock stats
@@ -63,6 +66,7 @@ class game.character.Monster {
 }
 
 class game.character.skill.Skill {
+    <<taggable>>
     +u32 id
     +string name
     +string? description
@@ -72,6 +76,8 @@ class game.character.skill.Skill {
 }
 
 class game.junction.PlayerSkill {
+    <<taggable>>
+    <<link_rows(partition_by: player_id, link_with: skill_id)>>
     +u32 player_id
     +u32 skill_id
     +u16 skill_level
@@ -79,6 +85,7 @@ class game.junction.PlayerSkill {
 }
 
 class game.junction.InventoryItem {
+    <<taggable>>
     +u32 id
     +u32 player_id
     +u32 item_id
@@ -86,13 +93,12 @@ class game.junction.InventoryItem {
     
 }
 
-game.item.Item "1" -- "1" ItemType : item_type
-game.character.Player "1" -- "1" game.common.StatBlock : stats
-game.character.Monster "1" -- "1" game.common.StatBlock : stats
-game.character.Monster "1" -- "1" game.common.Position : spawn_point
-game.character.Monster "*" -- "1" game.common.Position : patrol_points
-game.character.Monster "1" -- "*" game.character.Monster.DropItems : drop_items
-game.character.skill.Skill "1" -- "1" game.common.Element : element
+game.item.Item "1" *-- "1" ItemType : item_type
+game.character.Player "1" *-- "1" game.common.StatBlock : stats
+game.character.Monster "1" *-- "1" game.common.StatBlock : stats
+game.character.Monster "1" *-- "1" game.common.Position : spawn_point
+game.character.Monster "*" *-- "1" game.common.Position : patrol_points
+game.character.skill.Skill "1" *-- "1" game.common.Element : element
 game.junction.PlayerSkill "1" -- "1" game.character.Player : skills
 game.junction.PlayerSkill "1" -- "1" game.character.skill.Skill : users
 game.junction.InventoryItem "1" -- "1" game.character.Player : inventory

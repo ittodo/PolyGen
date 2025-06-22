@@ -1,4 +1,5 @@
 use pest::iterators::Pair;
+use std::fmt;
 
 use crate::error::AstBuildError;
 use crate::Rule;
@@ -134,6 +135,18 @@ pub enum Literal {
     Float(f64),
     Boolean(bool),
     Identifier(String), // For annotation_param values that are identifiers
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::String(s) => write!(f, "\"{}\"", s),
+            Literal::Integer(i) => write!(f, "{}", i),
+            Literal::Float(fl) => write!(f, "{}", fl),
+            Literal::Boolean(b) => write!(f, "{}", b),
+            Literal::Identifier(id) => write!(f, "{}", id),
+        }
+    }
 }
 
 // Helper function to parse a path (e.g., "game.common")

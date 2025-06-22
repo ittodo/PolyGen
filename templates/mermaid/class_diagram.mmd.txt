@@ -11,6 +11,9 @@ class {{ enum.fqn }} {
 {% endfor %}
 {% for class in diagram.classes %}
 class {{ class.fqn }} {
+    {% for annotation in class.annotations -%}
+    <<{{ annotation }}>>
+    {% endfor -%}
     {% for prop in class.properties -%}
     +{{ prop.type_name }} {{ prop.name }}
     {% endfor %}

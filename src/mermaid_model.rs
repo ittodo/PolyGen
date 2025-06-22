@@ -14,6 +14,7 @@ pub struct Class<'a> {
     pub fqn: String, // Fully Qualified Name (e.g., "game.character.Player")
     pub name: &'a str,
     pub properties: Vec<Property<'a>>,
+    pub annotations: Vec<String>,
 }
 
 #[derive(Debug)]
