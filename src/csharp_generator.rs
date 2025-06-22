@@ -1,233 +1,129 @@
-use crate::ast::{
-    BasicType, Cardinality, Constraint, Definition, Embed, Enum, FieldDefinition, RegularField,
-    Table, TableMember, TypeName, TypeWithCardinality,
-};
-use heck::ToUpperCamelCase;
-use serde::Serialize;
-use tera::{Context, Tera};
+use crate::csharp_model::*;
+use askama::Template;
 
-// --- View Models for Tera ---
-// These structs define the data structure passed to the template for rendering.
-#[derive(Serialize, Default, Debug)]
-struct NamespaceView {
-    name: String,
-    items: Vec<ItemView>,
-    children: Vec<NamespaceView>,
+#[derive(Template)]
+#[template(path = "csharp/main.cs.txt", escape = "none")]
+struct CSharpTemplate<'a> {
+    file: CSharpFile<'a>,
 }
 
-#[derive(Serialize, Debug, Clone)]
-struct ItemView {
-    name: String,
-    r#type: String, // "class", "enum", "struct"
-    fields: Vec<FieldView>,
-    variants: Vec<String>,
-    nested_items: Vec<ItemView>,
+/// Askama 템플릿을 사용하여 C# 코드를 생성합니다.
+pub fn generate_csharp_with_askama() -> String {
+    let model = build_csharp_model();
+    let template = CSharpTemplate { file: model };
+    template.render().unwrap()
 }
 
-#[derive(Serialize, Debug, Clone)]
-struct FieldView {
-    name: String,
-    r#type: String,
-    attributes: Vec<String>,
-}
-
-// --- Main Generation Function ---
-pub fn generate_code(
-    ast_root: &[Definition],
-    template_str: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let mut tera = Tera::default();
-    tera.add_raw_template("csharp", template_str)?;
-
-    // Build the view model directly from the AST, preserving the schema's structure.
-    let root_namespaces = build_namespace_views(ast_root)?;
-
-    // 3. Create a Tera context and render the template.
-    let mut context = Context::new();
-    context.insert("namespaces", &root_namespaces);
-
-    let rendered = tera.render("csharp", &context)?;
-    Ok(rendered)
-}
-
-// --- AST to View Model Conversion ---
-
-/// Recursively builds a `Vec<NamespaceView>` that mirrors the structure of the input `definitions`.
-fn build_namespace_views(
-    definitions: &[Definition],
-) -> Result<Vec<NamespaceView>, Box<dyn std::error::Error>> {
-    let mut views = Vec::new();
-
-    for def in definitions {
-        if let Definition::Namespace(ns_def) = def {
-            // The name for the template is the path defined in this specific block.
-            let name = ns_def.path.join(".");
-
-            // Recursively build views for any nested namespaces.
-            let children = build_namespace_views(&ns_def.definitions)?;
-
-            // Collect items (tables, enums, etc.) defined directly in this namespace.
-            let mut items = Vec::new();
-            for inner_def in &ns_def.definitions {
-                match inner_def {
-                    Definition::Table(t) => items.push(convert_table_to_view(t)?),
-                    Definition::Enum(e) => items.push(convert_enum_to_view(e)),
-                    Definition::Embed(e) => items.push(convert_embed_to_view(e)?),
-                    // Namespaces are handled by the recursive call above, so we ignore them here.
-                    Definition::Namespace(_) => {}
-                }
-            }
-
-            views.push(NamespaceView {
-                name,
-                items,
-                children,
-            });
-        }
-    }
-
-    Ok(views)
-}
-
-fn convert_table_to_view(table: &Table) -> Result<ItemView, Box<dyn std::error::Error>> {
-    let mut fields = Vec::new();
-    let mut nested_items = Vec::new();
-
-    for member in &table.members {
-        match member {
-            TableMember::Field(field_def) => match field_def {
-                FieldDefinition::Regular(reg_field) => {
-                    fields.push(convert_regular_field_to_view(reg_field)?);
-                }
-                FieldDefinition::InlineEmbed(inline_embed) => {
-                    let mut nested_fields = Vec::new();
-                    for f in &inline_embed.fields {
-                        if let FieldDefinition::Regular(rf) = f {
-                            nested_fields.push(convert_regular_field_to_view(rf)?);
-                        }
-                    }
-
-                    let nested_view = ItemView {
-                        name: inline_embed.name.to_upper_camel_case(),
-                        r#type: "class".to_string(),
-                        fields: nested_fields,
-                        variants: Vec::new(),
-                        nested_items: Vec::new(),
-                    };
-                    nested_items.push(nested_view);
-
-                    let field_type = map_cardinality_to_csharp(
-                        &inline_embed.cardinality,
-                        inline_embed.name.to_upper_camel_case(),
-                    );
-                    fields.push(FieldView {
-                        name: inline_embed.name.to_upper_camel_case(),
-                        r#type: field_type,
-                        attributes: vec![],
-                    });
-                }
+/// 생성할 C# 코드에 대한 전체 데이터 모델을 구축합니다.
+/// 실제 프로젝트에서는 이 부분을 YAML/TOML 파일 파싱 로직으로 대체할 수 있습니다.
+fn build_csharp_model<'a>() -> CSharpFile<'a> {
+    CSharpFile {
+        using_directives: vec!["System.Collections.Generic", "System.ComponentModel.DataAnnotations"],
+        namespaces: vec![
+            NamespaceDef {
+                name: "game.common",
+                types: vec![
+                    TypeDef::Enum(EnumDef {
+                        info: TypeInfo { name: "Element", comment: Some("스킬이나 공격의 속성을 나타내는 열거형입니다.") },
+                        variants: vec!["PHYSICAL", "FIRE", "ICE", "LIGHTNING",],
+                    }),
+                    TypeDef::Struct(StructDef {
+                        info: TypeInfo { name: "Position", comment: Some("게임 월드 내의 2D 좌표를 나타내는 복합 타입입니다.\n`embed`를 사용하여 여러 테이블에서 재사용할 수 있습니다.") },
+                        properties: vec![PropertyDef { name: "X", type_name: "float", attributes: vec![] }, PropertyDef { name: "Y", type_name: "float", attributes: vec![] }],
+                    }),
+                    TypeDef::Struct(StructDef {
+                        info: TypeInfo { name: "StatBlock", comment: Some("캐릭터의 기본 능력치를 묶은 구조체입니다.") },
+                        properties: vec![
+                            PropertyDef { name: "Health", type_name: "uint", attributes: vec![] },
+                            PropertyDef { name: "Mana", type_name: "uint", attributes: vec![] },
+                            PropertyDef { name: "Attack", type_name: "uint", attributes: vec![] },
+                            PropertyDef { name: "Defense", type_name: "uint", attributes: vec![] },
+                        ],
+                    }),
+                ],
             },
-            TableMember::Embed(embed_def) => {
-                nested_items.push(convert_embed_to_view(embed_def)?);
-            }
-        }
-    }
-
-    Ok(ItemView {
-        name: table.name.to_upper_camel_case(),
-        r#type: "class".to_string(),
-        fields,
-        variants: Vec::new(),
-        nested_items,
-    })
-}
-
-fn convert_enum_to_view(enm: &Enum) -> ItemView {
-    ItemView {
-        name: enm.name.to_upper_camel_case(),
-        r#type: "enum".to_string(),
-        fields: Vec::new(),
-        variants: enm.variants.clone(),
-        nested_items: Vec::new(),
-    }
-}
-
-fn convert_embed_to_view(embed: &Embed) -> Result<ItemView, Box<dyn std::error::Error>> {
-    let mut fields = Vec::new();
-    for field_def in &embed.fields {
-        if let FieldDefinition::Regular(reg_field) = field_def {
-            fields.push(convert_regular_field_to_view(reg_field)?);
-        }
-    }
-
-    Ok(ItemView {
-        name: embed.name.to_upper_camel_case(),
-        r#type: "struct".to_string(),
-        fields,
-        variants: Vec::new(),
-        nested_items: Vec::new(),
-    })
-}
-
-fn convert_regular_field_to_view(
-    field: &RegularField,
-) -> Result<FieldView, Box<dyn std::error::Error>> {
-    let mut attributes = Vec::new();
-    for constraint in &field.constraints {
-        if let Constraint::PrimaryKey = constraint {
-            attributes.push("[Key]".to_string());
-        }
-        // TODO: Add more attribute logic here (unique, max_length, etc.)
-    }
-
-    let type_name = map_type_to_csharp(&field.field_type)?;
-
-    Ok(FieldView {
-        name: field.name.to_upper_camel_case(),
-        r#type: type_name,
-        attributes,
-    })
-}
-
-fn map_type_to_csharp(t: &TypeWithCardinality) -> Result<String, Box<dyn std::error::Error>> {
-    let base_type = match &t.base_type {
-        TypeName::Basic(bt) => match bt {
-            BasicType::U8 => "byte".to_string(),
-            BasicType::I8 => "sbyte".to_string(),
-            BasicType::U16 => "ushort".to_string(),
-            BasicType::I16 => "short".to_string(),
-            BasicType::U32 => "uint".to_string(),
-            BasicType::I32 => "int".to_string(),
-            BasicType::U64 => "ulong".to_string(),
-            BasicType::I64 => "long".to_string(),
-            BasicType::F32 => "float".to_string(),
-            BasicType::F64 => "double".to_string(),
-            BasicType::Bool => "bool".to_string(),
-            BasicType::String => "string".to_string(),
-            BasicType::Bytes => "byte[]".to_string(), // Special case
-        },
-        TypeName::Path(path) => path.last().unwrap().to_upper_camel_case(),
-    };
-
-    // `bytes` is already an array type in C#, so handle it before other cardinality.
-    if matches!(t.base_type, TypeName::Basic(BasicType::Bytes)) {
-        return Ok(base_type);
-    }
-
-    Ok(map_cardinality_to_csharp(&t.cardinality, base_type))
-}
-
-fn map_cardinality_to_csharp(cardinality: &Option<Cardinality>, base_type: String) -> String {
-    match cardinality {
-        Some(Cardinality::Optional) => {
-            // In C#, value types get `?`, reference types are nullable by default.
-            if &base_type != "string" {
-                format!("{}?", base_type)
-            } else {
-                base_type
-            }
-        }
-        Some(Cardinality::Array) => format!("List<{}>", base_type),
-        None => base_type,
+            NamespaceDef {
+                name: "game.item",
+                types: vec![
+                    TypeDef::Enum(EnumDef {
+                        info: TypeInfo { name: "ItemType", comment: Some("아이템의 종류를 나타내는 열거형입니다.") },
+                        variants: vec!["WEAPON", "ARMOR", "POTION", "MATERIAL",],
+                    }),
+                    TypeDef::Class(ClassDef {
+                        info: TypeInfo { name: "Item", comment: Some("아이템 정보를 정의하는 테이블입니다.") },
+                        properties: vec![
+                            PropertyDef { name: "Id", type_name: "uint", attributes: vec!["[Key]"] },
+                            PropertyDef { name: "Name", type_name: "string", attributes: vec![] },
+                            PropertyDef { name: "ItemType", type_name: "ItemType", attributes: vec![] },
+                            PropertyDef { name: "Description", type_name: "string", attributes: vec![] },
+                        ],
+                        nested_classes: vec![],
+                    }),
+                ],
+            },
+            NamespaceDef {
+                name: "game.character",
+                types: vec![
+                    TypeDef::Class(ClassDef {
+                        info: TypeInfo { name: "Player", comment: Some("플레이어 캐릭터 정보를 정의하는 테이블입니다.") },
+                        properties: vec![
+                            PropertyDef { name: "Id", type_name: "uint", attributes: vec!["[Key]"] },
+                            PropertyDef { name: "Name", type_name: "string", attributes: vec!["[MaxLength(30)]"] },
+                            PropertyDef { name: "Level", type_name: "ushort", attributes: vec![] },
+                            PropertyDef { name: "Stats", type_name: "StatBlock", attributes: vec![] },
+                        ],
+                        nested_classes: vec![],
+                    }),
+                    TypeDef::Class(ClassDef {
+                        info: TypeInfo { name: "Monster", comment: Some("몬스터 정보를 정의하는 테이블입니다.\n모든 테이블은 `@taggable` 어노테이션을 통해 자유로운 태그를 붙일 수 있습니다.") },
+                        properties: vec![
+                            PropertyDef { name: "Id", type_name: "uint", attributes: vec!["[Key]"] },
+                            PropertyDef { name: "Name", type_name: "string", attributes: vec![] },
+                            PropertyDef { name: "Stats", type_name: "StatBlock", attributes: vec![] },
+                            PropertyDef { name: "SpawnPoint", type_name: "Position", attributes: vec![] },
+                            PropertyDef { name: "PatrolPoints", type_name: "List<Position>", attributes: vec![] },
+                            PropertyDef { name: "DropItems", type_name: "List<DropItems>", attributes: vec![] },
+                        ],
+                        nested_classes: vec![ClassDef {
+                            info: TypeInfo { name: "DropItems", comment: None },
+                            properties: vec![
+                                PropertyDef { name: "ItemId", type_name: "uint", attributes: vec![] },
+                                PropertyDef { name: "DropChance", type_name: "float", attributes: vec![] },
+                            ],
+                            nested_classes: vec![],
+                        }],
+                    }),
+                ],
+            },
+            NamespaceDef {
+                name: "game.character.skill",
+                types: vec![TypeDef::Class(ClassDef {
+                    info: TypeInfo { name: "Skill", comment: Some("스킬 정보를 정의하는 테이블입니다.") },
+                    properties: vec![
+                        PropertyDef { name: "Id", type_name: "uint", attributes: vec!["[Key]"] },
+                        PropertyDef { name: "Name", type_name: "string", attributes: vec![] },
+                        PropertyDef { name: "Description", type_name: "string", attributes: vec![] },
+                        PropertyDef { name: "Element", type_name: "Element", attributes: vec![] },
+                        PropertyDef { name: "Power", type_name: "uint", attributes: vec![] },
+                    ],
+                    nested_classes: vec![],
+                })],
+            },
+            NamespaceDef {
+                name: "game.junction",
+                types: vec![
+                    TypeDef::Class(ClassDef {
+                        info: TypeInfo { name: "PlayerSkill", comment: Some("플레이어와 스킬의 다대다(N:M) 관계를 위한 연결 테이블입니다.") },
+                        properties: vec![PropertyDef { name: "PlayerId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "SkillId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "SkillLevel", type_name: "ushort", attributes: vec![] }],
+                        nested_classes: vec![],
+                    }),
+                    TypeDef::Class(ClassDef {
+                        info: TypeInfo { name: "InventoryItem", comment: Some("플레이어 인벤토리 항목을 나타내는 테이블입니다. (1:N 관계의 'N'쪽)") },
+                        properties: vec![PropertyDef { name: "Id", type_name: "uint", attributes: vec!["[Key]"] }, PropertyDef { name: "PlayerId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "ItemId", type_name: "uint", attributes: vec![] }, PropertyDef { name: "Quantity", type_name: "uint", attributes: vec![] }],
+                        nested_classes: vec![],
+                    }),
+                ],
+            },
+        ],
     }
 }

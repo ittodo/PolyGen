@@ -1,0 +1,11 @@
+    /// <summary>
+    {%- for line in s.info.comment.unwrap_or("").split('\n') %}
+    /// {{ line.trim() }}
+    {%- endfor %}
+    /// </summary>
+    public struct {{ s.info.name }}
+    {
+        {%- for prop in s.properties %}
+        public {{ prop.type_name }} {{ prop.name }} { get; set; }
+        {%- endfor %}
+    }

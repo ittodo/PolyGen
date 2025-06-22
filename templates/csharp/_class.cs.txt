@@ -1,0 +1,25 @@
+    /// <summary>
+    {%- for line in c.info.comment.unwrap_or("").split('\n') %}
+    /// {{ line.trim() }}
+    {%- endfor %}
+    /// </summary>
+    public class {{ c.info.name }}
+    {
+        {%- for nested in c.nested_classes %}
+        public class {{ nested.info.name }}
+        {
+            {%- for prop in nested.properties %}
+            {%- for attr in prop.attributes %}
+            {{ attr }}
+            {%- endfor %}
+            public {{ prop.type_name }} {{ prop.name }} { get; set; }
+            {%- endfor %}
+        }
+        {% endfor -%}
+        {%- for prop in c.properties %}
+        {%- for attr in prop.attributes %}
+        {{ attr }}
+        {%- endfor %}
+        public {{ prop.type_name }} {{ prop.name }} { get; set; }
+        {%- endfor %}
+    }

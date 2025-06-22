@@ -1,0 +1,10 @@
+    /// <summary>
+    {%- for line in e.info.comment.unwrap_or("").split('\n') %}
+    /// {{ line.trim() }}
+    {%- endfor %}
+    /// </summary>
+    public enum {{ e.info.name }}
+    {
+        {%- for variant in e.variants %}
+        {{ variant }},{% endfor %}
+    }

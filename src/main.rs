@@ -1,9 +1,8 @@
-use pest::Parser;
 use pest_derive::Parser;
-use std::env;
 use std::fs;
-mod ast; // ast 모듈을 가져옵니다.
+mod ast;
 mod csharp_generator;
+mod csharp_model;
 mod error; // error 모듈을 추가합니다.
 mod validation; // validation 모듈을 추가합니다.
 
@@ -13,82 +12,21 @@ mod validation; // validation 모듈을 추가합니다.
 pub struct Polygen;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 명령줄 인자를 수집합니다.
-    let args: Vec<String> = env::args().collect();
+    // --- C# 코드 생성 ---
+    println!("\n--- C# 코드 생성 중 ---");
+    let output_dir = std::path::Path::new("output/csharp");
+    fs::create_dir_all(output_dir)?;
+    let output_file_path = output_dir.join("GeneratedFromTemplate.cs");
 
-    // 파일 경로가 인자로 주어졌는지 확인합니다.
-    if args.len() < 2 {
-        eprintln!("오류: 스키마 파일 경로가 필요합니다.");
-        eprintln!("사용법: {} <스키마_파일_경로>", args[0]);
-        return Err("스키마 파일이 지정되지 않았습니다.".into());
-    }
-    let schema_path = &args[1];
+    // Askama 템플릿 엔진을 사용하여 코드 생성
+    let csharp_code = csharp_generator::generate_csharp_with_askama();
+    fs::write(&output_file_path, csharp_code)?;
+    println!(
+        "C# 코드가 성공적으로 생성되었습니다: {}",
+        output_file_path.display()
+    );
 
-    // 스키마 파일의 내용을 읽어옵니다.
-    let unparsed_file = fs::read_to_string(schema_path).map_err(|e| {
-        format!(
-            "스키마 파일을 읽는 데 실패했습니다 ({}): {}",
-            schema_path, e
-        )
-    })?;
-
-    // `main` 규칙을 사용하여 파일 내용을 파싱합니다.
-    let parse_result = Polygen::parse(Rule::main, &unparsed_file);
-
-    match parse_result {
-        Ok(pairs) => {
-            println!("Successfully parsed the schema!");
-
-            // `main` 규칙에 해당하는 단일 Pair를 가져옵니다.
-            // `main = { SOI ~ (definition)* ~ EOI }` 이므로, `pairs`는 하나의 `Rule::main` Pair를 포함합니다.
-            let main_pair = pairs.into_iter().next().expect("Expected a main rule pair");
-
-            // AST를 빌드합니다.
-            match ast::build_ast_from_pairs(main_pair) {
-                Ok(ast_root) => {
-                    // --- AST Validation Step ---
-                    println!("\n--- Validating AST ---");
-                    if let Err(e) = validation::validate_ast(&ast_root) {
-                        eprintln!("\n--- AST Validation Failed ---");
-                        eprintln!("{}", e);
-                        eprintln!("---------------------------");
-                        return Err(e.into()); // 유효성 검사 실패 시 실행 중단
-                    }
-                    println!("AST validation successful.");
-                    println!("----------------------");
-
-                    println!("\n--- Generating C# Code from template ---");
-                    let template_path = "templates/csharp_template.cs.tera";
-                    let template_str = fs::read_to_string(template_path)?;
-
-                    let output_dir = std::path::Path::new("output/csharp");
-                    fs::create_dir_all(output_dir)?;
-                    let output_file_path = output_dir.join("GeneratedFromTemplate.cs");
-
-                    match csharp_generator::generate_code(&ast_root, &template_str) {
-                        Ok(csharp_code) => {
-                            fs::write(&output_file_path, csharp_code)?;
-                            println!(
-                                "C# code successfully generated to: {}",
-                                output_file_path.display()
-                            );
-                        }
-                        Err(e) => {
-                            eprintln!("\n--- C# Code Generation Failed ---");
-                            eprintln!("{:#?}", e);
-                            eprintln!("-----------------------------------");
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("\n--- AST Build Failed ---");
-                    eprintln!("{}", e);
-                    eprintln!("------------------------");
-                }
-            }
-        }
-        Err(e) => eprintln!("Failed to parse the schema:\n{}", e),
-    }
+    // TODO: 다음 단계로, `.poly` 파일 파싱 -> AST 변환 -> C# 모델 변환 -> 코드 생성 파이프라인을 연결해야 합니다.
 
     Ok(())
 }

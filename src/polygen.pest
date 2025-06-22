@@ -1,16 +1,16 @@
 /// Polygen 스키마의 최상위 규칙입니다.
 /// 파일 전체를 파싱합니다.
-main = { SOI ~ (definition)* ~ EOI }
+main = { SOI ~ (WHITESPACE)* ~ (definition)* ~ EOI }
 
 /// 최상위 정의는 네임스페이스, 테이블, 열거형, 임베드 정의가 될 수 있습니다.
-definition = { namespace | table | enum_def | embed_def }
+definition = { (doc_comment)* ~ (namespace | table | enum_def | embed_def) }
 
 /// 네임스페이스 정의를 파싱합니다.
 namespace = { "namespace" ~ path ~ "{" ~ (definition)* ~ "}" }
 
 /// 테이블 정의를 파싱합니다.
 table        = { (annotation)* ~ "table" ~ IDENT ~ "{" ~ (table_member)* ~ "}" }
-table_member = { field_definition | embed_def }
+table_member = { (doc_comment)* ~ (field_definition | embed_def) }
 
 /// 어노테이션을 파싱합니다. (예: @taggable, @link_rows)
 annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_params_list? ~ ")")? }
@@ -46,13 +46,13 @@ foreign_key_val = { "foreign_key" ~ "(" ~ path ~ ")" ~ ("as" ~ IDENT)? }
 field_number = { "=" ~ INTEGER }
 
 /// 인라인 임베드 필드를 파싱합니다. (예: drop_items: embed { ... }[];)
-inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (field_definition)* ~ "}" ~ cardinality? ~ field_number? }
+inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member)* ~ "}" ~ cardinality? ~ field_number? }
 
 /// 열거형 정의를 파싱합니다.
 enum_def = { "enum" ~ IDENT ~ "{" ~ (IDENT ~ ";")* ~ "}" }
 
 /// 명명된 임베드 정의를 파싱합니다. (예: embed Position { ... })
-embed_def = { "embed" ~ IDENT ~ "{" ~ (field_definition)* ~ "}" }
+embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member)* ~ "}" }
 
 /// 정수 리터럴을 파싱합니다.
 INTEGER = @{ ASCII_DIGIT+ }
@@ -73,10 +73,13 @@ path = { IDENT ~ ("." ~ IDENT)* }
 IDENT = @{ !KEYWORD ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 
 /// 공백과 주석을 무시합니다.
-WHITESPACE = _{ (ascii_whitespace_chars | COMMENT)+ }
+WHITESPACE = _{ (ascii_whitespace_chars | comment)+ }
 
-/// 라인 주석 (// 또는 ///)을 무시합니다.
-COMMENT = _{ ("//" | "///") ~ (!NEWLINE ~ ANY)* }
+/// 문서 주석 (///)은 토큰으로 캡처합니다.
+doc_comment = @{ "///" ~ (!NEWLINE ~ ANY)* }
+
+/// 일반 라인 주석 (//)은 무시합니다.
+comment = _{ "//" ~ !"/" ~ (!NEWLINE ~ ANY)* }
 
 /// ASCII 공백 문자들을 명시적으로 정의합니다. (ASCII_WHITESPACE가 인식되지 않을 경우의 대안)
 ascii_whitespace_chars = { " " | "\t" | "\r" | "\n" }
