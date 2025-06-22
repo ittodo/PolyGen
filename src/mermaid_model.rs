@@ -1,9 +1,12 @@
 /// Mermaid 클래스 다이어그램 생성을 위한 데이터 모델입니다.
+use crate::ast::Constraint;
+
 #[derive(Debug, Default)]
 pub struct ClassDiagram<'a> {
     pub classes: Vec<Class<'a>>,
     pub enums: Vec<Enum<'a>>,
-    pub relationships: Vec<Relationship>,
+    pub relationships: Vec<Relationship>, // Direct relationships (e.g., field references, FKs)
+    pub foreign_keys_for_reverse_lookup: Vec<(String, &'a Constraint)>, // (owner_fqn, ForeignKeyConstraint)
 }
 
 #[derive(Debug)]
@@ -29,7 +32,9 @@ pub struct Property<'a> {
 #[derive(Debug)]
 pub struct Relationship {
     pub from: String,
+    pub from_cardinality: String, // e.g., "1", "0..1", "*"
     pub to: String,
-    pub link: String, // e.g., `*-- "1"`
+    pub to_cardinality: String, // e.g., "1", "0..1", "*"
+    pub link_type: String,      // e.g., "--", "-->", "<--"
     pub label: String,
 }

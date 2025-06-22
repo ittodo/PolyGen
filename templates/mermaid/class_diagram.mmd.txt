@@ -16,6 +16,6 @@ class {{ class.fqn }} {
     {% endfor %}
 }
 {% endfor %}
-{% for rel in diagram.relationships %}
-{{ rel.from }} {{ rel.link }} {{ rel.to }} : {{ rel.label }}
+{% for rel in diagram.relationships -%}
+{{ rel.from }} "{{ rel.from_cardinality }}" {{ rel.link_type }} "{{ rel.to_cardinality }}" {{ rel.to }} : {{ rel.label }}
 {% endfor %}

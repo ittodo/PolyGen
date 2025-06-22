@@ -1,5 +1,6 @@
 use crate::ast::{
-    self, BasicType, Cardinality, Definition, Embed, FieldDefinition, TableMember, TypeName,
+    self, BasicType, Cardinality, Constraint, Definition, Embed, FieldDefinition, TableMember,
+    TypeName,
 };
 use crate::mermaid_model::{Class, ClassDiagram, Enum, Property, Relationship};
 use askama::Template;
@@ -22,6 +23,29 @@ pub fn generate_mermaid_diagram(ast_definitions: &[Definition]) -> String {
 fn build_diagram_from_ast(ast_definitions: &[Definition]) -> ClassDiagram {
     let mut diagram = ClassDiagram::default();
     collect_diagram_parts(ast_definitions, &mut Vec::new(), &mut diagram);
+
+    // Process reverse relationships from collected foreign keys
+    let mut reverse_relationships = Vec::new();
+    for (owner_fqn, fk_constraint) in &diagram.foreign_keys_for_reverse_lookup {
+        if let Constraint::ForeignKey(target_path, Some(alias)) = fk_constraint {
+            // The target path is like ["game", "character", "Player", "id"]
+            // We need the FQN of the table, which is all but the last element.
+            let target_table_fqn = target_path[0..target_path.len() - 1].join(".");
+
+            // This is the reverse relationship: from target table to owner table (junction table)
+            // Example: Player "1" -- "*" PlayerSkill : skills
+            reverse_relationships.push(Relationship {
+                from: target_table_fqn,
+                from_cardinality: "1".to_string(), // One instance of the target table
+                to: owner_fqn.clone(),
+                to_cardinality: "*".to_string(), // Many junction table entries can point to one target
+                link_type: "--".to_string(),
+                label: alias.clone(),
+            });
+        }
+    }
+    diagram.relationships.extend(reverse_relationships);
+
     diagram
 }
 
@@ -75,6 +99,17 @@ fn collect_diagram_parts<'a>(
                             if let Some(r) = rel {
                                 diagram.relationships.push(r);
                             }
+
+                            // Collect foreign keys with 'as' alias for reverse relationship generation
+                            if let FieldDefinition::Regular(rf) = field {
+                                for constraint in &rf.constraints {
+                                    if let Constraint::ForeignKey(_, Some(_)) = constraint {
+                                        diagram
+                                            .foreign_keys_for_reverse_lookup
+                                            .push((fqn.clone(), constraint));
+                                    }
+                                }
+                            }
                         }
                         TableMember::Embed(embed) => {
                             // 명명된 embed 정의는 클래스로 취급합니다.
@@ -119,19 +154,42 @@ fn process_field<'a>(
                 type_name,
             };
 
-            // 타입이 다른 클래스/임베드/열거형을 참조하는 경우 관계를 생성합니다.
-            let rel = if let TypeName::Path(p) = &rf.field_type.base_type {
-                Some(Relationship {
+            // 1. Prioritize ForeignKey constraint for relationship generation
+            for constraint in &rf.constraints {
+                if let Constraint::ForeignKey(target_path, alias) = constraint {
+                    // The target path is like ["game", "character", "Player", "id"]
+                    // We need the FQN of the table, which is all but the last element.
+                    let target_table_fqn = target_path[0..target_path.len() - 1].join(".");
+
+                    let rel = Some(Relationship {
+                        from: owner_fqn.to_string(),
+                        from_cardinality: get_mermaid_cardinality_string(
+                            &rf.field_type.cardinality,
+                        ),
+                        to: target_table_fqn,
+                        to_cardinality: "1".to_string(), // The FK points to a single primary key
+                        link_type: "--".to_string(),
+                        label: alias.as_ref().unwrap_or(&rf.name).clone(),
+                    });
+                    return (prop, rel); // Return immediately if FK found
+                }
+            }
+
+            // 2. If no ForeignKey, check if the field's type is a path (reference to another custom type)
+            if let TypeName::Path(p) = &rf.field_type.base_type {
+                let rel = Some(Relationship {
                     from: owner_fqn.to_string(),
                     to: p.join("."),
-                    link: format_cardinality_link(&rf.field_type.cardinality),
+                    from_cardinality: get_mermaid_cardinality_string(&rf.field_type.cardinality),
+                    to_cardinality: "1".to_string(), // Assuming direct reference points to a single instance
+                    link_type: "--".to_string(),     // Default association link
                     label: rf.name.clone(),
-                })
-            } else {
-                None
-            };
+                });
+                return (prop, rel); // Return immediately if Path type found
+            }
 
-            (prop, rel)
+            // 3. If neither, return None for relationship
+            (prop, None)
         }
         FieldDefinition::InlineEmbed(ief) => {
             // 인라인 embed는 중첩 클래스로 취급합니다.
@@ -146,10 +204,11 @@ fn process_field<'a>(
             let rel = Some(Relationship {
                 from: owner_fqn.to_string(),
                 to: fqn,
-                link: format_cardinality_link(&ief.cardinality),
+                from_cardinality: "1".to_string(), // The owner has one instance of this inline embed (or many if array)
+                to_cardinality: get_mermaid_cardinality_string(&ief.cardinality), // Cardinality of the inline embed field
+                link_type: "--".to_string(),                                      // Association
                 label: ief.name.clone(),
             });
-
             (prop, rel)
         }
     }
@@ -170,11 +229,10 @@ fn format_cardinality_type(base: &str, c: &Option<Cardinality>) -> String {
         None => base.to_string(),
     }
 }
-
-fn format_cardinality_link(c: &Option<Cardinality>) -> String {
+fn get_mermaid_cardinality_string(c: &Option<Cardinality>) -> String {
     match c {
-        Some(Cardinality::Optional) => String::from("-- \"0..1\""),
-        Some(Cardinality::Array) => String::from("-- \"*\""),
-        None => String::from("-- \"1\""),
+        Some(Cardinality::Optional) => String::from("0..1"),
+        Some(Cardinality::Array) => String::from("*"), // N
+        None => String::from("1"),
     }
 }

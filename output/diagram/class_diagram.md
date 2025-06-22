@@ -86,19 +86,19 @@ class game.junction.InventoryItem {
     
 }
 
-
-game.item.Item -- "1" ItemType : item_type
-
-game.character.Player -- "1" game.common.StatBlock : stats
-
-game.character.Monster -- "1" game.common.StatBlock : stats
-
-game.character.Monster -- "1" game.common.Position : spawn_point
-
-game.character.Monster -- "*" game.common.Position : patrol_points
-
-game.character.Monster -- "*" game.character.Monster.DropItems : drop_items
-
-game.character.skill.Skill -- "1" game.common.Element : element
+game.item.Item "1" -- "1" ItemType : item_type
+game.character.Player "1" -- "1" game.common.StatBlock : stats
+game.character.Monster "1" -- "1" game.common.StatBlock : stats
+game.character.Monster "1" -- "1" game.common.Position : spawn_point
+game.character.Monster "*" -- "1" game.common.Position : patrol_points
+game.character.Monster "1" -- "*" game.character.Monster.DropItems : drop_items
+game.character.skill.Skill "1" -- "1" game.common.Element : element
+game.junction.PlayerSkill "1" -- "1" game.character.Player : skills
+game.junction.PlayerSkill "1" -- "1" game.character.skill.Skill : users
+game.junction.InventoryItem "1" -- "1" game.character.Player : inventory
+game.junction.InventoryItem "1" -- "1" game.item.Item : item_id
+game.character.Player "1" -- "*" game.junction.PlayerSkill : skills
+game.character.skill.Skill "1" -- "*" game.junction.PlayerSkill : users
+game.character.Player "1" -- "*" game.junction.InventoryItem : inventory
 
 ```
