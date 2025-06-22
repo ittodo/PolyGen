@@ -1,6 +1,6 @@
 use pest::iterators::Pair;
 
-use crate::error::ParseError;
+use crate::error::AstBuildError;
 use crate::Rule;
 
 #[derive(Debug, PartialEq)]
@@ -140,7 +140,7 @@ fn parse_path(pair: Pair<Rule>) -> Vec<String> {
 }
 
 // Helper function to parse a literal value
-fn parse_literal(pair: Pair<Rule>) -> Result<Literal, ParseError> {
+fn parse_literal(pair: Pair<Rule>) -> Result<Literal, AstBuildError> {
     // A literal can be passed as a wrapper pair (e.g., from a `default` value)
     // or as a direct token pair (e.g., from an annotation parameter).
     // This handles both cases by consuming the pair to get an inner token,
@@ -161,27 +161,31 @@ fn parse_literal(pair: Pair<Rule>) -> Result<Literal, ParseError> {
                     .replace("\\\\", "\\"),
             )
         }
-        Rule::INTEGER => Literal::Integer(text.parse().map_err(|_| ParseError::InvalidValue {
-            element: "integer".to_string(),
-            value: text.to_string(),
-            line,
-            col,
-        })?),
-        Rule::FLOAT => Literal::Float(text.parse().map_err(|_| ParseError::InvalidValue {
+        Rule::INTEGER => {
+            Literal::Integer(text.parse().map_err(|_| AstBuildError::InvalidValue {
+                element: "integer".to_string(),
+                value: text.to_string(),
+                line,
+                col,
+            })?)
+        }
+        Rule::FLOAT => Literal::Float(text.parse().map_err(|_| AstBuildError::InvalidValue {
             element: "float".to_string(),
             value: text.to_string(),
             line,
             col,
         })?),
-        Rule::BOOLEAN => Literal::Boolean(text.parse().map_err(|_| ParseError::InvalidValue {
-            element: "boolean".to_string(),
-            value: text.to_string(),
-            line,
-            col,
-        })?),
+        Rule::BOOLEAN => {
+            Literal::Boolean(text.parse().map_err(|_| AstBuildError::InvalidValue {
+                element: "boolean".to_string(),
+                value: text.to_string(),
+                line,
+                col,
+            })?)
+        }
         Rule::IDENT => Literal::Identifier(text.to_string()),
         _ => {
-            return Err(ParseError::UnexpectedRule {
+            return Err(AstBuildError::UnexpectedRule {
                 expected: "a literal value".to_string(),
                 found: rule,
                 line,
@@ -193,19 +197,22 @@ fn parse_literal(pair: Pair<Rule>) -> Result<Literal, ParseError> {
 }
 
 // Main function to build the AST
-pub fn build_ast_from_pairs(main_pair: Pair<Rule>) -> Result<Vec<Definition>, ParseError> {
+pub fn build_ast_from_pairs(main_pair: Pair<Rule>) -> Result<Vec<Definition>, AstBuildError> {
     let mut definitions = Vec::new();
     // The main_pair's inner rules are the top-level definitions (and possibly whitespace/comments if not silent)
     for pair in main_pair.into_inner() {
         match pair.as_rule() {
             Rule::definition => {
                 let (line, col) = pair.line_col();
-                let inner_pair = pair.into_inner().next().ok_or(ParseError::MissingElement {
-                    rule: Rule::definition,
-                    element: "definition type".to_string(),
-                    line,
-                    col,
-                })?;
+                let inner_pair = pair
+                    .into_inner()
+                    .next()
+                    .ok_or(AstBuildError::MissingElement {
+                        rule: Rule::definition,
+                        element: "definition type".to_string(),
+                        line,
+                        col,
+                    })?;
 
                 let (inner_line, inner_col) = inner_pair.line_col();
                 let definition = match inner_pair.as_rule() {
@@ -214,7 +221,7 @@ pub fn build_ast_from_pairs(main_pair: Pair<Rule>) -> Result<Vec<Definition>, Pa
                     Rule::enum_def => Definition::Enum(parse_enum(inner_pair)?),
                     Rule::embed_def => Definition::Embed(parse_embed(inner_pair)?),
                     found => {
-                        return Err(ParseError::UnexpectedRule {
+                        return Err(AstBuildError::UnexpectedRule {
                             expected: "namespace, table, enum, or embed".to_string(),
                             found,
                             line: inner_line,
@@ -227,7 +234,7 @@ pub fn build_ast_from_pairs(main_pair: Pair<Rule>) -> Result<Vec<Definition>, Pa
             Rule::EOI => (), // Skip End of Input
             found => {
                 let (line, col) = pair.line_col();
-                return Err(ParseError::UnexpectedRule {
+                return Err(AstBuildError::UnexpectedRule {
                     expected: "definition".to_string(),
                     found,
                     line,
@@ -239,10 +246,10 @@ pub fn build_ast_from_pairs(main_pair: Pair<Rule>) -> Result<Vec<Definition>, Pa
     Ok(definitions)
 }
 
-fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, ParseError> {
+fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
-    let path_pair = inner.next().ok_or(ParseError::MissingElement {
+    let path_pair = inner.next().ok_or(AstBuildError::MissingElement {
         rule: Rule::namespace,
         element: "path".to_string(),
         line,
@@ -253,7 +260,7 @@ fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, ParseError> {
     for p in inner {
         if p.as_rule() == Rule::definition {
             let (p_line, p_col) = p.line_col();
-            let inner_def_pair = p.into_inner().next().ok_or(ParseError::MissingElement {
+            let inner_def_pair = p.into_inner().next().ok_or(AstBuildError::MissingElement {
                 rule: Rule::definition,
                 element: "nested definition type".to_string(),
                 line: p_line,
@@ -267,7 +274,7 @@ fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, ParseError> {
                 Rule::enum_def => Definition::Enum(parse_enum(inner_def_pair)?),
                 Rule::embed_def => Definition::Embed(parse_embed(inner_def_pair)?),
                 found => {
-                    return Err(ParseError::UnexpectedRule {
+                    return Err(AstBuildError::UnexpectedRule {
                         expected: "nested definition".to_string(),
                         found,
                         line: inner_line,
@@ -281,7 +288,7 @@ fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, ParseError> {
     Ok(Namespace { path, definitions })
 }
 
-fn parse_table(pair: Pair<Rule>) -> Result<Table, ParseError> {
+fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
     let mut annotations = Vec::new();
     let mut name = String::new();
     let mut members = Vec::new();
@@ -293,7 +300,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, ParseError> {
             Rule::table_member => {
                 let (p_line, p_col) = p.line_col();
                 // A table_member is a wrapper around a field or an embed definition.
-                let inner_member = p.into_inner().next().ok_or(ParseError::MissingElement {
+                let inner_member = p.into_inner().next().ok_or(AstBuildError::MissingElement {
                     rule: Rule::table_member,
                     element: "field or embed definition".to_string(),
                     line: p_line,
@@ -307,7 +314,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, ParseError> {
                     }
                     Rule::embed_def => TableMember::Embed(parse_embed(inner_member)?),
                     found => {
-                        return Err(ParseError::UnexpectedRule {
+                        return Err(AstBuildError::UnexpectedRule {
                             expected: "field_definition or embed_def".to_string(),
                             found,
                             line: inner_line,
@@ -319,7 +326,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, ParseError> {
             }
             found => {
                 let (line, col) = p.line_col();
-                return Err(ParseError::UnexpectedRule {
+                return Err(AstBuildError::UnexpectedRule {
                     expected: "annotation, IDENT, or table_member".to_string(),
                     found,
                     line,
@@ -335,12 +342,12 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, ParseError> {
     })
 }
 
-fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, ParseError> {
+fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
     let name = inner
         .next()
-        .ok_or(ParseError::MissingElement {
+        .ok_or(AstBuildError::MissingElement {
             rule: Rule::annotation,
             element: "name".to_string(),
             line,
@@ -356,7 +363,7 @@ fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, ParseError> {
                 let mut param_inner = p.into_inner();
                 let key = param_inner
                     .next()
-                    .ok_or(ParseError::MissingElement {
+                    .ok_or(AstBuildError::MissingElement {
                         rule: Rule::annotation_param,
                         element: "key".to_string(),
                         line: p_line,
@@ -364,7 +371,7 @@ fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, ParseError> {
                     })?
                     .as_str()
                     .to_string();
-                let value_pair = param_inner.next().ok_or(ParseError::MissingElement {
+                let value_pair = param_inner.next().ok_or(AstBuildError::MissingElement {
                     rule: Rule::annotation_param,
                     element: "value".to_string(),
                     line: p_line,
@@ -380,14 +387,17 @@ fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, ParseError> {
     Ok(Annotation { name, params })
 }
 
-fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, ParseError> {
+fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, AstBuildError> {
     let (line, col) = pair.line_col();
-    let inner_pair = pair.into_inner().next().ok_or(ParseError::MissingElement {
-        rule: Rule::field_definition,
-        element: "regular_field or inline_embed_field".to_string(),
-        line,
-        col,
-    })?;
+    let inner_pair = pair
+        .into_inner()
+        .next()
+        .ok_or(AstBuildError::MissingElement {
+            rule: Rule::field_definition,
+            element: "regular_field or inline_embed_field".to_string(),
+            line,
+            col,
+        })?;
 
     let (inner_line, inner_col) = inner_pair.line_col();
     let def = match inner_pair.as_rule() {
@@ -396,7 +406,7 @@ fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, ParseErro
             FieldDefinition::InlineEmbed(parse_inline_embed_field(inner_pair)?)
         }
         found => {
-            return Err(ParseError::UnexpectedRule {
+            return Err(AstBuildError::UnexpectedRule {
                 expected: "regular_field or inline_embed_field".to_string(),
                 found,
                 line: inner_line,
@@ -407,12 +417,12 @@ fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, ParseErro
     Ok(def)
 }
 
-fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, ParseError> {
+fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
     let name = inner
         .next()
-        .ok_or(ParseError::MissingElement {
+        .ok_or(AstBuildError::MissingElement {
             rule: Rule::regular_field,
             element: "name".to_string(),
             line,
@@ -421,7 +431,7 @@ fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, ParseError> {
         .as_str()
         .to_string();
     let type_with_cardinality =
-        parse_type_with_cardinality(inner.next().ok_or(ParseError::MissingElement {
+        parse_type_with_cardinality(inner.next().ok_or(AstBuildError::MissingElement {
             rule: Rule::regular_field,
             element: "type_with_cardinality".to_string(),
             line,
@@ -438,14 +448,14 @@ fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, ParseError> {
                 let text = p
                     .into_inner()
                     .next()
-                    .ok_or(ParseError::MissingElement {
+                    .ok_or(AstBuildError::MissingElement {
                         rule: Rule::field_number,
                         element: "integer value".to_string(),
                         line: p_line,
                         col: p_col,
                     })?
                     .as_str();
-                field_number = Some(text.parse().map_err(|_| ParseError::InvalidValue {
+                field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
                     element: "field_number".to_string(),
                     value: text.to_string(),
                     line: p_line,
@@ -454,7 +464,7 @@ fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, ParseError> {
             }
             found => {
                 let (p_line, p_col) = p.line_col();
-                return Err(ParseError::UnexpectedRule {
+                return Err(AstBuildError::UnexpectedRule {
                     expected: "constraint or field_number".to_string(),
                     found,
                     line: p_line,
@@ -471,10 +481,10 @@ fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, ParseError> {
     })
 }
 
-fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinality, ParseError> {
+fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinality, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
-    let type_name = parse_type_name(inner.next().ok_or(ParseError::MissingElement {
+    let type_name = parse_type_name(inner.next().ok_or(AstBuildError::MissingElement {
         rule: Rule::type_with_cardinality,
         element: "type_name".to_string(),
         line,
@@ -488,7 +498,7 @@ fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinality, 
                     "?" => Some(Cardinality::Optional),
                     "[]" => Some(Cardinality::Array),
                     s => {
-                        return Err(ParseError::InvalidValue {
+                        return Err(AstBuildError::InvalidValue {
                             element: "cardinality".to_string(),
                             value: s.to_string(),
                             line: p_line,
@@ -499,7 +509,7 @@ fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinality, 
             }
             found => {
                 let (p_line, p_col) = p.line_col();
-                return Err(ParseError::UnexpectedRule {
+                return Err(AstBuildError::UnexpectedRule {
                     expected: "cardinality".to_string(),
                     found,
                     line: p_line,
@@ -515,14 +525,17 @@ fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinality, 
     })
 }
 
-fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, ParseError> {
+fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, AstBuildError> {
     let (line, col) = pair.line_col();
-    let inner_pair = pair.into_inner().next().ok_or(ParseError::MissingElement {
-        rule: Rule::type_name,
-        element: "path or basic_type".to_string(),
-        line,
-        col,
-    })?;
+    let inner_pair = pair
+        .into_inner()
+        .next()
+        .ok_or(AstBuildError::MissingElement {
+            rule: Rule::type_name,
+            element: "path or basic_type".to_string(),
+            line,
+            col,
+        })?;
 
     let (inner_line, inner_col) = inner_pair.line_col();
     let tn = match inner_pair.as_rule() {
@@ -544,7 +557,7 @@ fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, ParseError> {
                 "bool" => BasicType::Bool,
                 "bytes" => BasicType::Bytes,
                 _ => {
-                    return Err(ParseError::InvalidValue {
+                    return Err(AstBuildError::InvalidValue {
                         element: "basic_type".to_string(),
                         value: text.to_string(),
                         line: inner_line,
@@ -554,7 +567,7 @@ fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, ParseError> {
             })
         }
         found => {
-            return Err(ParseError::UnexpectedRule {
+            return Err(AstBuildError::UnexpectedRule {
                 expected: "path or basic_type".to_string(),
                 found,
                 line: inner_line,
@@ -565,14 +578,17 @@ fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, ParseError> {
     Ok(tn)
 }
 
-fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
+fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
     let (line, col) = pair.line_col();
-    let inner_pair = pair.into_inner().next().ok_or(ParseError::MissingElement {
-        rule: Rule::constraint,
-        element: "constraint type".to_string(),
-        line,
-        col,
-    })?;
+    let inner_pair = pair
+        .into_inner()
+        .next()
+        .ok_or(AstBuildError::MissingElement {
+            rule: Rule::constraint,
+            element: "constraint type".to_string(),
+            line,
+            col,
+        })?;
 
     let (inner_line, inner_col) = inner_pair.line_col();
     let constraint = match inner_pair.as_rule() {
@@ -582,14 +598,14 @@ fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
             let text = inner_pair
                 .into_inner()
                 .next()
-                .ok_or(ParseError::MissingElement {
+                .ok_or(AstBuildError::MissingElement {
                     rule: Rule::max_length,
                     element: "integer value".to_string(),
                     line: inner_line,
                     col: inner_col,
                 })?
                 .as_str();
-            let val = text.parse().map_err(|_| ParseError::InvalidValue {
+            let val = text.parse().map_err(|_| AstBuildError::InvalidValue {
                 element: "max_length".to_string(),
                 value: text.to_string(),
                 line: inner_line,
@@ -599,7 +615,7 @@ fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
         }
         Rule::default_val => {
             let val = parse_literal(inner_pair.into_inner().next().ok_or(
-                ParseError::MissingElement {
+                AstBuildError::MissingElement {
                     rule: Rule::default_val,
                     element: "literal value".to_string(),
                     line: inner_line,
@@ -610,13 +626,13 @@ fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
         }
         Rule::range_val => {
             let mut values = inner_pair.into_inner();
-            let val1 = parse_literal(values.next().ok_or(ParseError::MissingElement {
+            let val1 = parse_literal(values.next().ok_or(AstBuildError::MissingElement {
                 rule: Rule::range_val,
                 element: "first value".to_string(),
                 line: inner_line,
                 col: inner_col,
             })?)?;
-            let val2 = parse_literal(values.next().ok_or(ParseError::MissingElement {
+            let val2 = parse_literal(values.next().ok_or(AstBuildError::MissingElement {
                 rule: Rule::range_val,
                 element: "second value".to_string(),
                 line: inner_line,
@@ -628,7 +644,7 @@ fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
             let s = inner_pair
                 .into_inner()
                 .next()
-                .ok_or(ParseError::MissingElement {
+                .ok_or(AstBuildError::MissingElement {
                     rule: Rule::regex_val,
                     element: "string literal".to_string(),
                     line: inner_line,
@@ -639,7 +655,7 @@ fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
         }
         Rule::foreign_key_val => {
             let mut inner = inner_pair.into_inner();
-            let path = parse_path(inner.next().ok_or(ParseError::MissingElement {
+            let path = parse_path(inner.next().ok_or(AstBuildError::MissingElement {
                 rule: Rule::foreign_key_val,
                 element: "path".to_string(),
                 line: inner_line,
@@ -656,7 +672,7 @@ fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
             Constraint::ForeignKey(path, alias)
         }
         found => {
-            return Err(ParseError::UnexpectedRule {
+            return Err(AstBuildError::UnexpectedRule {
                 expected: "a constraint type".to_string(),
                 found,
                 line: inner_line,
@@ -667,12 +683,12 @@ fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, ParseError> {
     Ok(constraint)
 }
 
-fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, ParseError> {
+fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
     let name = inner
         .next()
-        .ok_or(ParseError::MissingElement {
+        .ok_or(AstBuildError::MissingElement {
             rule: Rule::inline_embed_field,
             element: "name".to_string(),
             line,
@@ -693,7 +709,7 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, ParseE
                     "?" => Cardinality::Optional,
                     "[]" => Cardinality::Array,
                     s => {
-                        return Err(ParseError::InvalidValue {
+                        return Err(AstBuildError::InvalidValue {
                             element: "cardinality".to_string(),
                             value: s.to_string(),
                             line: p_line,
@@ -707,14 +723,14 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, ParseE
                 let text = p
                     .into_inner()
                     .next()
-                    .ok_or(ParseError::MissingElement {
+                    .ok_or(AstBuildError::MissingElement {
                         rule: Rule::field_number,
                         element: "integer value".to_string(),
                         line: p_line,
                         col: p_col,
                     })?
                     .as_str();
-                field_number = Some(text.parse().map_err(|_| ParseError::InvalidValue {
+                field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
                     element: "field_number".to_string(),
                     value: text.to_string(),
                     line: p_line,
@@ -723,7 +739,7 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, ParseE
             }
             found => {
                 let (p_line, p_col) = p.line_col();
-                return Err(ParseError::UnexpectedRule {
+                return Err(AstBuildError::UnexpectedRule {
                     expected: "field_definition, cardinality, or field_number".to_string(),
                     found,
                     line: p_line,
@@ -740,12 +756,12 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, ParseE
     })
 }
 
-fn parse_enum(pair: Pair<Rule>) -> Result<Enum, ParseError> {
+fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
     let name = inner
         .next()
-        .ok_or(ParseError::MissingElement {
+        .ok_or(AstBuildError::MissingElement {
             rule: Rule::enum_def,
             element: "name".to_string(),
             line,
@@ -759,7 +775,7 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, ParseError> {
             variants.push(p.as_str().to_string());
         } else {
             let (p_line, p_col) = p.line_col();
-            return Err(ParseError::UnexpectedRule {
+            return Err(AstBuildError::UnexpectedRule {
                 expected: "IDENT".to_string(),
                 found: p.as_rule(),
                 line: p_line,
@@ -770,12 +786,12 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, ParseError> {
     Ok(Enum { name, variants })
 }
 
-fn parse_embed(pair: Pair<Rule>) -> Result<Embed, ParseError> {
+fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
     let name = inner
         .next()
-        .ok_or(ParseError::MissingElement {
+        .ok_or(AstBuildError::MissingElement {
             rule: Rule::embed_def,
             element: "name".to_string(),
             line,
@@ -789,7 +805,7 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, ParseError> {
             fields.push(parse_field_definition(p)?);
         } else {
             let (p_line, p_col) = p.line_col();
-            return Err(ParseError::UnexpectedRule {
+            return Err(AstBuildError::UnexpectedRule {
                 expected: "field_definition".to_string(),
                 found: p.as_rule(),
                 line: p_line,

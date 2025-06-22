@@ -4,7 +4,8 @@ use std::env;
 use std::fs;
 mod ast; // ast 모듈을 가져옵니다.
 mod csharp_generator;
-mod error; // error 모듈을 추가합니다. // csharp_generator 모듈을 추가합니다.
+mod error; // error 모듈을 추가합니다.
+mod validation; // validation 모듈을 추가합니다.
 
 // `polygen.pest` 파일에 정의된 문법 규칙을 사용하기 위한 파서 구조체입니다.
 #[derive(Parser)]
@@ -44,13 +45,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // AST를 빌드합니다.
             match ast::build_ast_from_pairs(main_pair) {
-                Ok(ref ast_root) => {
-                    // 빌드된 AST를 출력합니다. (디버깅 목적)
-                    println!("\n--- Abstract Syntax Tree (AST) ---");
-                    for def in ast_root {
-                        println!("{:#?}", def); // Debug 출력으로 AST 구조를 확인합니다.
+                Ok(ast_root) => {
+                    // --- AST Validation Step ---
+                    println!("\n--- Validating AST ---");
+                    if let Err(e) = validation::validate_ast(&ast_root) {
+                        eprintln!("\n--- AST Validation Failed ---");
+                        eprintln!("{}", e);
+                        eprintln!("---------------------------");
+                        return Err(e.into()); // 유효성 검사 실패 시 실행 중단
                     }
-                    println!("----------------------------------");
+                    println!("AST validation successful.");
+                    println!("----------------------");
 
                     println!("\n--- Generating C# Code from template ---");
                     let template_path = "templates/csharp_template.cs.tera";
@@ -60,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     fs::create_dir_all(output_dir)?;
                     let output_file_path = output_dir.join("GeneratedFromTemplate.cs");
 
-                    match csharp_generator::generate_code(ast_root, &template_str) {
+                    match csharp_generator::generate_code(&ast_root, &template_str) {
                         Ok(csharp_code) => {
                             fs::write(&output_file_path, csharp_code)?;
                             println!(
@@ -70,11 +75,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         Err(e) => {
                             eprintln!("\n--- C# Code Generation Failed ---");
-                            eprintln!("{}", e);
-                            eprintln!("---------------------------------");
+                            eprintln!("{:#?}", e);
+                            eprintln!("-----------------------------------");
                         }
                     }
-                    println!("----------------------------------");
                 }
                 Err(e) => {
                     eprintln!("\n--- AST Build Failed ---");

@@ -5,253 +5,196 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 
+
+
 namespace game.common
 {
     
-    
     public enum Element
     {
-        
-        Physical,
-        
-        Fire,
-        
-        Ice,
-        
-        Lightning,
+        PHYSICAL,
+        FIRE,
+        ICE,
+        LIGHTNING,
         
     }
     
+
     
     
     public struct Position
     {
         
-        
         public float X { get; set; }
-        
         
         public float Y { get; set; }
         
     }
-    
+
     
     
     public struct StatBlock
     {
         
-        
         public uint Health { get; set; }
-        
         
         public uint Mana { get; set; }
         
-        
         public uint Attack { get; set; }
-        
         
         public uint Defense { get; set; }
         
     }
-    
-    
 }
+
+
+
 
 namespace game.item
 {
     
-    
     public enum ItemType
     {
-        
-        Weapon,
-        
-        Armor,
-        
-        Potion,
-        
-        Material,
+        WEAPON,
+        ARMOR,
+        POTION,
+        MATERIAL,
         
     }
     
+
     
     
     public class Item
     {
         
-
-        
-
-        
-        
         [Key]
         
         public uint Id { get; set; }
         
-        
         public string Name { get; set; }
         
-        
         public ItemType ItemType { get; set; }
-        
         
         public string Description { get; set; }
         
     }
     
-    
 }
+
+
+
 
 namespace game.character
 {
     
-    
     public class Player
     {
-        
-
-        
-
-        
         
         [Key]
         
         public uint Id { get; set; }
         
-        
-        [MaxLength(30)]
-        
         public string Name { get; set; }
-        
         
         public ushort Level { get; set; }
         
-        
-        public game.common.StatBlock Stats { get; set; }
+        public StatBlock Stats { get; set; }
         
     }
     
+
     
     
     public class Monster
     {
         
-        
         public class DropItems
         {
             
-            
             public uint ItemId { get; set; }
-            
             
             public float DropChance { get; set; }
             
         }
         
-        
 
-        
-
-        
         
         [Key]
         
         public uint Id { get; set; }
         
-        
         public string Name { get; set; }
         
+        public StatBlock Stats { get; set; }
         
-        public game.common.StatBlock Stats { get; set; }
+        public Position SpawnPoint { get; set; }
         
-        
-        public game.common.Position SpawnPoint { get; set; }
-        
-        
-        public List<game.common.Position> PatrolPoints { get; set; }
-        
+        public List<Position> PatrolPoints { get; set; }
         
         public List<DropItems> DropItems { get; set; }
         
     }
     
+
     
+    namespace skill
+{
     
     public class Skill
     {
-        
-
-        
-
-        
         
         [Key]
         
         public uint Id { get; set; }
         
-        
         public string Name { get; set; }
-        
         
         public string Description { get; set; }
         
-        
-        public game.common.Element Element { get; set; }
-        
+        public Element Element { get; set; }
         
         public uint Power { get; set; }
         
     }
     
-    
 }
+}
+
+
+
 
 namespace game.junction
 {
     
-    
     public class PlayerSkill
     {
         
-
-        
-
-        
-        
         public uint PlayerId { get; set; }
         
-        
         public uint SkillId { get; set; }
-        
         
         public ushort SkillLevel { get; set; }
         
     }
     
+
     
     
     public class InventoryItem
     {
         
-
-        
-
-        
-        
         [Key]
         
         public uint Id { get; set; }
         
-        
         public uint PlayerId { get; set; }
         
-        
         public uint ItemId { get; set; }
-        
         
         public uint Quantity { get; set; }
         
     }
     
-    
 }
+

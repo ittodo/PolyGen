@@ -84,14 +84,18 @@ namespace game.character {
         }[]; // 여러 아이템을 드랍할 수 있으므로 배열로 정의
     }
 
-    /// 스킬 정보를 정의하는 테이블입니다.
-    @taggable
-    table Skill {
-        id: u32 primary_key;
-        name: string unique;
-        description: string?;
-        element: game.common.Element;
-        power: u32;
+    // 네임스페이스는 이처럼 중첩하여 선언할 수 있습니다.
+    // 이 블록은 `game.character.skill` 네임스페이스가 됩니다.
+    namespace skill {
+        /// 스킬 정보를 정의하는 테이블입니다.
+        @taggable
+        table Skill {
+            id: u32 primary_key;
+            name: string unique;
+            description: string?;
+            element: game.common.Element;
+            power: u32;
+        }
     }
 }
 
@@ -109,7 +113,7 @@ namespace game.junction {
         // Player 테이블에 'skills' 라는 이름의 N:M 관계를 생성합니다.
         player_id: u32 foreign_key(game.character.Player.id) as skills;
         // Skill 테이블에 'users' 라는 이름의 N:M 관계를 생성합니다.
-        skill_id: u32 foreign_key(game.character.Skill.id) as users;
+        skill_id: u32 foreign_key(game.character.skill.Skill.id) as users;
         skill_level: u16;
     }
 

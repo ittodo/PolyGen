@@ -4,18 +4,18 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
-{% for ns in namespaces %}
+{% macro render_namespace(ns) -%}
 namespace {{ ns.name }}
 {
-    {% for item in ns.items %}
+    {%- for item in ns.items %}
     {% if item.type == "class" %}
     public class {{ item.name }}
     {
-        {% if item.nested_items %}
+        {% if item.nested_items -%}
         {% for nested_item in item.nested_items %}
         public class {{ nested_item.name }}
         {
-            {% for field in nested_item.fields %}
+            {% for field in nested_item.fields -%}
             {% for attribute in field.attributes %}
             {{ attribute }}
             {% endfor %}
@@ -23,11 +23,9 @@ namespace {{ ns.name }}
             {% endfor %}
         }
         {% endfor %}
+
         {% endif %}
-
-        {# Added explicit newline for clarity and parsing robustness #}
-
-        {% for field in item.fields %}
+        {%- for field in item.fields -%}
         {% for attribute in field.attributes %}
         {{ attribute }}
         {% endfor %}
@@ -37,21 +35,37 @@ namespace {{ ns.name }}
     {% elif item.type == "enum" %}
     public enum {{ item.name }}
     {
-        {% for variant in item.variants %}
+        {% for variant in item.variants -%}
         {{ variant }},
         {% endfor %}
     }
     {% elif item.type == "struct" %}
     public struct {{ item.name }}
     {
-        {% for field in item.fields %}
+        {% for field in item.fields -%}
         {% for attribute in field.attributes %}
         {{ attribute }}
         {% endfor %}
         public {{ field.type }} {{ field.name }} { get; set; }
         {% endfor %}
     }
+    {%- endif %}
+    {%- if not loop.last or ns.children|length > 0 %}
+
     {% endif %}
-    {% endfor %}
+    {%- endfor %}
+    {%- for child in ns.children %}
+    {{ self::render_namespace(ns=child) }}
+    {%- if not loop.last %}
+
+    {% endif %}
+    {%- endfor %}
 }
+{%- endmacro %}
+
+{% for ns in namespaces %}
+{{ self::render_namespace(ns=ns) }}
+{% if not loop.last %}
+
+{% endif %}
 {% endfor %}

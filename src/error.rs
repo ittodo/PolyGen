@@ -1,32 +1,35 @@
-use crate::Rule;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum ParseError {
-    #[error("Pest parsing error")]
-    Pest(#[from] Box<pest::error::Error<Rule>>),
-
-    #[error("L{line}:{col} - Unexpected rule: expected {expected}, but found {found:?}")]
-    UnexpectedRule {
-        expected: String,
-        found: Rule,
-        line: usize,
-        col: usize,
-    },
-
-    #[error("L{line}:{col} - Missing element in {rule:?}: {element}")]
-    MissingElement {
-        rule: Rule,
-        element: String,
-        line: usize,
-        col: usize,
-    },
-
-    #[error("L{line}:{col} - Invalid value for {element}: '{value}'")]
+#[derive(Error, Debug, PartialEq)]
+pub enum AstBuildError {
+    #[error("Invalid value '{value}' for {element} at {line}:{col}")]
     InvalidValue {
         element: String,
         value: String,
         line: usize,
         col: usize,
     },
+    #[error("Unexpected rule '{found:?}' at {line}:{col}, expected {expected}")]
+    UnexpectedRule {
+        expected: String,
+        found: crate::Rule,
+        line: usize,
+        col: usize,
+    },
+    #[error("Missing element '{element}' for rule '{rule:?}' at {line}:{col}")]
+    MissingElement {
+        rule: crate::Rule,
+        element: String,
+        line: usize,
+        col: usize,
+    },
+}
+
+#[derive(Error, Debug, PartialEq)]
+pub enum ValidationError {
+    #[error("Type not found: '{0}'")]
+    TypeNotFound(String),
+
+    #[error("Duplicate definition for type: '{0}'")]
+    DuplicateDefinition(String),
 }
