@@ -3,15 +3,6 @@ classDiagram
 direction LR
 
 
-class game.common.Element {
-    <<enumeration>>
-    PHYSICAL
-    FIRE
-    ICE
-    LIGHTNING
-    
-}
-
 class game.item.ItemType {
     <<enumeration>>
     WEAPON
@@ -21,20 +12,15 @@ class game.item.ItemType {
     
 }
 
-
-class game.common.Position {
-    +f32 x
-    +f32 y
+class game.common.Element {
+    <<enumeration>>
+    PHYSICAL
+    FIRE
+    ICE
+    LIGHTNING
     
 }
 
-class game.common.StatBlock {
-    +u32 health
-    +u32 mana
-    +u32 attack
-    +u32 defense
-    
-}
 
 class game.item.Item {
     <<taggable>>
@@ -90,6 +76,20 @@ class game.junction.InventoryItem {
     +u32 player_id
     +u32 item_id
     +u32 quantity
+    
+}
+
+class game.common.Position {
+    +f32 x
+    +f32 y
+    
+}
+
+class game.common.StatBlock {
+    +u32 health
+    +u32 mana
+    +u32 attack
+    +u32 defense
     
 }
 

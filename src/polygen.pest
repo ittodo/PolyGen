@@ -1,116 +1,96 @@
-/// Polygen 스키마의 최상위 규칙입니다.
-/// 파일 전체를 파싱합니다.
-main = { SOI ~ (WHITESPACE)* ~ (definition)* ~ EOI }
+// ============================================================================
+// PolyGen Grammar
+// ============================================================================
+// 이 파일은 PolyGen 스키마 언어의 문법을 정의합니다.
+// pest 파서 생성기가 이 파일을 사용하여 파서를 생성합니다.
 
-/// 최상위 정의는 네임스페이스, 테이블, 열거형, 임베드 정의가 될 수 있습니다.
-definition = { (doc_comment)* ~ (namespace | table | enum_def | embed_def) }
+// Whitespace and Comments
+// =======================
+// `_` 접두사가 붙은 규칙(silent rule)은 파싱 트리에서 생략됩니다.
+WHITESPACE    = _{ " " | "\t" | "\n" }
+COMMENT       = _{ block_comment | line_comment }
+block_comment =  { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+line_comment  =  { "//" ~ (!"\n" ~ ANY)* }
+doc_comment   =  { "///" ~ (!"\n" ~ ANY)* }
 
-/// 네임스페이스 정의를 파싱합니다.
-namespace = { "namespace" ~ path ~ "{" ~ (definition)* ~ "}" }
+// Main entry point
+// ================
+// 스키마 파일은 파일 임포트와 최상위 정의들을 포함할 수 있습니다.
+main = { SOI ~ (toplevel_item | WHITESPACE | COMMENT)* ~ EOI }
 
-/// 테이블 정의를 파싱합니다.
-table        = { (annotation)* ~ "table" ~ IDENT ~ "{" ~ (table_member)* ~ "}" }
-table_member = { (doc_comment)* ~ (field_definition | embed_def) }
+toplevel_item = { file_import | definition }
 
-/// 어노테이션을 파싱합니다. (예: @taggable, @link_rows)
-annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_params_list? ~ ")")? }
-annotation_params_list = { annotation_param ~ ("," ~ annotation_param)* }
-annotation_param       = { IDENT ~ ":" ~ (BOOLEAN | STRING_LITERAL | FLOAT | INTEGER | IDENT) }
+// File Import: `import "path/to/file.poly";`
+// ==========================================
+file_import = { "import" ~ STRING_LITERAL ~ ";" }
 
-/// 필드 정의를 파싱합니다. (일반 필드 또는 인라인 임베드 필드)
-field_definition = { (regular_field | inline_embed_field) ~ ";" }
+// Namespace Import: `import game.common.*;` or `import game.common.Type;`
+// =======================================================================
+namespace_import = { "import" ~ path ~ (".*")? ~ ";" }
 
-/// 일반 필드를 파싱합니다. (예: id: u32 primary_key = 1;)
-regular_field = { IDENT ~ ":" ~ type_with_cardinality ~ (constraint)* ~ field_number? }
+// Top-level definitions
+// =====================
+definition = { (doc_comment | annotation)* ~ (namespace | table | embed_def | enum_def) }
 
-/// 타입과 카디널리티 (선택적, 배열)를 파싱합니다.
+// Namespace
+// =========
+// 네임스페이스는 다른 정의들이나 네임스페이스 임포트를 포함할 수 있습니다.
+namespace           = { "namespace" ~ path ~ "{" ~ (namespace_body_item | WHITESPACE | COMMENT)* ~ "}" }
+namespace_body_item = { namespace_import | definition }
+
+// Table / Embed
+// =============
+table     = { "table" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" }
+embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" }
+
+table_member = { (doc_comment | annotation)* ~ (embed_def | (field_definition ~ ";")) }
+
+field_definition = { inline_embed_field | regular_field }
+
+regular_field      = { IDENT ~ ":" ~ type_with_cardinality ~ constraint* ~ field_number? }
+inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" ~ cardinality? ~ field_number? }
+
+field_number = { "=" ~ INTEGER }
+
+// Enum
+// ====
+enum_def = { "enum" ~ IDENT ~ "{" ~ (IDENT ~ ";"? ~ (WHITESPACE | COMMENT)*)* ~ "}" }
+
+// Types
+// =====
 type_with_cardinality = { type_name ~ cardinality? }
-type_name             = { path | basic_type }
-cardinality           = { "?" | "[]" }
+cardinality           = { "[]" | "?" }
+type_name             = { basic_type | path }
+basic_type            = { "string" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "bytes" }
 
-/// 기본 데이터 타입을 파싱합니다.
-basic_type = { "string" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "f32" | "f64" | "bool" | "bytes" }
-
-/// 필드 제약조건을 파싱합니다.
-constraint = { primary_key | unique | max_length | default_val | range_val | regex_val | foreign_key_val }
-
+// Constraints
+// ===========
+constraint      = { primary_key | unique | max_length | default_val | range_val | regex_val | foreign_key_val }
 primary_key     = { "primary_key" }
 unique          = { "unique" }
 max_length      = { "max_length" ~ "(" ~ INTEGER ~ ")" }
-default_val     = { "default" ~ "(" ~ (STRING_LITERAL | INTEGER | FLOAT | BOOLEAN) ~ ")" }
-range_val       = { "range" ~ "(" ~ (INTEGER | FLOAT) ~ "," ~ (INTEGER | FLOAT) ~ ")" }
+default_val     = { "default" ~ "(" ~ literal ~ ")" }
+range_val       = { "range" ~ "(" ~ literal ~ "," ~ literal ~ ")" }
 regex_val       = { "regex" ~ "(" ~ STRING_LITERAL ~ ")" }
 foreign_key_val = { "foreign_key" ~ "(" ~ path ~ ")" ~ ("as" ~ IDENT)? }
 
-/// 필드 번호 (Protobuf 호환성)를 파싱합니다.
-field_number = { "=" ~ INTEGER }
+// Annotations
+// ===========
+annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_params_list? ~ ")")? }
+annotation_params_list = { annotation_param ~ ("," ~ annotation_param)* }
+annotation_param       = { IDENT ~ ":" ~ literal }
 
-/// 인라인 임베드 필드를 파싱합니다. (예: drop_items: embed { ... }[];)
-inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member)* ~ "}" ~ cardinality? ~ field_number? }
+// Literals
+// ========
+literal = { STRING_LITERAL | FLOAT | INTEGER | BOOLEAN | IDENT }
 
-/// 열거형 정의를 파싱합니다.
-enum_def = { "enum" ~ IDENT ~ "{" ~ (IDENT ~ ";")* ~ "}" }
-
-/// 명명된 임베드 정의를 파싱합니다. (예: embed Position { ... })
-embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member)* ~ "}" }
-
-/// 정수 리터럴을 파싱합니다.
-INTEGER = @{ ASCII_DIGIT+ }
-
-/// 부동소수점 리터럴을 파싱합니다.
-FLOAT = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
-
-/// 문자열 리터럴을 파싱합니다. (예: "hello world")
-STRING_LITERAL = @{ "\"" ~ ("\\" ~ ANY | !("\"" | "\\") ~ ANY)* ~ "\"" }
-
-/// 불리언 리터럴을 파싱합니다.
-BOOLEAN = { "true" | "false" }
-
-/// 경로 (예: game.common)를 파싱합니다.
+// Primitives
+// ==========
+// 경로는 점(.)으로 구분된 식별자입니다. 예: `game.common.Type`
 path = { IDENT ~ ("." ~ IDENT)* }
-
-/// 식별자 (변수명, 타입명 등)를 파싱합니다.
-IDENT = @{ !KEYWORD ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
-
-/// 공백과 주석을 무시합니다.
-WHITESPACE = _{ (ascii_whitespace_chars | comment)+ }
-
-/// 문서 주석 (///)은 토큰으로 캡처합니다.
-doc_comment = @{ "///" ~ (!NEWLINE ~ ANY)* }
-
-/// 일반 라인 주석 (//)은 무시합니다.
-comment = _{ "//" ~ !"/" ~ (!NEWLINE ~ ANY)* }
-
-/// ASCII 공백 문자들을 명시적으로 정의합니다. (ASCII_WHITESPACE가 인식되지 않을 경우의 대안)
-ascii_whitespace_chars = { " " | "\t" | "\r" | "\n" }
-
-/// 모든 예약어(키워드)를 정의합니다.
-KEYWORD = {
-    "namespace"
-  | "table"
-  | "enum"
-  | "embed"
-  | "primary_key"
-  | "unique"
-  | "max_length"
-  | "default"
-  | "range"
-  | "regex"
-  | "foreign_key"
-  | "as"
-  | "string"
-  | "i8"
-  | "i16"
-  | "i32"
-  | "i64"
-  | "u8"
-  | "u16"
-  | "u32"
-  | "u64"
-  | "f32"
-  | "f64"
-  | "bool"
-  | "bytes"
-  | "true"
-  | "false"
-}
+// 식별자는 알파벳이나 밑줄로 시작해야 합니다.
+IDENT          = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+FLOAT          = @{ "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+INTEGER        = @{ "-"? ~ ASCII_DIGIT+ }
+STRING_LITERAL = @{ "\"" ~ ("\\" ~ ANY | !("\"") ~ ANY)* ~ "\"" }
+BOOLEAN        = @{ "true" | "false" }
