@@ -80,10 +80,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let all_asts = parse_and_merge_schemas(schema_path)?;
 
     // 3. 모든 AST에서 정의(definition)만 추출하여 하나의 리스트로 합칩니다.
-    //    (추후 유효성 검사나 코드 생성기에서 파일 경로 정보가 필요해지면 이 부분을 수정합니다.)
+    //    `all_asts`는 나중에 C# 파일 생성 시 다시 사용하기 위해 원본을 유지합니다.
     let all_definitions: Vec<Definition> = all_asts
-        .into_iter()
-        .flat_map(|ast| ast.definitions)
+        .iter()
+        .flat_map(|ast| ast.definitions.clone())
         .collect();
 
     // 4. 합쳐진 AST의 유효성을 검사합니다.
@@ -93,17 +93,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- C# 코드 생성 ---
     println!("\n--- C# 코드 생성 중 ---");
-    let output_dir = Path::new("output/csharp");
-    fs::create_dir_all(output_dir)?;
-    let output_file_path = output_dir.join("GeneratedFromTemplate.cs");
-
-    // TODO: 이 부분도 나중에는 AST를 입력으로 받도록 수정해야 합니다.
-    let csharp_code = csharp_generator::generate_csharp_with_askama();
-    fs::write(&output_file_path, csharp_code)?;
-    println!(
-        "C# 코드가 성공적으로 생성되었습니다: {}",
-        output_file_path.display()
-    );
+    let csharp_output_dir = Path::new("output/csharp");
+    csharp_generator::generate_csharp_code(&all_asts, csharp_output_dir)?;
+    println!("C# 코드 생성이 완료되었습니다.");
 
     // --- Mermaid 다이어그램 생성 ---
     println!("\n--- Mermaid 다이어그램 생성 중 ---");
