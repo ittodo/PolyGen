@@ -48,6 +48,11 @@ public partial class Player
 }
 public partial class Monster
 {
+    public class DropItems
+    {
+        public uint ItemId { get; set; }
+        public float DropChance { get; set; }
+    }
     public uint Id { get; set; }
 
     
@@ -63,7 +68,7 @@ public partial class Monster
     public System.Collections.Generic.List<game.common.Position> PatrolPoints { get; set; }
 
     
-    public DropItems DropItems { get; set; }
+    public System.Collections.Generic.List<DropItems> DropItems { get; set; }
 }
 
 

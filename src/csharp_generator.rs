@@ -1,6 +1,6 @@
 use crate::ast::{
     AstRoot, BasicType, Cardinality, Definition, Embed, Enum, FieldDefinition, InlineEmbedField,
-    Namespace, Table, TableMember, TypeName, TypeWithCardinality,
+    Namespace, RegularField, Table, TableMember, TypeName, TypeWithCardinality,
 };
 use crate::csharp_model::{
     CSharpFile, ClassDef, EnumDef, NamespaceDef, PropertyDef, StructDef, TypeDef, TypeInfo,
@@ -170,11 +170,42 @@ fn map_type_to_csharp(
 /// Converts an `ast::Table` to a `csharp_model::TypeDef`.
 fn convert_table_to_type(table: &Table) -> Result<TypeDef, Box<dyn std::error::Error>> {
     let mut properties = Vec::new();
+    let mut nested_classes = Vec::new();
+
     for member in &table.members {
         if let TableMember::Field(field) = member {
-            properties.push(convert_field_to_property(field)?);
+            match field {
+                FieldDefinition::Regular(rf) => {
+                    properties.push(convert_regular_field_to_property(rf)?);
+                }
+                FieldDefinition::InlineEmbed(ief) => {
+                    // InlineEmbed를 처리하는 로직입니다.
+                    // 1. 부모 클래스에 해당 중첩 클래스를 타입으로 사용하는 속성을 생성합니다.
+                    let base_type_name = ief.name.to_upper_camel_case();
+
+                    // Cardinality(배열 등)를 처리합니다.
+                    let type_name = match &ief.cardinality {
+                        Some(Cardinality::Array) => {
+                            format!("System.Collections.Generic.List<{}>", base_type_name)
+                        }
+                        Some(Cardinality::Optional) => format!("{}?", base_type_name),
+                        None => base_type_name,
+                    };
+
+                    properties.push(PropertyDef {
+                        name: ief.name.to_pascal_case(),
+                        type_name,
+                        comment: ief.doc_comment.clone(),
+                        attributes: vec![],
+                    });
+
+                    // 2. 중첩 클래스 자체의 정의를 생성합니다.
+                    let nested_class = convert_inline_embed_to_nested_class(ief)?;
+                    nested_classes.push(nested_class);
+                }
+            }
         }
-        // TODO: Handle nested definitions
+        // TODO: Handle TableMember::Embed (named embeds inside tables)
     }
 
     Ok(TypeDef::Class(ClassDef {
@@ -183,7 +214,7 @@ fn convert_table_to_type(table: &Table) -> Result<TypeDef, Box<dyn std::error::E
             comment: table.doc_comment.clone(),
         },
         properties,
-        nested_classes: vec![], // TODO: 중첩 클래스 변환 로직 구현
+        nested_classes,
     }))
 }
 
@@ -202,7 +233,12 @@ fn convert_enum_to_type(e: &Enum) -> Result<TypeDef, Box<dyn std::error::Error>>
 fn convert_embed_to_type(embed: &Embed) -> Result<TypeDef, Box<dyn std::error::Error>> {
     let mut properties = Vec::new();
     for field in &embed.fields {
-        properties.push(convert_field_to_property(field)?);
+        // Named embeds are converted to structs, which cannot contain nested classes in this model.
+        if let FieldDefinition::Regular(rf) = field {
+            properties.push(convert_regular_field_to_property(rf)?);
+        } else {
+            return Err("Named embeds cannot contain inline embeds in the C# generator.".into());
+        }
     }
 
     Ok(TypeDef::Struct(StructDef {
@@ -214,39 +250,42 @@ fn convert_embed_to_type(embed: &Embed) -> Result<TypeDef, Box<dyn std::error::E
     }))
 }
 
-/// Converts an `ast::FieldDefinition` to a `csharp_model::PropertyDef`.
-fn convert_field_to_property(
-    field: &FieldDefinition,
+/// Converts an `ast::RegularField` to a `csharp_model::PropertyDef`.
+fn convert_regular_field_to_property(
+    rf: &RegularField,
 ) -> Result<PropertyDef, Box<dyn std::error::Error>> {
-    match field {
-        FieldDefinition::Regular(rf) => Ok(PropertyDef {
-            name: rf.name.to_pascal_case(),
-            type_name: map_type_to_csharp(&rf.field_type)?,
-            comment: rf.doc_comment.clone(),
-            attributes: vec![], // TODO: 애노테이션을 속성으로 변환하는 로직 구현
-        }),
-        FieldDefinition::InlineEmbed(ief) => convert_inline_embed_to_property(ief),
-    }
+    Ok(PropertyDef {
+        name: rf.name.to_pascal_case(),
+        type_name: map_type_to_csharp(&rf.field_type)?,
+        comment: rf.doc_comment.clone(),
+        attributes: vec![], // TODO: 애노테이션을 속성으로 변환하는 로직 구현
+    })
 }
 
-/// Converts an `ast::InlineEmbedField` to a `csharp_model::PropertyDef`.
-/// 인라인 Embed 필드를 C# 속성으로 변환합니다. 이 때, 인라인 Embed는 새로운 클래스/구조체로 처리됩니다.
-fn convert_inline_embed_to_property(
+/// Converts an `ast::InlineEmbedField` to a `csharp_model::ClassDef` for a nested class.
+fn convert_inline_embed_to_nested_class(
     ief: &InlineEmbedField,
-) -> Result<PropertyDef, Box<dyn std::error::Error>> {
-    // 새로운 클래스/구조체 이름을 생성합니다. (예: "부모클래스이름 + 속성이름")
-    // 여기서는 단순히 속성 이름(파스칼 케이스)을 사용하며, 실제 클래스/구조체 정의는 별도로 처리됩니다.
-    let type_name = ief.name.to_pascal_case();
-    // TODO: 실제 클래스/구조체 정의를 생성하고 관리하는 로직을 추가해야 합니다.
-    //       이 로직은 현재 함수의 호출자(예: convert_table_to_type)에서 처리될 수 있습니다.
+) -> Result<ClassDef, Box<dyn std::error::Error>> {
+    let mut properties = Vec::new();
 
-    Ok(PropertyDef {
-        name: ief.name.to_pascal_case(),
-        type_name, // 생성된 클래스/구조체 이름을 사용합니다.
-        comment: ief.doc_comment.clone(),
-        attributes: vec![],
-        // TODO: 인라인 Embed 필드의 속성에 대한 추가적인 처리 (예: JsonIgnore 등)가 필요하면 여기에 추가합니다.
-        //       예를 들어, [JsonIgnore] 속성을 추가하여 C# 클래스에서 해당 속성을 직렬화/역직렬화에서 제외할 수 있습니다.
-        //       이러한 처리는 ief.annotations를 참고하여 구현할 수 있습니다.
+    for field in &ief.fields {
+        match field {
+            FieldDefinition::Regular(rf) => {
+                properties.push(convert_regular_field_to_property(rf)?);
+            }
+            FieldDefinition::InlineEmbed(_) => {
+                // For simplicity, we are not supporting recursively nested inline embeds for now.
+                return Err("Recursively nested inline embeds are not supported.".into());
+            }
+        }
+    }
+
+    Ok(ClassDef {
+        info: TypeInfo {
+            name: ief.name.to_upper_camel_case(),
+            comment: ief.doc_comment.clone(),
+        },
+        properties,
+        nested_classes: vec![], // No deeper nesting.
     })
 }
