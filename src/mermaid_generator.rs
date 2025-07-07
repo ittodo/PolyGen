@@ -1,8 +1,8 @@
 use crate::ast::{
-    self, BasicType, Cardinality, Constraint, Definition, Embed, FieldDefinition, TableMember,
-    TypeName,
+    self, Cardinality, Constraint, Definition, Embed, FieldDefinition, TableMember, TypeName,
 };
 use crate::mermaid_model::{Class, ClassDiagram, Enum, Property, Relationship};
+use anyhow::Result;
 use askama::Template;
 use heck::ToUpperCamelCase;
 use std::collections::HashSet;
@@ -14,10 +14,10 @@ struct MermaidTemplate<'a> {
 }
 
 /// AST를 기반으로 Mermaid 클래스 다이어그램을 생성합니다.
-pub fn generate_mermaid_diagram(ast_definitions: &[Definition]) -> String {
+pub fn generate_mermaid_diagram(ast_definitions: &[Definition]) -> Result<String> {
     let diagram = build_diagram_from_ast(ast_definitions);
     let template = MermaidTemplate { diagram };
-    template.render().unwrap()
+    Ok(template.render()?)
 }
 
 /// AST를 순회하며 `ClassDiagram` 데이터 모델을 구축합니다.
@@ -139,14 +139,6 @@ fn collect_diagram_parts<'a>(
                                         ast::Literal::String(s) => s.clone(),
                                         _ => p.value.to_string(),
                                     });
-                                let path_param = ann
-                                    .params
-                                    .iter()
-                                    .find(|p| p.key == "path")
-                                    .map_or("unknown".to_string(), |p| match &p.value {
-                                        ast::Literal::String(s) => s.clone(),
-                                        _ => p.value.to_string(),
-                                    });
                                 format!("{}({})", ann.name, type_param)
                             } else {
                                 format!("{}({})", ann.name, formatted_params)
@@ -256,7 +248,7 @@ fn find_all_named_embed_fqns(
 fn process_field<'a>(
     field: &'a FieldDefinition,
     owner_fqn: &str,
-    all_named_embed_fqns: &HashSet<String>, // Renamed parameter for clarity
+    _all_named_embed_fqns: &HashSet<String>, // Renamed parameter for clarity
 ) -> (Property<'a>, Option<Relationship>) {
     match field {
         FieldDefinition::Regular(rf) => {

@@ -1,16 +1,20 @@
+use anyhow::Result;
+use clap::Parser as ClapParser;
 use pest::Parser;
 use pest_derive::Parser;
 use std::collections::{HashSet, VecDeque};
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ast::{AstRoot, Definition};
 
 mod ast;
-mod csharp_generator;
-mod csharp_model;
+// mod csharp_generator; // Old generator is no longer needed
+// mod csharp_model;   // Old model is no longer needed
 mod error; // error 모듈을 추가합니다.
+mod generator;
+mod ir_builder;
+mod ir_model;
 mod mermaid_generator;
 mod mermaid_model;
 mod validation;
@@ -20,9 +24,28 @@ mod validation;
 #[grammar = "polygen.pest"] // `src` 폴더에 있는 문법 파일을 지정합니다.
 pub struct Polygen;
 
-/// Recursively parses the initial schema file and all its imports.
-/// It returns a vector of `AstRoot`, one for each parsed file.
-fn parse_and_merge_schemas(initial_path: &str) -> Result<Vec<AstRoot>, Box<dyn std::error::Error>> {
+/// Polyglot Code Generator from a custom schema language
+#[derive(ClapParser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Path to the root schema file
+    schema_path: PathBuf,
+
+    /// Path to the directory containing templates
+    #[arg(short, long, default_value = "templates")]
+    templates_dir: PathBuf,
+
+    /// Path to the output directory for generated code
+    #[arg(short, long, default_value = "output")]
+    output_dir: PathBuf,
+
+    /// Target language for code generation (e.g., csharp, typescript)
+    #[arg(short, long, default_value = "csharp")]
+    lang: String,
+}
+
+// ... parse_and_merge_schemas function remains the same ...
+fn parse_and_merge_schemas(initial_path: &Path) -> Result<Vec<AstRoot>> {
     let mut files_to_process: VecDeque<PathBuf> = VecDeque::new();
     let mut processed_files: HashSet<PathBuf> = HashSet::new();
     let mut all_asts: Vec<AstRoot> = Vec::new();
@@ -40,7 +63,7 @@ fn parse_and_merge_schemas(initial_path: &str) -> Result<Vec<AstRoot>, Box<dyn s
         let main_pair = Polygen::parse(Rule::main, &unparsed_file)?
             .next()
             .ok_or_else(|| {
-                format!(
+                anyhow::anyhow!(
                     "스키마 파일에서 main 규칙을 찾을 수 없습니다: {}",
                     current_path.display()
                 )
@@ -52,7 +75,7 @@ fn parse_and_merge_schemas(initial_path: &str) -> Result<Vec<AstRoot>, Box<dyn s
 
         let base_dir = current_path
             .parent()
-            .ok_or("파일의 부모 디렉토리를 찾을 수 없습니다.")?;
+            .ok_or_else(|| anyhow::anyhow!("파일의 부모 디렉토리를 찾을 수 없습니다."))?;
 
         for import_path_str in file_imports {
             let import_path = base_dir.join(import_path_str);
@@ -65,19 +88,13 @@ fn parse_and_merge_schemas(initial_path: &str) -> Result<Vec<AstRoot>, Box<dyn s
     Ok(all_asts)
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. 명령줄 인자에서 스키마 파일 경로를 가져옵니다.
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("오류: 스키마 파일 경로가 필요합니다.");
-        eprintln!("사용법: {} <스키마_파일_경로>", args[0]);
-        return Err("스키마 파일이 지정되지 않았습니다.".into());
-    }
-    let schema_path = &args[1];
+fn main() -> Result<()> {
+    // 1. 명령줄 인자를 파싱합니다.
+    let cli = Cli::parse();
 
     // 2. 스키마 파일과 모든 import를 재귀적으로 파싱하고 하나의 AST로 합칩니다.
     println!("--- 스키마 처리 시작 ---");
-    let all_asts = parse_and_merge_schemas(schema_path)?;
+    let all_asts = parse_and_merge_schemas(&cli.schema_path)?;
 
     // 3. 모든 AST에서 정의(definition)만 추출하여 하나의 리스트로 합칩니다.
     //    `all_asts`는 나중에 C# 파일 생성 시 다시 사용하기 위해 원본을 유지합니다.
@@ -91,11 +108,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     validation::validate_ast(&all_definitions)?;
     println!("AST 유효성 검사 성공.");
 
-    // --- C# 코드 생성 ---
-    println!("\n--- C# 코드 생성 중 ---");
-    let csharp_output_dir = Path::new("output/csharp");
-    csharp_generator::generate_csharp_code(&all_asts, csharp_output_dir)?;
-    println!("C# 코드 생성이 완료되었습니다.");
+    // 5. AST를 템플릿 엔진이 사용하기 좋은 IR(Intermediate Representation)로 변환합니다.
+    println!("\n--- AST를 IR로 변환 중 ---");
+    let ir_context = ir_builder::build_ir(&all_definitions);
+    println!("IR 변환 성공.");
+
+    // --- 코드 생성 (설정 기반) ---
+    println!("\n--- {} 코드 생성 중 ---", cli.lang.to_uppercase());
+    let lang_output_dir = cli.output_dir.join(&cli.lang);
+    let template_generator = generator::Generator::new(&cli.templates_dir)?;
+    template_generator.generate(&ir_context, &cli.lang, &lang_output_dir)?;
+    println!("{} 코드 생성이 완료되었습니다.", cli.lang.to_uppercase());
 
     // --- Mermaid 다이어그램 생성 ---
     println!("\n--- Mermaid 다이어그램 생성 중 ---");
@@ -103,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(mermaid_output_dir)?;
     let mermaid_output_file_path = mermaid_output_dir.join("class_diagram.md");
 
-    let mermaid_code = mermaid_generator::generate_mermaid_diagram(&all_definitions);
+    let mermaid_code = mermaid_generator::generate_mermaid_diagram(&all_definitions)?;
     // GitHub에서 렌더링되도록 마크다운 코드 블록으로 감싸줍니다.
     let mermaid_content = format!("```mermaid\n{}\n```", mermaid_code);
     fs::write(&mermaid_output_file_path, mermaid_content)?;
