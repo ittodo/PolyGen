@@ -50,7 +50,7 @@ namespace game.character {
     @taggable
     table Monster {
         id: u32 primary_key;
-        name: string;
+        name: string max_length(50);
         stats: game.common.StatBlock;
         spawn_point: game.common.Position;
         patrol_points: game.common.Position[];
@@ -59,7 +59,7 @@ namespace game.character {
         // 이처럼 테이블 내부에 직접 embed를 정의하여, 해당 테이블에서만 사용하는 복합 타입을 만들 수 있습니다.
         drop_items: embed {
             item_id: u32;
-            drop_chance: f32; // 0.0 to 1.0
+            drop_chance: f32 range(0.0, 1.0); // 0.0 to 1.0
         }[]; // 여러 아이템을 드랍할 수 있으므로 배열로 정의
     }
 
@@ -93,7 +93,7 @@ namespace game.junction {
         player_id: u32 foreign_key(game.character.Player.id) as skills;
         // Skill 테이블에 'users' 라는 이름의 N:M 관계를 생성합니다.
         skill_id: u32 foreign_key(game.character.skill.Skill.id) as users;
-        skill_level: u16;
+        skill_level: u16 default(1) range(1, 99);
     }
 
     /// 플레이어 인벤토리 항목을 나타내는 테이블입니다. (1:N 관계의 'N'쪽)
@@ -103,6 +103,6 @@ namespace game.junction {
         // 'as inventory'를 통해 Player 테이블에 'inventory'라는 1:N 관계를 생성합니다.
         player_id: u32 foreign_key(game.character.Player.id) as inventory;
         item_id: u32 foreign_key(game.item.Item.id);
-        quantity: u32;
+        quantity: u32 default(1);
     }
 }
