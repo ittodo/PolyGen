@@ -39,10 +39,17 @@ pub struct StructDef {
     pub fields: Vec<FieldDef>,
 }
 
+/// Represents a member of an enum.
+#[derive(Serialize, Debug)]
+pub struct EnumMember {
+    pub name: String,
+    pub comment: Option<String>,
+}
+
 /// Represents an enum definition.
 #[derive(Serialize, Debug)]
 pub struct EnumDef {
     pub name: String,
     pub comment: Option<String>,
-    pub members: Vec<String>,
+    pub members: Vec<EnumMember>,
 }

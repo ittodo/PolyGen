@@ -45,13 +45,16 @@ struct Cli {
 }
 
 // ... parse_and_merge_schemas function remains the same ...
-fn parse_and_merge_schemas(initial_path: &Path) -> Result<Vec<AstRoot>> {
+fn parse_and_merge_schemas(initial_path: &Path, output_dir: &Path) -> Result<Vec<AstRoot>> {
     let mut files_to_process: VecDeque<PathBuf> = VecDeque::new();
     let mut processed_files: HashSet<PathBuf> = HashSet::new();
     let mut all_asts: Vec<AstRoot> = Vec::new();
 
     let initial_path_buf = PathBuf::from(initial_path).canonicalize()?;
     files_to_process.push_back(initial_path_buf);
+
+    // 디버그 출력을 위해 첫 번째 파일인지 확인하는 플래그
+    let mut is_first_file = true;
 
     while let Some(current_path) = files_to_process.pop_front() {
         if !processed_files.insert(current_path.clone()) {
@@ -68,6 +71,21 @@ fn parse_and_merge_schemas(initial_path: &Path) -> Result<Vec<AstRoot>> {
                     current_path.display()
                 )
             })?;
+
+        // --- [디버깅] Pest 파싱 결과(Parse Tree)를 파일로 출력합니다. ---
+        // 첫 번째 (최상위) 스키마 파일의 파싱 트리만 저장합니다.
+        if is_first_file {
+            let debug_dir = output_dir.join("debug");
+            fs::create_dir_all(&debug_dir)?;
+            let parse_tree_path = debug_dir.join("parse_tree.txt");
+            // main_pair를 복제하여 디버그 출력을 생성합니다.
+            fs::write(&parse_tree_path, format!("{:#?}", main_pair.clone()))?;
+            println!(
+                "Pest 파싱 트리 디버그 출력이 파일에 저장되었습니다: {}",
+                parse_tree_path.display()
+            );
+            is_first_file = false;
+        }
 
         let ast_root = ast::build_ast_from_pairs(main_pair, current_path.clone())?;
         let file_imports = ast_root.file_imports.clone(); // Clone imports before moving ast_root
@@ -92,9 +110,21 @@ fn main() -> Result<()> {
     // 1. 명령줄 인자를 파싱합니다.
     let cli = Cli::parse();
 
+    // 출력 디렉토리가 없으면 생성합니다.
+    fs::create_dir_all(&cli.output_dir)?;
+
     // 2. 스키마 파일과 모든 import를 재귀적으로 파싱하고 하나의 AST로 합칩니다.
     println!("--- 스키마 처리 시작 ---");
-    let all_asts = parse_and_merge_schemas(&cli.schema_path)?;
+    let all_asts = parse_and_merge_schemas(&cli.schema_path, &cli.output_dir)?;
+
+    // --- [디버깅] 파싱된 AST의 전체 구조를 파일로 출력합니다. ---
+    // 이 코드를 통해 doc_comment 필드에 주석이 올바르게 채워졌는지 확인할 수 있습니다.
+    let ast_debug_path = cli.output_dir.join("ast_debug.txt");
+    fs::write(&ast_debug_path, format!("{:#?}", all_asts))?;
+    println!(
+        "AST 디버그 출력이 파일에 저장되었습니다: {}",
+        ast_debug_path.display()
+    );
 
     // 3. 모든 AST에서 정의(definition)만 추출하여 하나의 리스트로 합칩니다.
     //    `all_asts`는 나중에 C# 파일 생성 시 다시 사용하기 위해 원본을 유지합니다.

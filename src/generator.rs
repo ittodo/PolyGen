@@ -3,7 +3,6 @@ use anyhow::{Context, Result};
 use minijinja::{path_loader, Environment, Error};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde::Serialize;
 use std::fs;
 use std::path::Path;
 

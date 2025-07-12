@@ -15,6 +15,7 @@ import "common_types.poly";
 namespace game.item {
     /// 아이템의 종류를 나타내는 열거형입니다.
     enum ItemType {
+        /// 테스트
         WEAPON;
         ARMOR;
         POTION;

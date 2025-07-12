@@ -11,17 +11,17 @@ namespace {{ ns.name | default("Global.Types") }}
 
 {%- if type_def.Struct is defined %}
 {%- set s = type_def.Struct %}
-{%- if s.comment %}
+{%- if s.comment and s.comment.trim() %}
     /// <summary>
-    /// {{ s.comment }}
+    /// {{ s.comment.replace('\n', '\n    /// ') }}
     /// </summary>
 {%- endif %}
     public partial class {{ s.name }}
     {
 {%- for field in s.fields %}
-{%- if field.comment %}
+{%- if field.comment and field.comment.trim() %}
         /// <summary>
-        /// {{ field.comment }}
+        /// {{ field.comment.replace('\n', '\n        /// ') }}
         /// </summary>
 {%- endif %}
 {%- for attr in field.attributes %}
@@ -62,7 +62,7 @@ namespace {{ ns.name | default("Global.Types") }}
         /// 지정된 값으로 <see cref="{{ s.name }}"/> 클래스의 새 인스턴스를 초기화합니다.
         /// </summary>
 {%- for field in s.fields %}
-        /// <param name="{{ field.name }}">{{ (field.comment or "The value for " + field.name + ".") }}</param>
+        /// <param name="{{ field.name }}">{{ (field.comment or ("The value for " + field.name + ".")) | replace('\n', ' ') }}</param>
 {%- endfor %}
         public {{ s.name }}(
 {%- for field in s.fields %}
@@ -78,15 +78,20 @@ namespace {{ ns.name | default("Global.Types") }}
     }
 {%- elif type_def.Enum is defined %}
 {%- set e = type_def.Enum %}
-{%- if e.comment %}
+{%- if e.comment and e.comment.trim() %}
     /// <summary>
-    /// {{ e.comment }}
+    /// {{ e.comment.replace('\n', '\n    /// ') }}
     /// </summary>
 {%- endif %}
     public enum {{ e.name }}
     {
 {%- for member in e.members %}
-        {{ member }},
+{%- if member.comment and member.comment.trim() %}
+        /// <summary>
+        /// {{ member.comment.replace('\n', '\n        /// ') }}
+        /// </summary>
+{%- endif %}
+        {{ member.name }},
 {%- endfor %}
     }
 {%- endif %}

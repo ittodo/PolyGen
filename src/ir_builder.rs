@@ -139,10 +139,19 @@ fn convert_constraints_to_attributes(constraints: &[ast::Constraint]) -> Vec<Str
 }
 
 fn convert_enum(e: &ast::Enum) -> TypeDef {
+    let members = e
+        .variants
+        .iter()
+        .map(|v| ir_model::EnumMember {
+            name: v.name.clone(),
+            comment: v.doc_comment.clone(),
+        })
+        .collect();
+
     TypeDef::Enum(ir_model::EnumDef {
         name: e.name.clone(),
         comment: e.doc_comment.clone(),
-        members: e.variants.clone(),
+        members,
     })
 }
 

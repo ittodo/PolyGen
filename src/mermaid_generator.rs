@@ -194,7 +194,7 @@ fn collect_diagram_parts<'a>(
                 diagram.enums.push(Enum {
                     fqn: path.join("."),
                     name: &e.name,
-                    variants: e.variants.iter().map(|s| s.as_str()).collect(),
+                    variants: e.variants.iter().map(|s| s.name.as_str()).collect(),
                 });
                 path.pop();
             }

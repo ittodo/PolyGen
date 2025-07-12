@@ -70,6 +70,7 @@ pub enum FieldDefinition {
 #[derive(Debug, PartialEq, Clone)]
 pub struct RegularField {
     pub doc_comment: Option<String>,
+    pub annotations: Vec<Annotation>,
     pub name: String,
     pub field_type: TypeWithCardinality,
     pub constraints: Vec<Constraint>,
@@ -125,6 +126,7 @@ pub enum Constraint {
 #[derive(Debug, PartialEq, Clone)]
 pub struct InlineEmbedField {
     pub doc_comment: Option<String>,
+    pub annotations: Vec<Annotation>,
     pub name: String,
     pub fields: Vec<FieldDefinition>,
     pub cardinality: Option<Cardinality>,
@@ -132,11 +134,18 @@ pub struct InlineEmbedField {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct EnumVariant {
+    pub doc_comment: Option<String>,
+    pub annotations: Vec<Annotation>,
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Enum {
     pub doc_comment: Option<String>,
     pub annotations: Vec<Annotation>,
     pub name: String,
-    pub variants: Vec<String>,
+    pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -470,6 +479,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
                 let (p_line, p_col) = p.line_col();
                 let mut member_inner = p.into_inner().peekable();
                 let doc_comment = parse_doc_comments(&mut member_inner);
+                let annotations = parse_annotations(&mut member_inner)?;
 
                 let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
                     rule: Rule::table_member,
@@ -496,11 +506,18 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
 
                 // Attach comment to the member
                 match &mut member {
-                    TableMember::Field(FieldDefinition::Regular(f)) => f.doc_comment = doc_comment,
-                    TableMember::Field(FieldDefinition::InlineEmbed(f)) => {
-                        f.doc_comment = doc_comment
+                    TableMember::Field(FieldDefinition::Regular(f)) => {
+                        f.doc_comment = doc_comment;
+                        f.annotations = annotations;
                     }
-                    TableMember::Embed(e) => e.doc_comment = doc_comment,
+                    TableMember::Field(FieldDefinition::InlineEmbed(f)) => {
+                        f.doc_comment = doc_comment;
+                        f.annotations = annotations;
+                    }
+                    TableMember::Embed(e) => {
+                        e.doc_comment = doc_comment;
+                        e.annotations = annotations;
+                    }
                 }
 
                 members.push(member);
@@ -657,7 +674,8 @@ fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildError> 
         }
     }
     Ok(RegularField {
-        doc_comment: None, // Will be set by the parent parser (parse_table)
+        doc_comment: None,       // Will be set by the parent parser (parse_table)
+        annotations: Vec::new(), // Will be set by the parent parser
         name,
         field_type: type_with_cardinality,
         constraints,
@@ -881,6 +899,7 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
                 let (p_line, p_col) = p.line_col();
                 let mut member_inner = p.into_inner().peekable();
                 let doc_comment = parse_doc_comments(&mut member_inner);
+                let annotations = parse_annotations(&mut member_inner)?;
 
                 let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
                     rule: Rule::table_member,
@@ -893,8 +912,14 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
                 if member_pair.as_rule() == Rule::field_definition {
                     let mut field_def = parse_field_definition(member_pair)?;
                     match &mut field_def {
-                        FieldDefinition::Regular(f) => f.doc_comment = doc_comment,
-                        FieldDefinition::InlineEmbed(f) => f.doc_comment = doc_comment,
+                        FieldDefinition::Regular(f) => {
+                            f.doc_comment = doc_comment;
+                            f.annotations = annotations;
+                        }
+                        FieldDefinition::InlineEmbed(f) => {
+                            f.doc_comment = doc_comment;
+                            f.annotations = annotations;
+                        }
                     }
                     fields.push(field_def);
                 } else {
@@ -961,7 +986,8 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
         });
     }
     Ok(InlineEmbedField {
-        doc_comment: None, // Will be set by the parent parser (parse_table)
+        doc_comment: None,       // Will be set by the parent parser (parse_table)
+        annotations: Vec::new(), // Will be set by the parent parser
         name,
         fields,
         cardinality,
@@ -982,17 +1008,29 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
         })?
         .as_str()
         .to_string();
+
     let mut variants = Vec::new();
     for p in inner {
-        if p.as_rule() == Rule::IDENT {
-            variants.push(p.as_str().to_string());
-        } else {
+        if p.as_rule() == Rule::enum_variant {
             let (p_line, p_col) = p.line_col();
-            return Err(AstBuildError::UnexpectedRule {
-                expected: "IDENT".to_string(),
-                found: p.as_rule(),
-                line: p_line,
-                col: p_col,
+            let mut variant_inner = p.into_inner().peekable();
+            let doc_comment = parse_doc_comments(&mut variant_inner);
+            let annotations = parse_annotations(&mut variant_inner)?;
+            let variant_name = variant_inner
+                .next()
+                .ok_or(AstBuildError::MissingElement {
+                    rule: Rule::enum_variant,
+                    element: "name".to_string(),
+                    line: p_line,
+                    col: p_col,
+                })?
+                .as_str()
+                .to_string();
+
+            variants.push(EnumVariant {
+                doc_comment,
+                annotations,
+                name: variant_name,
             });
         }
     }
@@ -1023,6 +1061,7 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
             let (p_line, p_col) = p.line_col();
             let mut member_inner = p.into_inner().peekable();
             let doc_comment = parse_doc_comments(&mut member_inner);
+            let annotations = parse_annotations(&mut member_inner)?;
 
             let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
                 rule: Rule::table_member,
@@ -1035,8 +1074,14 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
             if member_pair.as_rule() == Rule::field_definition {
                 let mut field_def = parse_field_definition(member_pair)?;
                 match &mut field_def {
-                    FieldDefinition::Regular(f) => f.doc_comment = doc_comment,
-                    FieldDefinition::InlineEmbed(f) => f.doc_comment = doc_comment,
+                    FieldDefinition::Regular(f) => {
+                        f.doc_comment = doc_comment;
+                        f.annotations = annotations;
+                    }
+                    FieldDefinition::InlineEmbed(f) => {
+                        f.doc_comment = doc_comment;
+                        f.annotations = annotations;
+                    }
                 }
                 fields.push(field_def);
             } else {

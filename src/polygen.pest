@@ -43,7 +43,7 @@ namespace_body_item = { namespace_import | definition }
 table     = { "table" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" }
 embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" }
 
-table_member = { (doc_comment | annotation)* ~ (embed_def | (field_definition ~ ";")) }
+table_member = { doc_comment* ~ annotation* ~ (embed_def | (field_definition ~ ";")) }
 
 field_definition = { inline_embed_field | regular_field }
 
@@ -54,7 +54,8 @@ field_number = { "=" ~ INTEGER }
 
 // Enum
 // ====
-enum_def = { "enum" ~ IDENT ~ "{" ~ (IDENT ~ ";"? ~ (WHITESPACE | COMMENT)*)* ~ "}" }
+enum_def     = { "enum" ~ IDENT ~ "{" ~ enum_variant* ~ "}" }
+enum_variant = { doc_comment* ~ annotation* ~ IDENT ~ (";" | ",")? }
 
 // Types
 // =====

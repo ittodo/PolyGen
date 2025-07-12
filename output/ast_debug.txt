@@ -1,0 +1,942 @@
+[
+    AstRoot {
+        path: "\\\\?\\D:\\Rust\\PolyGen\\examples\\game_schema.poly",
+        file_imports: [
+            "common_types.poly",
+        ],
+        definitions: [
+            Namespace(
+                Namespace {
+                    path: [
+                        "game",
+                        "item",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Enum(
+                            Enum {
+                                doc_comment: None,
+                                annotations: [],
+                                name: "ItemType",
+                                variants: [
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "WEAPON",
+                                    },
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "ARMOR",
+                                    },
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "POTION",
+                                    },
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "MATERIAL",
+                                    },
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                doc_comment: None,
+                                annotations: [
+                                    Annotation {
+                                        name: "taggable",
+                                        params: [],
+                                    },
+                                ],
+                                name: "Item",
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "name",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    Unique,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "item_type",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "ItemType",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "description",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: Some(
+                                                        Optional,
+                                                    ),
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+            Namespace(
+                Namespace {
+                    path: [
+                        "game",
+                        "character",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Table(
+                            Table {
+                                doc_comment: None,
+                                annotations: [
+                                    Annotation {
+                                        name: "taggable",
+                                        params: [],
+                                    },
+                                ],
+                                name: "Player",
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: Some(
+                                                    1,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "name",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    Unique,
+                                                    MaxLength(
+                                                        30,
+                                                    ),
+                                                ],
+                                                field_number: Some(
+                                                    2,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "level",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U16,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: Some(
+                                                    3,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "stats",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "game",
+                                                            "common",
+                                                            "StatBlock",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: Some(
+                                                    4,
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                doc_comment: None,
+                                annotations: [
+                                    Annotation {
+                                        name: "taggable",
+                                        params: [],
+                                    },
+                                ],
+                                name: "Monster",
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "name",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    MaxLength(
+                                                        50,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "stats",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "game",
+                                                            "common",
+                                                            "StatBlock",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "spawn_point",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "game",
+                                                            "common",
+                                                            "Position",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "patrol_points",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "game",
+                                                            "common",
+                                                            "Position",
+                                                        ],
+                                                    ),
+                                                    cardinality: Some(
+                                                        Array,
+                                                    ),
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        InlineEmbed(
+                                            InlineEmbedField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "drop_items",
+                                                fields: [
+                                                    Regular(
+                                                        RegularField {
+                                                            doc_comment: None,
+                                                            annotations: [],
+                                                            name: "item_id",
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    U32,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                    Regular(
+                                                        RegularField {
+                                                            doc_comment: None,
+                                                            annotations: [],
+                                                            name: "drop_chance",
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    F32,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [
+                                                                Range(
+                                                                    Float(
+                                                                        0.0,
+                                                                    ),
+                                                                    Float(
+                                                                        1.0,
+                                                                    ),
+                                                                ),
+                                                            ],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ],
+                                                cardinality: Some(
+                                                    Array,
+                                                ),
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Namespace(
+                            Namespace {
+                                path: [
+                                    "skill",
+                                ],
+                                imports: [],
+                                definitions: [
+                                    Table(
+                                        Table {
+                                            doc_comment: None,
+                                            annotations: [
+                                                Annotation {
+                                                    name: "taggable",
+                                                    params: [],
+                                                },
+                                            ],
+                                            name: "Skill",
+                                            members: [
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            doc_comment: None,
+                                                            annotations: [],
+                                                            name: "id",
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    U32,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [
+                                                                PrimaryKey,
+                                                            ],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            doc_comment: None,
+                                                            annotations: [],
+                                                            name: "name",
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    String,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [
+                                                                Unique,
+                                                            ],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            doc_comment: None,
+                                                            annotations: [],
+                                                            name: "description",
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    String,
+                                                                ),
+                                                                cardinality: Some(
+                                                                    Optional,
+                                                                ),
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            doc_comment: None,
+                                                            annotations: [],
+                                                            name: "element",
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Path(
+                                                                    [
+                                                                        "game",
+                                                                        "common",
+                                                                        "Element",
+                                                                    ],
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            doc_comment: None,
+                                                            annotations: [],
+                                                            name: "power",
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    U32,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+            Namespace(
+                Namespace {
+                    path: [
+                        "game",
+                        "junction",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Table(
+                            Table {
+                                doc_comment: None,
+                                annotations: [
+                                    Annotation {
+                                        name: "taggable",
+                                        params: [],
+                                    },
+                                    Annotation {
+                                        name: "link_rows",
+                                        params: [
+                                            AnnotationParam {
+                                                key: "partition_by",
+                                                value: Identifier(
+                                                    "player_id",
+                                                ),
+                                            },
+                                            AnnotationParam {
+                                                key: "link_with",
+                                                value: Identifier(
+                                                    "skill_id",
+                                                ),
+                                            },
+                                        ],
+                                    },
+                                ],
+                                name: "PlayerSkill",
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "player_id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    ForeignKey(
+                                                        [
+                                                            "game",
+                                                            "character",
+                                                            "Player",
+                                                            "id",
+                                                        ],
+                                                        Some(
+                                                            "skills",
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "skill_id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    ForeignKey(
+                                                        [
+                                                            "game",
+                                                            "character",
+                                                            "skill",
+                                                            "Skill",
+                                                            "id",
+                                                        ],
+                                                        Some(
+                                                            "users",
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "skill_level",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U16,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    Default(
+                                                        Integer(
+                                                            1,
+                                                        ),
+                                                    ),
+                                                    Range(
+                                                        Integer(
+                                                            1,
+                                                        ),
+                                                        Integer(
+                                                            99,
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                doc_comment: None,
+                                annotations: [
+                                    Annotation {
+                                        name: "taggable",
+                                        params: [],
+                                    },
+                                ],
+                                name: "InventoryItem",
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "player_id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    ForeignKey(
+                                                        [
+                                                            "game",
+                                                            "character",
+                                                            "Player",
+                                                            "id",
+                                                        ],
+                                                        Some(
+                                                            "inventory",
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "item_id",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    ForeignKey(
+                                                        [
+                                                            "game",
+                                                            "item",
+                                                            "Item",
+                                                            "id",
+                                                        ],
+                                                        None,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                doc_comment: None,
+                                                annotations: [],
+                                                name: "quantity",
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    Default(
+                                                        Integer(
+                                                            1,
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+    AstRoot {
+        path: "\\\\?\\D:\\Rust\\PolyGen\\examples\\common_types.poly",
+        file_imports: [],
+        definitions: [
+            Namespace(
+                Namespace {
+                    path: [
+                        "game",
+                        "common",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Enum(
+                            Enum {
+                                doc_comment: None,
+                                annotations: [],
+                                name: "Element",
+                                variants: [
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "PHYSICAL",
+                                    },
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "FIRE",
+                                    },
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "ICE",
+                                    },
+                                    EnumVariant {
+                                        doc_comment: None,
+                                        annotations: [],
+                                        name: "LIGHTNING",
+                                    },
+                                ],
+                            },
+                        ),
+                        Embed(
+                            Embed {
+                                doc_comment: None,
+                                annotations: [],
+                                name: "Position",
+                                fields: [
+                                    Regular(
+                                        RegularField {
+                                            doc_comment: None,
+                                            annotations: [],
+                                            name: "x",
+                                            field_type: TypeWithCardinality {
+                                                base_type: Basic(
+                                                    F32,
+                                                ),
+                                                cardinality: None,
+                                            },
+                                            constraints: [],
+                                            field_number: None,
+                                        },
+                                    ),
+                                    Regular(
+                                        RegularField {
+                                            doc_comment: None,
+                                            annotations: [],
+                                            name: "y",
+                                            field_type: TypeWithCardinality {
+                                                base_type: Basic(
+                                                    F32,
+                                                ),
+                                                cardinality: None,
+                                            },
+                                            constraints: [],
+                                            field_number: None,
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                        Embed(
+                            Embed {
+                                doc_comment: None,
+                                annotations: [],
+                                name: "StatBlock",
+                                fields: [
+                                    Regular(
+                                        RegularField {
+                                            doc_comment: None,
+                                            annotations: [],
+                                            name: "health",
+                                            field_type: TypeWithCardinality {
+                                                base_type: Basic(
+                                                    U32,
+                                                ),
+                                                cardinality: None,
+                                            },
+                                            constraints: [],
+                                            field_number: None,
+                                        },
+                                    ),
+                                    Regular(
+                                        RegularField {
+                                            doc_comment: None,
+                                            annotations: [],
+                                            name: "mana",
+                                            field_type: TypeWithCardinality {
+                                                base_type: Basic(
+                                                    U32,
+                                                ),
+                                                cardinality: None,
+                                            },
+                                            constraints: [],
+                                            field_number: None,
+                                        },
+                                    ),
+                                    Regular(
+                                        RegularField {
+                                            doc_comment: None,
+                                            annotations: [],
+                                            name: "attack",
+                                            field_type: TypeWithCardinality {
+                                                base_type: Basic(
+                                                    U32,
+                                                ),
+                                                cardinality: None,
+                                            },
+                                            constraints: [],
+                                            field_number: None,
+                                        },
+                                    ),
+                                    Regular(
+                                        RegularField {
+                                            doc_comment: None,
+                                            annotations: [],
+                                            name: "defense",
+                                            field_type: TypeWithCardinality {
+                                                base_type: Basic(
+                                                    U32,
+                                                ),
+                                                cardinality: None,
+                                            },
+                                            constraints: [],
+                                            field_number: None,
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]
