@@ -359,6 +359,7 @@ pub fn build_ast_from_pairs(
                         }
                         ast_root.definitions.push(definition);
                     }
+                    Rule::doc_comment => {}
                     found => {
                         return Err(AstBuildError::UnexpectedRule {
                             expected: "file_import or definition".to_string(),
@@ -369,6 +370,7 @@ pub fn build_ast_from_pairs(
                     }
                 }
             }
+            Rule::doc_comment => {}
             Rule::EOI => (), // Skip End of Input
             found => {
                 let (line, col) = pair.line_col();
@@ -522,6 +524,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
 
                 members.push(member);
             }
+            Rule::doc_comment => {}
             found => {
                 let (line, col) = p.line_col();
                 return Err(AstBuildError::UnexpectedRule {
@@ -965,6 +968,7 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
                     col: p_col,
                 })?);
             }
+            Rule::doc_comment => {}
             found => {
                 let (p_line, p_col) = p.line_col();
                 return Err(AstBuildError::UnexpectedRule {

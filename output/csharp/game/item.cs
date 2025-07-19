@@ -7,13 +7,22 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace game.item
 {
 
+    /// <summary>
+    /// 아이템의 종류를 나타내는 열거형입니다.
+    /// </summary>
     public enum ItemType
     {
+        /// <summary>
+        /// 테스트
+        /// </summary>
         WEAPON,
         ARMOR,
         POTION,
         MATERIAL,
     }
+    /// <summary>
+    /// 아이템 정보를 정의하는 테이블입니다.
+    /// </summary>
     public partial class Item
     {
         [Key]
@@ -24,6 +33,9 @@ namespace game.item
         public string Name { get; set; }
 
         public ItemType ItemType { get; set; }
+        /// <summary>
+        /// // 같은 네임스페이스 내의 타입을 참조합니다.
+        /// </summary>
 
         public string? Description { get; set; }
 
@@ -40,7 +52,7 @@ namespace game.item
         /// <param name="id">The value for id.</param>
         /// <param name="name">The value for name.</param>
         /// <param name="item_type">The value for item_type.</param>
-        /// <param name="description">The value for description.</param>
+        /// <param name="description">// 같은 네임스페이스 내의 타입을 참조합니다.</param>
         public Item(
             uint id,
             string name,

@@ -7,15 +7,28 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace game.common
 {
 
+    /// <summary>
+    /// 스킬이나 공격의 속성을 나타내는 열거형입니다.
+    /// </summary>
     public enum Element
     {
+        /// <summary>
+        /// 테스트
+        /// </summary>
         PHYSICAL,
         FIRE,
         ICE,
         LIGHTNING,
     }
+    /// <summary>
+    /// 게임 월드 내의 2D 좌표를 나타내는 복합 타입입니다.
+    /// `embed`를 사용하여 여러 테이블에서 재사용할 수 있습니다.
+    /// </summary>
     public partial class Position
     {
+        /// <summary>
+        /// 테스트2
+        /// </summary>
 
         public f32 X { get; set; }
 
@@ -31,7 +44,7 @@ namespace game.common
         /// <summary>
         /// 지정된 값으로 <see cref="Position"/> 클래스의 새 인스턴스를 초기화합니다.
         /// </summary>
-        /// <param name="x">The value for x.</param>
+        /// <param name="x">테스트2</param>
         /// <param name="y">The value for y.</param>
         public Position(
             f32 x,
@@ -42,6 +55,9 @@ namespace game.common
             this.Y = y;
         }
     }
+    /// <summary>
+    /// 캐릭터의 기본 능력치를 묶은 구조체입니다.
+    /// </summary>
     public partial class StatBlock
     {
 

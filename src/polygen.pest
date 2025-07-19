@@ -7,16 +7,17 @@
 // Whitespace and Comments
 // =======================
 // `_` 접두사가 붙은 규칙(silent rule)은 파싱 트리에서 생략됩니다.
-WHITESPACE    = _{ " " | "\t" | "\n" }
-COMMENT       = _{ block_comment | line_comment }
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+NEWLINE    = _{ "\n" | "\r\n" | "\r" }
+
+doc_comment   =  { block_comment | line_comment }
 block_comment =  { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
-line_comment  =  { "//" ~ (!"\n" ~ ANY)* }
-doc_comment   =  { "///" ~ (!"\n" ~ ANY)* }
+line_comment  = @{ "//" ~ (!NEWLINE ~ ANY)* }
 
 // Main entry point
 // ================
 // 스키마 파일은 파일 임포트와 최상위 정의들을 포함할 수 있습니다.
-main = { SOI ~ (toplevel_item | WHITESPACE | COMMENT)* ~ EOI }
+main = { SOI ~ (toplevel_item | WHITESPACE)* ~ EOI }
 
 toplevel_item = { file_import | definition }
 
@@ -35,20 +36,20 @@ definition = { (doc_comment | annotation)* ~ (namespace | table | embed_def | en
 // Namespace
 // =========
 // 네임스페이스는 다른 정의들이나 네임스페이스 임포트를 포함할 수 있습니다.
-namespace           = { "namespace" ~ path ~ "{" ~ (namespace_body_item | WHITESPACE | COMMENT)* ~ "}" }
+namespace           = { "namespace" ~ path ~ "{" ~ (namespace_body_item | WHITESPACE | doc_comment)* ~ "}" }
 namespace_body_item = { namespace_import | definition }
 
 // Table / Embed
 // =============
-table     = { "table" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" }
-embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" }
+table     = { "table" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" }
+embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" }
 
 table_member = { doc_comment* ~ annotation* ~ (embed_def | (field_definition ~ ";")) }
 
 field_definition = { inline_embed_field | regular_field }
 
 regular_field      = { IDENT ~ ":" ~ type_with_cardinality ~ constraint* ~ field_number? }
-inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member | WHITESPACE | COMMENT)* ~ "}" ~ cardinality? ~ field_number? }
+inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" ~ cardinality? ~ field_number? }
 
 field_number = { "=" ~ INTEGER }
 

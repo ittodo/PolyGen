@@ -7,6 +7,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace game.character.skill
 {
 
+    /// <summary>
+    /// 스킬 정보를 정의하는 테이블입니다.
+    /// </summary>
     public partial class Skill
     {
         [Key]

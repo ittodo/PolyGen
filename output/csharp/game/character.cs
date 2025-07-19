@@ -7,6 +7,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace game.character
 {
 
+    /// <summary>
+    /// 플레이어 캐릭터 정보를 정의하는 테이블입니다.
+    /// </summary>
     public partial class Player
     {
         [Key]
@@ -18,6 +21,9 @@ namespace game.character
         public string Name { get; set; }
 
         public u16 Level { get; set; }
+        /// <summary>
+        /// // 다른 네임스페이스의 타입을 참조할 때는 '네임스페이스.타입' 형식으로 사용합니다.
+        /// </summary>
 
         public game.common.StatBlock Stats { get; set; }
 
@@ -34,7 +40,7 @@ namespace game.character
         /// <param name="id">The value for id.</param>
         /// <param name="name">The value for name.</param>
         /// <param name="level">The value for level.</param>
-        /// <param name="stats">The value for stats.</param>
+        /// <param name="stats">// 다른 네임스페이스의 타입을 참조할 때는 '네임스페이스.타입' 형식으로 사용합니다.</param>
         public Player(
             uint id,
             string name,
@@ -48,6 +54,10 @@ namespace game.character
             this.Stats = stats;
         }
     }
+    /// <summary>
+    /// 몬스터 정보를 정의하는 테이블입니다.
+    /// 모든 테이블은 `@taggable` 어노테이션을 통해 자유로운 태그를 붙일 수 있습니다.
+    /// </summary>
     public partial class Monster
     {
         [Key]
@@ -62,6 +72,10 @@ namespace game.character
         public game.common.Position SpawnPoint { get; set; }
 
         public System.Collections.Generic.List<game.common.Position> PatrolPoints { get; set; }
+        /// <summary>
+        /// // 이 몬스터가 드랍하는 아이템 정보를 담는 임베드 타입입니다.
+        /// // 이처럼 테이블 내부에 직접 embed를 정의하여, 해당 테이블에서만 사용하는 복합 타입을 만들 수 있습니다.
+        /// </summary>
 
         public System.Collections.Generic.List<DropItems> DropItems { get; set; }
 
@@ -80,7 +94,7 @@ namespace game.character
         /// <param name="stats">The value for stats.</param>
         /// <param name="spawn_point">The value for spawn_point.</param>
         /// <param name="patrol_points">The value for patrol_points.</param>
-        /// <param name="drop_items">The value for drop_items.</param>
+        /// <param name="drop_items">// 이 몬스터가 드랍하는 아이템 정보를 담는 임베드 타입입니다. // 이처럼 테이블 내부에 직접 embed를 정의하여, 해당 테이블에서만 사용하는 복합 타입을 만들 수 있습니다.</param>
         public Monster(
             uint id,
             string name,
@@ -98,6 +112,10 @@ namespace game.character
             this.DropItems = drop_items;
         }
     }
+    /// <summary>
+    /// // 이 몬스터가 드랍하는 아이템 정보를 담는 임베드 타입입니다.
+    /// // 이처럼 테이블 내부에 직접 embed를 정의하여, 해당 테이블에서만 사용하는 복합 타입을 만들 수 있습니다.
+    /// </summary>
     public partial class DropItems
     {
 

@@ -1,4 +1,7 @@
-/// 게임 데이터 스키마 예제
+
+import "common_types.poly";
+
+// 게임 데이터 스키마 예제
 /// `namespace`를 사용하여 스키마를 논리적으로 그룹화합니다.
 
 // ==================================================
@@ -6,7 +9,6 @@
 // 여러 네임스페이스에서 공통으로 사용되는 타입을 정의합니다.
 // ==================================================
 
-import "common_types.poly";
 
 
 // ==================================================
@@ -84,9 +86,9 @@ namespace game.character {
 // ==================================================
 namespace game.junction {
     /// 플레이어와 스킬의 다대다(N:M) 관계를 위한 연결 테이블입니다.
-    @taggable
     // @link_rows 어노테이션을 사용하여, player_id로 그룹화된 스킬들을
     // skill_id를 기준으로 연결 리스트처럼 만듭니다.
+    @taggable
     @link_rows(partition_by: player_id, link_with: skill_id)
     table PlayerSkill {
         // 외래 키(foreign_key)에 'as'를 사용하여 참조되는 테이블에 관계를 생성합니다.
