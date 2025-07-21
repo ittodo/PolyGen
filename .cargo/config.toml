@@ -1,0 +1,3 @@
+[build]
+# 여기에 필요한 rustc 플래그를 추가합니다.
+#rustflags = ["-Z", "macro-backtrace"]

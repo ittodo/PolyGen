@@ -1,0 +1,139 @@
+/// 게임 데이터 스키마 예제
+/// `namespace`를 사용하여 스키마를 논리적으로 그룹화합니다.
+
+// ==================================================
+// 공용 네임스페이스 (Common Types)
+// 여러 네임스페이스에서 공통으로 사용되는 타입을 정의합니다.
+// ==================================================
+namespace game.common {
+    /// 스킬이나 공격의 속성을 나타내는 열거형입니다.
+    enum Element {
+        PHYSICAL;
+        FIRE;
+        ICE;
+        LIGHTNING;
+    }
+
+    /// 게임 월드 내의 2D 좌표를 나타내는 복합 타입입니다.
+    /// `embed`를 사용하여 여러 테이블에서 재사용할 수 있습니다.
+    embed Position {
+        x: f32;
+        y: f32;
+    }
+
+    /// 캐릭터의 기본 능력치를 묶은 구조체입니다.
+    embed StatBlock {
+        health: u32;
+        mana: u32;
+        attack: u32;
+        defense: u32;
+    }
+}
+
+// ==================================================
+// 아이템 네임스페이스 (Item Definitions)
+// ==================================================
+namespace game.item {
+    /// 아이템의 종류를 나타내는 열거형입니다.
+    enum ItemType {
+        WEAPON;
+        ARMOR;
+        POTION;
+        MATERIAL;
+    }
+
+    /// 아이템 정보를 정의하는 테이블입니다.
+    @load(type: "DB", path: "ItemsTable") // DB에서 읽어옴
+    @save(type: "CSV", path: "exports/items.csv") // CSV로 내보낼 수 있음
+    @taggable
+    table Item {
+        id: u32 primary_key;
+        name: string unique;
+        item_type: ItemType; // 같은 네임스페이스 내의 타입을 참조합니다.
+        description: string?;
+    }
+}
+
+// ==================================================
+// 캐릭터 네임스페이스 (Character & Skill Definitions)
+// ==================================================
+namespace game.character {
+    /// 플레이어 캐릭터 정보를 정의하는 테이블입니다.
+    @taggable
+    table Player {
+        id: u32 primary_key = 1;
+        name: string unique max_length(30) = 2;
+        level: u16 default(1) range(1, 99) = 3;
+        // 다른 네임스페이스의 타입을 참조할 때는 '네임스페이스.타입' 형식으로 사용합니다.
+        stats: game.common.StatBlock = 4;
+
+        // 테이블 내부에 명명된 임베드 타입을 정의하여, 이 테이블 내에서만 사용되는
+        // 타입을 재사용할 수 있습니다. 이는 'Player'에 종속된 '장비 슬롯' 타입을 만듭니다.
+        embed EquipmentSlot {
+            item_id: u32?;
+            enchant_level: u8 default(0);
+        }
+
+        // 위에서 정의한 EquipmentSlot 타입을 여러 필드에서 사용합니다.
+        main_hand: EquipmentSlot;
+        off_hand: EquipmentSlot?;
+        // description: string?; // README.md 예제에 있는 필드 추가 (선택 사항)
+    }
+
+    /// 몬스터 정보를 정의하는 테이블입니다.
+    /// 모든 테이블은 `@taggable` 어노테이션을 통해 자유로운 태그를 붙일 수 있습니다.
+    @taggable
+    table Monster {
+        id: u32 primary_key;
+        name: string;
+        stats: game.common.StatBlock;
+        spawn_point: game.common.Position;
+        patrol_points: game.common.Position[];
+
+        // 이 몬스터가 드랍하는 아이템 정보를 담는 임베드 타입입니다.
+        // 이처럼 테이블 내부에 직접 embed를 정의하여, 해당 테이블에서만 사용하는 복합 타입을 만들 수 있습니다.
+        drop_items: embed {
+            item_id: u32;
+            drop_chance: f32 range(0.0, 1.0);
+        }[]; // 여러 아이템을 드랍할 수 있으므로 배열로 정의
+    }
+
+    /// 스킬 정보를 정의하는 테이블입니다.
+    @taggable
+    table Skill {
+        id: u32 primary_key;
+        name: string unique;
+        description: string?;
+        element: game.common.Element;
+        power: u32;
+    }
+}
+
+// ==================================================
+// 연결 테이블 네임스페이스 (Junction Tables)
+// ==================================================
+namespace game.junction {
+    /// 플레이어와 스킬의 다대다(N:M) 관계를 위한 연결 테이블입니다.
+    @taggable
+    // @link_rows 어노테이션을 사용하여, player_id로 그룹화된 스킬들을
+    // skill_id를 기준으로 연결 리스트처럼 만듭니다.
+    @link_rows(partition_by: player_id, link_with: skill_id)
+    table PlayerSkill {
+        // 외래 키(foreign_key)에 'as'를 사용하여 참조되는 테이블에 관계를 생성합니다.
+        // Player 테이블에 'skills' 라는 이름의 N:M 관계를 생성합니다.
+        player_id: u32 foreign_key(game.character.Player.id) as skills;
+        // Skill 테이블에 'users' 라는 이름의 N:M 관계를 생성합니다.
+        skill_id: u32 foreign_key(game.character.Skill.id) as users;
+        skill_level: u16 default(1) range(1, 20);
+    }
+
+    /// 플레이어 인벤토리 항목을 나타내는 테이블입니다. (1:N 관계의 'N'쪽)
+    @taggable
+    table InventoryItem {
+        id: u32 primary_key;
+        // 'as inventory'를 통해 Player 테이블에 'inventory'라는 1:N 관계를 생성합니다.
+        player_id: u32 foreign_key(game.character.Player.id) as inventory;
+        item_id: u32 foreign_key(game.item.Item.id);
+        quantity: u32 default(1) range(1, 999);
+    }
+}
