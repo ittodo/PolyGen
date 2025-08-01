@@ -1,0 +1,10 @@
+id
+name
+level
+stats.health
+stats.mana
+stats.attack
+stats.defense
+_tags[0]
+_tags[1]
+... (태그 개수만큼 계속될 수 있음)

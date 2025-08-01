@@ -1,0 +1,11 @@
+{%- if e.info.comment.is_some() %}
+    /// <summary>
+    /// {{ e.info.comment.as_ref().unwrap().replace("\n", "\n    /// ") }}
+    /// </summary>
+{%- endif %}
+public enum {{ e.info.name }}
+{
+    {%- for variant in e.variants %}
+    {{ variant }},
+    {%- endfor %}
+}

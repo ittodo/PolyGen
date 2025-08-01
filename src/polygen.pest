@@ -1,0 +1,98 @@
+// ============================================================================
+// PolyGen Grammar
+// ============================================================================
+// 이 파일은 PolyGen 스키마 언어의 문법을 정의합니다.
+// pest 파서 생성기가 이 파일을 사용하여 파서를 생성합니다.
+
+// Whitespace and Comments
+// =======================
+// `_` 접두사가 붙은 규칙(silent rule)은 파싱 트리에서 생략됩니다.
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+NEWLINE    = _{ "\n" | "\r\n" | "\r" }
+
+doc_comment   =  { block_comment | line_comment }
+block_comment =  { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+line_comment  = @{ "//" ~ (!NEWLINE ~ ANY)* }
+
+// Main entry point
+// ================
+// 스키마 파일은 파일 임포트와 최상위 정의들을 포함할 수 있습니다.
+main = { SOI ~ (toplevel_item | WHITESPACE)* ~ EOI }
+
+toplevel_item = { file_import | definition }
+
+// File Import: `import "path/to/file.poly";`
+// ==========================================
+file_import = { "import" ~ STRING_LITERAL ~ ";" }
+
+// Namespace Import: `import game.common.*;` or `import game.common.Type;`
+// =======================================================================
+namespace_import = { "import" ~ path ~ (".*")? ~ ";" }
+
+// Top-level definitions
+// =====================
+definition = { (doc_comment | annotation)* ~ (namespace | table | embed_def | enum_def) }
+
+// Namespace
+// =========
+// 네임스페이스는 다른 정의들이나 네임스페이스 임포트를 포함할 수 있습니다.
+namespace           = { "namespace" ~ path ~ "{" ~ (namespace_body_item | WHITESPACE | doc_comment)* ~ "}" }
+namespace_body_item = { namespace_import | definition }
+
+// Table / Embed
+// =============
+table     = { "table" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" }
+embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" }
+
+table_member = { doc_comment* ~ annotation* ~ (embed_def | (field_definition ~ ";")) }
+
+field_definition = { inline_embed_field | regular_field }
+
+regular_field      = { IDENT ~ ":" ~ type_with_cardinality ~ constraint* ~ field_number? }
+inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" ~ cardinality? ~ field_number? }
+
+field_number = { "=" ~ INTEGER }
+
+// Enum
+// ====
+enum_def     = { "enum" ~ IDENT ~ "{" ~ enum_variant* ~ "}" }
+enum_variant = { doc_comment* ~ annotation* ~ IDENT ~ (";" | ",")? }
+
+// Types
+// =====
+type_with_cardinality = { type_name ~ cardinality? }
+cardinality           = { "[]" | "?" }
+type_name             = { basic_type | path }
+basic_type            = { "string" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "bytes" }
+
+// Constraints
+// ===========
+constraint      = { primary_key | unique | max_length | default_val | range_val | regex_val | foreign_key_val }
+primary_key     = { "primary_key" }
+unique          = { "unique" }
+max_length      = { "max_length" ~ "(" ~ INTEGER ~ ")" }
+default_val     = { "default" ~ "(" ~ literal ~ ")" }
+range_val       = { "range" ~ "(" ~ literal ~ "," ~ literal ~ ")" }
+regex_val       = { "regex" ~ "(" ~ STRING_LITERAL ~ ")" }
+foreign_key_val = { "foreign_key" ~ "(" ~ path ~ ")" ~ ("as" ~ IDENT)? }
+
+// Annotations
+// ===========
+annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_params_list? ~ ")")? }
+annotation_params_list = { annotation_param ~ ("," ~ annotation_param)* }
+annotation_param       = { IDENT ~ ":" ~ literal }
+
+// Literals
+// ========
+literal = { STRING_LITERAL | FLOAT | INTEGER | BOOLEAN | IDENT }
+
+// Primitives
+// ==========
+// 경로는 점(.)으로 구분된 식별자입니다. 예: `game.common.Type`
+path = { IDENT ~ ("." ~ IDENT)* }
+// 식별자는 알파벳이나 밑줄로 시작해야 합니다.
+IDENT          = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+FLOAT          = @{ "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+INTEGER        = @{ "-"? ~ ASCII_DIGIT+ }
+STRING_LITERAL = @{ "\"" ~ ("\\" ~ ANY | !("\"") ~ ANY)* ~ "\"" }
+BOOLEAN        = @{ "true" | "false" }

@@ -1,0 +1,30 @@
+// 사용자 정보를 담는 테이블
+table User {
+    id: u32 primary_key
+    name: string
+    is_active: bool default(true)
+    roles: Role[]
+}
+
+// 사용자 역할을 나타내는 열거형
+enum Role {
+    Admin;
+    User;
+    Guest;
+}
+
+// 임베드 가능한 주소 정보
+embed Address {
+    street: string
+    city: string
+    zip_code: u32
+}
+
+// 네임스페이스 예시
+namespace game.common {
+    table Item {
+        id: u64 primary_key
+        name: string
+        description: string?
+    }
+}
