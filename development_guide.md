@@ -73,7 +73,7 @@
 
  *   **AST 파싱**: `d:\Rust\PolyGen\src\ast.rs`에서 어노테이션을 파싱하여 `Annotation` 구조체로 변환합니다. (기존과 동일)
  *   **Mermaid 다이어그램 표시**: `d:\Rust\PolyGen\src\generator.rs`에서 어노테이션을 Mermaid 스테레오타입으로 변환하여 표시합니다. (기존과 동일)
- *   **코드 생성 활용 (IR 기반)**: `d:\Rust\PolyGen\src\ir_builder.rs`가 AST의 어노테이션을 분석하여 IR의 `StructDef`나 `FieldDef`에 특정 플래그나 속성 목록을 추가할 수 있습니다. 그러면 `minijinja` 템플릿은 이 데이터를 활용하여 조건부로 코드를 생성합니다. 예를 들어, `field.attributes`에 `Key`가 포함되어 있으면 C# 템플릿에서 `[Key]` 어트리뷰트를 출력할 수 있습니다.
+ *   **코드 생성 활용 (IR 기반)**: `d:\Rust\PolyGen\src\ir_builder.rs`가 AST의 어노테이션을 분석하여 IR의 `StructDef`나 `FieldDef`에 특정 플래그나 속성 목록을 추가할 수 있습니다. 그러면 `minijinja` 템플릿은 이 데이터를 활용하여 조건부로 코드를 생성합니다. 예를 들어, `field.attributes`에 `Key`가 포함되어 있으면 C# 템플릿에서 `[Key]` 어트리뷰트를 출력할 수 있습니다。
 
  ### 3.2. 임베드 타입 (`embed`)
 
@@ -81,13 +81,13 @@
  *   **Mermaid 다이어그램 표시**: `d:\Rust\PolyGen\src\generator.rs`에서 명명된 임베드는 별도 클래스로, 인라인 임베드는 부모 클래스의 속성으로 처리합니다. (기존과 동일)
  *   **코드 생성 활용 (IR 기반)**: `d:\Rust\PolyGen\src\ir_builder.rs`는 AST의 `embed`를 `ir_model::StructDef`로 변환합니다. 
      *   **네임스페이스/테이블 레벨 명명된 임베드**: 별도의 `StructDef`로 변환되어 재사용 가능한 타입이 됩니다.
-     *   **인라인 임베드**: 부모 타입 내에 중첩된 `StructDef`로 변환되거나, 필드 이름에 기반한 새로운 타입(예: `DropItems`)으로 만들어져 부모 필드의 타입으로 참조됩니다. 템플릿은 이 구조를 보고 중첩 클래스나 별도의 클래스 파일을 생성할 수 있습니다.
+     *   **인라인 임베드**: 부모 타입 내에 중첩된 `StructDef`로 변환되거나, 필드 이름에 기반한 새로운 타입(예: `DropItems`)으로 만들어져 부모 필드의 타입으로 참조됩니다. 템플릿은 이 구조를 보고 중첩 클래스나 별도의 클래스 파일을 생성할 수 있습니다。
 
  ### 3.3. 외래 키 및 관계 (`foreign_key`)
 
  *   **AST 파싱**: `d:\Rust\PolyGen\src\ast.rs`에서 `foreign_key` 제약조건을 파싱합니다. (기존과 동일)
  *   **Mermaid 다이어그램 표시**: `d:\Rust\PolyGen\src\generator.rs`에서 `foreign_key`를 분석하여 테이블 간의 관계선과 카디널리티를 생성합니다. (기존과 동일)
- *   **코드 생성 활용 (IR 기반)**: `d:\Rust\PolyGen\src\ir_builder.rs`는 `foreign_key` 제약조건을 분석하여 `ir_model::FieldDef`에 `[ForeignKey("PlayerId")]`와 같은 어트리뷰트 문자열을 추가할 수 있습니다. C# 템플릿은 이 어트리뷰트 문자열을 그대로 렌더링하여 ORM 등이 인식할 수 있는 코드를 생성합니다. `as <RelationName>` 정보는 탐색 속성(Navigation Property)을 생성하는 데 사용될 수 있습니다.
+ *   **코드 생성 활용 (IR 기반)**: `d:\Rust\PolyGen\src\ir_builder.rs`는 `foreign_key` 제약조건을 분석하여 `ir_model::FieldDef`에 `[ForeignKey("PlayerId")]`와 같은 어트리뷰트 문자열을 추가할 수 있습니다. C# 템플릿은 이 어트리뷰트 문자열을 그대로 렌더링하여 ORM 등이 인식할 수 있는 코드를 생성합니다. `as <RelationName>` 정보는 탐색 속성(Navigation Property)을 생성하는 데 사용될 수 있습니다。
 
  ---
 

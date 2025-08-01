@@ -68,37 +68,41 @@ impl<'a> Generator<'a> {
 
             // --- Generate Loader classes for C# if @load annotation is present ---
             if lang == "csharp" {
-                for type_def in &ns_def.types {
-                    if let TypeDef::Struct(struct_def) = type_def {
-                        // Check for @load annotation
-                        let has_load_annotation = struct_def.annotations.iter().any(|ann| ann.name == "load");
-
-                        if has_load_annotation {
-                            let loader_template_name = "csharp/csharp_loader.jinja";
-                            let loader_template = self.env.get_template(loader_template_name)?;
-
-                            let mut loader_render_ctx = minijinja::context! {
-                                namespace => ns_name,
-                                table => struct_def, // Pass the struct_def as 'table' to the template
-                                lang => lang,
-                            };
-
-                            let rendered_loader_code = loader_template.render(&mut loader_render_ctx)?;
-
-                            let loader_file_name = if ns_name.is_empty() {
-                                format!("{}Loader.cs", struct_def.name)
-                            } else {
-                                format!("{}/{}Loader.cs", ns_name.replace('.', "/"), struct_def.name)
-                            };
-
-                            let loader_output_path = output_dir.join(loader_file_name);
-                            if let Some(parent) = loader_output_path.parent() {
-                                fs::create_dir_all(parent)?;
-                            }
-                            fs::write(&loader_output_path, rendered_loader_code)?;
-                            println!("Generated loader file: {}", loader_output_path.display());
+                let loadable_structs: Vec<&TypeDef> = ns_def.types.iter()
+                    .filter(|type_def| {
+                        if let TypeDef::Struct(struct_def) = type_def {
+                            struct_def.annotations.iter().any(|ann| ann.name == "load")
+                        } else {
+                            false
                         }
+                    })
+                    .collect();
+
+                if !loadable_structs.is_empty() {
+                    let loader_template_name = "csharp/csharp_namespace_loader.jinja";
+                    let loader_template = self.env.get_template(loader_template_name)?;
+
+                    let mut loader_render_ctx = minijinja::context! {
+                        namespace => ns_name,
+                        loadable_types => loadable_structs, // Pass the list of loadable structs
+                        lang => lang,
+                    };
+
+                    let rendered_loader_code = loader_template.render(&mut loader_render_ctx)?;
+
+                    let loader_file_name = if ns_name.is_empty() {
+                        format!("GlobalLoader.cs")
+                    } else {
+                        let pascal_case_ns_name = heck::ToUpperCamelCase::to_upper_camel_case(ns_name.replace('.', "_").as_str());
+                        format!("{}/{}Loader.cs", ns_name.replace('.', "/"), pascal_case_ns_name)
+                    };
+
+                    let loader_output_path = output_dir.join(loader_file_name);
+                    if let Some(parent) = loader_output_path.parent() {
+                        fs::create_dir_all(parent)?;
                     }
+                    fs::write(&loader_output_path, rendered_loader_code)?;
+                    println!("Generated namespace loader file: {}", loader_output_path.display());
                 }
             }
         }
