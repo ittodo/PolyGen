@@ -9,14 +9,10 @@ use std::path::{Path, PathBuf};
 use crate::ast::{AstRoot, Definition};
 
 mod ast;
-// mod csharp_generator; // Old generator is no longer needed
-// mod csharp_model;   // Old model is no longer needed
 mod error; // error 모듈을 추가합니다.
 mod generator;
 mod ir_builder;
 mod ir_model;
-mod mermaid_generator;
-mod mermaid_model;
 mod validation;
 
 // `polygen.pest` 파일에 정의된 문법 규칙을 사용하기 위한 파서 구조체입니다.
@@ -146,6 +142,19 @@ fn main() -> Result<()> {
     // --- 코드 생성 (설정 기반) ---
     println!("\n--- {} 코드 생성 중 ---", cli.lang.to_uppercase());
     let lang_output_dir = cli.output_dir.join(&cli.lang);
+
+    // C#의 경우, 정적 유틸리티 파일을 출력 폴더로 복사합니다.
+    if cli.lang == "csharp" {
+        let static_source_path = Path::new("static/csharp/DataSource.cs");
+        let dest_dir = lang_output_dir.join("Common");
+        fs::create_dir_all(&dest_dir)?;
+        let dest_path = dest_dir.join("DataSource.cs");
+        if static_source_path.exists() {
+            fs::copy(static_source_path, &dest_path)?;
+            println!("Copied static file to {}", dest_path.display());
+        }
+    }
+
     let template_generator = generator::Generator::new(&cli.templates_dir)?;
     template_generator.generate(&ir_context, &cli.lang, &lang_output_dir)?;
     println!("{} 코드 생성이 완료되었습니다.", cli.lang.to_uppercase());
@@ -156,7 +165,7 @@ fn main() -> Result<()> {
     fs::create_dir_all(mermaid_output_dir)?;
     let mermaid_output_file_path = mermaid_output_dir.join("class_diagram.md");
 
-    let mermaid_code = mermaid_generator::generate_mermaid_diagram(&all_definitions)?;
+    let mermaid_code = template_generator.generate_mermaid_diagram(&all_definitions)?;
     // GitHub에서 렌더링되도록 마크다운 코드 블록으로 감싸줍니다.
     let mermaid_content = format!("```mermaid\n{}\n```", mermaid_code);
     fs::write(&mermaid_output_file_path, mermaid_content)?;

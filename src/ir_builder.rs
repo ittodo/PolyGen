@@ -1,6 +1,7 @@
 use crate::ast::{self, Constraint, Definition, FieldDefinition, TableMember, TypeName};
 use crate::ir_model::{self, FieldDef, SchemaContext, StructDef, TypeDef};
 use heck::ToPascalCase;
+use std::collections::BTreeMap;
 
 /// Builds the template-friendly Intermediate Representation (IR) from the AST definitions.
 pub fn build_ir(definitions: &[ast::Definition]) -> ir_model::SchemaContext {
@@ -76,6 +77,7 @@ fn convert_table_to_struct(table: &ast::Table) -> (StructDef, Vec<TypeDef>) {
         name: table.name.clone(),
         comment: table.doc_comment.clone(),
         fields,
+        annotations: convert_annotations_to_ir(&table.annotations),
     };
 
     (struct_def, nested_types)
@@ -186,4 +188,20 @@ fn format_cardinality(base: &str, c: &Option<ast::Cardinality>) -> String {
         Some(ast::Cardinality::Array) => format!("List<{}>", base),
         None => base.to_string(),
     }
+}
+
+fn convert_annotations_to_ir(annotations: &[ast::Annotation]) -> Vec<ir_model::AnnotationDef> {
+    annotations
+        .iter()
+        .map(|ast_ann| {
+            let mut params_map = BTreeMap::new();
+            for param in &ast_ann.params {
+                params_map.insert(param.key.clone(), param.value.to_string());
+            }
+            ir_model::AnnotationDef {
+                name: ast_ann.name.clone(),
+                params: params_map,
+            }
+        })
+        .collect()
 }

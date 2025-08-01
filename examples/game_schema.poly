@@ -25,6 +25,7 @@ namespace game.item {
     }
 
     /// 아이템 정보를 정의하는 테이블입니다.
+    @load(type: "DB", path: "ItemsTable")
     @taggable
     table Item {
         id: u32 primary_key;
@@ -44,12 +45,12 @@ namespace game.character {
         id: u32 primary_key = 1;
         name: string unique max_length(30) = 2;
         level: u16 = 3;
-        // 다른 네임스페이스의 타입을 참조할 때는 '네임스페이스.타입' 형식으로 사용합니다.
         stats: game.common.StatBlock = 4;
     }
 
     /// 몬스터 정보를 정의하는 테이블입니다.
     /// 모든 테이블은 `@taggable` 어노테이션을 통해 자유로운 태그를 붙일 수 있습니다.
+    @load(type: "DB", path: "ItemsTable")
     @taggable
     table Monster {
         id: u32 primary_key;

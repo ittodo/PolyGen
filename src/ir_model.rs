@@ -37,7 +37,16 @@ pub struct StructDef {
     pub name: String,
     pub comment: Option<String>,
     pub fields: Vec<FieldDef>,
+    pub annotations: Vec<AnnotationDef>,
 }
+
+/// Represents a single annotation for the template.
+#[derive(Serialize, Debug)]
+pub struct AnnotationDef {
+    pub name: String,
+    pub params: BTreeMap<String, String>,
+}
+
 
 /// Represents a member of an enum.
 #[derive(Serialize, Debug)]
