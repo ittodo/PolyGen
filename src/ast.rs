@@ -19,6 +19,7 @@ pub enum Definition {
     Table(Table),
     Enum(Enum),
     Embed(Embed),
+    Comment(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -47,6 +48,7 @@ pub struct Table {
 pub enum TableMember {
     Field(FieldDefinition),
     Embed(Embed), // Named embed definition within a table
+    Comment(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -168,7 +170,7 @@ pub enum Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Literal::String(s) => write!(f, "\"{}\"", s),
+            Literal::String(s) => write!(f, "{}", s),
             Literal::Integer(i) => write!(f, "{}", i),
             Literal::Float(fl) => write!(f, "{}", fl),
             Literal::Boolean(b) => write!(f, "{}", b),
@@ -242,6 +244,14 @@ fn parse_literal(pair: Pair<Rule>) -> Result<Literal, AstBuildError> {
     Ok(literal)
 }
 
+fn extract_comment_content(comment_pair: Pair<Rule>) -> String {
+    comment_pair
+        .as_str()
+        .trim_start_matches("///")
+        .trim()
+        .to_string()
+}
+
 // Helper function to parse doc comments from a stream of pairs.
 // It consumes `doc_comment` rules from the beginning of the stream.
 fn parse_doc_comments(
@@ -251,20 +261,14 @@ fn parse_doc_comments(
     while let Some(p) = inner_pairs.peek() {
         if p.as_rule() == Rule::doc_comment {
             // Consume the pair
-            doc_comments.push(inner_pairs.next().unwrap().as_str().to_string());
+            doc_comments.push(extract_comment_content(inner_pairs.next().unwrap()));
         } else {
             break;
         }
     }
 
     if !doc_comments.is_empty() {
-        Some(
-            doc_comments
-                .iter()
-                .map(|s| s.trim_start_matches("///").trim())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        )
+        Some(doc_comments.join("\n"))
     } else {
         None
     }
@@ -319,47 +323,13 @@ pub fn build_ast_from_pairs(
                         ast_root.file_imports.push(path);
                     }
                     Rule::definition => {
-                        let mut inner_pairs = item_pair.into_inner().peekable();
-                        let doc_comment = parse_doc_comments(&mut inner_pairs);
-                        let annotations = parse_annotations(&mut inner_pairs)?;
-
-                        let def_pair = inner_pairs.next().unwrap(); // Safe due to grammar
-                        let (inner_line, inner_col) = def_pair.line_col();
-
-                        let mut definition = match def_pair.as_rule() {
-                            Rule::namespace => Definition::Namespace(parse_namespace(def_pair)?),
-                            Rule::table => Definition::Table(parse_table(def_pair)?),
-                            Rule::enum_def => Definition::Enum(parse_enum(def_pair)?),
-                            Rule::embed_def => Definition::Embed(parse_embed(def_pair)?),
-                            found => {
-                                return Err(AstBuildError::UnexpectedRule {
-                                    expected: "namespace, table, enum, or embed".to_string(),
-                                    found,
-                                    line: inner_line,
-                                    col: inner_col,
-                                })
-                            }
-                        };
-
-                        // Attach the doc comment to the definition
-                        match &mut definition {
-                            Definition::Table(t) => {
-                                t.doc_comment = doc_comment;
-                                t.annotations = annotations;
-                            }
-                            Definition::Enum(e) => {
-                                e.doc_comment = doc_comment;
-                                e.annotations = annotations;
-                            }
-                            Definition::Embed(e) => {
-                                e.doc_comment = doc_comment;
-                                e.annotations = annotations;
-                            }
-                            Definition::Namespace(_) => {} // Comments on namespaces can be added later if needed
-                        }
-                        ast_root.definitions.push(definition);
+                        ast_root.definitions.push(parse_definition(item_pair)?);
                     }
-                    Rule::doc_comment => {}
+                    Rule::doc_comment => {
+                        ast_root
+                            .definitions
+                            .push(Definition::Comment(extract_comment_content(item_pair)));
+                    }
                     found => {
                         return Err(AstBuildError::UnexpectedRule {
                             expected: "file_import or definition".to_string(),
@@ -370,7 +340,6 @@ pub fn build_ast_from_pairs(
                     }
                 }
             }
-            Rule::doc_comment => {}
             Rule::EOI => (), // Skip End of Input
             found => {
                 let (line, col) = pair.line_col();
@@ -384,6 +353,50 @@ pub fn build_ast_from_pairs(
         }
     }
     Ok(ast_root)
+}
+
+fn parse_definition(pair: Pair<Rule>) -> Result<Definition, AstBuildError> {
+    let (_line, _col) = pair.line_col();
+    let mut inner_pairs = pair.into_inner().peekable();
+    let doc_comment = parse_doc_comments(&mut inner_pairs);
+    let annotations = parse_annotations(&mut inner_pairs)?;
+
+    let def_pair = inner_pairs.next().unwrap(); // Safe due to grammar
+    let (inner_line, inner_col) = def_pair.line_col();
+
+    let mut definition = match def_pair.as_rule() {
+        Rule::namespace => Definition::Namespace(parse_namespace(def_pair)?),
+        Rule::table => Definition::Table(parse_table(def_pair)?),
+        Rule::enum_def => Definition::Enum(parse_enum(def_pair)?),
+        Rule::embed_def => Definition::Embed(parse_embed(def_pair)?),
+        found => {
+            return Err(AstBuildError::UnexpectedRule {
+                expected: "namespace, table, enum, or embed".to_string(),
+                found,
+                line: inner_line,
+                col: inner_col,
+            })
+        }
+    };
+
+    // Attach the doc comment to the definition
+    match &mut definition {
+        Definition::Table(t) => {
+            t.doc_comment = doc_comment;
+            t.annotations = annotations;
+        }
+        Definition::Enum(e) => {
+            e.doc_comment = doc_comment;
+            e.annotations = annotations;
+        }
+        Definition::Embed(e) => {
+            e.doc_comment = doc_comment;
+            e.annotations = annotations;
+        }
+        Definition::Namespace(_) => {} // Comments on namespaces can be added later if needed
+        Definition::Comment(_) => {}   // Comments don't have annotations or other comments
+    }
+    Ok(definition)
 }
 
 fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, AstBuildError> {
@@ -407,50 +420,10 @@ fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, AstBuildError> {
                     imports.push(parse_namespace_import(item_pair)?);
                 }
                 Rule::definition => {
-                    let (line, col) = item_pair.line_col();
-                    let mut inner_pairs = item_pair.into_inner().peekable();
-                    let doc_comment = parse_doc_comments(&mut inner_pairs);
-                    let annotations = parse_annotations(&mut inner_pairs)?;
-
-                    let def_pair = inner_pairs.next().ok_or(AstBuildError::MissingElement {
-                        rule: Rule::definition,
-                        element: "nested definition type".to_string(),
-                        line,
-                        col,
-                    })?;
-
-                    let (inner_line, inner_col) = def_pair.line_col();
-                    let mut definition = match def_pair.as_rule() {
-                        Rule::namespace => Definition::Namespace(parse_namespace(def_pair)?),
-                        Rule::table => Definition::Table(parse_table(def_pair)?),
-                        Rule::enum_def => Definition::Enum(parse_enum(def_pair)?),
-                        Rule::embed_def => Definition::Embed(parse_embed(def_pair)?),
-                        found => {
-                            return Err(AstBuildError::UnexpectedRule {
-                                expected: "nested definition".to_string(),
-                                found,
-                                line: inner_line,
-                                col: inner_col,
-                            })
-                        }
-                    };
-                    // Attach the doc comment to the definition
-                    match &mut definition {
-                        Definition::Table(t) => {
-                            t.doc_comment = doc_comment;
-                            t.annotations = annotations;
-                        }
-                        Definition::Enum(e) => {
-                            e.doc_comment = doc_comment;
-                            e.annotations = annotations;
-                        }
-                        Definition::Embed(e) => {
-                            e.doc_comment = doc_comment;
-                            e.annotations = annotations;
-                        }
-                        Definition::Namespace(_) => {} // Comments on namespaces are handled recursively
-                    }
-                    definitions.push(definition);
+                    definitions.push(parse_definition(item_pair)?);
+                }
+                Rule::doc_comment => {
+                    definitions.push(Definition::Comment(extract_comment_content(item_pair)));
                 }
                 _ => {} // Should not happen based on grammar
             }
@@ -478,53 +451,11 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
         match p.as_rule() {
             Rule::IDENT => name = p.as_str().to_string(),
             Rule::table_member => {
-                let (p_line, p_col) = p.line_col();
-                let mut member_inner = p.into_inner().peekable();
-                let doc_comment = parse_doc_comments(&mut member_inner);
-                let annotations = parse_annotations(&mut member_inner)?;
-
-                let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
-                    rule: Rule::table_member,
-                    element: "field or embed definition".to_string(),
-                    line: p_line,
-                    col: p_col,
-                })?;
-
-                let (inner_line, inner_col) = member_pair.line_col();
-                let mut member = match member_pair.as_rule() {
-                    Rule::field_definition => {
-                        TableMember::Field(parse_field_definition(member_pair)?)
-                    }
-                    Rule::embed_def => TableMember::Embed(parse_embed(member_pair)?),
-                    found => {
-                        return Err(AstBuildError::UnexpectedRule {
-                            expected: "field_definition or embed_def".to_string(),
-                            found,
-                            line: inner_line,
-                            col: inner_col,
-                        })
-                    }
-                };
-
-                // Attach comment to the member
-                match &mut member {
-                    TableMember::Field(FieldDefinition::Regular(f)) => {
-                        f.doc_comment = doc_comment;
-                        f.annotations = annotations;
-                    }
-                    TableMember::Field(FieldDefinition::InlineEmbed(f)) => {
-                        f.doc_comment = doc_comment;
-                        f.annotations = annotations;
-                    }
-                    TableMember::Embed(e) => {
-                        e.doc_comment = doc_comment;
-                        e.annotations = annotations;
-                    }
-                }
-
-                members.push(member);
+                members.push(parse_table_member(p)?);
             }
-            Rule::doc_comment => {}
+            Rule::doc_comment => {
+                members.push(TableMember::Comment(extract_comment_content(p)));
+            }
             found => {
                 let (line, col) = p.line_col();
                 return Err(AstBuildError::UnexpectedRule {
@@ -542,6 +473,53 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
         name,
         members,
     })
+}
+
+fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
+    let (p_line, p_col) = pair.line_col();
+    let mut member_inner = pair.into_inner().peekable();
+    let doc_comment = parse_doc_comments(&mut member_inner);
+    let annotations = parse_annotations(&mut member_inner)?;
+
+    let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
+        rule: Rule::table_member,
+        element: "field or embed definition".to_string(),
+        line: p_line,
+        col: p_col,
+    })?;
+
+    let (inner_line, inner_col) = member_pair.line_col();
+    let mut member = match member_pair.as_rule() {
+        Rule::field_definition => TableMember::Field(parse_field_definition(member_pair)?),
+        Rule::embed_def => TableMember::Embed(parse_embed(member_pair)?),
+        found => {
+            return Err(AstBuildError::UnexpectedRule {
+                expected: "field_definition or embed_def".to_string(),
+                found,
+                line: inner_line,
+                col: inner_col,
+            })
+        }
+    };
+
+    // Attach comment to the member
+    match &mut member {
+        TableMember::Field(FieldDefinition::Regular(f)) => {
+            f.doc_comment = doc_comment;
+            f.annotations = annotations;
+        }
+        TableMember::Field(FieldDefinition::InlineEmbed(f)) => {
+            f.doc_comment = doc_comment;
+            f.annotations = annotations;
+        }
+        TableMember::Embed(e) => {
+            e.doc_comment = doc_comment;
+            e.annotations = annotations;
+        }
+        TableMember::Comment(_) => {}
+    }
+
+    Ok(member)
 }
 
 fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, AstBuildError> {

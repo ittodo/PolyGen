@@ -27,12 +27,15 @@ public static class {% if namespace %}{{ namespace | pascal_case }}Loader{% else
         {
             var item = new {{ type_def.Struct.name }}
             {
-{% for field in type_def.Struct.fields %}
+{% for item in type_def.Struct.items %}
+    {% if item.Field is defined %}
+    {%- set field = item.Field %}
                 {% if field.field_type | map_type(lang) | starts_with("System.Collections.Generic.List<") %}
                 {{ field.name }} = DataSourceFactory.ConvertListValue<{{ field.field_type | map_type(lang) | replace("System.Collections.Generic.List<", "") | replace(">", "") }}>(row, "{{ field.name }}"),
                 {% else %}
                 {{ field.name }} = DataSourceFactory.ConvertSingleValue<{{ field.field_type | map_type(lang) }}>(row, "{{ field.name }}"),
                 {% endif %}
+    {% endif %} {# Close the if item.Field is defined block #}
 {% endfor %}
             };
             list.Add(item);

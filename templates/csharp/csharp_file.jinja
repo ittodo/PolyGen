@@ -7,18 +7,28 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace {{ ns.name | default("Global.Types") }}
 {
 {# Loop through all type definitions (structs and enums) in the namespace #}
-{%- for type_def in ns.types %}
+{%- for item in ns.items %}
 
-{%- if type_def.Struct is defined %}
-{%- set s = type_def.Struct %}
+{%- if item.Struct is defined %}
+{%- set s = item.Struct %}
 {%- if s.comment and s.comment | trim %}
     /// <summary>
     /// {{ s.comment | replace("\n", "\n    /// ") }}
     /// </summary>
 {%- endif %}
+    {%- for item in s.items %}
+    {%- if item.Annotation is defined %}
+        {%- set annotation = item.Annotation %}
+                
+    [{{ annotation.name }}{% if annotation.params %}({% for key in annotation.params %}{{ key }}: {{ annotation.params[key] }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}]
+        
+    {%- endif %}
+{%- endfor %}
     public partial class {{ s.name }}
     {
-{%- for field in s.fields %}
+{%- for item in s.items %}
+{%- if item.Field is defined %}
+{%- set field = item.Field %}
 {%- if field.comment and field.comment | trim %}
         /// <summary>
         /// {{ field.comment | replace("\n", "\n        /// ") }}
@@ -36,6 +46,11 @@ namespace {{ ns.name | default("Global.Types") }}
         [Required]
 {%- endif %}
         public {{ field.field_type | map_type(lang) }} {{ field.name | pascal_case }} { get; set; }
+{%- elif item.Comment is defined %}
+{# Render field-level comments #}
+        // {{ item.Comment | replace("\n", "\n        // ") }}
+
+{%- endif %}
 {%- if not loop.last %}
 
 {%- endif %}
@@ -48,36 +63,49 @@ namespace {{ ns.name | default("Global.Types") }}
         public {{ s.name }}()
         {
 {#- 컴파일러 경고(CS8618)를 피하기 위해 null을 허용하지 않는 참조 타입을 초기화합니다. #}
-{%- for field in s.fields %}
+{%- for item in s.items %}
+{%- if item.Field is defined %}
+{%- set field = item.Field %}
 {%- if field.field_type.name == "string" and not field.field_type.is_nullable %}
             {{ field.name | pascal_case }} = string.Empty;
 {%- elif field.field_type.is_array %}
             {{ field.name | pascal_case }} = new {{ field.field_type | map_type(lang) }}();
 {%- endif %}
+{%- endif %}
 {%- endfor %}
         }
 
-{%- if s.fields %}
+{%- if s.items %}
         /// <summary>
         /// 지정된 값으로 <see cref="{{ s.name }}"/> 클래스의 새 인스턴스를 초기화합니다.
         /// </summary>
-{%- for field in s.fields %}
+{%- for item in s.items %}
+{%- if item.Field is defined %}
+{%- set field = item.Field %}
         /// <param name="{{ field.name }}">{{ (field.comment or ("The value for " + field.name + ".")) | replace('\n', ' ') }}</param>
+{%- endif %}
 {%- endfor %}
         public {{ s.name }}(
-{%- for field in s.fields %}
+{%- for item in s.items %}
+{%- if item.Field is defined %}
+{%- set field = item.Field %}
             {{ field.field_type | map_type(lang) }} {{ field.name }}{% if not loop.last %},{% endif %}
+{%- endif %}
 {%- endfor %}
         )
         {
-{%- for field in s.fields %}
+{%- for item in s.items %}
+{%- if item.Field is defined %}
+{%- set field = item.Field %}
             this.{{ field.name | pascal_case }} = {{ field.name }};
+{%- endif %}
 {%- endfor %}
         }
 {%- endif %}
     }
-{%- elif type_def.Enum is defined %}
-{%- set e = type_def.Enum %}
+
+{%- elif item.Enum is defined %}
+{%- set e = item.Enum %}
 {%- if e.comment and e.comment | trim %}
     /// <summary>
     /// {{ e.comment | replace("\n", "\n    /// ") }}
@@ -85,15 +113,21 @@ namespace {{ ns.name | default("Global.Types") }}
 {%- endif %}
     public enum {{ e.name }}
     {
-{%- for member in e.members %}
-{%- if member.comment and member.comment | trim %}
+{%- for item in e.items %}{%- if item.Member is defined %}{%- set member = item.Member %}{%- if member.comment and member.comment | trim %}
         /// <summary>
         /// {{ member.comment | replace("\n", "\n        /// ") }}
         /// </summary>
 {%- endif %}
         {{ member.name }},
+{%- elif item.Comment is defined %}
+{# Render enum-level comments #}
+        // {{ item.Comment | replace("\n", "\n        // ") }}
+{%- endif %}
 {%- endfor %}
     }
+{%- elif item.Comment is defined %}
+{# Render namespace-level comments #}
+// {{ item.Comment | replace("\n", "\n// ") }}
 {%- endif %}
 {%- if not loop.last %}
 

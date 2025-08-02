@@ -1,5 +1,5 @@
 use crate::ast::{Cardinality, Constraint, Definition, Embed, FieldDefinition, TableMember, TypeName, Literal, TypeWithCardinality};
-use crate::ir_model::{SchemaContext, TypeDef};
+use crate::ir_model::{self, NamespaceItem, SchemaContext};
 use anyhow::{Context, Result};
 use minijinja::{path_loader, Environment, Error};
 use once_cell::sync::Lazy;
@@ -47,6 +47,9 @@ impl<'a> Generator<'a> {
 
             let rendered_code = template.render(&mut render_ctx)?;
 
+            // Force CRLF line endings for Windows compatibility
+            let rendered_code_crlf = rendered_code.replace("\n", "\r\n");
+
             let extension = match lang {
                 "csharp" => "cs",
                 "typescript" => "ts",
@@ -63,20 +66,30 @@ impl<'a> Generator<'a> {
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::write(&output_path, rendered_code)?;
+            fs::write(&output_path, rendered_code_crlf)?;
             println!("Generated file: {}", output_path.display());
 
             // --- Generate Loader classes for C# if @load annotation is present ---
             if lang == "csharp" {
-                let loadable_structs: Vec<&TypeDef> = ns_def.types.iter()
-                    .filter(|type_def| {
-                        if let TypeDef::Struct(struct_def) = type_def {
-                            struct_def.annotations.iter().any(|ann| ann.name == "load")
-                        } else {
-                            false
+                let loadable_structs: Vec<&ir_model::StructDef> = ns_def.items.iter()
+                    .filter_map(|item| {
+                        if let NamespaceItem::Struct(struct_def) = item {
+                            // Check for a @load annotation within the struct's items
+                            let is_loadable = struct_def.items.iter().any(|struct_item| {
+                                if let ir_model::StructItem::Annotation(ann) = struct_item {
+                                    ann.name == "load"
+                                } else {
+                                    false
+                                }
+                            });
+                            if is_loadable {
+                                return Some(struct_def);
+                            }
                         }
+                        None
                     })
                     .collect();
+
 
                 if !loadable_structs.is_empty() {
                     let loader_template_name = "csharp/csharp_namespace_loader.jinja";
@@ -355,6 +368,7 @@ fn collect_diagram_parts<'a>(
                                 all_named_embed_fqns,
                             );
                         }
+                        TableMember::Comment(_) => {}
                     }
                 }
 
@@ -380,6 +394,7 @@ fn collect_diagram_parts<'a>(
                 // Namespace-level embeds are rendered as separate classes
                 process_named_embed_to_class(embed, path, diagram, all_named_embed_fqns);
             }
+            Definition::Comment(_) => {}
         }
     }
 }

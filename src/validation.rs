@@ -74,6 +74,7 @@ fn collect_all_types(
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
             }
+            Definition::Comment(_) => { /* Comments are not types, so we ignore them. */ }
         }
     }
     Ok(())
@@ -134,27 +135,41 @@ fn validate_all_types(
             Definition::Table(t) => {
                 path.push(t.name.clone());
                 for member in &t.members {
-                    if let TableMember::Field(FieldDefinition::Regular(field)) = member {
-                        if let TypeName::Path(type_path) = &field.field_type.base_type {
-                            check_type_path(type_path, path, all_types)?;
+                    match member {
+                        TableMember::Field(FieldDefinition::Regular(field)) => {
+                            if let TypeName::Path(type_path) = &field.field_type.base_type {
+                                check_type_path(type_path, path, all_types)?;
+                            }
                         }
-                    }
-                    // 인라인 embed 필드 내부의 타입도 검사합니다.
-                    if let TableMember::Field(FieldDefinition::InlineEmbed(inline_embed)) = member {
-                        // Inline embeds don't have a name that adds to the path,
-                        // so we check their fields against the current table's scope.
-                        for f in &inline_embed.fields {
-                            if let FieldDefinition::Regular(rf) = f {
-                                if let TypeName::Path(type_path) = &rf.field_type.base_type {
-                                    check_type_path(type_path, path, all_types)?;
+                        TableMember::Field(FieldDefinition::InlineEmbed(inline_embed)) => {
+                            for f in &inline_embed.fields {
+                                if let FieldDefinition::Regular(rf) = f {
+                                    if let TypeName::Path(type_path) = &rf.field_type.base_type {
+                                        check_type_path(type_path, path, all_types)?;
+                                    }
                                 }
                             }
+                        }
+                        TableMember::Embed(_) => { /* Embeds are checked as top-level types */ }
+                        TableMember::Comment(_) => { /* Comments do not reference types */ }
+                    }
+                }
+                path.pop();
+            }
+            Definition::Enum(_) => { /* Enums do not reference other types */ }
+            Definition::Embed(e) => {
+                // Validate types used within the embed's fields.
+                path.push(e.name.clone());
+                 for field in &e.fields {
+                    if let FieldDefinition::Regular(rf) = field {
+                        if let TypeName::Path(type_path) = &rf.field_type.base_type {
+                            check_type_path(type_path, path, all_types)?;
                         }
                     }
                 }
                 path.pop();
             }
-            _ => {} // Enum과 Embed는 다른 타입을 참조하지 않습니다.
+            Definition::Comment(_) => { /* Comments do not reference types */ }
         }
     }
     Ok(())

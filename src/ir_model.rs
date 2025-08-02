@@ -8,18 +8,38 @@ pub struct SchemaContext {
     pub namespaces: BTreeMap<String, NamespaceDef>,
 }
 
-/// Represents a namespace containing various type definitions.
+// --- Namespace Definition ---
+
+/// Represents a namespace containing various definitions.
 #[derive(Serialize, Debug, Default)]
 pub struct NamespaceDef {
     pub name: String,
-    pub types: Vec<TypeDef>,
+    pub items: Vec<NamespaceItem>,
 }
 
-/// An enum representing any type definition (struct, enum).
+/// An enum representing any item that can appear directly within a namespace.
 #[derive(Serialize, Debug)]
-pub enum TypeDef {
+pub enum NamespaceItem {
     Struct(StructDef),
     Enum(EnumDef),
+    Comment(String),
+}
+
+// --- Struct Definition ---
+
+/// Represents a struct or class definition.
+#[derive(Serialize, Debug)]
+pub struct StructDef {
+    pub name: String,
+    pub items: Vec<StructItem>,
+}
+
+/// An enum representing any item that can appear within a struct.
+#[derive(Serialize, Debug)]
+pub enum StructItem {
+    Field(FieldDef),
+    Comment(String),
+    Annotation(AnnotationDef),
 }
 
 /// Represents a field/property within a struct.
@@ -27,17 +47,8 @@ pub enum TypeDef {
 pub struct FieldDef {
     pub name: String,
     pub field_type: String, // A simplified, language-agnostic type string like "List<Position>" or "Option<u32>"
-    pub comment: Option<String>,
+    pub comment: Option<String>, // Comments attached to the end of a field line
     pub attributes: Vec<String>, // For annotations like [Key], [MaxLength(30)]
-}
-
-/// Represents a struct or class definition.
-#[derive(Serialize, Debug)]
-pub struct StructDef {
-    pub name: String,
-    pub comment: Option<String>,
-    pub fields: Vec<FieldDef>,
-    pub annotations: Vec<AnnotationDef>,
 }
 
 /// Represents a single annotation for the template.
@@ -48,17 +59,25 @@ pub struct AnnotationDef {
 }
 
 
-/// Represents a member of an enum.
-#[derive(Serialize, Debug)]
-pub struct EnumMember {
-    pub name: String,
-    pub comment: Option<String>,
-}
+// --- Enum Definition ---
 
 /// Represents an enum definition.
 #[derive(Serialize, Debug)]
 pub struct EnumDef {
     pub name: String,
-    pub comment: Option<String>,
-    pub members: Vec<EnumMember>,
+    pub items: Vec<EnumItem>,
+}
+
+/// An enum representing any item that can appear within an enum.
+#[derive(Serialize, Debug)]
+pub enum EnumItem {
+    Member(EnumMember),
+    Comment(String),
+}
+
+/// Represents a member of an enum.
+#[derive(Serialize, Debug)]
+pub struct EnumMember {
+    pub name: String,
+    pub comment: Option<String>, // Comments attached to the end of a member line
 }

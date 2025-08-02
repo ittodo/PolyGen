@@ -139,6 +139,14 @@ fn main() -> Result<()> {
     let ir_context = ir_builder::build_ir(&all_definitions);
     println!("IR 변환 성공.");
 
+    // --- [디버깅] 변환된 IR의 전체 구조를 파일로 출력합니다. ---
+    let ir_debug_path = cli.output_dir.join("ir_debug.txt");
+    fs::write(&ir_debug_path, format!("{:#?}", ir_context))?;
+    println!(
+        "IR 디버그 출력이 파일에 저장되었습니다: {}",
+        ir_debug_path.display()
+    );
+
     // --- 코드 생성 (설정 기반) ---
     println!("\n--- {} 코드 생성 중 ---", cli.lang.to_uppercase());
     let lang_output_dir = cli.output_dir.join(&cli.lang);
