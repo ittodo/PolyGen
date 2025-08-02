@@ -95,9 +95,12 @@ impl<'a> Generator<'a> {
                     let loader_template_name = "csharp/csharp_namespace_loader.jinja";
                     let loader_template = self.env.get_template(loader_template_name)?;
 
+                    // Convert Vec<&StructDef> to Vec<minijinja::Value> for proper iteration in Jinja
+                    let loadable_types_for_template: Vec<minijinja::Value> = loadable_structs.into_iter().map(|s| minijinja::Value::from_serialize(s)).collect();
+
                     let mut loader_render_ctx = minijinja::context! {
                         namespace => ns_name,
-                        loadable_types => loadable_structs, // Pass the list of loadable structs
+                        loadable_types => loadable_types_for_template, // Pass the converted list
                         lang => lang,
                     };
 

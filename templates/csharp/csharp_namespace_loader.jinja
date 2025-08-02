@@ -12,37 +12,35 @@ namespace {{ namespace }};
 public static class {% if namespace %}{{ namespace | pascal_case }}Loader{% else %}GlobalLoader{% endif %}
 {
     {% for type_def in loadable_types %}
-    {% if type_def.Struct %}
     /// <summary>
-    /// Loads a list of {{ type_def.Struct.name }} from the specified data source file.
+    /// Loads a list of {{ type_def.name }} from the specified data source file.
     /// </summary>
     /// <param name="filePath">The path to the data source file (e.g., a .csv file).</param>
-    /// <returns>A list of {{ type_def.Struct.name }} instances.</returns>
-    public static List<{{ type_def.Struct.name }}> Load{{ type_def.Struct.name }}(string filePath)
+    /// <returns>A list of {{ type_def.name }} instances.</returns>
+    public static List<{{ type_def.name }}> Load{{ type_def.name }}(string filePath)
     {
         var reader = DataSourceFactory.CreateReader(filePath);
-        var list = new List<{{ type_def.Struct.name }}>();
+        var list = new List<{{ type_def.name }}>();
 
         foreach (var row in reader.ReadRows())
         {
-            var item = new {{ type_def.Struct.name }}
+            var instance = new {{ type_def.name }}
             {
-{% for item in type_def.Struct.items %}
-    {% if item.Field is defined %}
-    {%- set field = item.Field %}
+{% for struct_item in type_def.items %}
+    {% if struct_item.Field %}
+    {%- set field = struct_item.Field %}
                 {% if field.field_type | map_type(lang) | starts_with("System.Collections.Generic.List<") %}
                 {{ field.name }} = DataSourceFactory.ConvertListValue<{{ field.field_type | map_type(lang) | replace("System.Collections.Generic.List<", "") | replace(">", "") }}>(row, "{{ field.name }}"),
                 {% else %}
                 {{ field.name }} = DataSourceFactory.ConvertSingleValue<{{ field.field_type | map_type(lang) }}>(row, "{{ field.name }}"),
                 {% endif %}
-    {% endif %} {# Close the if item.Field is defined block #}
+    {% endif %}
 {% endfor %}
             };
-            list.Add(item);
+            list.Add(instance);
         }
 
         return list;
     }
-    {% endif %}
     {% endfor %}
 }
