@@ -35,7 +35,7 @@ impl<'a> Generator<'a> {
             .with_context(|| format!("Failed to create output directory: {:?}", output_dir))?;
 
         // Generate one file per namespace.
-        for (ns_name, ns_def) in &context.namespaces {
+        for ns_def in &context.namespaces {
             // Prepare the context for the main template.
             let mut render_ctx = minijinja::context! {
                 ns => ns_def,
@@ -56,10 +56,10 @@ impl<'a> Generator<'a> {
                 _ => lang, // Fallback to using the language name as extension
             };
 
-            let file_name = if ns_name.is_empty() {
+            let file_name = if ns_def.name.is_empty() {
                 format!("GlobalTypes.{}", extension)
             } else {
-                format!("{}.{}", ns_name.replace('.', "/"), extension)
+                format!("{}.{}", ns_def.name.replace('.', "/"), extension)
             };
 
             let output_path = output_dir.join(file_name);
@@ -99,13 +99,13 @@ impl<'a> Generator<'a> {
                     let loadable_types_for_template: Vec<minijinja::Value> = loadable_structs.into_iter().map(|s| minijinja::Value::from_serialize(s)).collect();
 
                     let mut all_struct_defs: BTreeMap<String, minijinja::Value> = BTreeMap::new();
-                    for (ns_name_inner, ns_def_inner) in &context.namespaces {
+                    for ns_def_inner in &context.namespaces {
                         for item in &ns_def_inner.items {
                             if let NamespaceItem::Struct(struct_def) = item {
-                                let fqn = if ns_name_inner.is_empty() {
+                                let fqn = if ns_def_inner.name.is_empty() {
                                     struct_def.name.clone()
                                 } else {
-                                    format!("{}.{}", ns_name_inner, struct_def.name)
+                                    format!("{}.{}", ns_def_inner.name, struct_def.name)
                                 };
                                 all_struct_defs.insert(fqn, minijinja::Value::from_serialize(struct_def));
 
@@ -118,7 +118,7 @@ impl<'a> Generator<'a> {
                     }
 
                     let mut loader_render_ctx = minijinja::context! {
-                        namespace => ns_name,
+                        namespace => ns_def.name,
                         loadable_types => loadable_types_for_template,
                         lang => lang,
                         all_struct_defs => all_struct_defs,
@@ -126,11 +126,11 @@ impl<'a> Generator<'a> {
 
                     let rendered_loader_code = loader_template.render(&mut loader_render_ctx)?;
 
-                    let loader_file_name = if ns_name.is_empty() {
+                    let loader_file_name = if ns_def.name.is_empty() {
                         format!("GlobalLoader.cs")
                     } else {
-                        let pascal_case_ns_name = heck::ToUpperCamelCase::to_upper_camel_case(ns_name.replace('.', "_").as_str());
-                        format!("{}/{}Loader.cs", ns_name.replace('.', "/"), pascal_case_ns_name)
+                        let pascal_case_ns_name = heck::ToUpperCamelCase::to_upper_camel_case(ns_def.name.replace('.', "_").as_str());
+                        format!("{}/{}", ns_def.name.replace('.', "/"), pascal_case_ns_name)
                     };
 
                     let loader_output_path = output_dir.join(loader_file_name);

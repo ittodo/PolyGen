@@ -1,0 +1,22 @@
+# 변경 로그
+
+## [미출시] - 2025-08-05
+
+### 수정됨
+- **`src/rhai_generator.rs`**: Rhai 템플릿에서 `Vec` 타입 필드를 반복할 수 있도록 `namespaces` 및 기타 `items` getter가 `Vec<Dynamic>`을 반환하도록 수정했습니다.
+- **`src/ir_builder.rs`**: `Vec<NamespaceDef>`에 `entry` 메서드가 없다는 빌드 오류를 수정했습니다. 네임스페이스를 찾거나 삽입하는 로직을 리팩토링했습니다.
+- **`src/rhai_generator.rs`**: 사용되지 않는 `std::collections::BTreeMap` 임포트를 제거했습니다.
+- **`src/main.rs`**: 중복된 `mermaid_output_file_path` 변수 선언을 제거했습니다.
+
+## [미출시] - 2025-08-04
+
+### 추가됨
+- **Rhai 스크립팅 엔진 통합**: 코드 생성을 위해 MiniJinja의 대안으로 Rhai 스크립팅 엔진을 도입했습니다. 이를 통해 템플릿 파일 내에서 직접 더 복잡한 로직을 처리하고 확장성을 높일 수 있습니다.
+- **`--engine` CLI 플래그**: 사용자가 코드 생성 시 `minijinja`와 `rhai` 템플릿 엔진 중 하나를 선택할 수 있도록 새로운 명령줄 플래그 `--engine`을 추가했습니다.
+- **Rhai 기반 C# 생성기**: Rhai 스크립트(`csharp_file.rhai`)를 사용하는 C# 코드 생성기의 초기 버전을 만들었습니다.
+- **Rhai 타입 바인딩**: `ir_model` 데이터 구조를 Rhai 엔진에 노출하기 위해 `rhai_generator.rs`에 필요한 바인딩 및 타입 등록을 구현했습니다.
+
+### 변경됨
+- **`Cargo.toml`**: 스레드 안전성을 보장하기 위해 `sync` 기능이 활성화된 `rhai` 의존성을 추가했습니다.
+- **`main.rs`**: `--engine` 플래그에 따라 적절한 생성기를 조건부로 호출하도록 주 애플리케이션 로직을 수정했습니다.
+- **`ir_model.rs`**: 모든 IR 데이터 구조에 `Clone`을 파생시켜 Rhai 엔진의 스코프에 전달할 수 있도록 했습니다.

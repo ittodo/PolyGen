@@ -13,6 +13,7 @@ mod error; // error 모듈을 추가합니다.
 mod generator;
 mod ir_builder;
 mod ir_model;
+mod rhai_generator;
 mod validation;
 
 // `polygen.pest` 파일에 정의된 문법 규칙을 사용하기 위한 파서 구조체입니다.
@@ -38,6 +39,10 @@ struct Cli {
     /// Target language for code generation (e.g., csharp, typescript)
     #[arg(short, long, default_value = "csharp")]
     lang: String,
+
+    /// The template engine to use
+    #[arg(long, default_value = "minijinja")]
+    engine: String,
 }
 
 // ... parse_and_merge_schemas function remains the same ...
@@ -163,9 +168,42 @@ fn main() -> Result<()> {
         }
     }
 
-    let template_generator = generator::Generator::new(&cli.templates_dir)?;
-    template_generator.generate(&ir_context, &cli.lang, &lang_output_dir)?;
+    let mut minijinja_generator_opt: Option<generator::Generator> = None; // Option to hold minijinja generator
+
+    match cli.engine.as_str() {
+        "rhai" => {
+            println!("Using Rhai template engine.");
+            let template_path = cli
+                .templates_dir
+                .join(&cli.lang)
+                .join(format!("{}_file.rhai", cli.lang));
+            let generated_code = rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
+                .map_err(|e| anyhow::anyhow!(e))?; // Convert String error to anyhow::Error
+            let output_file_path = lang_output_dir.join("rhai_output.cs");
+            fs::write(&output_file_path, generated_code)?;
+            println!(
+                "Rhai generated code saved to: {}",
+                output_file_path.display()
+            );
+        }
+        "minijinja" => {
+            println!("Using MiniJinja template engine.");
+            let template_generator = generator::Generator::new(&cli.templates_dir)?;
+            template_generator.generate(&ir_context, &cli.lang, &lang_output_dir)?;
+            minijinja_generator_opt = Some(template_generator); // Store for later use
+        }
+        _ => {
+            eprintln!("Error: Unknown template engine '{}'", cli.engine);
+            std::process::exit(1);
+        }
+    }
     println!("{} 코드 생성이 완료되었습니다.", cli.lang.to_uppercase());
+
+    // Use the stored minijinja_generator_opt for mermaid generation
+    let template_generator = minijinja_generator_opt.unwrap_or_else(|| {
+        // If rhai was used, or no generator was created, create a default minijinja generator for mermaid
+        generator::Generator::new(&cli.templates_dir).expect("Failed to create MiniJinja generator for Mermaid")
+    });
 
     // --- Mermaid 다이어그램 생성 ---
     println!("\n--- Mermaid 다이어그램 생성 중 ---");

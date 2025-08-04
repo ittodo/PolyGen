@@ -22,13 +22,16 @@ fn populate_context(
 ) {
     for def in definitions {
         let fqn_prefix = path.join(".");
-        let namespace = context
-            .namespaces
-            .entry(fqn_prefix)
-            .or_insert_with(|| NamespaceDef {
-                name: path.join("."),
+        let namespace = if let Some(index) = context.namespaces.iter().position(|ns| ns.name == fqn_prefix) {
+            &mut context.namespaces[index]
+        } else {
+            let new_namespace = NamespaceDef {
+                name: fqn_prefix.clone(),
                 items: Vec::new(),
-            });
+            };
+            context.namespaces.push(new_namespace);
+            context.namespaces.last_mut().unwrap()
+        };
 
         match def {
             Definition::Namespace(ns) => {
