@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use minijinja::{path_loader, Environment, Error};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 use heck::ToUpperCamelCase;
@@ -98,10 +98,30 @@ impl<'a> Generator<'a> {
                     // Convert Vec<&StructDef> to Vec<minijinja::Value> for proper iteration in Jinja
                     let loadable_types_for_template: Vec<minijinja::Value> = loadable_structs.into_iter().map(|s| minijinja::Value::from_serialize(s)).collect();
 
+                    let mut all_struct_defs: BTreeMap<String, minijinja::Value> = BTreeMap::new();
+                    for (ns_name_inner, ns_def_inner) in &context.namespaces {
+                        for item in &ns_def_inner.items {
+                            if let NamespaceItem::Struct(struct_def) = item {
+                                let fqn = if ns_name_inner.is_empty() {
+                                    struct_def.name.clone()
+                                } else {
+                                    format!("{}.{}", ns_name_inner, struct_def.name)
+                                };
+                                all_struct_defs.insert(fqn, minijinja::Value::from_serialize(struct_def));
+
+                                // If it's an embed, also insert by its simple name for easier lookup in templates
+                                if struct_def.is_embed {
+                                    all_struct_defs.insert(struct_def.name.clone(), minijinja::Value::from_serialize(struct_def));
+                                }
+                            }
+                        }
+                    }
+
                     let mut loader_render_ctx = minijinja::context! {
                         namespace => ns_name,
-                        loadable_types => loadable_types_for_template, // Pass the converted list
+                        loadable_types => loadable_types_for_template,
                         lang => lang,
+                        all_struct_defs => all_struct_defs,
                     };
 
                     let rendered_loader_code = loader_template.render(&mut loader_render_ctx)?;
@@ -160,6 +180,7 @@ fn map_type_filter(poly_type: String, lang: String) -> Result<String, Error> {
     let mapped_type = match lang.as_str() {
         "csharp" => match base_type.as_str() {
             "u32" => "uint".to_string(),
+            "f32" => "float".to_string(),
             "string" => "string".to_string(),
             "bool" => "bool".to_string(),
             // ... other basic types

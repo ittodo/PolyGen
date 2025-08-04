@@ -100,6 +100,7 @@ fn convert_table_to_struct(table: &ast::Table) -> (StructDef, Vec<NamespaceItem>
     let struct_def = StructDef {
         name: table.name.clone(),
         items,
+        is_embed: false,
     };
 
     (struct_def, nested_items)
@@ -119,7 +120,7 @@ fn convert_field_to_ir(field: &ast::FieldDefinition) -> (FieldDef, Vec<Namespace
         ),
         ast::FieldDefinition::InlineEmbed(ief) => {
             let struct_name = ief.name.to_pascal_case();
-            let (inline_struct, mut nested_items) = convert_table_to_struct(&ast::Table {
+            let (mut inline_struct, mut nested_items) = convert_table_to_struct(&ast::Table {
                 name: struct_name.clone(),
                 doc_comment: ief.doc_comment.clone(),
                 annotations: vec![],
@@ -129,6 +130,7 @@ fn convert_field_to_ir(field: &ast::FieldDefinition) -> (FieldDef, Vec<Namespace
                     .map(|f| TableMember::Field(f.clone()))
                     .collect(),
             });
+            inline_struct.is_embed = true;
 
             nested_items.push(NamespaceItem::Struct(inline_struct));
 
@@ -181,7 +183,7 @@ fn convert_enum(e: &ast::Enum) -> NamespaceItem {
 }
 
 fn convert_embed_to_struct(embed: &ast::Embed) -> StructDef {
-    let (struct_def, _nested_types) = convert_table_to_struct(&ast::Table {
+    let (mut struct_def, _nested_types) = convert_table_to_struct(&ast::Table {
         name: embed.name.clone(),
         doc_comment: embed.doc_comment.clone(),
         annotations: embed.annotations.clone(),
@@ -191,6 +193,7 @@ fn convert_embed_to_struct(embed: &ast::Embed) -> StructDef {
             .map(|f| TableMember::Field(f.clone()))
             .collect(),
     });
+    struct_def.is_embed = true;
     // For now, we assume named embeds don't contain inline embeds that would create more nested types.
     struct_def
 }

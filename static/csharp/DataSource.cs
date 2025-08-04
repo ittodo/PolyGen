@@ -76,8 +76,7 @@ namespace Polygen.Common
             {
                 try
                 {
-                    // Recursively call ConvertSingleValue for each item in the list
-                    list.Add(ConvertSingleValue<T>(new Dictionary<string, string> { { "temp", itemString.Trim() } }, "temp"));
+                    list.Add(ConvertValue<T>(itemString.Trim()));
                 }
                 catch (Exception ex)
                 {
@@ -85,6 +84,31 @@ namespace Polygen.Common
                 }
             }
             return list;
+        }
+
+        public static T ConvertValue<T>(string valueString)
+        {
+            if (string.IsNullOrEmpty(valueString))
+            {
+                return default(T);
+            }
+
+            try
+            {
+                var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+
+                if (targetType.IsEnum)
+                {
+                    return (T)Enum.Parse(targetType, valueString, true); // true for ignoreCase
+                }
+
+                return (T)Convert.ChangeType(valueString, targetType, CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error converting value ''{valueString}'' to type {typeof(T).Name}: {ex.Message}");
+                return default(T);
+            }
         }
     }
 

@@ -32,6 +32,7 @@ pub enum NamespaceItem {
 pub struct StructDef {
     pub name: String,
     pub items: Vec<StructItem>,
+    pub is_embed: bool,
 }
 
 /// An enum representing any item that can appear within a struct.
