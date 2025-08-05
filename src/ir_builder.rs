@@ -20,55 +20,68 @@ fn populate_context(
     definitions: &[ast::Definition],
     path: &mut Vec<String>,
 ) {
-    for def in definitions {
-        let fqn_prefix = path.join(".");
-        let namespace = if let Some(index) = context.namespaces.iter().position(|ns| ns.name == fqn_prefix) {
-            &mut context.namespaces[index]
-        } else {
-            let new_namespace = NamespaceDef {
-                name: fqn_prefix.clone(),
-                items: Vec::new(),
-            };
-            context.namespaces.push(new_namespace);
-            context.namespaces.last_mut().unwrap()
-        };
+    // Ensure the global namespace (with an empty name) always exists.
+    if context.namespaces.is_empty() {
+        context.namespaces.push(NamespaceDef::default());
+    }
 
+    for def in definitions {
         match def {
             Definition::Namespace(ns) => {
                 path.extend(ns.path.iter().cloned());
                 populate_context(context, &ns.definitions, path);
+                // Backtrack the path after recursion.
                 for _ in 0..ns.path.len() {
                     path.pop();
                 }
             }
-            Definition::Table(table) => {
-                if let Some(comment) = &table.doc_comment {
-                    namespace
-                        .items
-                        .push(NamespaceItem::Comment(comment.clone()));
+            _ => {
+                // For any other definition (Table, Enum, Embed), find or create the correct namespace based on the current path.
+                let fqn_prefix = path.join(".");
+                let namespace = if fqn_prefix.is_empty() {
+                    // If path is empty, it's the global namespace.
+                    &mut context.namespaces[0]
+                } else {
+                    // Find if the namespace already exists.
+                    if let Some(index) = context.namespaces.iter().position(|ns| ns.name == fqn_prefix) {
+                        &mut context.namespaces[index]
+                    } else {
+                        // If not, create a new one.
+                        let new_namespace = NamespaceDef {
+                            name: fqn_prefix.clone(),
+                            items: Vec::new(),
+                        };
+                        context.namespaces.push(new_namespace);
+                        context.namespaces.last_mut().unwrap()
+                    }
+                };
+
+                // Now, add the item to the determined namespace.
+                match def {
+                    Definition::Table(table) => {
+                        if let Some(comment) = &table.doc_comment {
+                            namespace.items.push(NamespaceItem::Comment(comment.clone()));
+                        }
+                        let (struct_def, mut nested_items) = convert_table_to_struct(table);
+                        namespace.items.push(NamespaceItem::Struct(struct_def));
+                        namespace.items.append(&mut nested_items);
+                    }
+                    Definition::Enum(e) => {
+                        if let Some(comment) = &e.doc_comment {
+                            namespace.items.push(NamespaceItem::Comment(comment.clone()));
+                        }
+                        namespace.items.push(convert_enum(e));
+                    }
+                    Definition::Embed(embed) => {
+                        if let Some(comment) = &embed.doc_comment {
+                            namespace.items.push(NamespaceItem::Comment(comment.clone()));
+                        }
+                        namespace.items.push(NamespaceItem::Struct(convert_embed_to_struct(embed)));
+                    }
+                    Definition::Comment(c) => namespace.items.push(NamespaceItem::Comment(c.clone())),
+                    Definition::Namespace(_) => unreachable!(), // Already handled above.
                 }
-                let (struct_def, mut nested_items) = convert_table_to_struct(table);
-                namespace.items.push(NamespaceItem::Struct(struct_def));
-                namespace.items.append(&mut nested_items);
             }
-            Definition::Enum(e) => {
-                if let Some(comment) = &e.doc_comment {
-                    namespace.items.push(NamespaceItem::Comment(comment.clone()));
-                }
-                namespace.items.push(convert_enum(e));
-            }
-            Definition::Embed(embed) => {
-                // A namespace-level embed is a reusable struct.
-                if let Some(comment) = &embed.doc_comment {
-                    namespace
-                        .items
-                        .push(NamespaceItem::Comment(comment.clone()));
-                }
-                namespace
-                    .items
-                    .push(NamespaceItem::Struct(convert_embed_to_struct(embed)));
-            }
-            Definition::Comment(c) => namespace.items.push(NamespaceItem::Comment(c.clone())),
         }
     }
 }

@@ -11,6 +11,7 @@ pub fn generate_code_with_rhai(
     template_path: &Path,
 ) -> Result<String, String> {
     let mut engine = Engine::new();
+    engine.set_max_expr_depths(256, 256);
     register_types_and_getters(&mut engine);
 
     let mut scope = Scope::new();
@@ -91,5 +92,36 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("name", |a: &mut AnnotationDef| a.name.clone());
     engine.register_get("params", |a: &mut AnnotationDef| {
         a.params.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<BTreeMap<String, String>>()
+    });
+
+    engine.register_fn("include", |path: &str| -> Result<String, Box<EvalAltResult>> {
+        match std::fs::read_to_string(path) {
+            Ok(s) => Ok(s),
+            Err(e) => Err(Box::new(EvalAltResult::ErrorSystem(
+                "File Read Error".to_string(),
+                e.to_string().into(),
+            ))),
+        }
+    });
+
+    engine.register_fn("write_file", |path: &str, content: &str| -> Result<(), Box<EvalAltResult>> {
+        if let Some(p) = Path::new(path).parent() {
+            if !p.exists() {
+                if let Err(e) = std::fs::create_dir_all(p) {
+                    return Err(Box::new(EvalAltResult::ErrorSystem(
+                        "Directory Creation Error".to_string(),
+                        e.to_string().into(),
+                    )));
+                }
+            }
+        }
+
+        match std::fs::write(path, content) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(EvalAltResult::ErrorSystem(
+                "File Write Error".to_string(),
+                e.to_string().into(),
+            ))),
+        }
     });
 }

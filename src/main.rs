@@ -177,14 +177,8 @@ fn main() -> Result<()> {
                 .templates_dir
                 .join(&cli.lang)
                 .join(format!("{}_file.rhai", cli.lang));
-            let generated_code = rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
+            rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
                 .map_err(|e| anyhow::anyhow!(e))?; // Convert String error to anyhow::Error
-            let output_file_path = lang_output_dir.join("rhai_output.cs");
-            fs::write(&output_file_path, generated_code)?;
-            println!(
-                "Rhai generated code saved to: {}",
-                output_file_path.display()
-            );
         }
         "minijinja" => {
             println!("Using MiniJinja template engine.");
