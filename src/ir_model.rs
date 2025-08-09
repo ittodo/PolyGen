@@ -1,10 +1,17 @@
 use serde::Serialize;
-use std::collections::BTreeMap;
 
 /// The root context object passed to the template engine.
-/// Using BTreeMap to ensure deterministic output order.
 #[derive(Serialize, Debug, Default, Clone)]
 pub struct SchemaContext {
+    pub files: Vec<FileDef>,
+}
+
+// --- File Definition ---
+
+/// Represents a single source schema file and its contents.
+#[derive(Serialize, Debug, Default, Clone)]
+pub struct FileDef {
+    pub path: String,
     pub namespaces: Vec<NamespaceDef>,
 }
 
@@ -31,6 +38,7 @@ pub enum NamespaceItem {
 #[derive(Serialize, Debug, Clone)]
 pub struct StructDef {
     pub name: String,
+    pub header: Vec<StructItem>,
     pub items: Vec<StructItem>,
     pub is_embed: bool,
 }
@@ -56,9 +64,16 @@ pub struct FieldDef {
 #[derive(Serialize, Debug, Clone)]
 pub struct AnnotationDef {
     pub name: String,
-    pub params: BTreeMap<String, String>,
+    pub params: Vec<AnnotationParam>,
+    pub comment: Option<String>,
 }
 
+/// Represents a key-value parameter for an annotation.
+#[derive(Serialize, Debug, Clone)]
+pub struct AnnotationParam {
+    pub key: String,
+    pub value: String,
+}
 
 // --- Enum Definition ---
 
@@ -66,6 +81,7 @@ pub struct AnnotationDef {
 #[derive(Serialize, Debug, Clone)]
 pub struct EnumDef {
     pub name: String,
+    pub comment: Option<String>,
     pub items: Vec<EnumItem>,
 }
 

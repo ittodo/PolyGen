@@ -1,12 +1,6 @@
-## 2025-08-05
+## 2025-08-08
 
-- `rhai_generator.rs`: Rhai 스크립트 내에서 다른 파일을 읽어와 실행할 수 있도록 `include` 함수를 추가했습니다. 이제 `eval(include("path/to/script.rhai"))` 구문을 사용하여 모듈화된 스크립트 작성이 가능합니다.
-- `rhai_generator.rs`: Rhai 스크립트에서 직접 파일을 생성할 수 있는 `write_file` 함수를 추가했습니다.
-- `rhai_generator.rs`: Rhai 엔진의 최대 표현식 깊이를 증가시켜 복잡한 템플릿 처리를 지원하도록 했습니다.
-- `rhai_generator.rs`: Rust 문법 오류를 수정했습니다.
-- `main.rs`: Rhai 엔진 사용 시 `rhai_output.cs` 파일 생성 로직을 제거하고, Rhai 스크립트의 `write_file` 함수를 통해 파일이 생성되도록 변경했습니다.
-- `templates/csharp/csharp_file.rhai`: Rhai 템플릿을 모듈화하고, `write_file` 함수를 사용하여 각 네임스페이스별 `.cs` 파일을 생성하도록 변경했습니다.
-- `templates/csharp/csharp_file.rhai`: 빈 네임스페이스를 `GlobalTypes.cs`로 처리하도록 로직을 개선했습니다.
-- `templates/csharp/csharp_file.rhai`: `ns.name`의 `replace` 함수 사용 시 발생할 수 있는 타입 문제를 해결하기 위해 `to_string()`을 명시적으로 호출하도록 수정했습니다.
-- `templates/csharp/csharp_namespace.rhai`: Rhai 템플릿의 줄바꿈 문제를 해결하기 위해 백틱 문자열 내에 실제 줄바꿈 문자를 사용하도록 수정했습니다.
-- `templates/csharp/csharp_namespace.rhai`: 빈 네임스페이스일 경우 `namespace` 블록을 생성하지 않도록 수정했습니다.
+- `ast.rs` 파일을 `ast_model.rs`와 `ast_parser.rs`로 분리하여 코드 구조를 개선했습니다.
+- `main.rs`, `ir_builder.rs`, `validation.rs` 파일에서 `ast` 모듈 참조를 `ast_model` 및 `ast_parser`로 수정했습니다.
+- `ast_parser.rs`에 누락된 `use` 구문을 추가하고, `build_ast_from_pairs` 함수를 `pub`으로 변경하여 모듈 외부에서 호출할 수 있도록 수정했습니다.
+- `sample.polygen` 파일의 필드 정의 끝에 세미콜론(;)을 추가하여 문법 오류를 수정했습니다.

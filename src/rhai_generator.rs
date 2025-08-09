@@ -1,10 +1,6 @@
-use crate::ir_model::{
-    AnnotationDef, EnumDef, EnumItem, EnumMember, FieldDef, NamespaceDef, NamespaceItem, SchemaContext,
-    StructDef, StructItem,
-};
+use crate::ir_model::{AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef, NamespaceDef, NamespaceItem, SchemaContext, StructDef, StructItem};
 use rhai::{Engine, Scope, EvalAltResult, Dynamic};
 use std::path::Path;
-use std::collections::BTreeMap;
 
 pub fn generate_code_with_rhai(
     schema_context: &SchemaContext,
@@ -32,8 +28,14 @@ pub fn generate_code_with_rhai(
 
 fn register_types_and_getters(engine: &mut Engine) {
     engine.register_type_with_name::<SchemaContext>("SchemaContext");
-    engine.register_get("namespaces", |ctx: &mut SchemaContext| {
-        ctx.namespaces.iter().map(|ns| Dynamic::from(ns.clone())).collect::<Vec<Dynamic>>()
+    engine.register_get("files", |ctx: &mut SchemaContext| {
+        ctx.files.iter().map(|f| Dynamic::from(f.clone())).collect::<Vec<Dynamic>>()
+    });
+
+    engine.register_type_with_name::<FileDef>("FileDef");
+    engine.register_get("path", |f: &mut FileDef| f.path.clone());
+    engine.register_get("namespaces", |f: &mut FileDef| {
+        f.namespaces.iter().map(|ns| Dynamic::from(ns.clone())).collect::<Vec<Dynamic>>()
     });
 
     engine.register_type_with_name::<NamespaceDef>("NamespaceDef");
@@ -91,8 +93,12 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_type_with_name::<AnnotationDef>("AnnotationDef");
     engine.register_get("name", |a: &mut AnnotationDef| a.name.clone());
     engine.register_get("params", |a: &mut AnnotationDef| {
-        a.params.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<BTreeMap<String, String>>()
+        a.params.iter().map(|p| Dynamic::from(p.clone())).collect::<Vec<Dynamic>>()
     });
+
+    engine.register_type_with_name::<AnnotationParam>("AnnotationParam");
+    engine.register_get("key", |p: &mut AnnotationParam| p.key.clone());
+    engine.register_get("value", |p: &mut AnnotationParam| p.value.clone());
 
     engine.register_fn("include", |path: &str| -> Result<String, Box<EvalAltResult>> {
         match std::fs::read_to_string(path) {

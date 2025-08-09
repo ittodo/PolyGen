@@ -24,8 +24,9 @@ namespace game.item {
         MATERIAL;
     }
 
-    /// 아이템 정보를 정의하는 테이블입니다.
+    // DB 로드가 필요함을 의미 합니다.
     @load(type: "DB", path: "ItemsTable")
+    // 테그 됨
     @taggable
     table Item {
         id: u32 primary_key;

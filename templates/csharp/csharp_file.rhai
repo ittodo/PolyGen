@@ -1,22 +1,22 @@
 let namespace_template = include("templates/csharp/csharp_namespace.rhai");
 
-for ns in schema.namespaces {
-    let name = "";
-    for ch in ns.name.chars() {
-        name += if ch == "." { "/" } else { ch };
+for file in schema.files {
+    let file_path = file.path;
+    file_path.replace(".poly", ".cs");
+    print(`filepath : ${file.path} ${file_path}`);
+    if(file_path == "")
+    {
+        continue;
     }
-    
-    let file_content = eval(namespace_template);
-    let file_path;
+    let final_path = "output/csharp/" + file_path;
 
-    if ns.name == "" {
-        file_path = "output/csharp/GlobalTypes.cs";
-    } else {
-        file_path = "output/csharp/" + name + ".cs";
+    let file_content = "";
+    for ns in file.namespaces {
+        file_content += eval(namespace_template);
     }
-    
-    print("Generating file: " + file_path);
-    write_file(file_path, file_content);
+
+    print("Generating file: " + final_path);
+    write_file(final_path, file_content);
 }
 
-"" // Return an empty string as the main output is now file generation
+""

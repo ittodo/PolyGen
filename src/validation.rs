@@ -1,4 +1,4 @@
-use crate::ast::{Definition, FieldDefinition, TableMember, TypeName};
+use crate::ast_model::{Definition, FieldDefinition, TableMember, TypeName};
 use crate::error::ValidationError;
 use std::collections::HashSet;
 
@@ -75,6 +75,7 @@ fn collect_all_types(
                 }
             }
             Definition::Comment(_) => { /* Comments are not types, so we ignore them. */ }
+            Definition::Annotation(_) => { /* Annotations are not types, so we ignore them. */ }
         }
     }
     Ok(())
@@ -170,6 +171,7 @@ fn validate_all_types(
                 path.pop();
             }
             Definition::Comment(_) => { /* Comments do not reference types */ }
+            Definition::Annotation(_) => { /* Annotations do not reference types */ }
         }
     }
     Ok(())

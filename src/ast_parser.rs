@@ -1,183 +1,9 @@
 use pest::iterators::Pair;
-use std::fmt;
 use std::path::PathBuf;
 
+use crate::ast_model::*;
 use crate::error::AstBuildError;
 use crate::Rule;
-
-/// Represents the entire content of a single schema file.
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct AstRoot {
-    pub path: PathBuf,
-    pub file_imports: Vec<String>,
-    pub definitions: Vec<Definition>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Definition {
-    Namespace(Namespace),
-    Table(Table),
-    Enum(Enum),
-    Embed(Embed),
-    Comment(String),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Namespace {
-    pub path: Vec<String>,
-    pub imports: Vec<NamespaceImport>,
-    pub definitions: Vec<Definition>,
-}
-
-/// Represents a `import game.common.*;` or `import game.common.Type;` statement.
-#[derive(Debug, PartialEq, Clone)]
-pub struct NamespaceImport {
-    pub path: Vec<String>,
-    pub all: bool, // true for `.*`
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Table {
-    pub doc_comment: Option<String>,
-    pub annotations: Vec<Annotation>,
-    pub name: String,
-    pub members: Vec<TableMember>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum TableMember {
-    Field(FieldDefinition),
-    Embed(Embed), // Named embed definition within a table
-    Comment(String),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Annotation {
-    pub name: String,
-    pub params: Vec<AnnotationParam>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct AnnotationParam {
-    pub key: String,
-    pub value: Literal,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FieldDefinition {
-    Regular(RegularField),
-    InlineEmbed(InlineEmbedField),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct RegularField {
-    pub doc_comment: Option<String>,
-    pub annotations: Vec<Annotation>,
-    pub name: String,
-    pub field_type: TypeWithCardinality,
-    pub constraints: Vec<Constraint>,
-    pub field_number: Option<u32>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct TypeWithCardinality {
-    pub base_type: TypeName,
-    pub cardinality: Option<Cardinality>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum TypeName {
-    Path(Vec<String>),
-    Basic(BasicType),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Cardinality {
-    Optional, // ?
-    Array,    // []
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum BasicType {
-    String,
-    I8,
-    I16,
-    I32,
-    I64,
-    U8,
-    U16,
-    U32,
-    U64,
-    F32,
-    F64,
-    Bool,
-    Bytes,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Constraint {
-    PrimaryKey,
-    Unique,
-    MaxLength(u32),
-    Default(Literal),
-    Range(Literal, Literal),
-    Regex(String),
-    ForeignKey(Vec<String>, Option<String>), // path, optional 'as' identifier
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct InlineEmbedField {
-    pub doc_comment: Option<String>,
-    pub annotations: Vec<Annotation>,
-    pub name: String,
-    pub fields: Vec<FieldDefinition>,
-    pub cardinality: Option<Cardinality>,
-    pub field_number: Option<u32>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct EnumVariant {
-    pub doc_comment: Option<String>,
-    pub annotations: Vec<Annotation>,
-    pub name: String,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Enum {
-    pub doc_comment: Option<String>,
-    pub annotations: Vec<Annotation>,
-    pub name: String,
-    pub variants: Vec<EnumVariant>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Embed {
-    pub doc_comment: Option<String>,
-    pub annotations: Vec<Annotation>,
-    pub name: String,
-    pub fields: Vec<FieldDefinition>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Literal {
-    String(String),
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
-    Identifier(String), // For annotation_param values that are identifiers
-}
-
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Literal::String(s) => write!(f, "{}", s),
-            Literal::Integer(i) => write!(f, "{}", i),
-            Literal::Float(fl) => write!(f, "{}", fl),
-            Literal::Boolean(b) => write!(f, "{}", b),
-            Literal::Identifier(id) => write!(f, "{}", id),
-        }
-    }
-}
 
 // Helper function to parse a path (e.g., "game.common")
 fn parse_path(pair: Pair<Rule>) -> Vec<String> {
@@ -252,42 +78,34 @@ fn extract_comment_content(comment_pair: Pair<Rule>) -> String {
         .to_string()
 }
 
-// Helper function to parse doc comments from a stream of pairs.
-// It consumes `doc_comment` rules from the beginning of the stream.
-fn parse_doc_comments(
+// Helper function to parse doc comments and annotations from a stream of pairs.
+// It consumes `doc_comment` and `annotation` rules from the beginning of the stream,
+// allowing them to be interleaved.
+fn parse_metadata(
     inner_pairs: &mut std::iter::Peekable<pest::iterators::Pairs<Rule>>,
-) -> Option<String> {
-    let mut doc_comments = Vec::new();
+) -> Result<Vec<Metadata>, AstBuildError> {
+    let mut metadata = Vec::new();
+
     while let Some(p) = inner_pairs.peek() {
-        if p.as_rule() == Rule::doc_comment {
-            // Consume the pair
-            doc_comments.push(extract_comment_content(inner_pairs.next().unwrap()));
-        } else {
-            break;
+        match p.as_rule() {
+            Rule::doc_comment => {
+                // Consume the pair
+                let comment_pair = inner_pairs.next().unwrap();
+                metadata.push(Metadata::DocComment(extract_comment_content(comment_pair)));
+            }
+            Rule::annotation => {
+                // Consume the pair and parse it
+                let annotation_pair = inner_pairs.next().unwrap();
+                metadata.push(Metadata::Annotation(parse_annotation(annotation_pair)?));
+            }
+            _ => {
+                // Not a metadata rule, so we stop.
+                break;
+            }
         }
     }
 
-    if !doc_comments.is_empty() {
-        Some(doc_comments.join("\n"))
-    } else {
-        None
-    }
-}
-
-// Helper function to parse annotations from a stream of pairs.
-fn parse_annotations(
-    inner_pairs: &mut std::iter::Peekable<pest::iterators::Pairs<Rule>>,
-) -> Result<Vec<Annotation>, AstBuildError> {
-    let mut annotations = Vec::new();
-    while let Some(p) = inner_pairs.peek() {
-        if p.as_rule() == Rule::annotation {
-            // Consume the pair and parse it
-            annotations.push(parse_annotation(inner_pairs.next().unwrap())?);
-        } else {
-            break;
-        }
-    }
-    Ok(annotations)
+    Ok(metadata)
 }
 
 // Main function to build the AST
@@ -358,17 +176,40 @@ pub fn build_ast_from_pairs(
 fn parse_definition(pair: Pair<Rule>) -> Result<Definition, AstBuildError> {
     let (_line, _col) = pair.line_col();
     let mut inner_pairs = pair.into_inner().peekable();
-    let doc_comment = parse_doc_comments(&mut inner_pairs);
-    let annotations = parse_annotations(&mut inner_pairs)?;
+    let metadata = parse_metadata(&mut inner_pairs)?;
 
     let def_pair = inner_pairs.next().unwrap(); // Safe due to grammar
     let (inner_line, inner_col) = def_pair.line_col();
 
-    let mut definition = match def_pair.as_rule() {
-        Rule::namespace => Definition::Namespace(parse_namespace(def_pair)?),
-        Rule::table => Definition::Table(parse_table(def_pair)?),
-        Rule::enum_def => Definition::Enum(parse_enum(def_pair)?),
-        Rule::embed_def => Definition::Embed(parse_embed(def_pair)?),
+    let definition = match def_pair.as_rule() {
+        Rule::namespace => {
+            let mut ns = parse_namespace(def_pair)?;
+            let mut new_defs: Vec<Definition> = metadata
+                .into_iter()
+                .map(|m| match m {
+                    Metadata::DocComment(c) => Definition::Comment(c),
+                    Metadata::Annotation(a) => Definition::Annotation(a),
+                })
+                .collect();
+            new_defs.append(&mut ns.definitions);
+            ns.definitions = new_defs;
+            Definition::Namespace(ns)
+        }
+        Rule::table => {
+            let mut table = parse_table(def_pair)?;
+            table.metadata = metadata;
+            Definition::Table(table)
+        }
+        Rule::enum_def => {
+            let mut enum_def = parse_enum(def_pair)?;
+            enum_def.metadata = metadata;
+            Definition::Enum(enum_def)
+        }
+        Rule::embed_def => {
+            let mut embed = parse_embed(def_pair)?;
+            embed.metadata = metadata;
+            Definition::Embed(embed)
+        }
         found => {
             return Err(AstBuildError::UnexpectedRule {
                 expected: "namespace, table, enum, or embed".to_string(),
@@ -379,23 +220,6 @@ fn parse_definition(pair: Pair<Rule>) -> Result<Definition, AstBuildError> {
         }
     };
 
-    // Attach the doc comment to the definition
-    match &mut definition {
-        Definition::Table(t) => {
-            t.doc_comment = doc_comment;
-            t.annotations = annotations;
-        }
-        Definition::Enum(e) => {
-            e.doc_comment = doc_comment;
-            e.annotations = annotations;
-        }
-        Definition::Embed(e) => {
-            e.doc_comment = doc_comment;
-            e.annotations = annotations;
-        }
-        Definition::Namespace(_) => {} // Comments on namespaces can be added later if needed
-        Definition::Comment(_) => {}   // Comments don't have annotations or other comments
-    }
     Ok(definition)
 }
 
@@ -468,8 +292,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
         }
     }
     Ok(Table {
-        doc_comment: None,       // Will be set by the parent parser (build_ast_from_pairs)
-        annotations: Vec::new(), // Will be set by the parent parser
+        metadata: Vec::new(), // Will be set by the parent parser (build_ast_from_pairs)
         name,
         members,
     })
@@ -478,8 +301,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
 fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
     let (p_line, p_col) = pair.line_col();
     let mut member_inner = pair.into_inner().peekable();
-    let doc_comment = parse_doc_comments(&mut member_inner);
-    let annotations = parse_annotations(&mut member_inner)?;
+    let metadata = parse_metadata(&mut member_inner)?;
 
     let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
         rule: Rule::table_member,
@@ -504,18 +326,9 @@ fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
 
     // Attach comment to the member
     match &mut member {
-        TableMember::Field(FieldDefinition::Regular(f)) => {
-            f.doc_comment = doc_comment;
-            f.annotations = annotations;
-        }
-        TableMember::Field(FieldDefinition::InlineEmbed(f)) => {
-            f.doc_comment = doc_comment;
-            f.annotations = annotations;
-        }
-        TableMember::Embed(e) => {
-            e.doc_comment = doc_comment;
-            e.annotations = annotations;
-        }
+        TableMember::Field(FieldDefinition::Regular(f)) => f.metadata = metadata,
+        TableMember::Field(FieldDefinition::InlineEmbed(f)) => f.metadata = metadata,
+        TableMember::Embed(e) => e.metadata = metadata,
         TableMember::Comment(_) => {}
     }
 
@@ -655,8 +468,7 @@ fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildError> 
         }
     }
     Ok(RegularField {
-        doc_comment: None,       // Will be set by the parent parser (parse_table)
-        annotations: Vec::new(), // Will be set by the parent parser
+        metadata: Vec::new(), // Will be set by the parent parser (parse_table)
         name,
         field_type: type_with_cardinality,
         constraints,
@@ -879,8 +691,7 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
             Rule::table_member => {
                 let (p_line, p_col) = p.line_col();
                 let mut member_inner = p.into_inner().peekable();
-                let doc_comment = parse_doc_comments(&mut member_inner);
-                let annotations = parse_annotations(&mut member_inner)?;
+                let metadata = parse_metadata(&mut member_inner)?;
 
                 let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
                     rule: Rule::table_member,
@@ -893,14 +704,8 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
                 if member_pair.as_rule() == Rule::field_definition {
                     let mut field_def = parse_field_definition(member_pair)?;
                     match &mut field_def {
-                        FieldDefinition::Regular(f) => {
-                            f.doc_comment = doc_comment;
-                            f.annotations = annotations;
-                        }
-                        FieldDefinition::InlineEmbed(f) => {
-                            f.doc_comment = doc_comment;
-                            f.annotations = annotations;
-                        }
+                        FieldDefinition::Regular(f) => f.metadata = metadata,
+                        FieldDefinition::InlineEmbed(f) => f.metadata = metadata,
                     }
                     fields.push(field_def);
                 } else {
@@ -968,8 +773,7 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
         });
     }
     Ok(InlineEmbedField {
-        doc_comment: None,       // Will be set by the parent parser (parse_table)
-        annotations: Vec::new(), // Will be set by the parent parser
+        metadata: Vec::new(), // Will be set by the parent parser (parse_table)
         name,
         fields,
         cardinality,
@@ -996,8 +800,7 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
         if p.as_rule() == Rule::enum_variant {
             let (p_line, p_col) = p.line_col();
             let mut variant_inner = p.into_inner().peekable();
-            let doc_comment = parse_doc_comments(&mut variant_inner);
-            let annotations = parse_annotations(&mut variant_inner)?;
+            let metadata = parse_metadata(&mut variant_inner)?;
             let variant_name = variant_inner
                 .next()
                 .ok_or(AstBuildError::MissingElement {
@@ -1010,15 +813,13 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
                 .to_string();
 
             variants.push(EnumVariant {
-                doc_comment,
-                annotations,
+                metadata,
                 name: variant_name,
             });
         }
     }
     Ok(Enum {
-        doc_comment: None,       // Will be set by the parent parser (build_ast_from_pairs)
-        annotations: Vec::new(), // Will be set by the parent parser
+        metadata: Vec::new(), // Will be set by the parent parser (build_ast_from_pairs)
         name,
         variants,
     })
@@ -1042,8 +843,7 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
         if p.as_rule() == Rule::table_member {
             let (p_line, p_col) = p.line_col();
             let mut member_inner = p.into_inner().peekable();
-            let doc_comment = parse_doc_comments(&mut member_inner);
-            let annotations = parse_annotations(&mut member_inner)?;
+            let metadata = parse_metadata(&mut member_inner)?;
 
             let member_pair = member_inner.next().ok_or(AstBuildError::MissingElement {
                 rule: Rule::table_member,
@@ -1056,14 +856,8 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
             if member_pair.as_rule() == Rule::field_definition {
                 let mut field_def = parse_field_definition(member_pair)?;
                 match &mut field_def {
-                    FieldDefinition::Regular(f) => {
-                        f.doc_comment = doc_comment;
-                        f.annotations = annotations;
-                    }
-                    FieldDefinition::InlineEmbed(f) => {
-                        f.doc_comment = doc_comment;
-                        f.annotations = annotations;
-                    }
+                    FieldDefinition::Regular(f) => f.metadata = metadata,
+                    FieldDefinition::InlineEmbed(f) => f.metadata = metadata,
                 }
                 fields.push(field_def);
             } else {
@@ -1085,8 +879,7 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
         }
     }
     Ok(Embed {
-        doc_comment: None,       // Will be set by the parent parser
-        annotations: Vec::new(), // Will be set by the parent parser
+        metadata: Vec::new(), // Will be set by the parent parser
         name,
         fields,
     })

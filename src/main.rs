@@ -6,11 +6,11 @@ use std::collections::{HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::ast::{AstRoot, Definition};
+use crate::ast_model::{AstRoot, Definition};
 
-mod ast;
+mod ast_model;
+mod ast_parser;
 mod error; // error 모듈을 추가합니다.
-mod generator;
 mod ir_builder;
 mod ir_model;
 mod rhai_generator;
@@ -39,10 +39,6 @@ struct Cli {
     /// Target language for code generation (e.g., csharp, typescript)
     #[arg(short, long, default_value = "csharp")]
     lang: String,
-
-    /// The template engine to use
-    #[arg(long, default_value = "minijinja")]
-    engine: String,
 }
 
 // ... parse_and_merge_schemas function remains the same ...
@@ -51,17 +47,14 @@ fn parse_and_merge_schemas(initial_path: &Path, output_dir: &Path) -> Result<Vec
     let mut processed_files: HashSet<PathBuf> = HashSet::new();
     let mut all_asts: Vec<AstRoot> = Vec::new();
 
-    let initial_path_buf = PathBuf::from(initial_path).canonicalize()?;
-    files_to_process.push_back(initial_path_buf);
+    let initial_path_buf = initial_path.to_path_buf();
+    files_to_process.push_back(initial_path_buf.clone());
+    processed_files.insert(initial_path_buf.canonicalize()?);
 
     // 디버그 출력을 위해 첫 번째 파일인지 확인하는 플래그
     let mut is_first_file = true;
 
     while let Some(current_path) = files_to_process.pop_front() {
-        if !processed_files.insert(current_path.clone()) {
-            continue; // Already processed, skip to avoid cycles
-        }
-
         println!("--- 스키마 파싱 중: {} ---", current_path.display());
         let unparsed_file = fs::read_to_string(&current_path)?.replace("\r\n", "\n");
         let main_pair = Polygen::parse(Rule::main, &unparsed_file)?
@@ -88,7 +81,7 @@ fn parse_and_merge_schemas(initial_path: &Path, output_dir: &Path) -> Result<Vec
             is_first_file = false;
         }
 
-        let ast_root = ast::build_ast_from_pairs(main_pair, current_path.clone())?;
+        let ast_root = ast_parser::build_ast_from_pairs(main_pair, current_path.clone())?;
         let file_imports = ast_root.file_imports.clone(); // Clone imports before moving ast_root
         all_asts.push(ast_root);
 
@@ -100,7 +93,8 @@ fn parse_and_merge_schemas(initial_path: &Path, output_dir: &Path) -> Result<Vec
             let import_path = base_dir.join(import_path_str);
             let canonical_import_path = import_path.canonicalize()?;
             if !processed_files.contains(&canonical_import_path) {
-                files_to_process.push_back(canonical_import_path);
+                processed_files.insert(canonical_import_path);
+                files_to_process.push_back(import_path);
             }
         }
     }
@@ -127,21 +121,15 @@ fn main() -> Result<()> {
         ast_debug_path.display()
     );
 
-    // 3. 모든 AST에서 정의(definition)만 추출하여 하나의 리스트로 합칩니다.
-    //    `all_asts`는 나중에 C# 파일 생성 시 다시 사용하기 위해 원본을 유지합니다.
-    let all_definitions: Vec<Definition> = all_asts
-        .iter()
-        .flat_map(|ast| ast.definitions.clone())
-        .collect();
-
-    // 4. 합쳐진 AST의 유효성을 검사합니다.
+    // 3. 모든 AST의 유효성을 검사합니다.
     println!("--- AST 유효성 검사 중 ---");
+    let all_definitions: Vec<Definition> = all_asts.iter().flat_map(|ast| ast.definitions.clone()).collect();
     validation::validate_ast(&all_definitions)?;
     println!("AST 유효성 검사 성공.");
 
-    // 5. AST를 템플릿 엔진이 사용하기 좋은 IR(Intermediate Representation)로 변환합니다.
+    // 4. AST를 템플릿 엔진이 사용하기 좋은 IR(Intermediate Representation)로 변환합니다.
     println!("\n--- AST를 IR로 변환 중 ---");
-    let ir_context = ir_builder::build_ir(&all_definitions);
+    let ir_context = ir_builder::build_ir(&all_asts);
     println!("IR 변환 성공.");
 
     // --- [디버깅] 변환된 IR의 전체 구조를 파일로 출력합니다. ---
@@ -152,7 +140,7 @@ fn main() -> Result<()> {
         ir_debug_path.display()
     );
 
-    // --- 코드 생성 (설정 기반) ---
+    // --- 코드 생성 (Rhai) ---
     println!("\n--- {} 코드 생성 중 ---", cli.lang.to_uppercase());
     let lang_output_dir = cli.output_dir.join(&cli.lang);
 
@@ -168,51 +156,15 @@ fn main() -> Result<()> {
         }
     }
 
-    let mut minijinja_generator_opt: Option<generator::Generator> = None; // Option to hold minijinja generator
+    println!("Using Rhai template engine.");
+    let template_path = cli
+        .templates_dir
+        .join(&cli.lang)
+        .join(format!("{}_file.rhai", cli.lang));
+    rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
+        .map_err(|e| anyhow::anyhow!(e))?; // Convert String error to anyhow::Error
 
-    match cli.engine.as_str() {
-        "rhai" => {
-            println!("Using Rhai template engine.");
-            let template_path = cli
-                .templates_dir
-                .join(&cli.lang)
-                .join(format!("{}_file.rhai", cli.lang));
-            rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
-                .map_err(|e| anyhow::anyhow!(e))?; // Convert String error to anyhow::Error
-        }
-        "minijinja" => {
-            println!("Using MiniJinja template engine.");
-            let template_generator = generator::Generator::new(&cli.templates_dir)?;
-            template_generator.generate(&ir_context, &cli.lang, &lang_output_dir)?;
-            minijinja_generator_opt = Some(template_generator); // Store for later use
-        }
-        _ => {
-            eprintln!("Error: Unknown template engine '{}'", cli.engine);
-            std::process::exit(1);
-        }
-    }
     println!("{} 코드 생성이 완료되었습니다.", cli.lang.to_uppercase());
-
-    // Use the stored minijinja_generator_opt for mermaid generation
-    let template_generator = minijinja_generator_opt.unwrap_or_else(|| {
-        // If rhai was used, or no generator was created, create a default minijinja generator for mermaid
-        generator::Generator::new(&cli.templates_dir).expect("Failed to create MiniJinja generator for Mermaid")
-    });
-
-    // --- Mermaid 다이어그램 생성 ---
-    println!("\n--- Mermaid 다이어그램 생성 중 ---");
-    let mermaid_output_dir = Path::new("output/diagram");
-    fs::create_dir_all(mermaid_output_dir)?;
-    let mermaid_output_file_path = mermaid_output_dir.join("class_diagram.md");
-
-    let mermaid_code = template_generator.generate_mermaid_diagram(&all_definitions)?;
-    // GitHub에서 렌더링되도록 마크다운 코드 블록으로 감싸줍니다.
-    let mermaid_content = format!("```mermaid\n{}\n```", mermaid_code);
-    fs::write(&mermaid_output_file_path, mermaid_content)?;
-    println!(
-        "Mermaid 다이어그램이 성공적으로 생성되었습니다: {}",
-        mermaid_output_file_path.display()
-    );
 
     Ok(())
 }
