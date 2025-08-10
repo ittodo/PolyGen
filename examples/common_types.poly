@@ -12,7 +12,7 @@ namespace game.common {
     /// 게임 월드 내의 2D 좌표를 나타내는 복합 타입입니다.
     /// `embed`를 사용하여 여러 테이블에서 재사용할 수 있습니다.
     embed Position {
-        /// 테스트2
+        // 테스트2
         x: f32;
         y: f32;
     }

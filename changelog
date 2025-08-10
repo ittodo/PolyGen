@@ -4,3 +4,71 @@
 - `main.rs`, `ir_builder.rs`, `validation.rs` 파일에서 `ast` 모듈 참조를 `ast_model` 및 `ast_parser`로 수정했습니다.
 - `ast_parser.rs`에 누락된 `use` 구문을 추가하고, `build_ast_from_pairs` 함수를 `pub`으로 변경하여 모듈 외부에서 호출할 수 있도록 수정했습니다.
 - `sample.polygen` 파일의 필드 정의 끝에 세미콜론(;)을 추가하여 문법 오류를 수정했습니다.
+
+## 2025-08-09
+
+- **템플릿 엔진 전환 및 정리**: minijinja 기반 코드 생성 시스템을 완전히 제거하고 Rhai 엔진으로 전환했습니다. 관련 파일 및 의존성을 정리했습니다.
+- **AST/IR 모델 재구조화**:
+    - `ast.rs`를 `ast_model.rs`와 `ast_parser.rs`로 분리하여 AST 데이터 구조와 파싱 로직을 명확히 구분했습니다.
+    - IR 모델(`ir_model.rs`)에 `FileDef`를 도입하여 소스 파일별 코드 구성을 지원하고, `StructDef`에 `header` 필드를 추가하여 구조체 선언 전 메타데이터(주석, 어노테이션)를 포함할 수 있도록 했습니다.
+    - `AnnotationDef` 및 `EnumDef`에 `comment` 필드를 추가하여 주석을 직접 연결할 수 있도록 개선했습니다.
+    - `ir_builder.rs`를 업데이트하여 새로운 AST/IR 구조에 맞춰 메타데이터를 처리하고, 어노테이션에 선행하는 주석을 자동으로 연결하도록 로직을 개선했습니다.
+- **Polygen 문법 및 예제 업데이트**: `sample.polygen` 및 예제 파일에 세미콜론 및 `max_length` 제약 조건 등 문법 변경 사항을 반영했습니다.
+- **내부 로직 개선**: `main.rs`, `rhai_generator.rs`, `validation.rs` 등 핵심 로직을 업데이트된 AST/IR 모델 및 Rhai 엔진 사용에 맞춰 수정했습니다.
+
+## 2025-08-09
+
+- **C# 코드 생성 분할**: C# 코드 생성 템플릿을 개선하여 각 구조체 및 열거형이 별도의 파일로 생성되도록 분할했습니다.
+    - `csharp_struct.rhai` 및 `csharp_enum.rhai` 템플릿을 새로 추가했습니다.
+    - `csharp_namespace.rhai`는 네임스페이스 선언만 처리하도록 간소화했습니다.
+    - `csharp_file.rhai`는 각 구조체 및 열거형에 대해 개별 C# 파일을 생성하도록 로직을 업데이트했습니다.
+
+## 2025-08-09
+
+- **IR 모델 개선 및 Rhai 연동 강화**:
+    - `ir_model.rs`의 `StructDef`에 `embedded_structs: Vec<StructDef>` 필드를 추가하여 중첩된 구조체 정의를 명시적으로 포함할 수 있도록 했습니다.
+    - `ir_builder.rs`에서 `TableMember::Embed`를 파싱할 때 해당 임베드된 구조체를 `StructDef`의 `embedded_structs` 필드에 올바르게 할당하도록 로직을 수정했습니다.
+    - `rhai_generator.rs`에서 `StructDef`의 `embedded_structs` 필드를 Rhai 템플릿 엔진에서 접근할 수 있도록 등록했습니다.
+    - `rhai_generator.rs`에서 `EnumDef`의 `comment` 필드 접근 시 타입 추론 오류를 수정했습니다.
+    - 코드 정리: `rhai_generator.rs`에서 사용되지 않는 `string` import를 제거하고, `ir_builder.rs`에서 사용되지 않는 `add_metadata_to_namespace` 함수를 제거했습니다.
+- **출력 디렉토리 자동 정리**: 프로그램 실행 시 `output` 디렉토리가 이미 존재하면 자동으로 삭제하고 다시 생성하도록 `main.rs`를 수정했습니다.
+
+## 2025-08-09
+
+- **IR 빌더 로직 수정**: 인라인 `embed`가 부모 구조체 내의 중첩 타입으로 올바르게 처리되도록 `ir_builder.rs`의 로직을 리팩토링했습니다.
+    - 중첩 구조체(`StructDef`)가 부모의 `embedded_structs` 필드에 직접 포함되도록 함수 시그니처와 데이터 흐름을 변경했습니다.
+    - 이전에 중첩 구조체가 부모와 동일한 네임스페이스 레벨에 잘못 위치하던 버그를 수정했습니다.
+
+## 2025-08-10
+
+### IR 모델 리팩토링
+- `ir_model.rs`: `FieldDef`, `AnnotationDef`, `EnumDef`, `EnumMember`에서 `comment: Option<String>` 필드를 제거하여 주석을 항상 별도의 `Comment(String)` 항목으로 표현하는 일관된 IR 디자인을 적용했습니다.
+
+### IR 빌더 업데이트
+- `ir_builder.rs`:
+    - `Struct`의 주석 처리 로직을 변경하여, 필드 메타데이터(주석, 어노테이션)를 별도의 `StructItem`으로 먼저 처리한 후 `StructItem::Field`를 추가하도록 수정했습니다.
+    - `convert_field_to_ir` 함수를 주석을 처리하지 않도록 변경했습니다.
+    - 사용되지 않는 헬퍼 함수 `get_field_metadata` 및 `get_field_metadata_from_vec`를 제거했습니다.
+    - `convert_enum` 및 `convert_annotations_to_ir` 함수를 새로운 IR 모델에 맞춰 정리했습니다.
+    - 사용되지 않는 `enum_comment` 변수를 제거했습니다.
+
+### Rhai 코드 생성기 및 템플릿 호환성 개선
+- `rhai_generator.rs`: IR 모델 변경 후 발생한 빌드 오류를 해결하기 위해 `FieldDef`, `EnumDef`, `EnumMember`, `AnnotationDef`의 `comment` 프로퍼티에 대한 `register_get` 호출을 제거했습니다.
+- `templates/csharp/csharp_enum.rhai` & `templates/csharp/enum/csharp_enum.rhai`: 새로운 IR 디자인에 맞춰 Enum 생성 로직을 `e.items`를 순회하며 `EnumItem::Comment`와 `EnumItem::Member`를 별도로 처리하도록 재작성했습니다.
+- `templates/csharp/csharp_struct.rhai`: 새로운 IR 디자인에 맞춰 Struct 생성 로직을 `s.header`와 `s.items`를 순회하며 `StructItem::Comment`, `StructItem::Annotation`, `StructItem::Field`를 별도로 처리하도록 재작성했습니다. `annotation.comment` 접근 코드를 제거했습니다.
+- `templates/rhai_utils/indent.rhai`: `is_null`, `repeated`, `join` 함수 미발견 오류를 해결하기 위해 기본적인 Rhai 구문과 Windows 호환성을 위한 `
+`을 사용하도록 수정했습니다.
+- `src/ast_parser.rs`: `extract_comment_content` 함수를 개선하여 `///`, `//`, `/* */` 접두사를 올바르게 제거하도록 수정했습니다.
+
+### 기타 변경 사항
+- `examples/common_types.poly`: 주석 형식 업데이트 (/// -> //).
+- `examples/monster_columns_explained.md`, `examples/player_columns_explained.md`, `examples/playerskill_columns_explained.md`: 삭제됨.
+- `src/main.rs`: 프로그램 실행 시 `output` 디렉토리를 삭제하고 다시 생성하도록 수정.
+- `templates/csharp/csharp_file.rhai`: 새로운 파일 생성 전략에 맞춰 수정.
+- `templates/csharp/csharp_logic_namespace.rhai`: 새 파일.
+- `templates/csharp/csharp_namespace.rhai`: 수정됨.
+- `templates/csharp/csharp_using.rhai`: 새 파일.
+- `templates/csharp/struct/csharp_logic_struct.rhai`: 새 파일.
+- `templates/csharp/struct/csharp_logic_struct_body.rhai`: 새 파일.
+- `templates/csharp/struct/csharp_logic_struct_header.rhai`: 새 파일.
+- `templates/rhai_utils/indent.rhai`: 새 파일.

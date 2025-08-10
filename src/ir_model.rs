@@ -41,6 +41,7 @@ pub struct StructDef {
     pub header: Vec<StructItem>,
     pub items: Vec<StructItem>,
     pub is_embed: bool,
+    pub embedded_structs: Vec<StructDef>,
 }
 
 /// An enum representing any item that can appear within a struct.
@@ -56,7 +57,6 @@ pub enum StructItem {
 pub struct FieldDef {
     pub name: String,
     pub field_type: String, // A simplified, language-agnostic type string like "List<Position>" or "Option<u32>"
-    pub comment: Option<String>, // Comments attached to the end of a field line
     pub attributes: Vec<String>, // For annotations like [Key], [MaxLength(30)]
 }
 
@@ -65,7 +65,6 @@ pub struct FieldDef {
 pub struct AnnotationDef {
     pub name: String,
     pub params: Vec<AnnotationParam>,
-    pub comment: Option<String>,
 }
 
 /// Represents a key-value parameter for an annotation.
@@ -81,7 +80,6 @@ pub struct AnnotationParam {
 #[derive(Serialize, Debug, Clone)]
 pub struct EnumDef {
     pub name: String,
-    pub comment: Option<String>,
     pub items: Vec<EnumItem>,
 }
 
@@ -96,5 +94,4 @@ pub enum EnumItem {
 #[derive(Serialize, Debug, Clone)]
 pub struct EnumMember {
     pub name: String,
-    pub comment: Option<String>, // Comments attached to the end of a member line
 }

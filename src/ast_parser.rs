@@ -71,11 +71,19 @@ fn parse_literal(pair: Pair<Rule>) -> Result<Literal, AstBuildError> {
 }
 
 fn extract_comment_content(comment_pair: Pair<Rule>) -> String {
-    comment_pair
-        .as_str()
-        .trim_start_matches("///")
-        .trim()
-        .to_string()
+    let s = comment_pair.as_str();
+    if s.starts_with("///") {
+        // '///'로 시작하는 문서 주석을 처리합니다.
+        s.strip_prefix("///").unwrap().trim().to_string()
+    } else if s.starts_with("//") {
+        // '//'로 시작하는 일반 주석을 처리합니다.
+        s.strip_prefix("//").unwrap().trim().to_string()
+    } else if s.starts_with("/*") {
+        // '/*'로 시작하는 블록 주석을 처리합니다.
+        s.strip_prefix("/*").unwrap().trim_end_matches("*/").trim().to_string()
+    } else {
+        s.trim().to_string()
+    }
 }
 
 // Helper function to parse doc comments and annotations from a stream of pairs.

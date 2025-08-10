@@ -105,7 +105,12 @@ fn main() -> Result<()> {
     // 1. 명령줄 인자를 파싱합니다.
     let cli = Cli::parse();
 
-    // 출력 디렉토리가 없으면 생성합니다.
+    // 출력 디렉토리가 이미 존재하면 삭제하고 다시 생성합니다.
+    if cli.output_dir.exists() {
+        println!("기존 출력 디렉토리 삭제 중: {}", cli.output_dir.display());
+        fs::remove_dir_all(&cli.output_dir)?;
+    }
+    println!("출력 디렉토리 생성 중: {}", cli.output_dir.display());
     fs::create_dir_all(&cli.output_dir)?;
 
     // 2. 스키마 파일과 모든 import를 재귀적으로 파싱하고 하나의 AST로 합칩니다.

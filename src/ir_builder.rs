@@ -78,16 +78,13 @@ fn populate_namespaces(
                 // Now, add the item to the determined namespace.
                 match def {
                     Definition::Table(table) => {
-                        //add_metadata_to_namespace(&mut namespace.items, &table.metadata);
-                        let (struct_def, mut nested_items) = convert_table_to_struct(table);
+                        let struct_def = convert_table_to_struct(table);
                         namespace.items.push(NamespaceItem::Struct(struct_def));
-                        namespace.items.append(&mut nested_items);
                     }
                     Definition::Enum(e) => {
                         namespace.items.push(convert_enum(e));
                     }
                     Definition::Embed(embed) => {
-                        //add_metadata_to_namespace(&mut namespace.items, &embed.metadata);
                         namespace
                             .items
                             .push(NamespaceItem::Struct(convert_embed_to_struct(embed)));
@@ -105,129 +102,102 @@ fn populate_namespaces(
     }
 }
 
-/// Converts an `ast_model::Table` into an `ir_model::StructDef` and any nested types.
-fn convert_table_to_struct(table: &ast_model::Table) -> (StructDef, Vec<NamespaceItem>) {
+fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
     let mut items = Vec::new();
-    let mut nested_items = Vec::new();
     let mut header_items = Vec::new();
-    let mut last_doc_comment: Option<String> = None; // To store a preceding doc comment
+    let mut embedded_structs = Vec::new();
 
     // Process metadata for the struct header
     for meta in &table.metadata {
         match meta {
             Metadata::DocComment(c) => {
-                last_doc_comment = Some(c.clone());
+                header_items.push(StructItem::Comment(c.clone()));
             }
             Metadata::Annotation(a) => {
-                let mut annotation_def = convert_annotations_to_ir(&[a.clone()])[0].clone();
-                // Assign the preceding doc comment to the annotation
-                annotation_def.comment = last_doc_comment.take(); // .take() clears the Option after moving the value
+                let annotation_def = convert_annotations_to_ir(&[a.clone()])[0].clone();
                 header_items.push(StructItem::Annotation(annotation_def));
             }
         }
-    }
-    // If there's a remaining doc comment not followed by an annotation, add it as a standalone comment
-    if let Some(c) = last_doc_comment.take() {
-        header_items.push(StructItem::Comment(c));
     }
 
     for member in &table.members {
         match member {
             TableMember::Field(field) => {
+                // 필드에 연결된 메타데이터(주석, 어노테이션)를 먼저 처리
+                let field_metadata = match field {
+                    ast_model::FieldDefinition::Regular(rf) => &rf.metadata,
+                    ast_model::FieldDefinition::InlineEmbed(ief) => &ief.metadata,
+                };
+                for meta in field_metadata {
+                    match meta {
+                        Metadata::DocComment(c) => items.push(StructItem::Comment(c.clone())),
+                        Metadata::Annotation(a) => {
+                            let annotation_def = convert_annotations_to_ir(&[a.clone()])[0].clone();
+                            items.push(StructItem::Annotation(annotation_def));
+                        }
+                    }
+                }
+
+                // 그 다음에 필드 자체를 처리
                 let (field_def, mut new_nested) = convert_field_to_ir(field);
                 items.push(StructItem::Field(field_def));
-                nested_items.append(&mut new_nested);
+                embedded_structs.append(&mut new_nested);
             }
             TableMember::Embed(embed) => {
-                // A named embed inside a table is treated as a nested struct.
-                add_metadata_to_namespace(&mut nested_items, &embed.metadata);
-                nested_items.push(NamespaceItem::Struct(convert_embed_to_struct(embed)));
+                embedded_structs.push(convert_embed_to_struct(embed));
             }
-            TableMember::Comment(c) => items.push(StructItem::Comment(c.clone())),
+            TableMember::Comment(c) => {
+                items.push(StructItem::Comment(c.clone()))
+            }
         }
     }
 
-    let struct_def = StructDef {
+    StructDef {
         name: table.name.clone(),
         items,
         is_embed: false,
         header: header_items,
-    };
-
-    (struct_def, nested_items)
+        embedded_structs,
+    }
 }
 
 /// Converts an `ast_model::FieldDefinition` into an `ir_model::FieldDef` and potential nested types (from inline embeds).
-fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<NamespaceItem>) {
+fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<StructDef>) {
     match field {
         ast_model::FieldDefinition::Regular(rf) => {
-            let (comment, attributes) = get_field_metadata(rf);
+            let attributes = convert_constraints_to_attributes(&rf.constraints);
             (
                 FieldDef {
                     name: rf.name.clone(),
                     field_type: format_type(&rf.field_type),
-                    comment,
                     attributes,
                 },
-                Vec::new(), // Regular fields don't create nested types.
+                Vec::new(),
             )
         }
         ast_model::FieldDefinition::InlineEmbed(ief) => {
             let struct_name = ief.name.to_pascal_case();
-            let (mut inline_struct, mut nested_items) =
-                convert_table_to_struct(&ast_model::Table {
-                    name: struct_name.clone(),
-                    metadata: ief.metadata.clone(),
-                    members: ief
-                        .fields
-                        .iter()
-                        .map(|f| TableMember::Field(f.clone()))
-                        .collect(),
-                });
+            let mut inline_struct = convert_table_to_struct(&ast_model::Table {
+                name: struct_name.clone(),
+                metadata: ief.metadata.clone(),
+                members: ief
+                    .fields
+                    .iter()
+                    .map(|f| TableMember::Field(f.clone()))
+                    .collect(),
+            });
             inline_struct.is_embed = true;
 
-            nested_items.push(NamespaceItem::Struct(inline_struct));
-
-            let (comment, _) = get_field_metadata_from_vec(&ief.metadata);
+            let nested_items = vec![inline_struct];
 
             let field_def = FieldDef {
                 name: ief.name.clone(),
                 field_type: format_cardinality(&struct_name, &ief.cardinality),
-                comment,
                 attributes: Vec::new(),
             };
             (field_def, nested_items)
         }
     }
-}
-
-fn get_field_metadata(rf: &ast_model::RegularField) -> (Option<String>, Vec<String>) {
-    let comment = rf.metadata.iter().find_map(|m| match m {
-        Metadata::DocComment(c) => Some(c.clone()),
-        _ => None,
-    });
-
-    let attributes = convert_constraints_to_attributes(&rf.constraints);
-    (comment, attributes)
-}
-
-fn get_field_metadata_from_vec(
-    metadata: &[ast_model::Metadata],
-) -> (Option<String>, Vec<AnnotationDef>) {
-    let comment = metadata.iter().find_map(|m| match m {
-        Metadata::DocComment(c) => Some(c.clone()),
-        _ => None,
-    });
-
-    let annotations: Vec<ast_model::Annotation> = metadata
-        .iter()
-        .filter_map(|m| match m {
-            Metadata::Annotation(a) => Some(a.clone()),
-            _ => None,
-        })
-        .collect();
-
-    (comment, convert_annotations_to_ir(&annotations))
 }
 
 /// Converts field constraints from the AST into a vector of strings
@@ -270,19 +240,17 @@ fn convert_enum(e: &ast_model::Enum) -> NamespaceItem {
         }
         items.push(EnumItem::Member(ir_model::EnumMember {
             name: variant.name.clone(),
-            comment: None, // Line-end comments are handled differently if needed
         }));
     }
 
     NamespaceItem::Enum(EnumDef {
         name: e.name.clone(),
         items,
-        comment: enum_comment, // Assign the extracted comment here
     })
 }
 
 fn convert_embed_to_struct(embed: &ast_model::Embed) -> StructDef {
-    let (mut struct_def, _nested_types) = convert_table_to_struct(&ast_model::Table {
+    let mut struct_def = convert_table_to_struct(&ast_model::Table {
         name: embed.name.clone(),
         metadata: embed.metadata.clone(),
         members: embed
@@ -314,17 +282,6 @@ fn format_cardinality(base: &str, c: &Option<ast_model::Cardinality>) -> String 
     }
 }
 
-fn add_metadata_to_namespace(namespace_items: &mut Vec<NamespaceItem>, metadata: &[Metadata]) {
-    for meta in metadata {
-        match meta {
-            Metadata::DocComment(c) => namespace_items.push(NamespaceItem::Comment(c.clone())),
-            Metadata::Annotation(_) => {
-                // Annotations on namespaces/tables are handled at a higher level if needed
-            }
-        }
-    }
-}
-
 fn convert_annotations_to_ir(annotations: &[ast_model::Annotation]) -> Vec<AnnotationDef> {
     annotations
         .iter()
@@ -338,7 +295,6 @@ fn convert_annotations_to_ir(annotations: &[ast_model::Annotation]) -> Vec<Annot
                     value: p.value.to_string(), // Assuming value is a simple literal
                 })
                 .collect(),
-            comment: None, // Initialize the new comment field
         })
         .collect()
 }
