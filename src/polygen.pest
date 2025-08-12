@@ -44,7 +44,7 @@ namespace_body_item = { namespace_import | definition }
 table     = { "table" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" }
 embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" }
 
-table_member = { doc_comment* ~ annotation* ~ (embed_def | (field_definition ~ ";")) }
+table_member = { doc_comment* ~ annotation* ~ (embed_def | enum_def | (field_definition ~ ";")) }
 
 field_definition = { inline_embed_field | regular_field }
 
@@ -55,14 +55,15 @@ field_number = { "=" ~ INTEGER }
 
 // Enum
 // ====
-enum_def     = { "enum" ~ IDENT ~ "{" ~ enum_variant* ~ "}" }
-enum_variant = { doc_comment* ~ annotation* ~ IDENT ~ (";" | ",")? }
+enum_def           = { "enum" ~ IDENT ~ "{" ~ enum_variant* ~ "}" }
+anonymous_enum_def = { "enum" ~ "{" ~ enum_variant* ~ "}" }
+enum_variant       = { doc_comment* ~ annotation* ~ IDENT ~ (";" | ",")? }
 
 // Types
 // =====
 type_with_cardinality = { type_name ~ cardinality? }
 cardinality           = { "[]" | "?" }
-type_name             = { basic_type | path }
+type_name             = { basic_type | path | anonymous_enum_def }
 basic_type            = { "string" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "bytes" }
 
 // Constraints

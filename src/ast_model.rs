@@ -44,6 +44,7 @@ pub struct Table {
 pub enum TableMember {
     Field(FieldDefinition),
     Embed(Embed), // Named embed definition within a table
+    Enum(Enum),
     Comment(String),
 }
 
@@ -90,6 +91,7 @@ pub struct TypeWithCardinality {
 pub enum TypeName {
     Path(Vec<String>),
     Basic(BasicType),
+    AnonymousEnum(AnonymousEnum),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -139,6 +141,11 @@ pub struct InlineEmbedField {
 pub struct EnumVariant {
     pub metadata: Vec<Metadata>,
     pub name: String,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct AnonymousEnum {
+    pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

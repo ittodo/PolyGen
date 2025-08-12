@@ -322,9 +322,10 @@ fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
     let mut member = match member_pair.as_rule() {
         Rule::field_definition => TableMember::Field(parse_field_definition(member_pair)?),
         Rule::embed_def => TableMember::Embed(parse_embed(member_pair)?),
+        Rule::enum_def => TableMember::Enum(parse_enum(member_pair)?),
         found => {
             return Err(AstBuildError::UnexpectedRule {
-                expected: "field_definition or embed_def".to_string(),
+                expected: "field_definition, embed_def, or enum_def".to_string(),
                 found,
                 line: inner_line,
                 col: inner_col,
@@ -332,11 +333,12 @@ fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
         }
     };
 
-    // Attach comment to the member
+    // Attach metadata to the member
     match &mut member {
         TableMember::Field(FieldDefinition::Regular(f)) => f.metadata = metadata,
         TableMember::Field(FieldDefinition::InlineEmbed(f)) => f.metadata = metadata,
         TableMember::Embed(e) => e.metadata = metadata,
+        TableMember::Enum(e) => e.metadata = metadata,
         TableMember::Comment(_) => {}
     }
 
@@ -535,7 +537,7 @@ fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, AstBuildError> {
         .next()
         .ok_or(AstBuildError::MissingElement {
             rule: Rule::type_name,
-            element: "path or basic_type".to_string(),
+            element: "path, basic_type or anonymous_enum_def".to_string(),
             line,
             col,
         })?;
@@ -569,9 +571,10 @@ fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, AstBuildError> {
                 }
             })
         }
+        Rule::anonymous_enum_def => TypeName::AnonymousEnum(parse_anonymous_enum(inner_pair)?),
         found => {
             return Err(AstBuildError::UnexpectedRule {
-                expected: "path or basic_type".to_string(),
+                expected: "path, basic_type or anonymous_enum_def".to_string(),
                 found,
                 line: inner_line,
                 col: inner_col,
@@ -787,6 +790,33 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
         cardinality,
         field_number,
     })
+}
+
+fn parse_anonymous_enum(pair: Pair<Rule>) -> Result<AnonymousEnum, AstBuildError> {
+    let mut variants = Vec::new();
+    for p in pair.into_inner() {
+        if p.as_rule() == Rule::enum_variant {
+            let (p_line, p_col) = p.line_col();
+            let mut variant_inner = p.into_inner().peekable();
+            let metadata = parse_metadata(&mut variant_inner)?;
+            let variant_name = variant_inner
+                .next()
+                .ok_or(AstBuildError::MissingElement {
+                    rule: Rule::enum_variant,
+                    element: "name".to_string(),
+                    line: p_line,
+                    col: p_col,
+                })?
+                .as_str()
+                .to_string();
+
+            variants.push(EnumVariant {
+                metadata,
+                name: variant_name,
+            });
+        }
+    }
+    Ok(AnonymousEnum { variants })
 }
 
 fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {

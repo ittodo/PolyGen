@@ -42,6 +42,7 @@ pub struct StructDef {
     pub items: Vec<StructItem>,
     pub is_embed: bool,
     pub embedded_structs: Vec<StructDef>,
+    pub inline_enums: Vec<EnumDef>,
 }
 
 /// An enum representing any item that can appear within a struct.

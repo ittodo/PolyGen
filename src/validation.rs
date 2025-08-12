@@ -38,7 +38,7 @@ fn collect_all_types(
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
 
-                // Also collect named embeds defined inside the table.
+                // Also collect named embeds and enums defined inside the table.
                 path.push(t.name.clone());
                 for member in &t.members {
                     if let TableMember::Embed(e) = member {
@@ -46,6 +46,13 @@ fn collect_all_types(
                         let embed_fqn = path.join(".");
                         if !types.insert(embed_fqn.clone()) {
                             return Err(ValidationError::DuplicateDefinition(embed_fqn));
+                        }
+                        path.pop();
+                    } else if let TableMember::Enum(e) = member { // Added this part
+                        path.push(e.name.clone());
+                        let enum_fqn = path.join(".");
+                        if !types.insert(enum_fqn.clone()) {
+                            return Err(ValidationError::DuplicateDefinition(enum_fqn));
                         }
                         path.pop();
                     }
@@ -152,6 +159,7 @@ fn validate_all_types(
                             }
                         }
                         TableMember::Embed(_) => { /* Embeds are checked as top-level types */ }
+                        TableMember::Enum(_) => { /* Inline enums do not reference other types */ }
                         TableMember::Comment(_) => { /* Comments do not reference types */ }
                     }
                 }

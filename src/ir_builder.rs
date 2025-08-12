@@ -82,7 +82,7 @@ fn populate_namespaces(
                         namespace.items.push(NamespaceItem::Struct(struct_def));
                     }
                     Definition::Enum(e) => {
-                        namespace.items.push(convert_enum(e));
+                        namespace.items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e)));
                     }
                     Definition::Embed(embed) => {
                         namespace
@@ -106,6 +106,7 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
     let mut items = Vec::new();
     let mut header_items = Vec::new();
     let mut embedded_structs = Vec::new();
+    let mut embedded_enums = Vec::new(); // New line
 
     // Process metadata for the struct header
     for meta in &table.metadata {
@@ -146,9 +147,10 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
             TableMember::Embed(embed) => {
                 embedded_structs.push(convert_embed_to_struct(embed));
             }
-            TableMember::Comment(c) => {
-                items.push(StructItem::Comment(c.clone()))
+            TableMember::Enum(e) => {
+                embedded_enums.push(convert_enum_to_enum_def(e));
             }
+            TableMember::Comment(c) => items.push(StructItem::Comment(c.clone())),
         }
     }
 
@@ -158,6 +160,7 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
         is_embed: false,
         header: header_items,
         embedded_structs,
+        inline_enums: embedded_enums, // New line
     }
 }
 
@@ -219,7 +222,7 @@ fn convert_constraints_to_attributes(constraints: &[ast_model::Constraint]) -> V
         .collect()
 }
 
-fn convert_enum(e: &ast_model::Enum) -> NamespaceItem {
+fn convert_enum_to_enum_def(e: &ast_model::Enum) -> EnumDef {
     let mut items = Vec::new();
     let mut enum_comment: Option<String> = None; // To store the enum's own comment
 
@@ -243,10 +246,10 @@ fn convert_enum(e: &ast_model::Enum) -> NamespaceItem {
         }));
     }
 
-    NamespaceItem::Enum(EnumDef {
+    EnumDef {
         name: e.name.clone(),
         items,
-    })
+    }
 }
 
 fn convert_embed_to_struct(embed: &ast_model::Embed) -> StructDef {
@@ -269,6 +272,11 @@ fn format_type(t: &ast_model::TypeWithCardinality) -> String {
     let base = match &t.base_type {
         ast_model::TypeName::Path(p) => p.join("."), // Keep FQN for now; template filter can shorten it.
         ast_model::TypeName::Basic(b) => format!("{:?}", b).to_lowercase(),
+        ast_model::TypeName::AnonymousEnum(_) => {
+            // TODO: This needs context from the field/table to generate a good name,
+            // e.g., TableName_FieldName_Enum.
+            "__ANONYMOUS_ENUM__".to_string()
+        }
     };
     format_cardinality(&base, &t.cardinality)
 }

@@ -1,0 +1,25 @@
+namespace MyGame {
+    table Player {
+        enum Status
+        {
+            // 액티브
+            Active,
+            Inactive,
+            Banned,
+        }
+        id: i32;
+        name: string;
+        status: Status;
+        level: i32;
+    }
+}
+
+namespace MyGame {
+    table Player {
+        
+        id: i32;
+        name: string;
+        status: enum { Active, Inactive, Banned };
+        level: i32;
+    }
+}
