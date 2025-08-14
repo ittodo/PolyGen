@@ -82,7 +82,7 @@ fn populate_namespaces(
                         namespace.items.push(NamespaceItem::Struct(struct_def));
                     }
                     Definition::Enum(e) => {
-                        namespace.items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e)));
+                        namespace.items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e, None)));
                     }
                     Definition::Embed(embed) => {
                         namespace
@@ -128,6 +128,7 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
                 let field_metadata = match field {
                     ast_model::FieldDefinition::Regular(rf) => &rf.metadata,
                     ast_model::FieldDefinition::InlineEmbed(ief) => &ief.metadata,
+                    ast_model::FieldDefinition::InlineEnum(e) => &e.metadata,
                 };
                 for meta in field_metadata {
                     match meta {
@@ -140,22 +141,23 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
                 }
 
                 // 그 다음에 필드 자체를 처리
-                let (field_def, mut new_nested) = convert_field_to_ir(field);
+                let (field_def, mut new_nested_structs, mut new_nested_enums) = convert_field_to_ir(field);
                 items.push(StructItem::Field(field_def));
-                embedded_structs.append(&mut new_nested);
+                embedded_structs.append(&mut new_nested_structs);
+                embedded_enums.append(&mut new_nested_enums);
             }
             TableMember::Embed(embed) => {
                 embedded_structs.push(convert_embed_to_struct(embed));
             }
             TableMember::Enum(e) => {
-                embedded_enums.push(convert_enum_to_enum_def(e));
+                embedded_enums.push(convert_enum_to_enum_def(e, None));
             }
             TableMember::Comment(c) => items.push(StructItem::Comment(c.clone())),
         }
     }
 
     StructDef {
-        name: table.name.clone(),
+        name: table.name.clone().unwrap(),
         items,
         is_embed: false,
         header: header_items,
@@ -165,23 +167,43 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
 }
 
 /// Converts an `ast_model::FieldDefinition` into an `ir_model::FieldDef` and potential nested types (from inline embeds).
-fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<StructDef>) {
+fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<StructDef>, Vec<EnumDef>) {
     match field {
         ast_model::FieldDefinition::Regular(rf) => {
             let attributes = convert_constraints_to_attributes(&rf.constraints);
+            let mut inline_enums = Vec::new();
+            let field_type_str: String;
+
+            match &rf.field_type.base_type {
+                ast_model::TypeName::InlineEnum(e) => {
+                    // Generate a unique name for the inline enum
+                    // For now, let's use FieldName_Enum. We'll need table context later for better names.
+                    let generated_enum_name = format!("{}_Enum", rf.name.clone().expect("Regular field name must be present").to_pascal_case());
+                    
+                    // Create the EnumDef using the generated name
+                    let enum_def = convert_enum_to_enum_def(e, Some(generated_enum_name.clone()));
+                    inline_enums.push(enum_def);
+                    field_type_str = format_cardinality(&generated_enum_name, &rf.field_type.cardinality);
+                },
+                _ => {
+                    field_type_str = format_type(&rf.field_type); // Use existing format_type for other types
+                },
+            };
+
             (
                 FieldDef {
-                    name: rf.name.clone(),
-                    field_type: format_type(&rf.field_type),
+                    name: rf.name.clone().expect("Regular field name must be present"),
+                    field_type: field_type_str,
                     attributes,
                 },
                 Vec::new(),
+                inline_enums,
             )
         }
         ast_model::FieldDefinition::InlineEmbed(ief) => {
-            let struct_name = ief.name.to_pascal_case();
+            let struct_name = ief.name.clone().expect("Inline embed field name must be present").to_pascal_case();
             let mut inline_struct = convert_table_to_struct(&ast_model::Table {
-                name: struct_name.clone(),
+                name: Some(struct_name.clone()),
                 metadata: ief.metadata.clone(),
                 members: ief
                     .fields
@@ -194,11 +216,30 @@ fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<Str
             let nested_items = vec![inline_struct];
 
             let field_def = FieldDef {
-                name: ief.name.clone(),
+                name: ief.name.clone().expect("Inline embed field name must be present"),
                 field_type: format_cardinality(&struct_name, &ief.cardinality),
                 attributes: Vec::new(),
             };
-            (field_def, nested_items)
+            (field_def, nested_items, Vec::new())
+        }
+        ast_model::FieldDefinition::InlineEnum(e) => {
+            let generated_enum_name = format!("{}__Enum", e.name.clone().expect("Inline enum name must be present").to_pascal_case());
+            
+            // Create a temporary Enum from InlineEnumField
+            let temp_enum = ast_model::Enum {
+                metadata: e.metadata.clone(),
+                name: e.name.clone(),
+                variants: e.variants.clone(),
+            };
+
+            let enum_def = convert_enum_to_enum_def(&temp_enum, Some(generated_enum_name.clone()));
+            
+            let field_def = FieldDef {
+                name: e.name.clone().expect("Inline enum name must be present"),
+                field_type: format_cardinality(&generated_enum_name, &e.cardinality),
+                attributes: Vec::new(),
+            };
+            (field_def, Vec::new(), vec![enum_def])
         }
     }
 }
@@ -222,14 +263,13 @@ fn convert_constraints_to_attributes(constraints: &[ast_model::Constraint]) -> V
         .collect()
 }
 
-fn convert_enum_to_enum_def(e: &ast_model::Enum) -> EnumDef {
+fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>) -> EnumDef {
     let mut items = Vec::new();
-    let mut enum_comment: Option<String> = None; // To store the enum's own comment
 
-    // Extract enum's own comment
+    // Extract enum's own comment and add to items
     for meta in &e.metadata {
         if let Metadata::DocComment(c) = meta {
-            enum_comment = Some(c.clone());
+            items.push(EnumItem::Comment(c.clone()));
             break; // Assuming only one doc comment for the enum itself
         }
     }
@@ -242,12 +282,12 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum) -> EnumDef {
             }
         }
         items.push(EnumItem::Member(ir_model::EnumMember {
-            name: variant.name.clone(),
+            name: variant.name.clone().unwrap(),
         }));
     }
 
     EnumDef {
-        name: e.name.clone(),
+        name: name_override.unwrap_or_else(|| e.name.clone().expect("Named enum must have a name")),
         items,
     }
 }
@@ -272,7 +312,7 @@ fn format_type(t: &ast_model::TypeWithCardinality) -> String {
     let base = match &t.base_type {
         ast_model::TypeName::Path(p) => p.join("."), // Keep FQN for now; template filter can shorten it.
         ast_model::TypeName::Basic(b) => format!("{:?}", b).to_lowercase(),
-        ast_model::TypeName::AnonymousEnum(_) => {
+        ast_model::TypeName::InlineEnum(_) => {
             // TODO: This needs context from the field/table to generate a good name,
             // e.g., TableName_FieldName_Enum.
             "__ANONYMOUS_ENUM__".to_string()
@@ -294,7 +334,7 @@ fn convert_annotations_to_ir(annotations: &[ast_model::Annotation]) -> Vec<Annot
     annotations
         .iter()
         .map(|ast_ann| AnnotationDef {
-            name: ast_ann.name.clone(),
+            name: ast_ann.name.clone().unwrap(),
             params: ast_ann
                 .params
                 .iter()

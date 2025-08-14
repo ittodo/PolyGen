@@ -55,7 +55,7 @@
 ### Rhai 코드 생성기 및 템플릿 호환성 개선
 - `rhai_generator.rs`: IR 모델 변경 후 발생한 빌드 오류를 해결하기 위해 `FieldDef`, `EnumDef`, `EnumMember`, `AnnotationDef`의 `comment` 프로퍼티에 대한 `register_get` 호출을 제거했습니다.
 - `templates/csharp/csharp_enum.rhai` & `templates/csharp/enum/csharp_enum.rhai`: 새로운 IR 디자인에 맞춰 Enum 생성 로직을 `e.items`를 순회하며 `EnumItem::Comment`와 `EnumItem::Member`를 별도로 처리하도록 재작성했습니다.
-- `templates/csharp/csharp_struct.rhai`: 새로운 IR 디자인에 맞춰 Struct 생성 로직을 `s.header`와 `s.items`를 순회하며 `StructItem::Comment`, `StructItem::Annotation`, `StructItem::Field`를 별도로 처리하도록 재작성했습니다. `annotation.comment` 접근 코드를 제거했습니다.
+- `templates/csharp/csharp_struct.rhai`: 새로운 IR 디자인에 맞춰 Struct 생성 로직을 `s.header`와 `s.items`를 순회하며 `StructItem::Comment`, `StructItem::Annotation`, `StructItem::Field`를 별도로 처리하도록 재작성했습니다.
 - `templates/rhai_utils/indent.rhai`: `is_null`, `repeated`, `join` 함수 미발견 오류를 해결하기 위해 기본적인 Rhai 구문과 Windows 호환성을 위한 `
 `을 사용하도록 수정했습니다.
 - `src/ast_parser.rs`: `extract_comment_content` 함수를 개선하여 `///`, `//`, `/* */` 접두사를 올바르게 제거하도록 수정했습니다.
@@ -72,3 +72,20 @@
 - `templates/csharp/struct/csharp_logic_struct_body.rhai`: 새 파일.
 - `templates/csharp/struct/csharp_logic_struct_header.rhai`: 새 파일.
 - `templates/rhai_utils/indent.rhai`: 새 파일.
+
+## 2025-08-13
+
+- **빌드 오류 수정**: `cargo build` 시 발생하던 다양한 컴파일 오류를 수정했습니다.
+    - `src/ast_parser.rs`: `Option<String>`과 `String` 간의 타입 불일치 오류를 `Some()` 래핑으로 해결했습니다. `line` 및 `col` 변수 사용과 관련된 오류를 수정했습니다.
+    - `src/ir_builder.rs`: `Option<String>`과 `String` 간의 타입 불일치 오류를 `unwrap()` 호출로 해결했습니다. `ast_model::TypeName::AnonymousEnum` 변형이 `InlineEnum`으로 변경됨에 따라 관련 코드를 수정했습니다. 사용되지 않던 `enum_comment` 변수를 제거하고 해당 로직을 `items`에 직접 추가하도록 변경했습니다.
+    - `src/validation.rs`: `Option<String>`과 `String` 간의 타입 불일치 오류를 `as_ref().expect().clone()` 호출로 해결했습니다.
+- **경고 수정**: 빌드 시 발생하던 경고를 수정했습니다。
+    - `src/ast_parser.rs`: 사용되지 않는 `line` 및 `col` 변수에 대한 경고를 수정했습니다。
+    - `src/ir_builder.rs`: 사용되지 않는 `enum_comment` 변수에 대한 경고를 수정했습니다。
+
+## 2025-08-14
+
+- **Parser Fix**: `inline_enum_field`에 대한 파서의 버그를 수정했습니다. 이제 파서는 문법과 AST 간의 구조적 불일치를 해결하면서 `Enum` 노드 대신 `InlineEnumField` AST 노드를 올바르게 구성합니다.
+- **IR Builder Update**: IR 빌더(`ir_builder.rs`)가 새로운 `InlineEnumField` AST 노드를 올바르게 처리하도록 업데이트되었습니다. 이제 카디널리티를 올바르게 처리하는 등 인라인 열거형을 IR 내의 `EnumDef`로 적절히 변환합니다.
+- **Bug Resolution**: 이러한 변경 사항을 통해 테이블 내의 인라인 열거형이 올바르게 구문 분석 및 처리되지 않아 컴파일 오류가 발생하던 중요한 버그를 수정했습니다.
+- **Code Quality**: 이전 빌드에 존재했던 `ast_parser.rs`의 미사용 변수 경고를 해결했습니다.

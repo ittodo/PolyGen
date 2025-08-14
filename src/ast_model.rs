@@ -36,7 +36,7 @@ pub struct NamespaceImport {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Table {
     pub metadata: Vec<Metadata>,
-    pub name: String,
+    pub name: Option<String>,
     pub members: Vec<TableMember>,
 }
 
@@ -56,7 +56,7 @@ pub enum Metadata {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Annotation {
-    pub name: String,
+    pub name: Option<String>,
     pub params: Vec<AnnotationParam>,
 }
 
@@ -70,12 +70,13 @@ pub struct AnnotationParam {
 pub enum FieldDefinition {
     Regular(RegularField),
     InlineEmbed(InlineEmbedField),
+    InlineEnum(InlineEnumField),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct RegularField {
     pub metadata: Vec<Metadata>,
-    pub name: String,
+    pub name: Option<String>,
     pub field_type: TypeWithCardinality,
     pub constraints: Vec<Constraint>,
     pub field_number: Option<u32>,
@@ -91,7 +92,7 @@ pub struct TypeWithCardinality {
 pub enum TypeName {
     Path(Vec<String>),
     Basic(BasicType),
-    AnonymousEnum(AnonymousEnum),
+    InlineEnum(Enum),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -131,8 +132,17 @@ pub enum Constraint {
 #[derive(Debug, PartialEq, Clone)]
 pub struct InlineEmbedField {
     pub metadata: Vec<Metadata>,
-    pub name: String,
+    pub name: Option<String>,
     pub fields: Vec<FieldDefinition>,
+    pub cardinality: Option<Cardinality>,
+    pub field_number: Option<u32>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct InlineEnumField {
+    pub metadata: Vec<Metadata>,
+    pub name: Option<String>,
+    pub variants: Vec<EnumVariant>,
     pub cardinality: Option<Cardinality>,
     pub field_number: Option<u32>,
 }
@@ -140,25 +150,20 @@ pub struct InlineEmbedField {
 #[derive(Debug, PartialEq, Clone)]
 pub struct EnumVariant {
     pub metadata: Vec<Metadata>,
-    pub name: String,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct AnonymousEnum {
-    pub variants: Vec<EnumVariant>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Enum {
     pub metadata: Vec<Metadata>,
-    pub name: String,
+    pub name: Option<String>,
     pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Embed {
     pub metadata: Vec<Metadata>,
-    pub name: String,
+    pub name: Option<String>,
     pub fields: Vec<FieldDefinition>,
 }
 

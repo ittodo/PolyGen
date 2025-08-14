@@ -46,10 +46,11 @@ embed_def = { "embed" ~ IDENT ~ "{" ~ (table_member | WHITESPACE | doc_comment)*
 
 table_member = { doc_comment* ~ annotation* ~ (embed_def | enum_def | (field_definition ~ ";")) }
 
-field_definition = { inline_embed_field | regular_field }
+field_definition = { inline_enum_field | inline_embed_field | regular_field }
 
 regular_field      = { IDENT ~ ":" ~ type_with_cardinality ~ constraint* ~ field_number? }
 inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" ~ cardinality? ~ field_number? }
+inline_enum_field = { IDENT ~ ":" ~ "enum" ~ "{" ~ enum_variant* ~ "}" ~ cardinality? ~ field_number? }
 
 field_number = { "=" ~ INTEGER }
 

@@ -47,6 +47,11 @@ namespace game.character {
         name: string unique max_length(30) = 2;
         level: u16 = 3;
         stats: game.common.StatBlock = 4;
+        status: enum {
+            // 액티브
+             Active, 
+             // 인액티브
+             Inactive, Banned };
     }
 
     /// 몬스터 정보를 정의하는 테이블입니다.
@@ -62,7 +67,7 @@ namespace game.character {
             Inactive,
             Banned,
         }
-        
+
         id: u32 primary_key;
         name: string max_length(50);
         stats: game.common.StatBlock;

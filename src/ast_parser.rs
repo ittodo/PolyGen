@@ -80,7 +80,11 @@ fn extract_comment_content(comment_pair: Pair<Rule>) -> String {
         s.strip_prefix("//").unwrap().trim().to_string()
     } else if s.starts_with("/*") {
         // '/*'로 시작하는 블록 주석을 처리합니다.
-        s.strip_prefix("/*").unwrap().trim_end_matches("*/").trim().to_string()
+        s.strip_prefix("/*")
+            .unwrap()
+            .trim_end_matches("*/")
+            .trim()
+            .to_string()
     } else {
         s.trim().to_string()
     }
@@ -301,7 +305,7 @@ fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
     }
     Ok(Table {
         metadata: Vec::new(), // Will be set by the parent parser (build_ast_from_pairs)
-        name,
+        name: Some(name),
         members,
     })
 }
@@ -337,6 +341,7 @@ fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
     match &mut member {
         TableMember::Field(FieldDefinition::Regular(f)) => f.metadata = metadata,
         TableMember::Field(FieldDefinition::InlineEmbed(f)) => f.metadata = metadata,
+        TableMember::Field(FieldDefinition::InlineEnum(f)) => f.metadata = metadata,
         TableMember::Embed(e) => e.metadata = metadata,
         TableMember::Enum(e) => e.metadata = metadata,
         TableMember::Comment(_) => {}
@@ -387,7 +392,10 @@ fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, AstBuildError> {
             }
         }
     }
-    Ok(Annotation { name, params })
+    Ok(Annotation {
+        name: Some(name),
+        params,
+    })
 }
 
 fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, AstBuildError> {
@@ -408,9 +416,12 @@ fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, AstBuildE
         Rule::inline_embed_field => {
             FieldDefinition::InlineEmbed(parse_inline_embed_field(inner_pair)?)
         }
+        Rule::inline_enum_field => {
+            FieldDefinition::InlineEnum(parse_inline_enum_field(inner_pair)?)
+        }
         found => {
             return Err(AstBuildError::UnexpectedRule {
-                expected: "regular_field or inline_embed_field".to_string(),
+                expected: "regular_field, inline_embed_field, or inline_enum_field".to_string(),
                 found,
                 line: inner_line,
                 col: inner_col,
@@ -479,7 +490,7 @@ fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildError> 
     }
     Ok(RegularField {
         metadata: Vec::new(), // Will be set by the parent parser (parse_table)
-        name,
+        name: Some(name),
         field_type: type_with_cardinality,
         constraints,
         field_number,
@@ -571,7 +582,7 @@ fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, AstBuildError> {
                 }
             })
         }
-        Rule::anonymous_enum_def => TypeName::AnonymousEnum(parse_anonymous_enum(inner_pair)?),
+        Rule::anonymous_enum_def => TypeName::InlineEnum(parse_enum(inner_pair)?),
         found => {
             return Err(AstBuildError::UnexpectedRule {
                 expected: "path, basic_type or anonymous_enum_def".to_string(),
@@ -717,6 +728,7 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
                     match &mut field_def {
                         FieldDefinition::Regular(f) => f.metadata = metadata,
                         FieldDefinition::InlineEmbed(f) => f.metadata = metadata,
+                        FieldDefinition::InlineEnum(f) => f.metadata = metadata,
                     }
                     fields.push(field_def);
                 } else {
@@ -785,48 +797,22 @@ fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBui
     }
     Ok(InlineEmbedField {
         metadata: Vec::new(), // Will be set by the parent parser (parse_table)
-        name,
+        name: Some(name),
         fields,
         cardinality,
         field_number,
     })
 }
 
-fn parse_anonymous_enum(pair: Pair<Rule>) -> Result<AnonymousEnum, AstBuildError> {
-    let mut variants = Vec::new();
-    for p in pair.into_inner() {
-        if p.as_rule() == Rule::enum_variant {
-            let (p_line, p_col) = p.line_col();
-            let mut variant_inner = p.into_inner().peekable();
-            let metadata = parse_metadata(&mut variant_inner)?;
-            let variant_name = variant_inner
-                .next()
-                .ok_or(AstBuildError::MissingElement {
-                    rule: Rule::enum_variant,
-                    element: "name".to_string(),
-                    line: p_line,
-                    col: p_col,
-                })?
-                .as_str()
-                .to_string();
-
-            variants.push(EnumVariant {
-                metadata,
-                name: variant_name,
-            });
-        }
-    }
-    Ok(AnonymousEnum { variants })
-}
-
-fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
+fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
+
     let name = inner
         .next()
         .ok_or(AstBuildError::MissingElement {
-            rule: Rule::enum_def,
-            element: "name".to_string(),
+            rule: Rule::inline_enum_field,
+            element: "name (IDENT)".to_string(),
             line,
             col,
         })?
@@ -834,7 +820,104 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
         .to_string();
 
     let mut variants = Vec::new();
+    let mut cardinality = None;
+    let mut field_number = None;
+
     for p in inner {
+        match p.as_rule() {
+            Rule::enum_variant => {
+                let (p_line, p_col) = p.line_col();
+                let mut variant_inner = p.into_inner().peekable();
+                let metadata = parse_metadata(&mut variant_inner)?;
+                let variant_name = variant_inner
+                    .next()
+                    .ok_or(AstBuildError::MissingElement {
+                        rule: Rule::enum_variant,
+                        element: "name".to_string(),
+                        line: p_line,
+                        col: p_col,
+                    })?
+                    .as_str()
+                    .to_string();
+
+                variants.push(EnumVariant {
+                    metadata,
+                    name: Some(variant_name),
+                });
+            }
+            Rule::cardinality => {
+                let (p_line, p_col) = p.line_col();
+                cardinality = Some(match p.as_str() {
+                    "?" => Cardinality::Optional,
+                    "[]" => Cardinality::Array,
+                    s => {
+                        return Err(AstBuildError::InvalidValue {
+                            element: "cardinality".to_string(),
+                            value: s.to_string(),
+                            line: p_line,
+                            col: p_col,
+                        })
+                    }
+                })
+            }
+            Rule::field_number => {
+                let (p_line, p_col) = p.line_col();
+                let text = p
+                    .into_inner()
+                    .next()
+                    .ok_or(AstBuildError::MissingElement {
+                        rule: Rule::field_number,
+                        element: "integer value".to_string(),
+                        line: p_line,
+                        col: p_col,
+                    })?
+                    .as_str();
+                field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
+                    element: "field_number".to_string(),
+                    value: text.to_string(),
+                    line: p_line,
+                    col: p_col,
+                })?);
+            }
+            found => {
+                let (p_line, p_col) = p.line_col();
+                return Err(AstBuildError::UnexpectedRule {
+                    expected: "enum_variant, cardinality, or field_number".to_string(),
+                    found,
+                    line: p_line,
+                    col: p_col,
+                });
+            }
+        }
+    }
+
+    Ok(InlineEnumField {
+        metadata: Vec::new(), // Will be set by parent
+        name: Some(name),
+        variants,
+        cardinality,
+        field_number,
+    })
+}
+
+fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
+    let (_line, _col) = pair.line_col();
+    let mut inner = pair.into_inner();
+
+    let mut enum_name: Option<String> = None;
+    // Peek to see if the next token is an IDENT (for named enums)
+    // If it's anonymous_enum_def, the first pair will be '{', which we skip.
+    // If it's enum_def, the first pair will be the IDENT.
+    if let Some(p) = inner.peek() {
+        if p.as_rule() == Rule::IDENT {
+            enum_name = Some(inner.next().unwrap().as_str().to_string()); // Consume IDENT
+        }
+    }
+    // The remaining pairs are enum_variants
+
+    let mut variants = Vec::new();
+    for p in inner {
+        // Iterate through the rest of the pairs (variants)
         if p.as_rule() == Rule::enum_variant {
             let (p_line, p_col) = p.line_col();
             let mut variant_inner = p.into_inner().peekable();
@@ -852,13 +935,13 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
 
             variants.push(EnumVariant {
                 metadata,
-                name: variant_name,
+                name: Some(variant_name), // EnumVariant name is always present
             });
         }
     }
     Ok(Enum {
-        metadata: Vec::new(), // Will be set by the parent parser (build_ast_from_pairs)
-        name,
+        metadata: Vec::new(), // Will be set by the parent parser (build_ast_from_pairs or parse_table_member)
+        name: enum_name,
         variants,
     })
 }
@@ -896,6 +979,7 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
                 match &mut field_def {
                     FieldDefinition::Regular(f) => f.metadata = metadata,
                     FieldDefinition::InlineEmbed(f) => f.metadata = metadata,
+                    FieldDefinition::InlineEnum(f) => f.metadata = metadata,
                 }
                 fields.push(field_def);
             } else {
@@ -918,7 +1002,7 @@ fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
     }
     Ok(Embed {
         metadata: Vec::new(), // Will be set by the parent parser
-        name,
+        name: Some(name),
         fields,
     })
 }

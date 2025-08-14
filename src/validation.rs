@@ -30,7 +30,7 @@ fn collect_all_types(
             Definition::Table(t) => {
                 let fqn = path
                     .iter()
-                    .chain(std::iter::once(&t.name))
+                    .chain(std::iter::once(t.name.as_ref().expect("Table name should be present")))
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(".");
@@ -39,41 +39,51 @@ fn collect_all_types(
                 }
 
                 // Also collect named embeds and enums defined inside the table.
-                path.push(t.name.clone());
+                path.push(t.name.as_ref().expect("Table name should be present").clone());
                 for member in &t.members {
                     if let TableMember::Embed(e) = member {
-                        path.push(e.name.clone());
+                        path.push(e.name.clone().expect("Embed name should be present"));
                         let embed_fqn = path.join(".");
                         if !types.insert(embed_fqn.clone()) {
                             return Err(ValidationError::DuplicateDefinition(embed_fqn));
                         }
                         path.pop();
-                    } else if let TableMember::Enum(e) = member { // Added this part
-                        path.push(e.name.clone());
-                        let enum_fqn = path.join(".");
-                        if !types.insert(enum_fqn.clone()) {
-                            return Err(ValidationError::DuplicateDefinition(enum_fqn));
+                    } else if let TableMember::Enum(e) = member {
+                        // Named enums embedded within a table should still have a name.
+                        if let Some(name) = &e.name {
+                            path.push(name.clone());
+                            let enum_fqn = path.join(".");
+                            if !types.insert(enum_fqn.clone()) {
+                                return Err(ValidationError::DuplicateDefinition(enum_fqn));
+                            }
+                            path.pop();
+                        } else {
+                            // This case should ideally not happen if grammar ensures named enums in table members have names.
+                            // If it does, it's an error in AST construction or grammar.
+                            // For now, we'll just ignore it as inline enums are not globally addressable.
                         }
-                        path.pop();
                     }
                 }
                 path.pop();
             }
             Definition::Enum(e) => {
-                let fqn = path
-                    .iter()
-                    .chain(std::iter::once(&e.name))
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(".");
-                if !types.insert(fqn.clone()) {
-                    return Err(ValidationError::DuplicateDefinition(fqn));
+                // Only named enums are collected as globally defined types.
+                if let Some(name) = &e.name {
+                    let fqn = path
+                        .iter()
+                        .chain(std::iter::once(name))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    if !types.insert(fqn.clone()) {
+                        return Err(ValidationError::DuplicateDefinition(fqn));
+                    }
                 }
             }
             Definition::Embed(e) => {
                 let fqn = path
                     .iter()
-                    .chain(std::iter::once(&e.name))
+                    .chain(std::iter::once(e.name.as_ref().expect("Embed name should be present")))
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(".");
@@ -141,12 +151,14 @@ fn validate_all_types(
                 }
             }
             Definition::Table(t) => {
-                path.push(t.name.clone());
+                path.push(t.name.clone().expect("Table name should be present"));
                 for member in &t.members {
                     match member {
                         TableMember::Field(FieldDefinition::Regular(field)) => {
                             if let TypeName::Path(type_path) = &field.field_type.base_type {
                                 check_type_path(type_path, path, all_types)?;
+                            } else if let TypeName::InlineEnum(_) = &field.field_type.base_type {
+                                // Inline enums do not reference other types, so no validation needed here.
                             }
                         }
                         TableMember::Field(FieldDefinition::InlineEmbed(inline_embed)) => {
@@ -154,10 +166,13 @@ fn validate_all_types(
                                 if let FieldDefinition::Regular(rf) = f {
                                     if let TypeName::Path(type_path) = &rf.field_type.base_type {
                                         check_type_path(type_path, path, all_types)?;
+                                    } else if let TypeName::InlineEnum(_) = &rf.field_type.base_type {
+                                        // Inline enums do not reference other types, so no validation needed here.
                                     }
                                 }
                             }
                         }
+                        TableMember::Field(FieldDefinition::InlineEnum(_)) => { /* Inline enums do not reference other types */ }
                         TableMember::Embed(_) => { /* Embeds are checked as top-level types */ }
                         TableMember::Enum(_) => { /* Inline enums do not reference other types */ }
                         TableMember::Comment(_) => { /* Comments do not reference types */ }
@@ -168,7 +183,7 @@ fn validate_all_types(
             Definition::Enum(_) => { /* Enums do not reference other types */ }
             Definition::Embed(e) => {
                 // Validate types used within the embed's fields.
-                path.push(e.name.clone());
+                path.push(e.name.clone().expect("Embed name should be present"));
                  for field in &e.fields {
                     if let FieldDefinition::Regular(rf) = field {
                         if let TypeName::Path(type_path) = &rf.field_type.base_type {
