@@ -1,0 +1,112 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "file_imports.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "MainTable",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: "u32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "ref_a",
+                                            field_type: "ImportedA",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "status_b",
+                                            field_type: "StatusB",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: false,
+                                embedded_structs: [],
+                                inline_enums: [],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+        FileDef {
+            path: "imported_schema_a.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "ImportedA",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: "u32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "value",
+                                            field_type: "string",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: false,
+                                embedded_structs: [],
+                                inline_enums: [],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+        FileDef {
+            path: "imported_schema_b.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Enum(
+                            EnumDef {
+                                name: "StatusB",
+                                items: [
+                                    Member(
+                                        EnumMember {
+                                            name: "Enabled",
+                                        },
+                                    ),
+                                    Member(
+                                        EnumMember {
+                                            name: "Disabled",
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

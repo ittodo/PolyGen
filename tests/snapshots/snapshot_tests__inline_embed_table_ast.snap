@@ -1,0 +1,164 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\inline_embed_table.poly",
+        file_imports: [],
+        definitions: [
+            Table(
+                Table {
+                    metadata: [],
+                    name: Some(
+                        "Character",
+                    ),
+                    members: [
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [
+                                        PrimaryKey,
+                                    ],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "name",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            String,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            InlineEmbed(
+                                InlineEmbedField {
+                                    metadata: [],
+                                    name: Some(
+                                        "inventory",
+                                    ),
+                                    members: [
+                                        Field(
+                                            Regular(
+                                                RegularField {
+                                                    metadata: [],
+                                                    name: Some(
+                                                        "item_id",
+                                                    ),
+                                                    field_type: TypeWithCardinality {
+                                                        base_type: Basic(
+                                                            U32,
+                                                        ),
+                                                        cardinality: None,
+                                                    },
+                                                    constraints: [],
+                                                    field_number: None,
+                                                },
+                                            ),
+                                        ),
+                                        Field(
+                                            Regular(
+                                                RegularField {
+                                                    metadata: [],
+                                                    name: Some(
+                                                        "quantity",
+                                                    ),
+                                                    field_type: TypeWithCardinality {
+                                                        base_type: Basic(
+                                                            U32,
+                                                        ),
+                                                        cardinality: None,
+                                                    },
+                                                    constraints: [],
+                                                    field_number: None,
+                                                },
+                                            ),
+                                        ),
+                                        Field(
+                                            InlineEmbed(
+                                                InlineEmbedField {
+                                                    metadata: [],
+                                                    name: Some(
+                                                        "properties",
+                                                    ),
+                                                    members: [
+                                                        Field(
+                                                            Regular(
+                                                                RegularField {
+                                                                    metadata: [],
+                                                                    name: Some(
+                                                                        "key",
+                                                                    ),
+                                                                    field_type: TypeWithCardinality {
+                                                                        base_type: Basic(
+                                                                            String,
+                                                                        ),
+                                                                        cardinality: None,
+                                                                    },
+                                                                    constraints: [],
+                                                                    field_number: None,
+                                                                },
+                                                            ),
+                                                        ),
+                                                        Field(
+                                                            Regular(
+                                                                RegularField {
+                                                                    metadata: [],
+                                                                    name: Some(
+                                                                        "value",
+                                                                    ),
+                                                                    field_type: TypeWithCardinality {
+                                                                        base_type: Basic(
+                                                                            String,
+                                                                        ),
+                                                                        cardinality: None,
+                                                                    },
+                                                                    constraints: [],
+                                                                    field_number: None,
+                                                                },
+                                                            ),
+                                                        ),
+                                                    ],
+                                                    cardinality: Some(
+                                                        Array,
+                                                    ),
+                                                    field_number: None,
+                                                },
+                                            ),
+                                        ),
+                                    ],
+                                    cardinality: Some(
+                                        Array,
+                                    ),
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]

@@ -1,0 +1,126 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\constraints_table.poly",
+        file_imports: [],
+        definitions: [
+            Table(
+                Table {
+                    metadata: [],
+                    name: Some(
+                        "ConstraintsTable",
+                    ),
+                    members: [
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [
+                                        PrimaryKey,
+                                    ],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "code",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            String,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [
+                                        Unique,
+                                        MaxLength(
+                                            10,
+                                        ),
+                                        Regex(
+                                            "^[A-Z0-9]{5,10}$",
+                                        ),
+                                    ],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "value",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            F32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [
+                                        Default(
+                                            Float(
+                                                0.0,
+                                            ),
+                                        ),
+                                        Range(
+                                            Float(
+                                                0.0,
+                                            ),
+                                            Float(
+                                                100.0,
+                                            ),
+                                        ),
+                                    ],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "category_id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [
+                                        ForeignKey(
+                                            [
+                                                "Category",
+                                                "id",
+                                            ],
+                                            None,
+                                        ),
+                                    ],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]

@@ -1,0 +1,12 @@
+table Character {
+    id: u32 primary_key;
+    name: string;
+    inventory: embed {
+        item_id: u32;
+        quantity: u32;
+        properties: embed {
+            key: string;
+            value: string;
+        }[];
+    }[];
+}

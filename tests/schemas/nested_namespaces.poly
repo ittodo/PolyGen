@@ -1,0 +1,14 @@
+namespace game {
+    namespace character {
+        table Player {
+            id: u32;
+            name: string;
+        }
+    }
+    namespace item {
+        table Item {
+            id: u32;
+            name: string;
+        }
+    }
+}

@@ -1,0 +1,61 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "basic_table.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "BasicTable",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: "u32",
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: "string",
+                                            attributes: [
+                                                "MaxLength(100)",
+                                            ],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "is_active",
+                                            field_type: "bool",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "created_at",
+                                            field_type: "u64",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: false,
+                                embedded_structs: [],
+                                inline_enums: [],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

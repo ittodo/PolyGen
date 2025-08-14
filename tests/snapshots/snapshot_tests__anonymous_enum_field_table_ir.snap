@@ -1,0 +1,71 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "anonymous_enum_field_table.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "OrderItem",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "item_id",
+                                            field_type: "u32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "quantity",
+                                            field_type: "u32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "unit",
+                                            field_type: "Unit__Enum",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: false,
+                                embedded_structs: [],
+                                inline_enums: [
+                                    EnumDef {
+                                        name: "Unit__Enum",
+                                        items: [
+                                            Member(
+                                                EnumMember {
+                                                    name: "Pieces",
+                                                },
+                                            ),
+                                            Member(
+                                                EnumMember {
+                                                    name: "Kilograms",
+                                                },
+                                            ),
+                                            Member(
+                                                EnumMember {
+                                                    name: "Liters",
+                                                },
+                                            ),
+                                        ],
+                                    },
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

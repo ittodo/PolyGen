@@ -1,0 +1,40 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\named_enum.poly",
+        file_imports: [],
+        definitions: [
+            Enum(
+                Enum {
+                    metadata: [],
+                    name: Some(
+                        "UserStatus",
+                    ),
+                    variants: [
+                        EnumVariant {
+                            metadata: [],
+                            name: Some(
+                                "Active",
+                            ),
+                        },
+                        EnumVariant {
+                            metadata: [],
+                            name: Some(
+                                "Inactive",
+                            ),
+                        },
+                        EnumVariant {
+                            metadata: [],
+                            name: Some(
+                                "Banned",
+                            ),
+                        },
+                    ],
+                },
+            ),
+        ],
+    },
+]

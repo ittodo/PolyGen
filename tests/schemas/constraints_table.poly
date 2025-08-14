@@ -1,0 +1,6 @@
+table ConstraintsTable {
+    id: u32 primary_key;
+    code: string unique max_length(10) regex("^[A-Z0-9]{5,10}$");
+    value: f32 default(0.0) range(0.0, 100.0);
+    category_id: u32 foreign_key(Category.id);
+}

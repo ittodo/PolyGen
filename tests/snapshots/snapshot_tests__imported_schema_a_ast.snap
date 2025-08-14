@@ -1,0 +1,58 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\imported_schema_a.poly",
+        file_imports: [],
+        definitions: [
+            Table(
+                Table {
+                    metadata: [],
+                    name: Some(
+                        "ImportedA",
+                    ),
+                    members: [
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "value",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            String,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]

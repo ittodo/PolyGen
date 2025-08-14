@@ -1,0 +1,134 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\nested_namespaces.poly",
+        file_imports: [],
+        definitions: [
+            Namespace(
+                Namespace {
+                    path: [
+                        "game",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Namespace(
+                            Namespace {
+                                path: [
+                                    "character",
+                                ],
+                                imports: [],
+                                definitions: [
+                                    Table(
+                                        Table {
+                                            metadata: [],
+                                            name: Some(
+                                                "Player",
+                                            ),
+                                            members: [
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            metadata: [],
+                                                            name: Some(
+                                                                "id",
+                                                            ),
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    U32,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            metadata: [],
+                                                            name: Some(
+                                                                "name",
+                                                            ),
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    String,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                        Namespace(
+                            Namespace {
+                                path: [
+                                    "item",
+                                ],
+                                imports: [],
+                                definitions: [
+                                    Table(
+                                        Table {
+                                            metadata: [],
+                                            name: Some(
+                                                "Item",
+                                            ),
+                                            members: [
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            metadata: [],
+                                                            name: Some(
+                                                                "id",
+                                                            ),
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    U32,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                                Field(
+                                                    Regular(
+                                                        RegularField {
+                                                            metadata: [],
+                                                            name: Some(
+                                                                "name",
+                                                            ),
+                                                            field_type: TypeWithCardinality {
+                                                                base_type: Basic(
+                                                                    String,
+                                                                ),
+                                                                cardinality: None,
+                                                            },
+                                                            constraints: [],
+                                                            field_number: None,
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]

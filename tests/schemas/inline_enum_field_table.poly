@@ -1,0 +1,9 @@
+table Product {
+    id: u32 primary_key;
+    name: string;
+    status: enum {
+        Available;
+        OutOfStock;
+        Discontinued;
+    };
+}

@@ -1,0 +1,67 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "annotations_table.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "AnnotatedUser",
+                                header: [
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "load",
+                                            params: [
+                                                AnnotationParam {
+                                                    key: "type",
+                                                    value: "DB",
+                                                },
+                                                AnnotationParam {
+                                                    key: "path",
+                                                    value: "Users",
+                                                },
+                                            ],
+                                        },
+                                    ),
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "taggable",
+                                            params: [],
+                                        },
+                                    ),
+                                ],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: "u32",
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: "string",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: false,
+                                embedded_structs: [],
+                                inline_enums: [],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

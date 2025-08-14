@@ -1,0 +1,43 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "imported_schema_a.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "ImportedA",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: "u32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "value",
+                                            field_type: "string",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: false,
+                                embedded_structs: [],
+                                inline_enums: [],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

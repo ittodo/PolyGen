@@ -1,0 +1,6 @@
+table BasicTable {
+    id: u32 primary_key;
+    name: string max_length(100);
+    is_active: bool;
+    created_at: u64;
+}

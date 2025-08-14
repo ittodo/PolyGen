@@ -1,0 +1,34 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\imported_schema_b.poly",
+        file_imports: [],
+        definitions: [
+            Enum(
+                Enum {
+                    metadata: [],
+                    name: Some(
+                        "StatusB",
+                    ),
+                    variants: [
+                        EnumVariant {
+                            metadata: [],
+                            name: Some(
+                                "Enabled",
+                            ),
+                        },
+                        EnumVariant {
+                            metadata: [],
+                            name: Some(
+                                "Disabled",
+                            ),
+                        },
+                    ],
+                },
+            ),
+        ],
+    },
+]

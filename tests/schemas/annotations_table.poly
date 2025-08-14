@@ -1,0 +1,6 @@
+@load(type: "DB", path: "Users")
+@taggable
+table AnnotatedUser {
+    id: u32 primary_key;
+    name: string;
+}

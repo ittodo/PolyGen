@@ -1,0 +1,50 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "named_embed.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "Position",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "x",
+                                            field_type: "f32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "y",
+                                            field_type: "f32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "z",
+                                            field_type: "f32",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: true,
+                                embedded_structs: [],
+                                inline_enums: [],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

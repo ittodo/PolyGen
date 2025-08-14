@@ -1,0 +1,73 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "inline_enum_field_table.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "Product",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: "u32",
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: "string",
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "status",
+                                            field_type: "Status__Enum",
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                                is_embed: false,
+                                embedded_structs: [],
+                                inline_enums: [
+                                    EnumDef {
+                                        name: "Status__Enum",
+                                        items: [
+                                            Member(
+                                                EnumMember {
+                                                    name: "Available",
+                                                },
+                                            ),
+                                            Member(
+                                                EnumMember {
+                                                    name: "OutOfStock",
+                                                },
+                                            ),
+                                            Member(
+                                                EnumMember {
+                                                    name: "Discontinued",
+                                                },
+                                            ),
+                                        ],
+                                    },
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

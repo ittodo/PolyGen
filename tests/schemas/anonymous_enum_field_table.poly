@@ -1,0 +1,5 @@
+table OrderItem {
+    item_id: u32;
+    quantity: u32;
+    unit: enum { Pieces; Kilograms; Liters; };
+}

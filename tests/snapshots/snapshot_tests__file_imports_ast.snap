@@ -1,0 +1,163 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\file_imports.poly",
+        file_imports: [
+            "imported_schema_a.poly",
+            "imported_schema_b.poly",
+        ],
+        definitions: [
+            Table(
+                Table {
+                    metadata: [],
+                    name: Some(
+                        "MainTable",
+                    ),
+                    members: [
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "ref_a",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Path(
+                                            [
+                                                "ImportedA",
+                                            ],
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "status_b",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Path(
+                                            [
+                                                "StatusB",
+                                            ],
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+    AstRoot {
+        path: "tests/schemas\\imported_schema_a.poly",
+        file_imports: [],
+        definitions: [
+            Table(
+                Table {
+                    metadata: [],
+                    name: Some(
+                        "ImportedA",
+                    ),
+                    members: [
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "value",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            String,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+    AstRoot {
+        path: "tests/schemas\\imported_schema_b.poly",
+        file_imports: [],
+        definitions: [
+            Enum(
+                Enum {
+                    metadata: [],
+                    name: Some(
+                        "StatusB",
+                    ),
+                    variants: [
+                        EnumVariant {
+                            metadata: [],
+                            name: Some(
+                                "Enabled",
+                            ),
+                        },
+                        EnumVariant {
+                            metadata: [],
+                            name: Some(
+                                "Disabled",
+                            ),
+                        },
+                    ],
+                },
+            ),
+        ],
+    },
+]

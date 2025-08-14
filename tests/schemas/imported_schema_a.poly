@@ -1,0 +1,4 @@
+table ImportedA {
+    id: u32;
+    value: string;
+}

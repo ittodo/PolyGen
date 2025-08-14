@@ -1,0 +1,35 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "imported_schema_b.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Enum(
+                            EnumDef {
+                                name: "StatusB",
+                                items: [
+                                    Member(
+                                        EnumMember {
+                                            name: "Enabled",
+                                        },
+                                    ),
+                                    Member(
+                                        EnumMember {
+                                            name: "Disabled",
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

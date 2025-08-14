@@ -1,0 +1,8 @@
+import "imported_schema_a.poly";
+import "imported_schema_b.poly";
+
+table MainTable {
+    id: u32;
+    ref_a: ImportedA;
+    status_b: StatusB;
+}

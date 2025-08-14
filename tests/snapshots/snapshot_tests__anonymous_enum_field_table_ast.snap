@@ -1,0 +1,90 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\anonymous_enum_field_table.poly",
+        file_imports: [],
+        definitions: [
+            Table(
+                Table {
+                    metadata: [],
+                    name: Some(
+                        "OrderItem",
+                    ),
+                    members: [
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "item_id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "quantity",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            InlineEnum(
+                                InlineEnumField {
+                                    metadata: [],
+                                    name: Some(
+                                        "unit",
+                                    ),
+                                    variants: [
+                                        EnumVariant {
+                                            metadata: [],
+                                            name: Some(
+                                                "Pieces",
+                                            ),
+                                        },
+                                        EnumVariant {
+                                            metadata: [],
+                                            name: Some(
+                                                "Kilograms",
+                                            ),
+                                        },
+                                        EnumVariant {
+                                            metadata: [],
+                                            name: Some(
+                                                "Liters",
+                                            ),
+                                        },
+                                    ],
+                                    cardinality: None,
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]
