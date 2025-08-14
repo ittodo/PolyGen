@@ -80,6 +80,14 @@ namespace game.character {
         drop_items: embed {
             item_id: u32;
             drop_chance: f32 range(0.0, 1.0); // 0.0 to 1.0
+
+            // 중첩된 embed 타입 예시: 아이템에 부여될 수 있는 마법 효과
+            embed Enchantment {
+                enchant_id: u32;
+                strength: f32;
+            }
+            enchantment: Enchantment; // 단일 마법 효과
+
         }[]; // 여러 아이템을 드랍할 수 있으므로 배열로 정의
     }
  

@@ -133,7 +133,7 @@ pub enum Constraint {
 pub struct InlineEmbedField {
     pub metadata: Vec<Metadata>,
     pub name: Option<String>,
-    pub fields: Vec<FieldDefinition>,
+    pub members: Vec<TableMember>,
     pub cardinality: Option<Cardinality>,
     pub field_number: Option<u32>,
 }
@@ -164,7 +164,7 @@ pub struct Enum {
 pub struct Embed {
     pub metadata: Vec<Metadata>,
     pub name: Option<String>,
-    pub fields: Vec<FieldDefinition>,
+    pub members: Vec<TableMember>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

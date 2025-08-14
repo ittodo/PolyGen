@@ -205,11 +205,7 @@ fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<Str
             let mut inline_struct = convert_table_to_struct(&ast_model::Table {
                 name: Some(struct_name.clone()),
                 metadata: ief.metadata.clone(),
-                members: ief
-                    .fields
-                    .iter()
-                    .map(|f| TableMember::Field(f.clone()))
-                    .collect(),
+                members: ief.members.clone(),
             });
             inline_struct.is_embed = true;
 
@@ -296,11 +292,7 @@ fn convert_embed_to_struct(embed: &ast_model::Embed) -> StructDef {
     let mut struct_def = convert_table_to_struct(&ast_model::Table {
         name: embed.name.clone(),
         metadata: embed.metadata.clone(),
-        members: embed
-            .fields
-            .iter()
-            .map(|f| TableMember::Field(f.clone()))
-            .collect(),
+        members: embed.members.clone(),
     });
     struct_def.is_embed = true;
     // For now, we assume named embeds don't contain inline embeds that would create more nested types.

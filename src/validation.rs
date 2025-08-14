@@ -12,6 +12,49 @@ pub fn validate_ast(definitions: &[Definition]) -> Result<(), ValidationError> {
     Ok(())
 }
 
+fn collect_from_members(
+    members: &[TableMember],
+    path: &mut Vec<String>,
+    types: &mut HashSet<String>,
+) -> Result<(), ValidationError> {
+    for member in members {
+        match member {
+            TableMember::Embed(e) => {
+                path.push(e.name.clone().expect("Embed name should be present"));
+                let embed_fqn = path.join(".");
+                if !types.insert(embed_fqn.clone()) {
+                    return Err(ValidationError::DuplicateDefinition(embed_fqn));
+                }
+                // Recursively collect from the embed's members
+                collect_from_members(&e.members, path, types)?;
+                path.pop();
+            }
+            TableMember::Enum(e) => {
+                if let Some(name) = &e.name {
+                    path.push(name.clone());
+                    let enum_fqn = path.join(".");
+                    if !types.insert(enum_fqn.clone()) {
+                        return Err(ValidationError::DuplicateDefinition(enum_fqn));
+                    }
+                    path.pop();
+                }
+            }
+            TableMember::Field(FieldDefinition::InlineEmbed(ief)) => {
+                path.push(ief.name.clone().expect("Inline embed name should be present"));
+                let embed_fqn = path.join(".");
+                if !types.insert(embed_fqn.clone()) {
+                    return Err(ValidationError::DuplicateDefinition(embed_fqn));
+                }
+                // Recursively collect from the inline embed's members
+                collect_from_members(&ief.members, path, types)?;
+                path.pop();
+            }
+            _ => {} // Other members don't define new types in this context
+        }
+    }
+    Ok(())
+}
+
 /// 재귀적으로 모든 타입 정의를 수집하여 `HashSet`에 추가합니다.
 fn collect_all_types(
     definitions: &[Definition],
@@ -38,36 +81,11 @@ fn collect_all_types(
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
 
-                // Also collect named embeds and enums defined inside the table.
                 path.push(t.name.as_ref().expect("Table name should be present").clone());
-                for member in &t.members {
-                    if let TableMember::Embed(e) = member {
-                        path.push(e.name.clone().expect("Embed name should be present"));
-                        let embed_fqn = path.join(".");
-                        if !types.insert(embed_fqn.clone()) {
-                            return Err(ValidationError::DuplicateDefinition(embed_fqn));
-                        }
-                        path.pop();
-                    } else if let TableMember::Enum(e) = member {
-                        // Named enums embedded within a table should still have a name.
-                        if let Some(name) = &e.name {
-                            path.push(name.clone());
-                            let enum_fqn = path.join(".");
-                            if !types.insert(enum_fqn.clone()) {
-                                return Err(ValidationError::DuplicateDefinition(enum_fqn));
-                            }
-                            path.pop();
-                        } else {
-                            // This case should ideally not happen if grammar ensures named enums in table members have names.
-                            // If it does, it's an error in AST construction or grammar.
-                            // For now, we'll just ignore it as inline enums are not globally addressable.
-                        }
-                    }
-                }
+                collect_from_members(&t.members, path, types)?;
                 path.pop();
             }
             Definition::Enum(e) => {
-                // Only named enums are collected as globally defined types.
                 if let Some(name) = &e.name {
                     let fqn = path
                         .iter()
@@ -90,6 +108,9 @@ fn collect_all_types(
                 if !types.insert(fqn.clone()) {
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
+                path.push(e.name.as_ref().expect("Embed name should be present").clone());
+                collect_from_members(&e.members, path, types)?;
+                path.pop();
             }
             Definition::Comment(_) => { /* Comments are not types, so we ignore them. */ }
             Definition::Annotation(_) => { /* Annotations are not types, so we ignore them. */ }
@@ -135,6 +156,38 @@ fn check_type_path(
     Err(ValidationError::TypeNotFound(used_type_str))
 }
 
+fn validate_table_members(
+    members: &[TableMember],
+    path: &mut Vec<String>,
+    all_types: &HashSet<String>,
+) -> Result<(), ValidationError> {
+    for member in members {
+        match member {
+            TableMember::Field(field) => match field {
+                FieldDefinition::Regular(rf) => {
+                    if let TypeName::Path(type_path) = &rf.field_type.base_type {
+                        check_type_path(type_path, path, all_types)?;
+                    }
+                }
+                FieldDefinition::InlineEmbed(ief) => {
+                    path.push(ief.name.clone().expect("Inline embed must have a name"));
+                    validate_table_members(&ief.members, path, all_types)?;
+                    path.pop();
+                }
+                FieldDefinition::InlineEnum(_) => {}
+            },
+            TableMember::Embed(embed) => {
+                path.push(embed.name.clone().expect("Embed must have a name"));
+                validate_table_members(&embed.members, path, all_types)?;
+                path.pop();
+            }
+            TableMember::Enum(_) => {}
+            TableMember::Comment(_) => {}
+        }
+    }
+    Ok(())
+}
+
 /// 재귀적으로 모든 필드를 순회하며 사용된 타입의 유효성을 검사합니다.
 fn validate_all_types(
     definitions: &[Definition],
@@ -152,48 +205,17 @@ fn validate_all_types(
             }
             Definition::Table(t) => {
                 path.push(t.name.clone().expect("Table name should be present"));
-                for member in &t.members {
-                    match member {
-                        TableMember::Field(FieldDefinition::Regular(field)) => {
-                            if let TypeName::Path(type_path) = &field.field_type.base_type {
-                                check_type_path(type_path, path, all_types)?;
-                            } else if let TypeName::InlineEnum(_) = &field.field_type.base_type {
-                                // Inline enums do not reference other types, so no validation needed here.
-                            }
-                        }
-                        TableMember::Field(FieldDefinition::InlineEmbed(inline_embed)) => {
-                            for f in &inline_embed.fields {
-                                if let FieldDefinition::Regular(rf) = f {
-                                    if let TypeName::Path(type_path) = &rf.field_type.base_type {
-                                        check_type_path(type_path, path, all_types)?;
-                                    } else if let TypeName::InlineEnum(_) = &rf.field_type.base_type {
-                                        // Inline enums do not reference other types, so no validation needed here.
-                                    }
-                                }
-                            }
-                        }
-                        TableMember::Field(FieldDefinition::InlineEnum(_)) => { /* Inline enums do not reference other types */ }
-                        TableMember::Embed(_) => { /* Embeds are checked as top-level types */ }
-                        TableMember::Enum(_) => { /* Inline enums do not reference other types */ }
-                        TableMember::Comment(_) => { /* Comments do not reference types */ }
-                    }
-                }
+                validate_table_members(&t.members, path, all_types)?;
                 path.pop();
             }
             Definition::Enum(_) => { /* Enums do not reference other types */ }
             Definition::Embed(e) => {
                 // Validate types used within the embed's fields.
                 path.push(e.name.clone().expect("Embed name should be present"));
-                 for field in &e.fields {
-                    if let FieldDefinition::Regular(rf) = field {
-                        if let TypeName::Path(type_path) = &rf.field_type.base_type {
-                            check_type_path(type_path, path, all_types)?;
-                        }
-                    }
-                }
+                validate_table_members(&e.members, path, all_types)?;
                 path.pop();
             }
-            Definition::Comment(_) => { /* Comments do not reference types */ }
+            Definition::Comment(_) => { /* Comments do not reference other types */ }
             Definition::Annotation(_) => { /* Annotations do not reference types */ }
         }
     }
