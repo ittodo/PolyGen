@@ -31,8 +31,8 @@ fn parse_literal(pair: Pair<Rule>) -> Result<Literal, AstBuildError> {
             // Remove quotes and handle escaped characters (basic for now)
             Literal::String(
                 text[1..text.len() - 1]
-                    .replace("\\\"", "\"")
-                    .replace("\\\\", "\\"),
+                    .replace("\"", "\"")
+                    .replace("\\", "\\"),
             )
         }
         Rule::INTEGER => {
@@ -815,9 +815,25 @@ fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstBuild
                     .as_str()
                     .to_string();
 
+                let mut variant_value: Option<i64> = None;
+                // Check if the next pair is an INTEGER (for explicit value assignment)
+                if let Some(value_pair) = variant_inner.peek() {
+                    if value_pair.as_rule() == Rule::INTEGER {
+                        // Consume the INTEGER pair
+                        let consumed_value_pair = variant_inner.next().unwrap();
+                        variant_value = Some(consumed_value_pair.as_str().parse().map_err(|_| AstBuildError::InvalidValue {
+                            element: "enum variant value".to_string(),
+                            value: consumed_value_pair.as_str().to_string(),
+                            line: p_line,
+                            col: p_col,
+                        })?);
+                    }
+                }
+
                 variants.push(EnumVariant {
                     metadata,
                     name: Some(variant_name),
+                    value: variant_value,
                 });
             }
             Rule::cardinality => {
@@ -908,9 +924,25 @@ fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
                 .as_str()
                 .to_string();
 
+            let mut variant_value: Option<i64> = None;
+            // Check if the next pair is an INTEGER (for explicit value assignment)
+            if let Some(value_pair) = variant_inner.peek() {
+                if value_pair.as_rule() == Rule::INTEGER {
+                    // Consume the INTEGER pair
+                    let consumed_value_pair = variant_inner.next().unwrap();
+                    variant_value = Some(consumed_value_pair.as_str().parse().map_err(|_| AstBuildError::InvalidValue {
+                        element: "enum variant value".to_string(),
+                        value: consumed_value_pair.as_str().to_string(),
+                        line: p_line,
+                        col: p_col,
+                    })?);
+                }
+            }
+
             variants.push(EnumVariant {
                 metadata,
-                name: Some(variant_name), // EnumVariant name is always present
+                name: Some(variant_name),
+                value: variant_value,
             });
         }
     }

@@ -151,6 +151,7 @@ pub struct InlineEnumField {
 pub struct EnumVariant {
     pub metadata: Vec<Metadata>,
     pub name: Option<String>,
+    pub value: Option<i64>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

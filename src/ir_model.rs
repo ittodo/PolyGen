@@ -95,4 +95,5 @@ pub enum EnumItem {
 #[derive(Serialize, Debug, Clone)]
 pub struct EnumMember {
     pub name: String,
+    pub value: Option<i64>,
 }

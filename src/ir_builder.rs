@@ -261,6 +261,7 @@ fn convert_constraints_to_attributes(constraints: &[ast_model::Constraint]) -> V
 
 fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>) -> EnumDef {
     let mut items = Vec::new();
+    let mut current_value: i64 = 0; // Initialize counter for sequential numbering
 
     // Extract enum's own comment and add to items
     for meta in &e.metadata {
@@ -277,8 +278,21 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>) 
                 println!("[ir_builder] comment 2: {:?}", c);
             }
         }
+
+        let member_value = if let Some(explicit_value) = variant.value {
+            // If an explicit value is provided, use it and update the counter
+            current_value = explicit_value;
+            Some(explicit_value)
+        } else {
+            // If no explicit value, use the current sequential value
+            let value_to_assign = current_value;
+            current_value += 1; // Increment for the next member
+            Some(value_to_assign)
+        };
+
         items.push(EnumItem::Member(ir_model::EnumMember {
             name: variant.name.clone().unwrap(),
+            value: member_value,
         }));
     }
 

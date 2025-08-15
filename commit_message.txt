@@ -1,13 +1,12 @@
-feat: 스냅샷 테스트 인프라 구축 및 예제 스키마 추가
+feat: enum 멤버 값 할당 기능 추가 및 C# 코드 생성기 업데이트
 
-코드 생성기의 AST 및 IR 단계에 대한 스냅샷 테스트 인프라를 구축하고, 다양한 PolyGen 스키마 예제를 추가했습니다.
+PolyGen 스키마에서 enum 멤버에 명시적으로 정수 값을 할당할 수 있는 기능을 추가했습니다.
+또한, 이 변경 사항을 반영하도록 C# 코드 생성기를 업데이트했습니다.
 
 주요 변경 사항:
-- 프로젝트 구조를 라이브러리(`lib.rs`)와 실행 파일(`main.rs`)로 분리하여 핵심 로직을 테스트 가능하도록 리팩토링했습니다.
-- `lib.rs`에 `parse_and_merge_schemas` 및 `build_ir_from_asts` 함수를 공개하여 테스트에서 접근할 수 있도록 했습니다.
-- `insta` 및 `walkdir` 개발 의존성을 추가했습니다.
-- `tests/snapshot_tests.rs` 파일을 생성하여 AST 및 IR 스냅샷 테스트를 구현했습니다.
-- `tests/schemas` 디렉토리에 PolyGen 언어의 다양한 기능을 커버하는 10개 이상의 예제 스키마 파일을 추가했습니다. (예: 기본 테이블, 제약 조건, 어노테이션, 다양한 열거형, 임베드, 중첩 네임스페이스, 파일 임포트 등)
-- `main` 실행 시 디버그 출력 파일(`parse_tree.txt`, `ast_debug.txt`, `ir_debug.txt`)이 계속 생성되도록 로직을 유지했습니다.
-
-이 변경으로 PolyGen 스키마 파싱 및 IR 변환 로직의 안정성과 정확성을 자동으로 검증할 수 있게 되었습니다.
+- `polygen.pest`: `enum_variant` 규칙에 선택적 정수 값 할당(`= INTEGER`)을 지원하도록 문법을 확장했습니다.
+- `src/ast_model.rs`: `EnumVariant` 구조체에 `value: Option<i64>` 필드를 추가하여 파싱된 값을 저장할 수 있도록 했습니다.
+- `src/ast_parser.rs`: `parse_enum` 및 `parse_inline_enum_field` 함수를 수정하여 `enum_variant`의 선택적 정수 값을 파싱하고 `EnumVariant` AST 노드에 반영하도록 했습니다.
+- `src/ir_model.rs`: `EnumMember` 구조체에 `value: Option<i64>` 필드를 추가하여 IR 단계에서 enum 멤버 값을 표현할 수 있도록 했습니다.
+- `src/ir_builder.rs`: `convert_enum_to_enum_def` 함수를 수정하여 AST에서 전달된 명시적 값을 `EnumMember` IR 노드에 할당하고, 값이 없는 경우 순차적으로 값을 할당하도록 로직을 구현했습니다.
+- `src/csharp_generator.rs`: C# 코드 생성기를 구현하여 `enum` 정의를 생성하고, `EnumMember`의 `value` 필드를 사용하여 C# enum 멤버에 명시적 값을 반영하도록 했습니다.

@@ -58,7 +58,7 @@ field_number = { "=" ~ INTEGER }
 // ====
 enum_def           = { "enum" ~ IDENT ~ "{" ~ enum_variant* ~ "}" }
 anonymous_enum_def = { "enum" ~ "{" ~ enum_variant* ~ "}" }
-enum_variant       = { doc_comment* ~ annotation* ~ IDENT ~ (";" | ",")? }
+enum_variant       = { doc_comment* ~ annotation* ~ IDENT ~ ("=" ~ INTEGER)? ~ (";" | ",")? }
 
 // Types
 // =====
