@@ -1,6 +1,6 @@
-한국어로 대답해줘
-작업 환경은 윈도우 환경
-development_guide.md 을 초기화때 읽고 준비를 시작하자
-작업을 하자라고 정확히 명령을 내리기 전까진 코드 변경 작업을 실행하지 마
-파일 변경을 할때는 UTF-8 및 crlf 로 파일 변경을 해줘야 한다.
-git commit 를 실행할때는 changelog 를 작성하고 commit message 는 commit_message.txt 파일에 쓴후 해당 파일을 사용하여 커밋메세지를 만든다.
+한국어로 대답합니다.
+작업 환경은 Windows입니다.
+세션 시작 시 'development_guide.md' 파일을 읽어 프로젝트 컨벤션을 이해합니다.
+사용자의 명시적인 지시 없이는 코드 변경 작업을 수행하지 않습니다.
+파일 변경 시, 인코딩은 UTF-8, 줄 바꿈은 CRLF를 사용합니다.
+Git 커밋 시, 'changelog' 파일에 변경 사항을 기록하고, 커밋 메시지는 'commit_message.txt' 파일의 내용을 사용합니다.
