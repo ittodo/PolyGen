@@ -1,2 +1,6 @@
+- C# 코드 생성기 리팩토링 (중첩 네임스페이스 지원 개선)
+- Rhai 템플릿 엔진 의존성 업데이트 (1.18 -> 1.22.2)
+- Rhai 템플릿 헬퍼 함수 추가 (`is_namespace`, `render_items` 등)
+- `development_guide.md` 문서 전체 개정
 - `GEMINI.md`의 문체를 공식적으로 변경
 - `development_guide.md`의 템플릿 엔진을 `minijinja`에서 `Rhai`로 변경

@@ -2,7 +2,8 @@ use crate::ir_model::{
     AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef, NamespaceDef,
     NamespaceItem, SchemaContext, StructDef, StructItem,
 };
-use rhai::{Dynamic, Engine, EvalAltResult, Scope};
+use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
+use std::any::TypeId;
 use std::path::Path;
 
 pub fn generate_code_with_rhai(
@@ -82,6 +83,38 @@ fn register_types_and_getters(engine: &mut Engine) {
                 NamespaceItem::Enum(e) => Ok(e.clone()),
                 _ => Err(Box::new(EvalAltResult::ErrorSystem(
                     "Cannot convert to EnumDef".to_string(),
+                    Box::new(rhai::LexError::UnterminatedString),
+                ))),
+            }
+        },
+    );
+
+    engine.register_fn("is_comment", |item: &mut NamespaceItem| {
+        matches!(item, NamespaceItem::Comment(_))
+    });
+    engine.register_fn(
+        "as_comment",
+        |item: &mut NamespaceItem| -> Result<String, Box<EvalAltResult>> {
+            match item {
+                NamespaceItem::Comment(c) => Ok(c.clone()),
+                _ => Err(Box::new(EvalAltResult::ErrorSystem(
+                    "Cannot convert to Comment".to_string(),
+                    Box::new(rhai::LexError::UnterminatedString),
+                ))),
+            }
+        },
+    );
+
+    engine.register_fn("is_namespace", |item: &mut NamespaceItem| {
+        matches!(item, NamespaceItem::Namespace(_))
+    });
+    engine.register_fn(
+        "as_namespace",
+        |item: &mut NamespaceItem| -> Result<NamespaceDef, Box<EvalAltResult>> {
+            match item {
+                NamespaceItem::Namespace(ns) => Ok((**ns).clone()),
+                _ => Err(Box::new(EvalAltResult::ErrorSystem(
+                    "Cannot convert to NamespaceDef".to_string(),
                     Box::new(rhai::LexError::UnterminatedString),
                 ))),
             }
@@ -231,6 +264,49 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_type_with_name::<AnnotationParam>("AnnotationParam");
     engine.register_get("key", |p: &mut AnnotationParam| p.key.clone());
     engine.register_get("value", |p: &mut AnnotationParam| p.value.clone());
+
+    engine.register_raw_fn(
+        "render_items",
+        [TypeId::of::<Array>(), TypeId::of::<String>()],
+        |context: NativeCallContext, args: &mut [&mut Dynamic]| -> Result<String, Box<EvalAltResult>> {
+            if args.len() != 2 {
+                return Err(format!(
+                    "render_items: Expected 2 arguments (items, template_path), but got {}",
+                    args.len()
+                )
+                .into());
+            }
+
+            let items = match args[0].clone().into_array() {
+                Ok(arr) => arr,
+                Err(_) => return Err("render_items: 'items' argument must be an array.".into()),
+            };
+
+            let template_path = match args[1].clone().into_string() {
+                Ok(s) => s,
+                Err(_) => {
+                    return Err("render_items: 'template_path' argument must be a string.".into())
+                }
+            };
+
+            let template = match std::fs::read_to_string(&template_path) {
+                Ok(s) => s,
+                Err(e) => return Err(format!("Failed to read template file '{}': {}", template_path, e).into()),
+            };
+
+            let engine = context.engine();
+            let mut result = String::new();
+            let template_literal = format!("`{}`", template);
+
+            for item in items {
+                let mut scope = Scope::new();
+                scope.push("item", item);
+                let rendered = engine.eval_with_scope::<String>(&mut scope, &template_literal)?;
+                result.push_str(&rendered);
+            }
+            Ok(result)
+        },
+    );
 
     engine.register_fn(
         "include",

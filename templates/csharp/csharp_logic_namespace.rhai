@@ -8,5 +8,5 @@ for ns in file.namespaces
 {
     content += eval("`" + csharp_namespace + "`");
 }
-content
+content;
 }

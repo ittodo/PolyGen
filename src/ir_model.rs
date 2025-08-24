@@ -17,10 +17,12 @@ pub struct FileDef {
 
 // --- Namespace Definition ---
 
-/// Represents a namespace containing various definitions.
+/// Represents a namespace containing various definitions. Can be nested.
 #[derive(Serialize, Debug, Default, Clone)]
 pub struct NamespaceDef {
+    /// The name of the namespace as declared in the schema (e.g., "game.character").
     pub name: String,
+    /// A list of items, including structs, enums, and nested namespaces, in declaration order.
     pub items: Vec<NamespaceItem>,
 }
 
@@ -30,6 +32,7 @@ pub enum NamespaceItem {
     Struct(StructDef),
     Enum(EnumDef),
     Comment(String),
+    Namespace(Box<NamespaceDef>), // A nested namespace is now an item.
 }
 
 // --- Struct Definition ---

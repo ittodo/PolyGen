@@ -14,91 +14,79 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
             .path
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "".to_string());
+            .unwrap_or_default();
 
-        let mut file_def = FileDef {
-            path: file_name, // Use only the file name
-            namespaces: Vec::new(),
+        let mut top_level_namespaces = Vec::new();
+        let mut global_items = Vec::new();
+
+        // Process definitions at the root of the file.
+        for def in &ast.definitions {
+            // Top-level namespace blocks are handled specially to form the root of the hierarchy.
+            if let Definition::Namespace(ns_ast) = def {
+                let mut new_ns = NamespaceDef {
+                    name: ns_ast.path.join("."),
+                    items: Vec::new(),
+                };
+                // Recurse into this new top-level namespace
+                populate_items_recursively(&mut new_ns.items, &ns_ast.definitions);
+                top_level_namespaces.push(new_ns);
+            } else {
+                // Any other item at the top level belongs to the "global" namespace.
+                add_definition_to_items(&mut global_items, def);
+            }
+        }
+
+        // If there were global items, create a global namespace for them (name is empty).
+        if !global_items.is_empty() {
+            let global_ns = NamespaceDef {
+                name: "".to_string(),
+                items: global_items,
+            };
+            top_level_namespaces.insert(0, global_ns);
+        }
+
+        let file_def = FileDef {
+            path: file_name,
+            namespaces: top_level_namespaces,
         };
-
-        let mut current_path: Vec<String> = Vec::new();
-        populate_namespaces(
-            &mut file_def.namespaces,
-            &ast.definitions,
-            &mut current_path,
-        );
         context.files.push(file_def);
     }
 
     context
 }
 
-/// Recursively traverses AST definitions to populate the namespaces for a given file.
-fn populate_namespaces(
-    namespaces: &mut Vec<NamespaceDef>,
-    definitions: &[ast_model::Definition],
-    path: &mut Vec<String>,
-) {
-    // Ensure the global namespace (with an empty name) always exists.
-    if namespaces.is_empty() {
-        namespaces.push(NamespaceDef::default());
-    }
-
+/// Recursively populates a list of items from AST definitions.
+fn populate_items_recursively(items: &mut Vec<NamespaceItem>, definitions: &[ast_model::Definition]) {
     for def in definitions {
-        match def {
-            Definition::Namespace(ns) => {
-                path.extend(ns.path.iter().cloned());
-                populate_namespaces(namespaces, &ns.definitions, path);
-                // Backtrack the path after recursion.
-                for _ in 0..ns.path.len() {
-                    path.pop();
-                }
-            }
-            _ => {
-                // For any other definition (Table, Enum, Embed), find or create the correct namespace based on the current path.
-                let fqn_prefix = path.join(".");
-                let namespace = if fqn_prefix.is_empty() {
-                    // If path is empty, it's the global namespace.
-                    &mut namespaces[0]
-                } else {
-                    // Find if the namespace already exists.
-                    if let Some(index) = namespaces.iter().position(|ns| ns.name == fqn_prefix) {
-                        &mut namespaces[index]
-                    } else {
-                        // If not, create a new one.
-                        let new_namespace = NamespaceDef {
-                            name: fqn_prefix.clone(),
-                            items: Vec::new(),
-                        };
-                        namespaces.push(new_namespace);
-                        namespaces.last_mut().unwrap()
-                    }
-                };
+        add_definition_to_items(items, def);
+    }
+}
 
-                // Now, add the item to the determined namespace.
-                match def {
-                    Definition::Table(table) => {
-                        let struct_def = convert_table_to_struct(table);
-                        namespace.items.push(NamespaceItem::Struct(struct_def));
-                    }
-                    Definition::Enum(e) => {
-                        namespace.items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e, None)));
-                    }
-                    Definition::Embed(embed) => {
-                        namespace
-                            .items
-                            .push(NamespaceItem::Struct(convert_embed_to_struct(embed)));
-                    }
-                    Definition::Comment(c) => {
-                        println!("[ir_builder] comment: {:?} {:?}", c, namespace.name); // [DEBUG]
-                        namespace.items.push(NamespaceItem::Comment(c.clone()))
-                    }
-                    Definition::Annotation(_) => { // Annotations are processed elsewhere or ignored at this level
-                    }
-                    Definition::Namespace(_) => unreachable!(), // Already handled above.
-                }
-            }
+/// Converts a single AST Definition into a NamespaceItem and adds it to a list.
+/// This is the core of the recursive build process.
+fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition) {
+    match def {
+        Definition::Namespace(ns_ast) => {
+            let mut new_ns = NamespaceDef {
+                name: ns_ast.path.join("."),
+                items: Vec::new(),
+            };
+            populate_items_recursively(&mut new_ns.items, &ns_ast.definitions);
+            items.push(NamespaceItem::Namespace(Box::new(new_ns)));
         }
+        Definition::Table(table) => {
+            items.push(NamespaceItem::Struct(convert_table_to_struct(table)));
+        }
+        Definition::Enum(e) => {
+            items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e, None)));
+        }
+        Definition::Embed(embed) => {
+            items.push(NamespaceItem::Struct(convert_embed_to_struct(embed)));
+        }
+        Definition::Comment(c) => {
+            items.push(NamespaceItem::Comment(c.clone()));
+        }
+        Definition::Annotation(_) => { /* Annotations are handled within other items, not as top-level IR items */ }
     }
 }
 
