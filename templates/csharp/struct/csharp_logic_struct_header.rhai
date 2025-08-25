@@ -25,7 +25,7 @@ ${
                     header += `${param.key} : ${param.value}` ;
                     is_first = false;
                 }
-                header+= ")]";
+                header+= ")]\n";
             }
             else
             {

@@ -43,9 +43,6 @@ pub struct StructDef {
     pub name: String,
     pub header: Vec<StructItem>,
     pub items: Vec<StructItem>,
-    pub is_embed: bool,
-    pub embedded_structs: Vec<StructDef>,
-    pub inline_enums: Vec<EnumDef>,
 }
 
 /// An enum representing any item that can appear within a struct.
@@ -54,6 +51,8 @@ pub enum StructItem {
     Field(FieldDef),
     Comment(String),
     Annotation(AnnotationDef),
+    EmbeddedStruct(StructDef),
+    InlineEnum(EnumDef),
 }
 
 /// Represents a field/property within a struct.

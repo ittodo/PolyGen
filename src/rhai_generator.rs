@@ -135,13 +135,6 @@ fn register_types_and_getters(engine: &mut Engine) {
             .map(|item| Dynamic::from(item.clone()))
             .collect::<Vec<Dynamic>>()
     });
-    engine.register_get("is_embed", |s: &mut StructDef| s.is_embed);
-    engine.register_get("embedded_structs", |s: &mut StructDef| {
-        s.embedded_structs
-            .iter()
-            .map(|embedded_struct| Dynamic::from(embedded_struct.clone()))
-            .collect::<Vec<Dynamic>>()
-    });
 
     engine.register_type_with_name::<StructItem>("StructItem");
     engine.register_fn("is_field", |item: &mut StructItem| {
@@ -154,6 +147,14 @@ fn register_types_and_getters(engine: &mut Engine) {
 
     engine.register_fn("is_annotation", |item: &mut StructItem| {
         matches!(item, StructItem::Annotation(_))
+    });
+
+    engine.register_fn("is_embedded_struct", |item: &mut StructItem| {
+        matches!(item, StructItem::EmbeddedStruct(_))
+    });
+
+    engine.register_fn("is_inline_enum", |item: &mut StructItem| {
+        matches!(item, StructItem::InlineEnum(_))
     });
 
     engine.register_fn(
@@ -189,6 +190,32 @@ fn register_types_and_getters(engine: &mut Engine) {
                 StructItem::Annotation(f) => Ok(f.clone()),
                 _ => Err(Box::new(EvalAltResult::ErrorSystem(
                     "Cannot convert to FieldDef".to_string(),
+                    Box::new(rhai::LexError::UnterminatedString),
+                ))),
+            }
+        },
+    );
+
+    engine.register_fn(
+        "as_embedded_struct",
+        |item: &mut StructItem| -> Result<StructDef, Box<EvalAltResult>> {
+            match item {
+                StructItem::EmbeddedStruct(s) => Ok(s.clone()),
+                _ => Err(Box::new(EvalAltResult::ErrorSystem(
+                    "Cannot convert to EmbeddedStruct".to_string(),
+                    Box::new(rhai::LexError::UnterminatedString),
+                ))),
+            }
+        },
+    );
+
+    engine.register_fn(
+        "as_inline_enum",
+        |item: &mut StructItem| -> Result<EnumDef, Box<EvalAltResult>> {
+            match item {
+                StructItem::InlineEnum(e) => Ok(e.clone()),
+                _ => Err(Box::new(EvalAltResult::ErrorSystem(
+                    "Cannot convert to InlineEnum".to_string(),
                     Box::new(rhai::LexError::UnterminatedString),
                 ))),
             }
@@ -265,31 +292,14 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("key", |p: &mut AnnotationParam| p.key.clone());
     engine.register_get("value", |p: &mut AnnotationParam| p.value.clone());
 
-    engine.register_raw_fn(
+    engine.register_fn(
         "render_items",
-        [TypeId::of::<Array>(), TypeId::of::<String>()],
-        |context: NativeCallContext, args: &mut [&mut Dynamic]| -> Result<String, Box<EvalAltResult>> {
-            if args.len() != 2 {
-                return Err(format!(
-                    "render_items: Expected 2 arguments (items, template_path), but got {}",
-                    args.len()
-                )
-                .into());
-            }
-
-            let items = match args[0].clone().into_array() {
-                Ok(arr) => arr,
-                Err(_) => return Err("render_items: 'items' argument must be an array.".into()),
-            };
-
-            let template_path = match args[1].clone().into_string() {
-                Ok(s) => s,
-                Err(_) => {
-                    return Err("render_items: 'template_path' argument must be a string.".into())
-                }
-            };
-
-            let template = match std::fs::read_to_string(&template_path) {
+        |context: NativeCallContext,
+         items: Array,
+         template_path: &str,
+         var_name: &str| 
+         -> Result<String, Box<EvalAltResult>> {
+            let template = match std::fs::read_to_string(template_path) {
                 Ok(s) => s,
                 Err(e) => return Err(format!("Failed to read template file '{}': {}", template_path, e).into()),
             };
@@ -300,7 +310,7 @@ fn register_types_and_getters(engine: &mut Engine) {
 
             for item in items {
                 let mut scope = Scope::new();
-                scope.push("item", item);
+                scope.push(var_name, item);
                 let rendered = engine.eval_with_scope::<String>(&mut scope, &template_literal)?;
                 result.push_str(&rendered);
             }

@@ -93,8 +93,6 @@ fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition) {
 fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
     let mut items = Vec::new();
     let mut header_items = Vec::new();
-    let mut embedded_structs = Vec::new();
-    let mut embedded_enums = Vec::new(); // New line
 
     // Process metadata for the struct header
     for meta in &table.metadata {
@@ -112,7 +110,7 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
     for member in &table.members {
         match member {
             TableMember::Field(field) => {
-                // 필드에 연결된 메타데이터(주석, 어노테이션)를 먼저 처리
+                // Handle metadata (comments, annotations) associated with the field first
                 let field_metadata = match field {
                     ast_model::FieldDefinition::Regular(rf) => &rf.metadata,
                     ast_model::FieldDefinition::InlineEmbed(ief) => &ief.metadata,
@@ -128,17 +126,18 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
                     }
                 }
 
-                // 그 다음에 필드 자체를 처리
+                // Then handle the field itself
                 let (field_def, mut new_nested_structs, mut new_nested_enums) = convert_field_to_ir(field);
                 items.push(StructItem::Field(field_def));
-                embedded_structs.append(&mut new_nested_structs);
-                embedded_enums.append(&mut new_nested_enums);
+                // Add the new nested types to the items list
+                items.extend(new_nested_structs.into_iter().map(StructItem::EmbeddedStruct));
+                items.extend(new_nested_enums.into_iter().map(StructItem::InlineEnum));
             }
             TableMember::Embed(embed) => {
-                embedded_structs.push(convert_embed_to_struct(embed));
+                items.push(StructItem::EmbeddedStruct(convert_embed_to_struct(embed)));
             }
             TableMember::Enum(e) => {
-                embedded_enums.push(convert_enum_to_enum_def(e, None));
+                items.push(StructItem::InlineEnum(convert_enum_to_enum_def(e, None)));
             }
             TableMember::Comment(c) => items.push(StructItem::Comment(c.clone())),
         }
@@ -147,10 +146,7 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
     StructDef {
         name: table.name.clone().unwrap(),
         items,
-        is_embed: false,
         header: header_items,
-        embedded_structs,
-        inline_enums: embedded_enums, // New line
     }
 }
 
@@ -190,12 +186,11 @@ fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<Str
         }
         ast_model::FieldDefinition::InlineEmbed(ief) => {
             let struct_name = ief.name.clone().expect("Inline embed field name must be present").to_pascal_case();
-            let mut inline_struct = convert_table_to_struct(&ast_model::Table {
+            let inline_struct = convert_table_to_struct(&ast_model::Table {
                 name: Some(struct_name.clone()),
                 metadata: ief.metadata.clone(),
                 members: ief.members.clone(),
             });
-            inline_struct.is_embed = true;
 
             let nested_items = vec![inline_struct];
 
@@ -291,14 +286,11 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>) 
 }
 
 fn convert_embed_to_struct(embed: &ast_model::Embed) -> StructDef {
-    let mut struct_def = convert_table_to_struct(&ast_model::Table {
+    convert_table_to_struct(&ast_model::Table {
         name: embed.name.clone(),
         metadata: embed.metadata.clone(),
         members: embed.members.clone(),
-    });
-    struct_def.is_embed = true;
-    // For now, we assume named embeds don't contain inline embeds that would create more nested types.
-    struct_def
+    })
 }
 
 // Helper to format the abstract type into a language-agnostic string for the template.

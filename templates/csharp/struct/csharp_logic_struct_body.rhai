@@ -1,13 +1,14 @@
-${
+${  
+    import "templates/rhai_utils/indent" as indent_utils; 
     let body = "";
     for item in s.items 
-    {    
+    {
         if item.is_comment() 
-        {        
+        {
             let c = item.as_comment();
             body += "   // " + c + "\n";
         }
-        if item.is_field()
+        else if item.is_field()
         {
             let f = item.as_field();
 
@@ -17,7 +18,19 @@ ${
             }
 
             body += "   public " + f.field_type + " " + f.name + ";\n";
-        }    // 현재 어노테이션(@)은 생성 코드에 포함하지 않음
+        }
+        else if item.is_embedded_struct()
+        {
+            let structString = render_items([item.as_embedded_struct()], "templates/csharp/struct/csharp_logic_struct.rhai", "s");
+
+            body += indent_utils::indent_text(structString , 1);
+        }
+        else if item.is_inline_enum()
+        {
+            let enumString = render_items([item.as_inline_enum()], "templates/csharp/enum/csharp_enum.rhai", "e");
+
+            body += indent_utils::indent_text(enumString , 1);
+        }
     }
     body
 }
