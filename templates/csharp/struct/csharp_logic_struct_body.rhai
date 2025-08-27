@@ -1,5 +1,6 @@
 ${  
-    import "templates/rhai_utils/indent" as indent_utils; 
+    import "templates/rhai_utils/indent" as indent_utils;
+    import "templates/csharp/rhai_utils/type_mapping" as type_utils;
     let body = "";
     for item in s.items 
     {
@@ -17,7 +18,7 @@ ${
                 body += "   [ " + attributes + " ]\n";
             }
 
-            body += "   public " + f.field_type + " " + f.name + ";\n";
+            body += "   public " + type_utils::map_type(f.field_type) + " " + f.name + ";\n";
         }
         else if item.is_embedded_struct()
         {
