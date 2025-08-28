@@ -107,6 +107,21 @@ declare function init(container: HTMLElement, options?: InitOptions): {
 - Empty vs null semantics on write-back.
 - Enum label vs value mapping ownership (enumMap vs inference).
 
+## Related Work (Comparative Notes)
+- JSONEditor (josdejong): powerful JSON code/tree/table modes and schema validation. Great nested editing; dynamic list flattening with reversible mapping requires customization.
+- AG Grid + custom flattener: robust grid feature set; JSON↔table reversibility typically implemented by bespoke flatten/unflatten logic.
+- Handsontable: spreadsheet-like grid with JSON binding; dynamic index expansion (`field[i].*`) needs custom code.
+- Flatfile (SaaS): strong data onboarding, mapping, validation workflows; proprietary/paid and platform-specific.
+- Retool/Table UIs: enable JSON-backed tables in internal tools; less suitable as a standalone reusable widget.
+- One-off converters (transform.tools, CodeBeautify): JSON↔CSV conversion utilities; not focused on bidirectional editing or dynamic K.
+
+Differentiators
+- Unified, reversible JSON↔table transform with:
+  - Dynamic K list expansion (header/data driven) and GapMode (break/sparse)
+  - Enum mapping and per-field formatters/parsers
+  - Clear semantics for null/empty and options
+  - Embeddable API with minimal external assumptions
+
 ---
 
 ## Repository Strategy (Decision: Separate Repository)
