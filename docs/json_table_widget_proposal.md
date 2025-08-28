@@ -107,3 +107,67 @@ declare function init(container: HTMLElement, options?: InitOptions): {
 - Empty vs null semantics on write-back.
 - Enum label vs value mapping ownership (enumMap vs inference).
 
+---
+
+## Repository Strategy (Decision: Separate Repository)
+
+We will build and distribute this widget as a standalone, reusable web package in a separate repository.
+
+Rationale
+- Reuse: easy to consume across projects via npm/CDN (UMD/ESM bundles).
+- Isolation: independent release cadence, CI, security scopes, and issue tracking.
+- Simplicity: node-only toolchain; avoids mixing with Rust build/CI.
+
+Repository Layout
+- Root
+  - `package.json`, `vite.config.ts`, `tsconfig.json`, `.editorconfig`, `.eslintrc`, `.prettierrc`
+  - `src/` (library sources)
+  - `demo/` (sample app; can be deployed with GitHub Pages)
+  - `scripts/` (helper scripts: build, release, canary)
+  - `README.md` (public API; moved/expanded from this proposal)
+  - `LICENSE`
+
+Build & Bundling
+- Vite + TypeScript
+- Output formats: `esm`, `umd` (umd global name: `JsonTableWidget`)
+- CSS: extracted single file and/or CSS-in-JS with theming hooks
+
+CI/CD (GitHub Actions)
+- `ci.yml`: install → lint → typecheck → unit tests → build
+- `release.yml`: on tag `v*.*.*` → build → `npm publish` (with provenance) → upload demo build as artifact
+- `pages.yml` (optional): deploy `demo/` to GitHub Pages on `main`
+
+Publishing
+- `npm publish` with `access=public`
+- Semantic Versioning (SemVer); conventional commits for changelog automation (e.g., `changesets` or `semantic-release` optional)
+
+Security & QA
+- Dependency review; lockfile maintenance
+- `eslint` + `prettier` + `tsc --noEmit` gating in CI
+- Unit and snapshot tests (Jest or Vitest)
+
+License & Governance
+- Choose OSI license (MIT recommended for broad reuse)
+- CONTRIBUTING.md, CODE_OF_CONDUCT.md as needed
+
+## Monorepo Alternative (If Co-located with Other Code)
+
+If we ever choose to co-locate with another project (e.g., a Rust codebase), keep it in a distinct subfolder and isolate pipelines:
+- `tools/json-table-widget/` for the widget
+- Separate CI jobs/matrices for Node vs Rust
+- Clear developer docs to install Node toolchain only when working under `tools/`
+
+Pros
+- Shared issues/PRs and tighter versioning with the host repo
+
+Cons
+- Mixed toolchains and heavier CI/cache complexity
+- Harder to publish/package independently
+
+## Immediate Next Steps
+- Initialize new repository with Vite + TS template
+- Port this proposal into `README.md` and refine public API
+- Scaffold `src/` modules (editor, grid, core transforms)
+- Add `demo/` with minimal toggle UI and sample data
+- Set up CI (lint/typecheck/test/build) and Pages deploy for demo
+- Prepare npm publishing metadata and MIT license
