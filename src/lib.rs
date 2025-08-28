@@ -138,13 +138,20 @@ pub fn run(cli: Cli) -> Result<()> {
     let lang_output_dir = cli.output_dir.join(&cli.lang);
 
     if cli.lang == "csharp" {
-        let static_source_path = Path::new("static/csharp/DataSource.cs");
         let dest_dir = lang_output_dir.join("Common");
         fs::create_dir_all(&dest_dir)?;
-        let dest_path = dest_dir.join("DataSource.cs");
-        if static_source_path.exists() {
-            fs::copy(static_source_path, &dest_path)?;
-            println!("Copied static file to {}", dest_path.display());
+
+        let static_files = [
+            (Path::new("static/csharp/DataSource.cs"), "DataSource.cs"),
+            (Path::new("static/csharp/BinaryUtils.cs"), "BinaryUtils.cs"),
+            (Path::new("static/csharp/JsonUtils.cs"), "JsonUtils.cs"),
+        ];
+        for (src, name) in static_files {
+            let dest_path = dest_dir.join(name);
+            if src.exists() {
+                fs::copy(src, &dest_path)?;
+                println!("Copied static file to {}", dest_path.display());
+            }
         }
     }
 
@@ -155,6 +162,38 @@ pub fn run(cli: Cli) -> Result<()> {
         .join(format!("{}_file.rhai", cli.lang));
     rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
         .map_err(|e| anyhow::anyhow!(e))?;
+
+    // Additional C# codegen passes (keep original generation untouched)
+    if cli.lang == "csharp" {
+        let readers_template_path = cli
+            .templates_dir
+            .join(&cli.lang)
+            .join("csharp_binary_readers_file.rhai");
+        println!("\n--- C# Binary Readers generation ---");
+        rhai_generator::generate_code_with_rhai(&ir_context, &readers_template_path)
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        let writers_template_path = cli
+            .templates_dir
+            .join(&cli.lang)
+            .join("csharp_binary_writers_file.rhai");
+        println!("\n--- C# Binary Writers generation ---");
+        rhai_generator::generate_code_with_rhai(&ir_context, &writers_template_path)
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        // JSON mappers generation
+        let json_template_path = cli
+            .templates_dir
+            .join(&cli.lang)
+            .join("csharp_json_mappers_file.rhai");
+        println!("\n--- C# JSON Mappers generation ---");
+        if json_template_path.exists() {
+            rhai_generator::generate_code_with_rhai(&ir_context, &json_template_path)
+                .map_err(|e| anyhow::anyhow!(e))?;
+        } else {
+            println!("JSON mapper template not found: {}", json_template_path.display());
+        }
+    }
 
     println!("{} 코드 생성이 완료되었습니다.", cli.lang.to_uppercase());
 
