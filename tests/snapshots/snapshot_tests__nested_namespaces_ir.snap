@@ -8,65 +8,64 @@ SchemaContext {
             path: "nested_namespaces.poly",
             namespaces: [
                 NamespaceDef {
-                    name: "",
-                    items: [],
-                },
-                NamespaceDef {
-                    name: "game.character",
+                    name: "game",
                     items: [
-                        Struct(
-                            StructDef {
-                                name: "Player",
-                                header: [],
+                        Namespace(
+                            NamespaceDef {
+                                name: "character",
                                 items: [
-                                    Field(
-                                        FieldDef {
-                                            name: "id",
-                                            field_type: "u32",
-                                            attributes: [],
-                                        },
-                                    ),
-                                    Field(
-                                        FieldDef {
-                                            name: "name",
-                                            field_type: "string",
-                                            attributes: [],
+                                    Struct(
+                                        StructDef {
+                                            name: "Player",
+                                            header: [],
+                                            items: [
+                                                Field(
+                                                    FieldDef {
+                                                        name: "id",
+                                                        field_type: "u32",
+                                                        attributes: [],
+                                                    },
+                                                ),
+                                                Field(
+                                                    FieldDef {
+                                                        name: "name",
+                                                        field_type: "string",
+                                                        attributes: [],
+                                                    },
+                                                ),
+                                            ],
                                         },
                                     ),
                                 ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [],
                             },
                         ),
-                    ],
-                },
-                NamespaceDef {
-                    name: "game.item",
-                    items: [
-                        Struct(
-                            StructDef {
-                                name: "Item",
-                                header: [],
+                        Namespace(
+                            NamespaceDef {
+                                name: "item",
                                 items: [
-                                    Field(
-                                        FieldDef {
-                                            name: "id",
-                                            field_type: "u32",
-                                            attributes: [],
-                                        },
-                                    ),
-                                    Field(
-                                        FieldDef {
-                                            name: "name",
-                                            field_type: "string",
-                                            attributes: [],
+                                    Struct(
+                                        StructDef {
+                                            name: "Item",
+                                            header: [],
+                                            items: [
+                                                Field(
+                                                    FieldDef {
+                                                        name: "id",
+                                                        field_type: "u32",
+                                                        attributes: [],
+                                                    },
+                                                ),
+                                                Field(
+                                                    FieldDef {
+                                                        name: "name",
+                                                        field_type: "string",
+                                                        attributes: [],
+                                                    },
+                                                ),
+                                            ],
                                         },
                                     ),
                                 ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [],
                             },
                         ),
                     ],

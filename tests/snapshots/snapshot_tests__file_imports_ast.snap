@@ -148,12 +148,14 @@ expression: all_asts
                             name: Some(
                                 "Enabled",
                             ),
+                            value: None,
                         },
                         EnumVariant {
                             metadata: [],
                             name: Some(
                                 "Disabled",
                             ),
+                            value: None,
                         },
                     ],
                 },

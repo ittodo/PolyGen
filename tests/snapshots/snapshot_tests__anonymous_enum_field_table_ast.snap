@@ -63,18 +63,21 @@ expression: all_asts
                                             name: Some(
                                                 "Pieces",
                                             ),
+                                            value: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
                                             name: Some(
                                                 "Kilograms",
                                             ),
+                                            value: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
                                             name: Some(
                                                 "Liters",
                                             ),
+                                            value: None,
                                         },
                                     ],
                                     cardinality: None,

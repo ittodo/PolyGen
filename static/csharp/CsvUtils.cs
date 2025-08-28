@@ -9,6 +9,8 @@ namespace Polygen.Common
 {
     public static class CsvUtils
     {
+        public enum GapMode { Break = 0, Sparse = 1 }
+
         public static string Escape(string? value, char sep = ',')
         {
             if (value == null) return string.Empty;
@@ -61,6 +63,16 @@ namespace Polygen.Common
             }
             return sb.ToString();
         }
+
+        public static System.Collections.Generic.Dictionary<string,int> IndexHeader(string[] header)
+        {
+            var map = new System.Collections.Generic.Dictionary<string,int>(System.StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < header.Length; i++)
+            {
+                // duplicate keys keep first index
+                if (!map.ContainsKey(header[i])) map[header[i]] = i;
+            }
+            return map;
+        }
     }
 }
-

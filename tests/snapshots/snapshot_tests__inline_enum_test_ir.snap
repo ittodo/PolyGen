@@ -8,10 +8,6 @@ SchemaContext {
             path: "inline_enum_test.poly",
             namespaces: [
                 NamespaceDef {
-                    name: "",
-                    items: [],
-                },
-                NamespaceDef {
                     name: "MyGame",
                     items: [
                         Struct(
@@ -19,6 +15,40 @@ SchemaContext {
                                 name: "Player",
                                 header: [],
                                 items: [
+                                    InlineEnum(
+                                        EnumDef {
+                                            name: "Status",
+                                            items: [
+                                                Comment(
+                                                    "액티브",
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Active",
+                                                        value: Some(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Inactive",
+                                                        value: Some(
+                                                            1,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Banned",
+                                                        value: Some(
+                                                            2,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        },
+                                    ),
                                     Field(
                                         FieldDef {
                                             name: "id",
@@ -48,35 +78,13 @@ SchemaContext {
                                         },
                                     ),
                                 ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [
-                                    EnumDef {
-                                        name: "Status",
-                                        items: [
-                                            Comment(
-                                                "액티브",
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Active",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Inactive",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Banned",
-                                                },
-                                            ),
-                                        ],
-                                    },
-                                ],
                             },
                         ),
+                    ],
+                },
+                NamespaceDef {
+                    name: "MyGame",
+                    items: [
                         Struct(
                             StructDef {
                                 name: "Player",
@@ -103,6 +111,37 @@ SchemaContext {
                                             attributes: [],
                                         },
                                     ),
+                                    InlineEnum(
+                                        EnumDef {
+                                            name: "Status__Enum",
+                                            items: [
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Active",
+                                                        value: Some(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Inactive",
+                                                        value: Some(
+                                                            1,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Banned",
+                                                        value: Some(
+                                                            2,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        },
+                                    ),
                                     Field(
                                         FieldDef {
                                             name: "level",
@@ -110,30 +149,6 @@ SchemaContext {
                                             attributes: [],
                                         },
                                     ),
-                                ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [
-                                    EnumDef {
-                                        name: "Status__Enum",
-                                        items: [
-                                            Member(
-                                                EnumMember {
-                                                    name: "Active",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Inactive",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Banned",
-                                                },
-                                            ),
-                                        ],
-                                    },
                                 ],
                             },
                         ),

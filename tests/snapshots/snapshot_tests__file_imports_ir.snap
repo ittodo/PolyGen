@@ -37,9 +37,6 @@ SchemaContext {
                                         },
                                     ),
                                 ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [],
                             },
                         ),
                     ],
@@ -72,9 +69,6 @@ SchemaContext {
                                         },
                                     ),
                                 ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [],
                             },
                         ),
                     ],
@@ -94,11 +88,17 @@ SchemaContext {
                                     Member(
                                         EnumMember {
                                             name: "Enabled",
+                                            value: Some(
+                                                0,
+                                            ),
                                         },
                                     ),
                                     Member(
                                         EnumMember {
                                             name: "Disabled",
+                                            value: Some(
+                                                1,
+                                            ),
                                         },
                                     ),
                                 ],

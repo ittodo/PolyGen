@@ -17,16 +17,25 @@ SchemaContext {
                                     Member(
                                         EnumMember {
                                             name: "Active",
+                                            value: Some(
+                                                0,
+                                            ),
                                         },
                                     ),
                                     Member(
                                         EnumMember {
                                             name: "Inactive",
+                                            value: Some(
+                                                1,
+                                            ),
                                         },
                                     ),
                                     Member(
                                         EnumMember {
                                             name: "Banned",
+                                            value: Some(
+                                                2,
+                                            ),
                                         },
                                     ),
                                 ],

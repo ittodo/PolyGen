@@ -38,30 +38,37 @@ SchemaContext {
                                             attributes: [],
                                         },
                                     ),
-                                ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [
-                                    EnumDef {
-                                        name: "Status__Enum",
-                                        items: [
-                                            Member(
-                                                EnumMember {
-                                                    name: "Available",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "OutOfStock",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Discontinued",
-                                                },
-                                            ),
-                                        ],
-                                    },
+                                    InlineEnum(
+                                        EnumDef {
+                                            name: "Status__Enum",
+                                            items: [
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Available",
+                                                        value: Some(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "OutOfStock",
+                                                        value: Some(
+                                                            1,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Discontinued",
+                                                        value: Some(
+                                                            2,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        },
+                                    ),
                                 ],
                             },
                         ),

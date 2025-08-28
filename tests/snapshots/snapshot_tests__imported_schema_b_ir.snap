@@ -17,11 +17,17 @@ SchemaContext {
                                     Member(
                                         EnumMember {
                                             name: "Enabled",
+                                            value: Some(
+                                                0,
+                                            ),
                                         },
                                     ),
                                     Member(
                                         EnumMember {
                                             name: "Disabled",
+                                            value: Some(
+                                                1,
+                                            ),
                                         },
                                     ),
                                 ],

@@ -38,65 +38,58 @@ SchemaContext {
                                             attributes: [],
                                         },
                                     ),
+                                    EmbeddedStruct(
+                                        StructDef {
+                                            name: "Inventory",
+                                            header: [],
+                                            items: [
+                                                Field(
+                                                    FieldDef {
+                                                        name: "item_id",
+                                                        field_type: "u32",
+                                                        attributes: [],
+                                                    },
+                                                ),
+                                                Field(
+                                                    FieldDef {
+                                                        name: "quantity",
+                                                        field_type: "u32",
+                                                        attributes: [],
+                                                    },
+                                                ),
+                                                Field(
+                                                    FieldDef {
+                                                        name: "properties",
+                                                        field_type: "List<Properties>",
+                                                        attributes: [],
+                                                    },
+                                                ),
+                                                EmbeddedStruct(
+                                                    StructDef {
+                                                        name: "Properties",
+                                                        header: [],
+                                                        items: [
+                                                            Field(
+                                                                FieldDef {
+                                                                    name: "key",
+                                                                    field_type: "string",
+                                                                    attributes: [],
+                                                                },
+                                                            ),
+                                                            Field(
+                                                                FieldDef {
+                                                                    name: "value",
+                                                                    field_type: "string",
+                                                                    attributes: [],
+                                                                },
+                                                            ),
+                                                        ],
+                                                    },
+                                                ),
+                                            ],
+                                        },
+                                    ),
                                 ],
-                                is_embed: false,
-                                embedded_structs: [
-                                    StructDef {
-                                        name: "Inventory",
-                                        header: [],
-                                        items: [
-                                            Field(
-                                                FieldDef {
-                                                    name: "item_id",
-                                                    field_type: "u32",
-                                                    attributes: [],
-                                                },
-                                            ),
-                                            Field(
-                                                FieldDef {
-                                                    name: "quantity",
-                                                    field_type: "u32",
-                                                    attributes: [],
-                                                },
-                                            ),
-                                            Field(
-                                                FieldDef {
-                                                    name: "properties",
-                                                    field_type: "List<Properties>",
-                                                    attributes: [],
-                                                },
-                                            ),
-                                        ],
-                                        is_embed: true,
-                                        embedded_structs: [
-                                            StructDef {
-                                                name: "Properties",
-                                                header: [],
-                                                items: [
-                                                    Field(
-                                                        FieldDef {
-                                                            name: "key",
-                                                            field_type: "string",
-                                                            attributes: [],
-                                                        },
-                                                    ),
-                                                    Field(
-                                                        FieldDef {
-                                                            name: "value",
-                                                            field_type: "string",
-                                                            attributes: [],
-                                                        },
-                                                    ),
-                                                ],
-                                                is_embed: true,
-                                                embedded_structs: [],
-                                                inline_enums: [],
-                                            },
-                                        ],
-                                        inline_enums: [],
-                                    },
-                                ],
-                                inline_enums: [],
                             },
                         ),
                     ],

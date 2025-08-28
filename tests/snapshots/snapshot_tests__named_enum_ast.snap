@@ -19,18 +19,21 @@ expression: all_asts
                             name: Some(
                                 "Active",
                             ),
+                            value: None,
                         },
                         EnumVariant {
                             metadata: [],
                             name: Some(
                                 "Inactive",
                             ),
+                            value: None,
                         },
                         EnumVariant {
                             metadata: [],
                             name: Some(
                                 "Banned",
                             ),
+                            value: None,
                         },
                     ],
                 },

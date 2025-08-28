@@ -36,30 +36,37 @@ SchemaContext {
                                             attributes: [],
                                         },
                                     ),
-                                ],
-                                is_embed: false,
-                                embedded_structs: [],
-                                inline_enums: [
-                                    EnumDef {
-                                        name: "Unit__Enum",
-                                        items: [
-                                            Member(
-                                                EnumMember {
-                                                    name: "Pieces",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Kilograms",
-                                                },
-                                            ),
-                                            Member(
-                                                EnumMember {
-                                                    name: "Liters",
-                                                },
-                                            ),
-                                        ],
-                                    },
+                                    InlineEnum(
+                                        EnumDef {
+                                            name: "Unit__Enum",
+                                            items: [
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Pieces",
+                                                        value: Some(
+                                                            0,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Kilograms",
+                                                        value: Some(
+                                                            1,
+                                                        ),
+                                                    },
+                                                ),
+                                                Member(
+                                                    EnumMember {
+                                                        name: "Liters",
+                                                        value: Some(
+                                                            2,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        },
+                                    ),
                                 ],
                             },
                         ),

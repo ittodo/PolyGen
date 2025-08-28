@@ -65,18 +65,21 @@ expression: all_asts
                                             name: Some(
                                                 "Available",
                                             ),
+                                            value: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
                                             name: Some(
                                                 "OutOfStock",
                                             ),
+                                            value: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
                                             name: Some(
                                                 "Discontinued",
                                             ),
+                                            value: None,
                                         },
                                     ],
                                     cardinality: None,
