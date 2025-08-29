@@ -368,3 +368,6 @@ Polygen은 다양한 프로그래밍 언어와 데이터베이스에서 공통�
             skill_id: u32 foreign_key(Skill.id) as users;
         }
         ```
+
+## Data Conversion
+- See JSON → Table → CSV conversion spec: [docs/json-to-csv-conversion-spec.md](docs/json-to-csv-conversion-spec.md)
