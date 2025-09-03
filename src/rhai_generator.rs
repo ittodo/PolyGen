@@ -727,7 +727,7 @@ fn collect_columns_with<'a>(ctx_struct: &'a StructDef, prefix: &str, type_string
             if let StructItem::Field(f) = it {
                 let np = if prefix.is_empty() { f.name.clone() } else { format!("{}.{}", prefix, f.name) };
                 let mut v2 = visited.clone();
-                let sub = collect_columns_with(es, &np, &f.field_type, &mut v2, depth + 1, current_ns_name, files);
+                let sub = collect_columns_with(es, &np, &f.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                 cols.extend(sub);
             }
         }
@@ -742,7 +742,7 @@ fn collect_columns_with<'a>(ctx_struct: &'a StructDef, prefix: &str, type_string
             if let StructItem::Field(f) = it {
                 let np = if prefix.is_empty() { f.name.clone() } else { format!("{}.{}", prefix, f.name) };
                 let mut v2 = visited.clone();
-                let sub = collect_columns_with(ext, &np, &f.field_type, &mut v2, depth + 1, current_ns_name, files);
+                let sub = collect_columns_with(ext, &np, &f.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                 cols.extend(sub);
             }
         }
@@ -757,7 +757,7 @@ fn collect_headers_for_struct(s: &StructDef, current_ns_name: &str, files: &[Fil
     for it in &s.items {
         if let StructItem::Field(f) = it {
             let mut visited = vec![s.name.clone()];
-            let sub = collect_columns_with(s, &f.name, &f.field_type, &mut visited, 0, current_ns_name, files);
+            let sub = collect_columns_with(s, &f.name, &f.field_type.original, &mut visited, 0, current_ns_name, files);
             headers.extend(sub);
         }
     }
@@ -867,7 +867,7 @@ fn gen_read_assign_indexed(
 ) -> String {
     let mut code = String::new();
     let field_name = &field.name;
-    let mut t = unwrap_option(&field.field_type).to_string();
+    let mut t = unwrap_option(&field.field_type.original).to_string();
     if depth >= 10 {
         return code;
     }
@@ -912,7 +912,7 @@ fn gen_read_assign_indexed(
             for it in &es.items {
                 if let StructItem::Field(f2) = it {
                     let mut v2 = visited.clone();
-                    let tails = collect_columns_with(es, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files);
+                    let tails = collect_columns_with(es, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                     for tail in tails {
                         code.push_str(&format!(
                             "{{ int __idx; if (map.TryGetValue({pref} + \"{fname}[\"+i+\"].{tail}\", out __idx) && __idx>=0 && __idx<row.Length && !string.IsNullOrEmpty(row[__idx])) any=true; }} ",
@@ -951,7 +951,7 @@ fn gen_read_assign_indexed(
             for it in &ext.items {
                 if let StructItem::Field(f2) = it {
                     let mut v2 = visited.clone();
-                    let tails = collect_columns_with(ext, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files);
+                    let tails = collect_columns_with(ext, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                     for tail in tails {
                         code.push_str(&format!(
                             "{{ int __idx; if (map.TryGetValue({pref} + \"{fname}[\"+i+\"].{tail}\", out __idx) && __idx>=0 && __idx<row.Length && !string.IsNullOrEmpty(row[__idx])) any=true; }} ",
@@ -1009,7 +1009,7 @@ fn gen_read_assign_indexed(
         for it in &es.items {
             if let StructItem::Field(f2) = it {
                 let mut v2 = visited.clone();
-                let tails = collect_columns_with(es, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files);
+                let tails = collect_columns_with(es, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                 for tail in tails {
                     code.push_str(&format!(
                         "{{ int __idx; if (map.TryGetValue({pref} + \"{fname}.{tail}\", out __idx) && __idx>=0 && __idx<row.Length && !string.IsNullOrEmpty(row[__idx])) any=true; }} ",
@@ -1047,7 +1047,7 @@ fn gen_read_assign_indexed(
         for it in &ext.items {
             if let StructItem::Field(f2) = it {
                 let mut v2 = visited.clone();
-                let tails = collect_columns_with(ext, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files);
+                let tails = collect_columns_with(ext, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                 for tail in tails {
                     code.push_str(&format!(
                         "{{ int __idx; if (map.TryGetValue({pref} + \"{fname}.{tail}\", out __idx) && __idx>=0 && __idx<row.Length && !string.IsNullOrEmpty(row[__idx])) any=true; }} ",
@@ -1096,7 +1096,7 @@ fn generate_dynamic_methods_for_struct(s: &StructDef, current_ns_name: &str, fil
     code.push_str("            foreach (var it in items) {\n");
     for it in &s.items {
         if let StructItem::Field(f) = it {
-            if is_list_type(&f.field_type) {
+            if is_list_type(&f.field_type.original) {
                 code.push_str(&format!(
                     "                var c_{fname} = (it.{fname} != null ? it.{fname}.Count : 0); if (!d.TryGetValue(\"{fname}\", out var m_{fname}) || c_{fname} > m_{fname}) d[\"{fname}\"] = c_{fname};\n",
                     fname = f.name
@@ -1114,9 +1114,9 @@ fn generate_dynamic_methods_for_struct(s: &StructDef, current_ns_name: &str, fil
     // Non-list columns
     for it in &s.items {
         if let StructItem::Field(f) = it {
-            if !is_list_type(&f.field_type) {
+            if !is_list_type(&f.field_type.original) {
                 let mut visited = vec![s.name.clone()];
-                let non_cols = collect_columns_with(s, &f.name, &f.field_type, &mut visited, 0, current_ns_name, files);
+                let non_cols = collect_columns_with(s, &f.name, &f.field_type.original, &mut visited, 0, current_ns_name, files);
                 for c in non_cols {
                     code.push_str(&format!("            cols.Add(\"{}\");\n", c));
                 }
@@ -1126,7 +1126,7 @@ fn generate_dynamic_methods_for_struct(s: &StructDef, current_ns_name: &str, fil
     // List columns
     for it in &s.items {
         if let StructItem::Field(f) = it {
-            if let Some(inner) = list_inner_type(&f.field_type) {
+            if let Some(inner) = list_inner_type(&f.field_type.original) {
                 let mut visited = vec![s.name.clone()];
                 let tails = collect_columns_with(s, "", inner, &mut visited, 1, current_ns_name, files);
                 code.push_str(&format!(
@@ -1160,7 +1160,7 @@ fn generate_dynamic_methods_for_struct(s: &StructDef, current_ns_name: &str, fil
     ));
     for it in &s.items {
         if let StructItem::Field(f) = it {
-            if let Some(inner) = list_inner_type(&f.field_type) {
+            if let Some(inner) = list_inner_type(&f.field_type.original) {
                 let mut visited = vec![s.name.clone()];
                 let tails = collect_columns_with(s, "", inner, &mut visited, 1, current_ns_name, files);
                 code.push_str(&format!(
@@ -1185,7 +1185,7 @@ fn generate_dynamic_methods_for_struct(s: &StructDef, current_ns_name: &str, fil
                 // non-list
                 code.push_str(&generate_append_code(
                     s,
-                    &f.field_type,
+                    &f.field_type.original,
                     &format!("obj.{}", f.name),
                     current_ns_name,
                     files,
@@ -1219,7 +1219,7 @@ fn generate_read_assign_for_field(
 ) -> String {
     let mut code = String::new();
     let field_name = &field.name;
-    let mut t = unwrap_option(&field.field_type).to_string();
+    let mut t = unwrap_option(&field.field_type.original).to_string();
     if depth >= 10 {
         return code;
     }
@@ -1257,7 +1257,7 @@ fn generate_read_assign_for_field(
         if let Some(es) = find_embedded_struct(ctx_struct, inner) {
             // presence check
             let mut sub_headers = Vec::new();
-            for it in &es.items { if let StructItem::Field(f2) = it { let mut v2 = visited.clone(); let sub = collect_columns_with(es, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files); sub_headers.extend(sub); } }
+            for it in &es.items { if let StructItem::Field(f2) = it { let mut v2 = visited.clone(); let sub = collect_columns_with(es, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files); sub_headers.extend(sub); } }
             code.push_str("{ bool any=false; string tmp; ");
             for h in &sub_headers { code.push_str(&format!("if (row.TryGetValue({pref} + \"{field}[0].{}\", out tmp) && !string.IsNullOrEmpty(tmp)) {{ any=true; }} ", h, pref=cprefix, field=field_name)); }
             code.push_str(&format!(
@@ -1275,7 +1275,7 @@ fn generate_read_assign_for_field(
         // list of external struct
         if let Some((ext, ns_fqn)) = resolve_struct_with_ns(files, inner, current_ns_name) {
             let mut sub_headers = Vec::new();
-            for it in &ext.items { if let StructItem::Field(f2) = it { let mut v2 = visited.clone(); let sub = collect_columns_with(ext, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files); sub_headers.extend(sub); } }
+            for it in &ext.items { if let StructItem::Field(f2) = it { let mut v2 = visited.clone(); let sub = collect_columns_with(ext, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files); sub_headers.extend(sub); } }
             code.push_str("{ bool any=false; string tmp; ");
             for h in &sub_headers { code.push_str(&format!("if (row.TryGetValue({pref} + \"{field}[0].{}\", out tmp) && !string.IsNullOrEmpty(tmp)) {{ any=true; }} ", h, pref=cprefix, field=field_name)); }
             code.push_str(&format!(
@@ -1321,7 +1321,7 @@ fn generate_read_assign_for_field(
         for it in &es.items {
             if let StructItem::Field(f2) = it {
                 let mut v2 = visited.clone();
-                let sub = collect_columns_with(es, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files);
+                let sub = collect_columns_with(es, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                 sub_headers.extend(sub);
             }
         }
@@ -1358,7 +1358,7 @@ fn generate_read_assign_for_field(
         for it in &ext.items {
             if let StructItem::Field(f2) = it {
                 let mut v2 = visited.clone();
-                let sub = collect_columns_with(ext, &f2.name, &f2.field_type, &mut v2, depth + 1, current_ns_name, files);
+                let sub = collect_columns_with(ext, &f2.name, &f2.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                 sub_headers.extend(sub);
             }
         }
@@ -1439,7 +1439,7 @@ fn generate_append_code(
         for it in &es.items {
             if let StructItem::Field(f) = it {
                 let mut v2 = visited.clone();
-                let sub = collect_columns_with(es, &f.name, &f.field_type, &mut v2, depth + 1, current_ns_name, files);
+                let sub = collect_columns_with(es, &f.name, &f.field_type.original, &mut v2, depth + 1, current_ns_name, files);
                 es_headers.extend(sub);
             }
         }
@@ -1452,7 +1452,7 @@ fn generate_append_code(
             if let StructItem::Field(f) = it {
                 code.push_str(&generate_append_code(
                     es,
-                    &f.field_type,
+                    &f.field_type.original,
                     &format!("{}.{}", expr_prefix, f.name),
                     current_ns_name,
                     files,

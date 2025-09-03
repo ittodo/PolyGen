@@ -66,6 +66,146 @@ fn emit_struct(ns_name, s, all_files) {
 
     // Dynamic (2-pass) writer: emit via Rust helper to avoid template recursion
     code += csv_dynamic_methods_for_struct(s, ns_name, all_files);
+
+    // Fast Index-based reader (phase 2: scalars + lists + nested)
+    code += "        public sealed class CsvIndex\n        {\n";
+    for it in s.items { if it.is_field() { let f=it.as_field(); let t=unwrap_option(f.field_type);
+        if t.starts_with("List<") {
+            let ls="List<".len(); let ll=t.len()-ls-1; let inner=t.sub_string(ls,ll);
+            // primitive/enum list → store column indices per element
+            if type_utils::map_type(inner) != inner || inner == "string" || inner == "bool" || inner == "u8" || inner == "i8" || inner == "u16" || inner == "i16" || inner == "u32" || inner == "i32" || inner == "u64" || inner == "i64" || inner == "f32" || inner == "f64" || inner.contains("_") /* enum heuristic */ {
+                code += "            public System.Collections.Generic.List<int> idx_" + f.name + " = new System.Collections.Generic.List<int>();\n";
+            } else {
+                // struct list → store list of child indices
+                let es = find_embedded_struct(s, inner);
+                if es != () {
+                    code += "            public System.Collections.Generic.List<" + ns_name + "." + es.name + "Csv.CsvIndex> idx_" + f.name + " = new System.Collections.Generic.List<" + ns_name + "." + es.name + "Csv.CsvIndex>();\n";
+                } else {
+                    let ext = resolve_struct(all_files, inner, ns_name);
+                    if ext != () { let child = ext; code += "            public System.Collections.Generic.List<" + child.name + "Csv.CsvIndex> idx_" + f.name + " = new System.Collections.Generic.List<" + child.name + "Csv.CsvIndex>();\n"; }
+                }
+            }
+        } else {
+            let es = find_embedded_struct(s, t);
+            let ext = resolve_struct(all_files, t, ns_name);
+            if es != () {
+                code += "            public " + ns_name + "." + es.name + "Csv.CsvIndex idx_" + f.name + ";\n";
+            } else if ext != () { let child = ext; code += "            public " + child.name + "Csv.CsvIndex idx_" + f.name + ";\n"; }
+            else { code += "            public int idx_" + f.name + " = -1;\n"; }
+        }
+    } }
+    code += "        }\n";
+
+    code += "        public static bool CsvIndexHasAny(Index idx)\n        {\n";
+    for it in s.items { if it.is_field() { let f=it.as_field(); let t=unwrap_option(f.field_type);
+        if t.starts_with("List<") {
+            code += "            if (idx.idx_" + f.name + " != null && idx.idx_" + f.name + ".Count > 0) return true;\n";
+        } else {
+            let es = find_embedded_struct(s, t);
+            let ext = resolve_struct(all_files, t, ns_name);
+            if es != () {
+                code += "            if (idx.idx_" + f.name + " != null && " + ns_name + "." + es.name + "Csv.CsvIndexHasAny(idx.idx_" + f.name + ")) return true;\n";
+            } else if ext != () { let child = ext; code += "            if (idx.idx_" + f.name + " != null && " + child.name + "Csv.CsvIndexHasAny(idx.idx_" + f.name + ")) return true;\n"; }
+            else { code += "            if (idx.idx_" + f.name + " >= 0) return true;\n"; }
+        }
+    } }
+    code += "            return false;\n        }\n";
+
+    code += "        public static bool CsvIndexHasValues(Index idx, string[] row)\n        {\n";
+    for it in s.items { if it.is_field() { let f=it.as_field(); let t=unwrap_option(f.field_type);
+        if t.starts_with("List<") {
+            code += "            if (idx.idx_" + f.name + " != null) { for (int i=0;i<idx.idx_" + f.name + ".Count;i++) { var __ix = idx.idx_" + f.name + "[i]; if (__ix>=0 && __ix<row.Length && !string.IsNullOrEmpty(row[__ix])) return true; } }\n";
+        } else {
+            let es = find_embedded_struct(s, t);
+            let ext = resolve_struct(all_files, t, ns_name);
+            if es != () {
+                code += "            if (idx.idx_" + f.name + " != null && " + ns_name + "." + es.name + "Csv.CsvIndexHasValues(idx.idx_" + f.name + ", row)) return true;\n";
+            } else if ext != () { let child = ext; code += "            if (idx.idx_" + f.name + " != null && " + child.name + "Csv.CsvIndexHasValues(idx.idx_" + f.name + ", row)) return true;\n"; }
+            else { code += "            if (idx.idx_" + f.name + " >= 0 && idx.idx_" + f.name + " < row.Length && !string.IsNullOrEmpty(row[idx.idx_" + f.name + "])) return true;\n"; }
+        }
+    } }
+    code += "            return false;\n        }\n";
+
+    code += "        public static CsvIndex BuildCsvIndex(string[] header, string prefix)\n        {\n";
+    code += "            var idx = new CsvIndex();\n";
+    code += "            var map = Polygen.Common.CsvUtils.CsvIndexHeader(header);\n";
+    for it in s.items { if it.is_field() { let f=it.as_field(); let t=unwrap_option(f.field_type);
+        if t.starts_with("List<") {
+            let ls="List<".len(); let ll=t.len()-ls-1; let inner=t.sub_string(ls,ll);
+            // primitive/enum list
+            if type_utils::map_type(inner) != inner || inner == "string" || inner == "bool" || inner == "u8" || inner == "i8" || inner == "u16" || inner == "i16" || inner == "u32" || inner == "i32" || inner == "u64" || inner == "i64" || inner == "f32" || inner == "f64" || inner.contains("_") {
+                code += "            for (int i=0;;i++) { int __ix; if (!map.TryGetValue(prefix + \"" + f.name + "[\"+i+\"]\", out __ix)) break; idx.idx_" + f.name + ".Add(__ix); }\n";
+            } else {
+                // struct list
+                let es = find_embedded_struct(s, inner);
+                if es != () {
+                    code += "            for (int i=0;;i++) { var sub = " + ns_name + "." + es.name + "Csv.BuildIndex(header, prefix + \"" + f.name + "[\"+i+\"].\"); if (!" + ns_name + "." + es.name + "Csv.CsvIndexHasAny(sub)) break; idx.idx_" + f.name + ".Add(sub); }\n";
+                } else {
+                    let ext = resolve_struct(all_files, inner, ns_name);
+                    if ext != () { let child = ext; code += "            for (int i=0;;i++) { var sub = " + child.name + "Csv.BuildIndex(header, prefix + \"" + f.name + "[\"+i+\"].\"); if (!" + child.name + "Csv.CsvIndexHasAny(sub)) break; idx.idx_" + f.name + ".Add(sub); }\n"; }
+                }
+            }
+        } else {
+            let es = find_embedded_struct(s, t);
+            let ext = resolve_struct(all_files, t, ns_name);
+            if es != () {
+                code += "            idx.idx_" + f.name + " = " + ns_name + "." + es.name + "Csv.BuildIndex(header, prefix + \"" + f.name + ".\");\n";
+            } else if ext != () { let child = ext; code += "            idx.idx_" + f.name + " = " + child.name + "Csv.BuildIndex(header, prefix + \"" + f.name + ".\");\n"; }
+            else { code += "            if (!map.TryGetValue(prefix + \"" + f.name + "\", out idx.idx_" + f.name + ")) idx.idx_" + f.name + " = -1;\n"; }
+        }
+    } }
+    code += "            return idx;\n        }\n";
+
+    code += "        public static " + s.name + " FromRowWithCsvIndex(Index idx, string[] row, Polygen.Common.CsvUtils.GapMode gap)\n        {\n";
+    code += "            var obj = new " + s.name + "();\n";
+    for it in s.items { if it.is_field() { let f=it.as_field(); let t=unwrap_option(f.field_type);
+        if t.starts_with("List<") {
+            let ls="List<".len(); let ll=t.len()-ls-1; let inner=t.sub_string(ls,ll); let cs_t = type_utils::map_type(inner);
+            // primitive/enum list
+            if type_utils::map_type(inner) != inner || inner == "string" || inner == "bool" || inner == "u8" || inner == "i8" || inner == "u16" || inner == "i16" || inner == "u32" || inner == "i32" || inner == "u64" || inner == "i64" || inner == "f32" || inner == "f64" || inner.contains("_") {
+                code += "            { var list = new System.Collections.Generic.List<" + cs_t + ">(); for (int i=0;i<idx.idx_" + f.name + ".Count;i++) { int __ix = idx.idx_" + f.name + "[i]; if (__ix < 0 || __ix >= row.Length) { if (i==0 || gap==Polygen.Common.CsvUtils.GapMode.Break) break; else continue; } var __cell = row[__ix]; if (string.IsNullOrEmpty(__cell)) { if (i==0 || gap==Polygen.Common.CsvUtils.GapMode.Break) break; else continue; } list.Add(DataSourceFactory.ConvertValue<" + cs_t + ">( __cell )); } obj." + f.name + " = list; }\n";
+            } else {
+                // struct list
+                let es = find_embedded_struct(s, inner);
+                if es != () {
+                    code += "            { var list = new System.Collections.Generic.List<" + ns_name + "." + es.name + ">(); for (int i=0;i<idx.idx_" + f.name + ".Count;i++) { var subIdx = idx.idx_" + f.name + "[i]; if (!" + ns_name + "." + es.name + "Csv.CsvIndexHasValues(subIdx, row)) { if (i==0 || gap==Polygen.Common.CsvUtils.GapMode.Break) break; else continue; } var sub = " + ns_name + "." + es.name + "Csv.FromRowWithIndex(subIdx, row, gap); list.Add(sub); } obj." + f.name + " = list; }\n";
+                } else {
+                    let ext = resolve_struct(all_files, inner, ns_name);
+                    if ext != () { let child = ext; code += "            { var list = new System.Collections.Generic.List<" + child.name + ">(); for (int i=0;i<idx.idx_" + f.name + ".Count;i++) { var subIdx = idx.idx_" + f.name + "[i]; if (!" + child.name + "Csv.CsvIndexHasValues(subIdx, row)) { if (i==0 || gap==Polygen.Common.CsvUtils.GapMode.Break) break; else continue; } var sub = " + child.name + "Csv.FromRowWithIndex(subIdx, row, gap); list.Add(sub); } obj." + f.name + " = list; }\n"; }
+                }
+            }
+        } else {
+            let es = find_embedded_struct(s, t);
+            let ext = resolve_struct(all_files, t, ns_name);
+            if es != () {
+                code += "            if (!" + ns_name + "." + es.name + "Csv.CsvIndexHasValues(idx.idx_" + f.name + ", row)) { obj." + f.name + " = null; } else { obj." + f.name + " = " + ns_name + "." + es.name + "Csv.FromRowWithIndex(idx.idx_" + f.name + ", row, gap); }\n";
+            } else if ext != () { let child = ext; code += "            if (!" + child.name + "Csv.CsvIndexHasValues(idx.idx_" + f.name + ", row)) { obj." + f.name + " = null; } else { obj." + f.name + " = " + child.name + "Csv.FromRowWithIndex(idx.idx_" + f.name + ", row, gap); }\n"; }
+            else { let cs_t = type_utils::map_type(t); code += "            if (idx.idx_" + f.name + " >= 0 && idx.idx_" + f.name + " < row.Length) { var __cell = row[idx.idx_" + f.name + "]; obj." + f.name + " = DataSourceFactory.ConvertValue<" + cs_t + ">( __cell ); }\n"; }
+        }
+    } }
+    code += "            return obj;\n        }\n";
+
+    // Reusable reader that carries a prebuilt Index
+    code += "        public sealed class Reader\n        {\n";
+    code += "            public readonly CsvIndex Index;\n            public readonly char Sep;\n            public readonly Polygen.Common.CsvUtils.GapMode Gap;\n";
+    code += "            public Reader(Index index, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break) { CsvIndex = index; Sep = sep; Gap = gap; }\n";
+    code += "            public " + s.name + " Parse(string[] row) => FromRowWithCsvIndex(Index, row, Gap);\n";
+    code += "            public static Reader FromHeader(string[] header, char sep = ',', string prefix = \"\", Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break) { var idx = BuildCsvIndex(header, prefix); return new Reader(idx, sep, gap); }\n";
+    code += "        }\n";
+
+    // Read with provided CsvIndex (no header processing)
+    code += "        public static System.Collections.Generic.IEnumerable<"+s.name+"> ReadCsvWithIndex(string path, CsvIndex idx, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)\n        {\n";
+    code += "            var lines = File.ReadAllLines(path); if (lines.Length <= 1) yield break;\n";
+    code += "            for (int i=1;i<lines.Length;i++) { var row = lines[i].Split(sep); if (!IndexHasValues(idx, row)) { if (gap == Polygen.Common.CsvUtils.GapMode.Break) break; else continue; } yield return FromRowWithCsvIndex(idx, row, gap); }\n";
+    code += "        }\n";
+
+    // Convenience: fast read using CsvIndex (no per-row header map)
+    code += "        public static System.Collections.Generic.IEnumerable<"+s.name+"> ReadCsvFast(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)\n        {\n";
+    code += "            var lines = File.ReadAllLines(path); if (lines.Length == 0) yield break;\n";
+    code += "            var header = lines[0].Split(sep);\n";
+    code += "            var idx = BuildCsvIndex(header, string.Empty);\n";
+    code += "            for (int i=1;i<lines.Length;i++) { var row = lines[i].Split(sep); if (!IndexHasValues(idx, row)) { if (gap == Polygen.Common.CsvUtils.GapMode.Break) break; else continue; } yield return FromRowWithCsvIndex(idx, row, gap); }\n";
+    code += "        }\n";
     // Read API (dictionary-based, legacy)
     code += "        public static " + s.name + " FromRow(IDictionary<string,string> row) => FromRowWithPrefix(row, string.Empty);\n";
     code += "        public static " + s.name + " FromRowWithPrefix(IDictionary<string,string> row, string prefix)\n        {\n";
@@ -76,17 +216,21 @@ fn emit_struct(ns_name, s, all_files) {
     code += "        }\n";
 
     // Convenience: read entire CSV file using header + row[] based reader
-    code += "        public static IEnumerable<"+s.name+"> ReadCsv(string path, Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)\n        {\n";
+    code += "        public static IEnumerable<"+s.name+"> ReadCsv(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)\n        {\n";
     code += "            var lines = File.ReadAllLines(path); if (lines.Length == 0) yield break;\n";
-    code += "            var header = lines[0].Split(',');\n";
-    code += "            for (int i=1;i<lines.Length;i++) { var row = lines[i].Split(','); yield return FromRow(header, row, gap); }\n";
+    code += "            var header = lines[0].Split(sep);\n";
+    code += "            var map = Polygen.Common.CsvUtils.CsvIndexHeader(header);\n";
+    code += "            for (int i=1;i<lines.Length;i++) { var row = lines[i].Split(sep); yield return FromRowWithPrefixAndHeaderMap(map, row, string.Empty, gap); }\n";
     code += "        }\n";
 
     // Read API (header + row[] based)
     code += "        public static " + s.name + " FromRow(string[] header, string[] row, Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break) => FromRowWithPrefixAndHeader(header, row, string.Empty, gap);\n";
     code += "        public static " + s.name + " FromRowWithPrefixAndHeader(string[] header, string[] row, string prefix, Polygen.Common.CsvUtils.GapMode gap)\n        {\n";
+    code += "            var map = Polygen.Common.CsvUtils.CsvIndexHeader(header);\n";
+    code += "            return FromRowWithPrefixAndHeaderMap(map, row, prefix, gap);\n";
+    code += "        }\n";
+    code += "        public static " + s.name + " FromRowWithPrefixAndHeaderMap(System.Collections.Generic.Dictionary<string,int> map, string[] row, string prefix, Polygen.Common.CsvUtils.GapMode gap)\n        {\n";
     code += "            var obj = new " + s.name + "();\n";
-    code += "            var map = Polygen.Common.CsvUtils.IndexHeader(header);\n";
     code += "            int gap = (int)gap; // 0=Break,1=Sparse\n";
     code += csv_read_fields_for_struct_indexed(s, "obj", "prefix", ns_name, all_files);
     code += "            return obj;\n";
@@ -120,3 +264,5 @@ for file in schema.files {
 }
 
 ""
+
+

@@ -3,10 +3,12 @@ ${
     let result = eval("`" + csharp_logic_struct_header + "`");
     result
 }
-class ${s.name}
+public class ${s.name}
 {
 ${
-        let csharp_logic_struct_body = include("templates/csharp/struct/csharp_logic_struct_body.rhai");
-        let result = eval("`" + csharp_logic_struct_body + "`");
-        result
-    }}
+    let csharp_logic_struct_body = include("templates/csharp/struct/csharp_logic_struct_body.rhai");
+    let result = eval("`" + csharp_logic_struct_body + "`");
+    result
+}
+}
+

@@ -165,7 +165,6 @@ pub fn run(cli: Cli) -> Result<()> {
             let static_files = [
                 (Path::new("static/csharp/DataSource.cs"), "DataSource.cs"),
                 (Path::new("static/csharp/BinaryUtils.cs"), "BinaryUtils.cs"),
-                (Path::new("static/csharp/JsonUtils.cs"), "JsonUtils.cs"),
                 (Path::new("static/csharp/CsvUtils.cs"), "CsvUtils.cs"),
             ];
             for (src, name) in static_files {
@@ -202,16 +201,6 @@ pub fn run(cli: Cli) -> Result<()> {
             println!("\n--- C# Binary Writers generation ---");
             rhai_generator::generate_code_with_rhai(&ir_context, &writers_template_path)
                 .map_err(|e| anyhow::anyhow!(e))?;
-
-            let json_template_path = cli
-                .templates_dir
-                .join(&lang)
-                .join("csharp_json_mappers_file.rhai");
-            println!("\n--- C# JSON Mappers generation ---");
-            if json_template_path.exists() {
-                rhai_generator::generate_code_with_rhai(&ir_context, &json_template_path)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-            }
 
             let csv_cols_template_path = cli
                 .templates_dir

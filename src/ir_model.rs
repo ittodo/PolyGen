@@ -41,6 +41,7 @@ pub enum NamespaceItem {
 #[derive(Serialize, Debug, Clone)]
 pub struct StructDef {
     pub name: String,
+    pub fqn: String, // Fully Qualified Name, e.g., game.common.StatBlock
     pub header: Vec<StructItem>,
     pub items: Vec<StructItem>,
 }
@@ -59,9 +60,26 @@ pub enum StructItem {
 #[derive(Serialize, Debug, Clone)]
 pub struct FieldDef {
     pub name: String,
-    pub field_type: String, // A simplified, language-agnostic type string like "List<Position>" or "Option<u32>"
+    pub field_type: TypeRef, // Changed from String to a structured TypeRef
     pub attributes: Vec<String>, // For annotations like [Key], [MaxLength(30)]
 }
+
+/// Represents a reference to a type, containing all resolved information.
+#[derive(Serialize, Debug, Clone)]
+pub struct TypeRef {
+    /// The original name used in the schema, e.g., "List<StatBlock>".
+    pub original: String,
+    /// The fully qualified name of the core type, e.g., "game.common.StatBlock".
+    pub fqn: String,
+    /// The language-specific representation, e.g., "List<Game.Common.StatBlock>".
+    pub lang_type: String,
+    pub is_primitive: bool,
+    pub is_option: bool,
+    pub is_list: bool,
+    /// For List<T> or Option<T>, this refers to the inner type T.
+    pub inner_type: Option<Box<TypeRef>>,
+}
+
 
 /// Represents a single annotation for the template.
 #[derive(Serialize, Debug, Clone)]
@@ -83,6 +101,7 @@ pub struct AnnotationParam {
 #[derive(Serialize, Debug, Clone)]
 pub struct EnumDef {
     pub name: String,
+    pub fqn: String, // Fully Qualified Name, e.g., game.common.Element
     pub items: Vec<EnumItem>,
 }
 

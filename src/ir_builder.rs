@@ -1,7 +1,7 @@
 use crate::ast_model::{self, Definition, Metadata, TableMember};
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, FieldDef, FileDef, NamespaceDef,
-    NamespaceItem, SchemaContext, StructDef, StructItem,
+    NamespaceItem, SchemaContext, StructDef, StructItem, TypeRef,
 };
 use heck::ToPascalCase;
 
@@ -23,16 +23,17 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
         for def in &ast.definitions {
             // Top-level namespace blocks are handled specially to form the root of the hierarchy.
             if let Definition::Namespace(ns_ast) = def {
+                let ns_name = ns_ast.path.join(".");
                 let mut new_ns = NamespaceDef {
-                    name: ns_ast.path.join("."),
+                    name: ns_name.clone(),
                     items: Vec::new(),
                 };
                 // Recurse into this new top-level namespace
-                populate_items_recursively(&mut new_ns.items, &ns_ast.definitions);
+                populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &ns_name);
                 top_level_namespaces.push(new_ns);
             } else {
                 // Any other item at the top level belongs to the "global" namespace.
-                add_definition_to_items(&mut global_items, def);
+                add_definition_to_items(&mut global_items, def, "");
             }
         }
 
@@ -56,32 +57,44 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
 }
 
 /// Recursively populates a list of items from AST definitions.
-fn populate_items_recursively(items: &mut Vec<NamespaceItem>, definitions: &[ast_model::Definition]) {
+fn populate_items_recursively(
+    items: &mut Vec<NamespaceItem>,
+    definitions: &[ast_model::Definition],
+    current_ns: &str,
+) {
     for def in definitions {
-        add_definition_to_items(items, def);
+        add_definition_to_items(items, def, current_ns);
     }
 }
 
 /// Converts a single AST Definition into a NamespaceItem and adds it to a list.
 /// This is the core of the recursive build process.
-fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition) {
+fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition, current_ns: &str) {
     match def {
         Definition::Namespace(ns_ast) => {
+            let this = ns_ast.path.join(".");
+            let next_ns = if current_ns.is_empty() {
+                this.clone()
+            } else if this.is_empty() {
+                current_ns.to_string()
+            } else {
+                format!("{}.{}", current_ns, this)
+            };
             let mut new_ns = NamespaceDef {
-                name: ns_ast.path.join("."),
+                name: next_ns.clone(),
                 items: Vec::new(),
             };
-            populate_items_recursively(&mut new_ns.items, &ns_ast.definitions);
+            populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &next_ns);
             items.push(NamespaceItem::Namespace(Box::new(new_ns)));
         }
         Definition::Table(table) => {
-            items.push(NamespaceItem::Struct(convert_table_to_struct(table)));
+            items.push(NamespaceItem::Struct(convert_table_to_struct(table, current_ns)));
         }
         Definition::Enum(e) => {
-            items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e, None)));
+            items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e, None, current_ns)));
         }
         Definition::Embed(embed) => {
-            items.push(NamespaceItem::Struct(convert_embed_to_struct(embed)));
+            items.push(NamespaceItem::Struct(convert_embed_to_struct(embed, current_ns)));
         }
         Definition::Comment(c) => {
             items.push(NamespaceItem::Comment(c.clone()));
@@ -90,9 +103,15 @@ fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition) {
     }
 }
 
-fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
+fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> StructDef {
     let mut items = Vec::new();
     let mut header_items = Vec::new();
+    let name = table.name.clone().unwrap();
+    let fqn = if current_ns.is_empty() {
+        name.clone()
+    } else {
+        format!("{}.{}", current_ns, name)
+    };
 
     // Process metadata for the struct header
     for meta in &table.metadata {
@@ -127,36 +146,42 @@ fn convert_table_to_struct(table: &ast_model::Table) -> StructDef {
                 }
 
                 // Then handle the field itself
-                let (field_def, mut new_nested_structs, mut new_nested_enums) = convert_field_to_ir(field);
+                let (field_def, mut new_nested_structs, mut new_nested_enums) =
+                    convert_field_to_ir(field, current_ns, &fqn);
                 items.push(StructItem::Field(field_def));
                 // Add the new nested types to the items list
                 items.extend(new_nested_structs.into_iter().map(StructItem::EmbeddedStruct));
                 items.extend(new_nested_enums.into_iter().map(StructItem::InlineEnum));
             }
             TableMember::Embed(embed) => {
-                items.push(StructItem::EmbeddedStruct(convert_embed_to_struct(embed)));
+                items.push(StructItem::EmbeddedStruct(convert_embed_to_struct(embed, &fqn)));
             }
             TableMember::Enum(e) => {
-                items.push(StructItem::InlineEnum(convert_enum_to_enum_def(e, None)));
+                items.push(StructItem::InlineEnum(convert_enum_to_enum_def(e, None, &fqn)));
             }
             TableMember::Comment(c) => items.push(StructItem::Comment(c.clone())),
         }
     }
 
     StructDef {
-        name: table.name.clone().unwrap(),
+        name,
+        fqn,
         items,
         header: header_items,
     }
 }
 
 /// Converts an `ast_model::FieldDefinition` into an `ir_model::FieldDef` and potential nested types (from inline embeds).
-fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<StructDef>, Vec<EnumDef>) {
+fn convert_field_to_ir(
+    field: &ast_model::FieldDefinition,
+    current_ns: &str,
+    owner_fqn: &str,
+) -> (FieldDef, Vec<StructDef>, Vec<EnumDef>) {
     match field {
         ast_model::FieldDefinition::Regular(rf) => {
             let attributes = convert_constraints_to_attributes(&rf.constraints);
             let mut inline_enums = Vec::new();
-            let field_type_str: String;
+            let field_type: TypeRef;
 
             match &rf.field_type.base_type {
                 ast_model::TypeName::InlineEnum(e) => {
@@ -165,19 +190,20 @@ fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<Str
                     let generated_enum_name = format!("{}_Enum", rf.name.clone().expect("Regular field name must be present").to_pascal_case());
                     
                     // Create the EnumDef using the generated name
-                    let enum_def = convert_enum_to_enum_def(e, Some(generated_enum_name.clone()));
+                    let enum_fqn = if owner_fqn.is_empty() { generated_enum_name.clone() } else { format!("{}.{}", owner_fqn, generated_enum_name) };
+                    let enum_def = convert_enum_to_enum_def(e, Some(generated_enum_name.clone()), owner_fqn);
                     inline_enums.push(enum_def);
-                    field_type_str = format_cardinality(&generated_enum_name, &rf.field_type.cardinality);
+                    field_type = build_type_ref_from_base(&enum_fqn, &generated_enum_name, &rf.field_type.cardinality, true);
                 },
                 _ => {
-                    field_type_str = format_type(&rf.field_type); // Use existing format_type for other types
+                    field_type = build_type_ref(&rf.field_type, current_ns);
                 },
             };
 
             (
                 FieldDef {
                     name: rf.name.clone().expect("Regular field name must be present"),
-                    field_type: field_type_str,
+                    field_type,
                     attributes,
                 },
                 Vec::new(),
@@ -190,13 +216,18 @@ fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<Str
                 name: Some(struct_name.clone()),
                 metadata: ief.metadata.clone(),
                 members: ief.members.clone(),
-            });
+            }, owner_fqn);
 
             let nested_items = vec![inline_struct];
 
             let field_def = FieldDef {
                 name: ief.name.clone().expect("Inline embed field name must be present"),
-                field_type: format_cardinality(&struct_name, &ief.cardinality),
+                field_type: build_type_ref_from_base(
+                    &format!("{}.{}", owner_fqn, struct_name),
+                    &struct_name,
+                    &ief.cardinality,
+                    false,
+                ),
                 attributes: Vec::new(),
             };
             (field_def, nested_items, Vec::new())
@@ -211,11 +242,16 @@ fn convert_field_to_ir(field: &ast_model::FieldDefinition) -> (FieldDef, Vec<Str
                 variants: e.variants.clone(),
             };
 
-            let enum_def = convert_enum_to_enum_def(&temp_enum, Some(generated_enum_name.clone()));
+            let enum_def = convert_enum_to_enum_def(&temp_enum, Some(generated_enum_name.clone()), owner_fqn);
             
             let field_def = FieldDef {
                 name: e.name.clone().expect("Inline enum name must be present"),
-                field_type: format_cardinality(&generated_enum_name, &e.cardinality),
+                field_type: build_type_ref_from_base(
+                    &format!("{}.{}", owner_fqn, generated_enum_name),
+                    &generated_enum_name,
+                    &e.cardinality,
+                    false,
+                ),
                 attributes: Vec::new(),
             };
             (field_def, Vec::new(), vec![enum_def])
@@ -242,7 +278,7 @@ fn convert_constraints_to_attributes(constraints: &[ast_model::Constraint]) -> V
         .collect()
 }
 
-fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>) -> EnumDef {
+fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>, ns_or_owner_fqn: &str) -> EnumDef {
     let mut items = Vec::new();
     let mut current_value: i64 = 0; // Initialize counter for sequential numbering
 
@@ -279,40 +315,157 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>) 
         }));
     }
 
-    EnumDef {
-        name: name_override.unwrap_or_else(|| e.name.clone().expect("Named enum must have a name")),
-        items,
-    }
+    let name = name_override.unwrap_or_else(|| e.name.clone().expect("Named enum must have a name"));
+    let fqn = if ns_or_owner_fqn.is_empty() { name.clone() } else { format!("{}.{}", ns_or_owner_fqn, name) };
+    EnumDef { name, fqn, items }
 }
 
-fn convert_embed_to_struct(embed: &ast_model::Embed) -> StructDef {
+fn convert_embed_to_struct(embed: &ast_model::Embed, owner_fqn: &str) -> StructDef {
     convert_table_to_struct(&ast_model::Table {
         name: embed.name.clone(),
         metadata: embed.metadata.clone(),
         members: embed.members.clone(),
-    })
+    }, owner_fqn)
 }
 
-// Helper to format the abstract type into a language-agnostic string for the template.
-fn format_type(t: &ast_model::TypeWithCardinality) -> String {
-    let base = match &t.base_type {
-        ast_model::TypeName::Path(p) => p.join("."), // Keep FQN for now; template filter can shorten it.
-        ast_model::TypeName::Basic(b) => format!("{:?}", b).to_lowercase(),
-        ast_model::TypeName::InlineEnum(_) => {
-            // TODO: This needs context from the field/table to generate a good name,
-            // e.g., TableName_FieldName_Enum.
-            "__ANONYMOUS_ENUM__".to_string()
-        }
+// Build TypeRef from an AST type in the given namespace context
+fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeRef {
+    let (base_fqn, base_name, is_primitive) = match &t.base_type {
+        ast_model::TypeName::Path(p) => (p.join("."), p.join("."), false),
+        ast_model::TypeName::Basic(b) => (basic_name(b).to_string(), basic_name(b).to_string(), true),
+        ast_model::TypeName::InlineEnum(_) => ("__ANON_ENUM__".to_string(), "__ANON_ENUM__".to_string(), false),
     };
-    format_cardinality(&base, &t.cardinality)
+    match t.cardinality {
+        Some(ast_model::Cardinality::Optional) => {
+            let inner = TypeRef {
+                original: base_name.clone(),
+                fqn: qualify(&base_fqn, current_ns),
+                lang_type: base_name.clone(),
+                is_primitive,
+                is_option: false,
+                is_list: false,
+                inner_type: None,
+            };
+            TypeRef {
+                original: format!("Option<{}>", base_name),
+                fqn: qualify(&base_fqn, current_ns),
+                lang_type: format!("Option<{}>", inner.lang_type),
+                is_primitive: is_primitive,
+                is_option: true,
+                is_list: false,
+                inner_type: Some(Box::new(inner)),
+            }
+        }
+        Some(ast_model::Cardinality::Array) => {
+            let inner = TypeRef {
+                original: base_name.clone(),
+                fqn: qualify(&base_fqn, current_ns),
+                lang_type: base_name.clone(),
+                is_primitive,
+                is_option: false,
+                is_list: false,
+                inner_type: None,
+            };
+            TypeRef {
+                original: format!("List<{}>", base_name),
+                fqn: qualify(&base_fqn, current_ns),
+                lang_type: format!("List<{}>", inner.lang_type),
+                is_primitive: false,
+                is_option: false,
+                is_list: true,
+                inner_type: Some(Box::new(inner)),
+            }
+        }
+        None => TypeRef {
+            original: base_name.clone(),
+            fqn: qualify(&base_fqn, current_ns),
+            lang_type: base_name,
+            is_primitive,
+            is_option: false,
+            is_list: false,
+            inner_type: None,
+        },
+    }
 }
 
-fn format_cardinality(base: &str, c: &Option<ast_model::Cardinality>) -> String {
+fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_model::Cardinality>, primitive_hint: bool) -> TypeRef {
     match c {
-        // Use a generic representation that templates can interpret.
-        Some(ast_model::Cardinality::Optional) => format!("Option<{}>", base),
-        Some(ast_model::Cardinality::Array) => format!("List<{}>", base),
-        None => base.to_string(),
+        Some(ast_model::Cardinality::Optional) => {
+            let inner = TypeRef {
+                original: base_name.to_string(),
+                fqn: base_fqn.to_string(),
+                lang_type: base_name.to_string(),
+                is_primitive: primitive_hint,
+                is_option: false,
+                is_list: false,
+                inner_type: None,
+            };
+            TypeRef {
+                original: format!("Option<{}>", base_name),
+                fqn: base_fqn.to_string(),
+                lang_type: format!("Option<{}>", base_name),
+                is_primitive: false,
+                is_option: true,
+                is_list: false,
+                inner_type: Some(Box::new(inner)),
+            }
+        }
+        Some(ast_model::Cardinality::Array) => {
+            let inner = TypeRef {
+                original: base_name.to_string(),
+                fqn: base_fqn.to_string(),
+                lang_type: base_name.to_string(),
+                is_primitive: primitive_hint,
+                is_option: false,
+                is_list: false,
+                inner_type: None,
+            };
+            TypeRef {
+                original: format!("List<{}>", base_name),
+                fqn: base_fqn.to_string(),
+                lang_type: format!("List<{}>", base_name),
+                is_primitive: false,
+                is_option: false,
+                is_list: true,
+                inner_type: Some(Box::new(inner)),
+            }
+        }
+        None => TypeRef {
+            original: base_name.to_string(),
+            fqn: base_fqn.to_string(),
+            lang_type: base_name.to_string(),
+            is_primitive: primitive_hint,
+            is_option: false,
+            is_list: false,
+            inner_type: None,
+        },
+    }
+}
+
+fn qualify(base_fqn: &str, current_ns: &str) -> String {
+    if base_fqn.contains('.') || current_ns.is_empty() {
+        base_fqn.to_string()
+    } else {
+        format!("{}.{}", current_ns, base_fqn)
+    }
+}
+
+fn basic_name(b: &ast_model::BasicType) -> &'static str {
+    use ast_model::BasicType::*;
+    match b {
+        String => "string",
+        I8 => "i8",
+        I16 => "i16",
+        I32 => "i32",
+        I64 => "i64",
+        U8 => "u8",
+        U16 => "u16",
+        U32 => "u32",
+        U64 => "u64",
+        F32 => "f32",
+        F64 => "f64",
+        Bool => "bool",
+        Bytes => "bytes",
     }
 }
 

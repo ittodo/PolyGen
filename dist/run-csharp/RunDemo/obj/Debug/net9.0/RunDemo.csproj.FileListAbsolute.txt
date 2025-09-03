@@ -1,0 +1,5 @@
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.GeneratedMSBuildEditorConfig.editorconfig
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.AssemblyInfoInputs.cache
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.AssemblyInfo.cs
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.csproj.CoreCompileInputs.cache
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.sourcelink.json

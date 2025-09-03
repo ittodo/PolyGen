@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Globalization;
 
 namespace Polygen.Common
 {
@@ -39,29 +40,25 @@ namespace Polygen.Common
             }
         }
 
+        public static IDataSourceReader CreateReader(string filePath, char separator)
+        {
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            switch (extension)
+            {
+                case ".csv":
+                    return new CsvReader(filePath, separator);
+                default:
+                    throw new NotSupportedException($"File type '{extension}' is not supported.");
+            }
+        }
+
         public static T ConvertSingleValue<T>(IDictionary<string, string> row, string columnName)
         {
             if (!row.TryGetValue(columnName, out var value) || string.IsNullOrEmpty(value))
             {
                 return default(T);
             }
-
-            try
-            {
-                var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-
-                if (targetType.IsEnum)
-                {
-                    return (T)Enum.Parse(targetType, value, true); // true for ignoreCase
-                }
-
-                return (T)Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error converting value ''{value}'' for column ''{columnName}'' to type {typeof(T).Name}: {ex.Message}");
-                return default(T);
-            }
+            return ConvertValue<T>(value);
         }
 
         public static List<T> ConvertListValue<T>(IDictionary<string, string> row, string columnName, char separator = ';')
@@ -92,23 +89,41 @@ namespace Polygen.Common
             {
                 return default(T);
             }
+            var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
 
-            try
+            // Fast-paths for common primitives and enums
+            object boxed;
+            if (targetType == typeof(string)) return (T)(object)valueString;
+            if (targetType == typeof(bool)) { if (bool.TryParse(valueString, out var v)) return (T)(object)v; if (valueString == "1") return (T)(object)true; if (valueString == "0") return (T)(object)false; return default(T); }
+            if (targetType == typeof(byte)) { if (byte.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(sbyte)) { if (sbyte.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(short)) { if (short.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(ushort)) { if (ushort.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(int)) { if (int.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(uint)) { if (uint.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(long)) { if (long.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(ulong)) { if (ulong.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(float)) { if (float.TryParse(valueString, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(double)) { if (double.TryParse(valueString, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+            if (targetType == typeof(decimal)) { if (decimal.TryParse(valueString, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var v)) return (T)(object)v; return default(T); }
+
+            if (targetType.IsEnum)
             {
-                var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-
-                if (targetType.IsEnum)
+                if (Enum.TryParse(targetType, valueString, true, out object? enumVal) && enumVal != null)
                 {
-                    return (T)Enum.Parse(targetType, valueString, true); // true for ignoreCase
+                    return (T)enumVal;
                 }
-
-                return (T)Convert.ChangeType(valueString, targetType, CultureInfo.InvariantCulture);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error converting value ''{valueString}'' to type {typeof(T).Name}: {ex.Message}");
+                // also allow numeric enums
+                if (long.TryParse(valueString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lv))
+                {
+                    try { boxed = Enum.ToObject(targetType, lv); return (T)boxed; } catch { return default(T); }
+                }
                 return default(T);
             }
+
+            // Fallback for other reference types
+            try { boxed = Convert.ChangeType(valueString, targetType, CultureInfo.InvariantCulture); return (T)boxed; }
+            catch { return default(T); }
         }
     }
 
@@ -119,14 +134,21 @@ namespace Polygen.Common
     public class CsvReader : IDataSourceReader
     {
         private readonly string _filePath;
+        private readonly char _sep;
 
         public CsvReader(string filePath)
+            : this(filePath, ',')
+        {
+        }
+
+        public CsvReader(string filePath, char separator)
         {
             if (!File.Exists(filePath))
             {
                 throw new FileNotFoundException("The specified CSV file was not found.", filePath);
             }
             _filePath = filePath;
+            _sep = separator;
         }
 
         public IEnumerable<IDictionary<string, string>> ReadRows()
@@ -137,11 +159,11 @@ namespace Polygen.Common
                 yield break;
             }
 
-            var headers = lines[0].Split(',').Select(h => h.Trim()).ToArray();
+            var headers = lines[0].Split(_sep).Select(h => h.Trim()).ToArray();
 
             for (int i = 1; i < lines.Length; i++)
             {
-                var values = lines[i].Split(',');
+                var values = lines[i].Split(_sep);
                 var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
                 for (int j = 0; j < headers.Length && j < values.Length; j++)

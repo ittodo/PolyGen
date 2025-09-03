@@ -20,7 +20,7 @@ namespace Polygen.Common
             sb.Append('"');
             foreach (var ch in value)
             {
-                if (ch == '"') sb.Append(""");
+                if (ch == '"') sb.Append("\"\"");
                 else sb.Append(ch);
             }
             sb.Append('"');
