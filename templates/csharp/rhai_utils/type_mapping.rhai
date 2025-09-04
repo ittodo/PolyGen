@@ -2,7 +2,14 @@
 
 // Function to map language-agnostic types to C# types.
 // Handles primitives, Option<T>, and List<T>.
+// Coerce a possibly-TypeRef argument into a string type name
+fn _as_type_string(t) {
+    if type_of(t) == "TypeRef" { return t.original; }
+    t
+}
+
 fn map_type(type_string) {
+    let type_string = _as_type_string(type_string);
     if type_string.starts_with("Option<") {
         let start = "Option<".len();
         let len = type_string.len() - start - 1;
@@ -33,7 +40,7 @@ fn map_type(type_string) {
         "f64" => "double",
         "string" => "string",
         "bool" => "bool",
-        _ => type_string // Default case for custom types
+        _ => if type_string.contains(".") && !type_string.starts_with("global::") { "global::" + type_string } else { type_string } // custom types => fully-qualify
     };
     return mapped_type;
 }

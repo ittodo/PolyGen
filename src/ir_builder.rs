@@ -193,7 +193,7 @@ fn convert_field_to_ir(
                     let enum_fqn = if owner_fqn.is_empty() { generated_enum_name.clone() } else { format!("{}.{}", owner_fqn, generated_enum_name) };
                     let enum_def = convert_enum_to_enum_def(e, Some(generated_enum_name.clone()), owner_fqn);
                     inline_enums.push(enum_def);
-                    field_type = build_type_ref_from_base(&enum_fqn, &generated_enum_name, &rf.field_type.cardinality, true);
+                    field_type = build_type_ref_from_base(&enum_fqn, &generated_enum_name, &rf.field_type.cardinality, false);
                 },
                 _ => {
                     field_type = build_type_ref(&rf.field_type, current_ns);
@@ -337,9 +337,10 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
     };
     match t.cardinality {
         Some(ast_model::Cardinality::Optional) => {
+            let inner_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
             let inner = TypeRef {
                 original: base_name.clone(),
-                fqn: qualify(&base_fqn, current_ns),
+                fqn: inner_fqn.clone(),
                 lang_type: base_name.clone(),
                 is_primitive,
                 is_option: false,
@@ -348,7 +349,7 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             };
             TypeRef {
                 original: format!("Option<{}>", base_name),
-                fqn: qualify(&base_fqn, current_ns),
+                fqn: inner_fqn,
                 lang_type: format!("Option<{}>", inner.lang_type),
                 is_primitive: is_primitive,
                 is_option: true,
@@ -357,9 +358,10 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             }
         }
         Some(ast_model::Cardinality::Array) => {
+            let inner_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
             let inner = TypeRef {
                 original: base_name.clone(),
-                fqn: qualify(&base_fqn, current_ns),
+                fqn: inner_fqn.clone(),
                 lang_type: base_name.clone(),
                 is_primitive,
                 is_option: false,
@@ -368,7 +370,7 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             };
             TypeRef {
                 original: format!("List<{}>", base_name),
-                fqn: qualify(&base_fqn, current_ns),
+                fqn: inner_fqn,
                 lang_type: format!("List<{}>", inner.lang_type),
                 is_primitive: false,
                 is_option: false,
@@ -376,15 +378,18 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
                 inner_type: Some(Box::new(inner)),
             }
         }
-        None => TypeRef {
-            original: base_name.clone(),
-            fqn: qualify(&base_fqn, current_ns),
-            lang_type: base_name,
-            is_primitive,
-            is_option: false,
-            is_list: false,
-            inner_type: None,
-        },
+        None => {
+            let core_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
+            TypeRef {
+                original: base_name.clone(),
+                fqn: core_fqn,
+                lang_type: base_name,
+                is_primitive,
+                is_option: false,
+                is_list: false,
+                inner_type: None,
+            }
+        }
     }
 }
 

@@ -1,10 +1,14 @@
 // MySQL type mapping utilities
 
+fn _as_type_string(x) { if type_of(x) == "TypeRef" { x.original } else { x } }
+
 fn is_nullable(type_string) {
+    let type_string = _as_type_string(type_string);
     type_string.starts_with("Option<")
 }
 
 fn unwrap_optional(type_string) {
+    let type_string = _as_type_string(type_string);
     if type_string.starts_with("Option<") {
         let start = "Option<".len();
         let len = type_string.len() - start - 1;
@@ -14,10 +18,12 @@ fn unwrap_optional(type_string) {
 }
 
 fn is_list(type_string) {
+    let type_string = _as_type_string(type_string);
     type_string.starts_with("List<")
 }
 
 fn unwrap_list(type_string) {
+    let type_string = _as_type_string(type_string);
     let start = "List<".len();
     let len = type_string.len() - start - 1;
     type_string.sub_string(start, len)
@@ -25,6 +31,7 @@ fn unwrap_list(type_string) {
 
 // Returns a base MySQL type name. Caller appends length and NULL/NOT NULL.
 fn base_mysql_type(type_string) {
+    let type_string = _as_type_string(type_string);
     if is_list(type_string) { return "JSON"; }
     let t = unwrap_optional(type_string);
 
@@ -45,4 +52,3 @@ fn base_mysql_type(type_string) {
         _ => "INT" // enums/customs → integer by default
     }
 }
-

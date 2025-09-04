@@ -7,6 +7,16 @@ using System.Text;
 
 namespace Polygen.Common
 {
+    // Hierarchical CSV header index structure
+    // Either a single index (leaf) or a list of children (composite)
+    public sealed class CsvIndexHeader
+    {
+        public int Index = -1;
+        public List<CsvIndexHeader>? IndexList;
+
+        public bool HasAny() => Index >= 0 || (IndexList != null && IndexList.Count > 0);
+    }
+
     public static class CsvUtils
     {
         public enum GapMode { Break = 0, Sparse = 1 }
@@ -73,6 +83,28 @@ namespace Polygen.Common
                 if (!map.ContainsKey(header[i])) map[header[i]] = i;
             }
             return map;
+        }
+
+        // Backward/compat alias used by templates
+        public static System.Collections.Generic.Dictionary<string,int> CsvIndexHeader(string[] header)
+            => IndexHeader(header);
+
+        // Recursively check if any mapped header cell contains a non-empty value
+        public static bool HeaderHasValues(CsvIndexHeader? h, string[] row)
+        {
+            if (h == null) return false;
+            if (h.Index >= 0)
+            {
+                return h.Index < row.Length && !string.IsNullOrEmpty(row[h.Index]);
+            }
+            if (h.IndexList != null)
+            {
+                foreach (var c in h.IndexList)
+                {
+                    if (HeaderHasValues(c, row)) return true;
+                }
+            }
+            return false;
         }
     }
 }

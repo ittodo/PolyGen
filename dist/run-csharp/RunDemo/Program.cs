@@ -35,13 +35,6 @@ class Program
         }
 
         Console.WriteLine();
-        Console.WriteLine("== ReadCsv (Player) ==");
-        foreach (var p in game.character.PlayerCsv.ReadCsv(playerCsv, ',' , CsvUtils.GapMode.Sparse))
-        {
-            Console.WriteLine($"Player {p.id}: {p.name} lv{p.level}, HP={p.stats?.health}, Status={p.status}");
-        }
-
-        Console.WriteLine();
         Console.WriteLine("== ReadCsvFast (Monster) ==");
         foreach (var m in game.character.MonsterCsv.ReadCsvFast(monsterCsv, ',' , CsvUtils.GapMode.Sparse))
         {
@@ -51,13 +44,13 @@ class Program
         }
 
         Console.WriteLine();
-        Console.WriteLine("== ReadCsvWithIndex (Monster, reused index) ==");
+        Console.WriteLine("== ReadCsvWithHeader (Monster, reused header tree) ==");
         var header = File.ReadLines(monsterCsv).First().Split(',');
-        var idx = game.character.MonsterCsv.BuildIndex(header, "");
+        var h = game.character.MonsterCsv.BuildHeader(header, "");
         foreach (var line in File.ReadLines(monsterCsv).Skip(1))
         {
             var row = line.Split(',');
-            var m = game.character.MonsterCsv.FromRowWithIndex(idx, row, CsvUtils.GapMode.Sparse);
+            var m = game.character.MonsterCsv.FromRowWithHeader(h, row, CsvUtils.GapMode.Sparse);
             Console.WriteLine($"Monster {m.id}: {m.name}, Status={m.status}");
         }
     }

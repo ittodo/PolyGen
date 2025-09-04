@@ -9,7 +9,7 @@ ${
     for item in s.items {
         if item.is_field() {
             let f = item.as_field();
-            let t = f.field_type;
+            let t = f.field_type.original;
 
             // Option<T>
             if t.starts_with("Option<") {

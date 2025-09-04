@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj": {}
+    "D:\\rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj": {}
   },
   "projects": {
-    "D:\\Rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj": {
+    "D:\\rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj",
+        "projectUniqueName": "D:\\rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj",
         "projectName": "RunDemo",
-        "projectPath": "D:\\Rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj",
+        "projectPath": "D:\\rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj",
         "packagesPath": "C:\\Users\\sksk1\\.nuget\\packages\\",
-        "outputPath": "D:\\Rust\\PolyGen\\dist\\run-csharp\\RunDemo\\obj\\",
+        "outputPath": "D:\\rust\\PolyGen\\dist\\run-csharp\\RunDemo\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

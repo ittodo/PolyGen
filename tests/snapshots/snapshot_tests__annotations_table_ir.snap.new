@@ -1,0 +1,82 @@
+---
+source: tests/snapshot_tests.rs
+assertion_line: 22
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "annotations_table.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "",
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "AnnotatedUser",
+                                fqn: "AnnotatedUser",
+                                header: [
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "load",
+                                            params: [
+                                                AnnotationParam {
+                                                    key: "type",
+                                                    value: "DB",
+                                                },
+                                                AnnotationParam {
+                                                    key: "path",
+                                                    value: "Users",
+                                                },
+                                            ],
+                                        },
+                                    ),
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "taggable",
+                                            params: [],
+                                        },
+                                    ),
+                                ],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "uu8uXNdIrjE=",
+  "dgSpecHash": "2hkFS1swdXo=",
   "success": true,
-  "projectFilePath": "D:\\Rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj",
+  "projectFilePath": "D:\\rust\\PolyGen\\dist\\run-csharp\\RunDemo\\RunDemo.csproj",
   "expectedPackageFiles": [],
   "logs": []
 }

@@ -12,5 +12,6 @@
              Exclude="..\..\..\output\csharp\CsvSchemas\**\*.*;..\..\..\output\csharp\*.BinaryReaders.cs;..\..\..\output\csharp\*.BinaryWriters.cs;..\..\..\output\csharp\*.csproj"
              Link="Generated\%(Filename)%(Extension)" />
     <Compile Include="Attributes.cs" />
+    <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

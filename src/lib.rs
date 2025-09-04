@@ -13,6 +13,7 @@ pub mod error;
 pub mod ir_builder;
 pub mod ir_model;
 pub mod rhai_generator;
+pub mod rhai;
 pub mod validation;
 
 // Re-exporting Definition for use in main.rs

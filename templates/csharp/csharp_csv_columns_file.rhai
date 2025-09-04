@@ -1,6 +1,7 @@
 import "templates/rhai_utils/indent" as indent_utils;
 
 fn unwrap_option(t) {
+    let t = if type_of(t) == "TypeRef" { t.original } else { t };
     if t.starts_with("Option<") {
         let s = "Option<".len();
         let l = t.len() - s - 1;

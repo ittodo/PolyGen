@@ -4,7 +4,7 @@ ${
     code += "        private static readonly string[] __Headers_" + s.name + " = new string[] { ";
     let first=true; 
     for it in s.items { if it.is_field() { let f = it.as_field();
-        let t = f.field_type;
+        let t = f.field_type.original;
         if t.starts_with("Option<") { let ls = "Option<".len(); let ll = t.len()-ls-1; t = t.sub_string(ls, ll); }
         if t.starts_with("List<") {
             if !first { code += ", "; } code += "\""+f.name+"[0]\""; first=false;
@@ -17,7 +17,7 @@ ${
     code += "        public static string[] GetHeader_" + s.name + "() => (string[])__Headers_" + s.name + ".Clone();\n";
     code += "        public static void AppendRow(" + s.name + " obj, List<string> cols)\n        {\n";
     for it in s.items { if it.is_field() { let f=it.as_field();
-        let t = f.field_type; let expr = "obj."+f.name;
+        let t = f.field_type.original; let expr = "obj."+f.name;
         // unwrap option
         if t.starts_with("Option<") { let ls = "Option<".len(); let ll = t.len()-ls-1; t = t.sub_string(ls, ll); }
         if t.starts_with("List<") {

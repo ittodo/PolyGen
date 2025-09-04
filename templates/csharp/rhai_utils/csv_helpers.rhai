@@ -1,6 +1,7 @@
 // Rhai helpers for generating CSV mappers without defining functions inside eval blocks
 
 fn unwrap_option(t) {
+    let t = if type_of(t) == "TypeRef" { t.original } else { t };
     if t.starts_with("Option<") { let s="Option<".len(); let l=t.len()-s-1; return t.sub_string(s,l); }
     t
 }

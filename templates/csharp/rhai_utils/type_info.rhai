@@ -2,7 +2,7 @@
 // Requires global `schema` (SchemaContext) and a provided `current_ns_name` string in scope
 
 fn strip_wrappers(type_string) {
-    let t = type_string;
+    let t = if type_of(type_string) == "TypeRef" { type_string.original } else { type_string };
     if t.starts_with("Option<") {
         let start = "Option<".len();
         let len = t.len() - start - 1;
@@ -17,11 +17,13 @@ fn strip_wrappers(type_string) {
 }
 
 fn short_name(type_string) {
+    let type_string = if type_of(type_string) == "TypeRef" { type_string.original } else { type_string };
     let parts = type_string.split(".");
     parts[parts.len - 1]
 }
 
 fn ns_prefix(type_string) {
+    let type_string = if type_of(type_string) == "TypeRef" { type_string.original } else { type_string };
     if !type_string.contains(".") { return ""; }
     let idx = type_string.last_index_of(".");
     type_string.sub_string(0, idx)
@@ -95,6 +97,7 @@ fn any_enum_named_in(ns, target_name, prefix) {
 
 // Public API: detect if a type_string represents an enum
 fn is_enum_type(type_string, current_ns_name) {
+    let type_string = if type_of(type_string) == "TypeRef" { type_string.original } else { type_string };
     if is_inline_enum_name(type_string) { return true; }
     let core = strip_wrappers(type_string);
     if core.contains(".") {
@@ -108,4 +111,3 @@ fn is_enum_type(type_string, current_ns_name) {
         return any_enum_named(core);
     }
 }
-

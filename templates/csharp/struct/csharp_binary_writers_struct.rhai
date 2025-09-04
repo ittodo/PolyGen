@@ -8,6 +8,7 @@ ${
     let body = eval(injected + "`" + body_tmpl + "`");
     body
 }
+}
 
 ${
     // Generate writers for embedded structs within this struct
@@ -25,4 +26,3 @@ ${
     }
     out
 }
-
