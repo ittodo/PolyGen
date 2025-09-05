@@ -55,8 +55,6 @@ fn emit_struct(ns_name, s, all_files) {
     let current_struct_inline_enums = [];
     for it in s.items { if it.is_inline_enum() { let e = it.as_inline_enum(); current_struct_inline_enums.push(e.name); } }
     let code = "";
-    code += "namespace " + ns_name + "\n";
-    code += "{\n";
     code += "public static class " + s.name + "Csv\n";
     code += "{\n";
     let full_t = "global::" + s.fqn;
@@ -180,7 +178,6 @@ fn emit_struct(ns_name, s, all_files) {
     code += "}\n"; // end class
     // Also emit CSV mappers for embedded structs within this namespace (after class)
     for it in s.items { if it.is_embedded_struct() { let es = it.as_embedded_struct(); code += emit_struct(ns_name, es, all_files); } }
-    code += "}\n\n"; // end namespace
     code
 }
 
@@ -188,7 +185,12 @@ fn walk_namespace(ns_obj, prefix, all_files) {
     // ns_obj.name is already fully qualified in IR; avoid double prefixing
     let full_ns_name = ns_obj.name;
     let blocks = "";
+    // Open namespace once, emit all classes (including embedded) inside
+    blocks += "namespace " + full_ns_name + "\n";
+    blocks += "{\n";
     for item in ns_obj.items { if item.is_struct() { let s = item.as_struct(); blocks += emit_struct(full_ns_name, s, all_files); } }
+    blocks += "}\n\n"; // end namespace
+    // Recurse into child namespaces (each will open its own block)
     for item in ns_obj.items { if item.is_namespace() { let child = item.as_namespace(); blocks += walk_namespace(child, full_ns_name, all_files); } }
     blocks
 }
