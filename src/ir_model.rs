@@ -71,9 +71,15 @@ pub struct TypeRef {
     pub original: String,
     /// The fully qualified name of the core type, e.g., "game.common.StatBlock".
     pub fqn: String,
+    /// Namespace portion of FQN (without the final type name). Empty for primitives.
+    pub namespace_fqn: String,
+    /// Final type identifier (last segment of FQN).
+    pub type_name: String,
     /// The language-specific representation, e.g., "List<Game.Common.StatBlock>".
     pub lang_type: String,
     pub is_primitive: bool,
+    pub is_struct: bool,
+    pub is_enum: bool,
     pub is_option: bool,
     pub is_list: bool,
     /// For List<T> or Option<T>, this refers to the inner type T.

@@ -3,3 +3,13 @@ D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.AssemblyInfoInp
 D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.AssemblyInfo.cs
 D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.csproj.CoreCompileInputs.cache
 D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.sourcelink.json
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\bin\Debug\net9.0\RunDemo.exe
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\bin\Debug\net9.0\RunDemo.deps.json
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\bin\Debug\net9.0\RunDemo.runtimeconfig.json
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\bin\Debug\net9.0\RunDemo.dll
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\bin\Debug\net9.0\RunDemo.pdb
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.dll
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\refint\RunDemo.dll
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.pdb
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\RunDemo.genruntimeconfig.cache
+D:\Rust\PolyGen\dist\run-csharp\RunDemo\obj\Debug\net9.0\ref\RunDemo.dll

@@ -1,2 +1,16 @@
 /target
 /output
+dist/**/.vs/
+dist/**/bin/
+dist/**/obj/
+dist/**/*.cache
+dist/**/*.dll
+dist/**/*.pdb
+dist/**/*.exe
+dist/**/*.assets.cache
+dist/**/*.editorconfig
+dist/**/*.sourcelink.json
+dist/**/*.nuget*/
+dist/**/*.csproj.FileListAbsolute.txt
+dist/**/*.genruntimeconfig.cache
+*.vsidx

@@ -11,7 +11,7 @@
 ## Build, Test, and Dev Commands
 - Build: `cargo build` (optimized: `cargo build --release`).
 - Run (example):
-  - `cargo run -- --schema-path examples/character_types.poly --templates-dir templates --output-dir output --lang csharp`
+  - `cargo run -- --schema-path examples/character_types.poly`
 - Test: `cargo test` (runs `insta` snapshots).
 - Lint: `cargo clippy -- -D warnings`
 - Format: `cargo fmt --all`

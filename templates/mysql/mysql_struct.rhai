@@ -21,8 +21,8 @@ ${
                 if a.contains("IsUnique") && a.contains("true") { uniq_cols.push(col_name); }
             }
 
-            let base_type = type_utils::base_mysql_type(f.field_type.original);
-            let is_null = type_utils::is_nullable(f.field_type.original);
+            let base_type = type_utils::base_mysql_type(f.field_type);
+            let is_null = type_utils::is_nullable(f.field_type);
             let line = if base_type == "VARCHAR" {
                 // derive MaxLength
                 let ml_str = "255";

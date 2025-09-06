@@ -53,6 +53,9 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
         context.files.push(file_def);
     }
 
+    // After building the raw IR, resolve TypeRef flags (is_enum/is_struct) using the collected defs
+    resolve_type_kinds(&mut context);
+
     context
 }
 
@@ -100,6 +103,157 @@ fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition, cur
             items.push(NamespaceItem::Comment(c.clone()));
         }
         Definition::Annotation(_) => { /* Annotations are handled within other items, not as top-level IR items */ }
+    }
+}
+
+use std::collections::{HashMap, HashSet};
+
+// Traverse the built IR and fix TypeRef.is_enum / is_struct flags based on declared enums
+fn resolve_type_kinds(ctx: &mut SchemaContext) {
+    let mut enum_fqns: HashSet<String> = HashSet::new();
+    let mut enum_by_ns_and_name: HashSet<(String, String)> = HashSet::new();
+    let mut enum_by_name: HashMap<String, HashSet<String>> = HashMap::new();
+
+    // Collect all enum FQNs from all files/namespaces (including inline enums)
+    for file in &ctx.files {
+        for ns in &file.namespaces {
+            collect_enum_fqns_from_namespace_items(&ns.items, &mut enum_fqns, &mut enum_by_ns_and_name, &mut enum_by_name);
+        }
+    }
+
+    // Adjust all TypeRefs in struct fields recursively
+    for file in &mut ctx.files {
+        for ns in &mut file.namespaces {
+            adjust_namespace_items_typerefs(&mut ns.items, &enum_fqns, &enum_by_ns_and_name, &enum_by_name);
+        }
+    }
+}
+
+fn collect_enum_fqns_from_namespace_items(
+    items: &Vec<NamespaceItem>,
+    set: &mut HashSet<String>,
+    by_ns_and_name: &mut HashSet<(String, String)>,
+    by_name: &mut HashMap<String, HashSet<String>>,
+) {
+    for it in items {
+        match it {
+            NamespaceItem::Enum(e) => {
+                set.insert(e.fqn.clone());
+                let ns = namespace_of_owned(&e.fqn);
+                by_ns_and_name.insert((ns.clone(), last_segment_owned(&e.fqn)));
+                by_name.entry(last_segment_owned(&e.fqn)).or_default().insert(e.fqn.clone());
+            }
+            NamespaceItem::Struct(s) => {
+                collect_enum_fqns_from_struct(s, set, by_ns_and_name, by_name);
+            }
+            NamespaceItem::Namespace(inner) => {
+                collect_enum_fqns_from_namespace_items(&inner.items, set, by_ns_and_name, by_name);
+            }
+            NamespaceItem::Comment(_) => {}
+        }
+    }
+}
+
+fn collect_enum_fqns_from_struct(
+    s: &StructDef,
+    set: &mut HashSet<String>,
+    by_ns_and_name: &mut HashSet<(String, String)>,
+    by_name: &mut HashMap<String, HashSet<String>>,
+) {
+    for item in &s.items {
+        match item {
+            StructItem::InlineEnum(e) => {
+                set.insert(e.fqn.clone());
+                let ns = namespace_of_owned(&e.fqn);
+                by_ns_and_name.insert((ns.clone(), last_segment_owned(&e.fqn)));
+                by_name.entry(last_segment_owned(&e.fqn)).or_default().insert(e.fqn.clone());
+            }
+            StructItem::EmbeddedStruct(sub) => collect_enum_fqns_from_struct(sub, set, by_ns_and_name, by_name),
+            StructItem::Field(_) | StructItem::Annotation(_) | StructItem::Comment(_) => {}
+        }
+    }
+}
+
+fn adjust_namespace_items_typerefs(
+    items: &mut Vec<NamespaceItem>,
+    enum_fqns: &HashSet<String>,
+    by_ns_and_name: &HashSet<(String, String)>,
+    by_name: &HashMap<String, HashSet<String>>,
+) {
+    for it in items {
+        match it {
+            NamespaceItem::Struct(ref mut s) => adjust_struct_typerefs(s, enum_fqns, by_ns_and_name, by_name),
+            NamespaceItem::Namespace(ref mut inner) => adjust_namespace_items_typerefs(&mut inner.items, enum_fqns, by_ns_and_name, by_name),
+            NamespaceItem::Enum(_) | NamespaceItem::Comment(_) => {}
+        }
+    }
+}
+
+fn adjust_struct_typerefs(
+    s: &mut StructDef,
+    enum_fqns: &HashSet<String>,
+    by_ns_and_name: &HashSet<(String, String)>,
+    by_name: &HashMap<String, HashSet<String>>,
+) {
+    for item in &mut s.items {
+        match item {
+            StructItem::Field(ref mut f) => {
+                adjust_typeref(&mut f.field_type, enum_fqns, by_ns_and_name, by_name);
+            }
+            StructItem::EmbeddedStruct(ref mut sub) => adjust_struct_typerefs(sub, enum_fqns, by_ns_and_name, by_name),
+            StructItem::InlineEnum(_) | StructItem::Annotation(_) | StructItem::Comment(_) => {}
+        }
+    }
+}
+
+fn adjust_typeref(
+    t: &mut TypeRef,
+    enum_fqns: &HashSet<String>,
+    by_ns_and_name: &HashSet<(String, String)>,
+    by_name: &HashMap<String, HashSet<String>>,
+) {
+    if let Some(inner) = &mut t.inner_type {
+        adjust_typeref(inner.as_mut(), enum_fqns, by_ns_and_name, by_name);
+    }
+
+    if !t.is_primitive {
+        if enum_fqns.contains(&t.fqn) {
+            t.is_enum = true;
+            t.is_struct = false;
+            return;
+        }
+
+        // Fallback 1: same-namespace + type name match
+        if by_ns_and_name.contains(&(t.namespace_fqn.clone(), t.type_name.clone())) {
+            let fqn = if t.namespace_fqn.is_empty() {
+                t.type_name.clone()
+            } else {
+                format!("{}.{}", t.namespace_fqn, t.type_name)
+            };
+            if enum_fqns.contains(&fqn) {
+                t.fqn = fqn;
+                t.is_enum = true;
+                t.is_struct = false;
+                return;
+            }
+        }
+
+        // Fallback 2: unique type name across all enums
+        if let Some(set) = by_name.get(&t.type_name) {
+            if set.len() == 1 {
+                if let Some(only_fqn) = set.iter().next() {
+                    t.fqn = only_fqn.clone();
+                    t.namespace_fqn = namespace_of_owned(only_fqn);
+                    t.is_enum = true;
+                    t.is_struct = false;
+                    return;
+                }
+            }
+        }
+
+        // Default: treat as struct
+        t.is_enum = false;
+        t.is_struct = true;
     }
 }
 
@@ -330,10 +484,10 @@ fn convert_embed_to_struct(embed: &ast_model::Embed, owner_fqn: &str) -> StructD
 
 // Build TypeRef from an AST type in the given namespace context
 fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeRef {
-    let (base_fqn, base_name, is_primitive) = match &t.base_type {
-        ast_model::TypeName::Path(p) => (p.join("."), p.join("."), false),
-        ast_model::TypeName::Basic(b) => (basic_name(b).to_string(), basic_name(b).to_string(), true),
-        ast_model::TypeName::InlineEnum(_) => ("__ANON_ENUM__".to_string(), "__ANON_ENUM__".to_string(), false),
+    let (base_fqn, base_name, is_primitive, is_enum) = match &t.base_type {
+        ast_model::TypeName::Path(p) => (p.join("."), p.join("."), false, false),
+        ast_model::TypeName::Basic(b) => (basic_name(b).to_string(), basic_name(b).to_string(), true, false),
+        ast_model::TypeName::InlineEnum(_) => ("__ANON_ENUM__".to_string(), "__ANON_ENUM__".to_string(), false, true),
     };
     match t.cardinality {
         Some(ast_model::Cardinality::Optional) => {
@@ -341,17 +495,25 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             let inner = TypeRef {
                 original: base_name.clone(),
                 fqn: inner_fqn.clone(),
+                namespace_fqn: namespace_of_owned(&inner_fqn),
+                type_name: last_segment_owned(&inner_fqn),
                 lang_type: base_name.clone(),
                 is_primitive,
+                is_struct: !(is_primitive || is_enum),
+                is_enum,
                 is_option: false,
                 is_list: false,
                 inner_type: None,
             };
             TypeRef {
                 original: format!("Option<{}>", base_name),
-                fqn: inner_fqn,
+                fqn: inner_fqn.clone(),
+                namespace_fqn: namespace_of_owned(&inner_fqn),
+                type_name: last_segment_owned(&inner_fqn),
                 lang_type: format!("Option<{}>", inner.lang_type),
-                is_primitive: is_primitive,
+                is_primitive: false,
+                is_struct: !(is_primitive || is_enum),
+                is_enum,
                 is_option: true,
                 is_list: false,
                 inner_type: Some(Box::new(inner)),
@@ -362,17 +524,25 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             let inner = TypeRef {
                 original: base_name.clone(),
                 fqn: inner_fqn.clone(),
+                namespace_fqn: namespace_of_owned(&inner_fqn),
+                type_name: last_segment_owned(&inner_fqn),
                 lang_type: base_name.clone(),
                 is_primitive,
+                is_struct: !(is_primitive || is_enum),
+                is_enum,
                 is_option: false,
                 is_list: false,
                 inner_type: None,
             };
             TypeRef {
                 original: format!("List<{}>", base_name),
-                fqn: inner_fqn,
+                fqn: inner_fqn.clone(),
+                namespace_fqn: namespace_of_owned(&inner_fqn),
+                type_name: last_segment_owned(&inner_fqn),
                 lang_type: format!("List<{}>", inner.lang_type),
                 is_primitive: false,
+                is_struct: !(is_primitive || is_enum),
+                is_enum,
                 is_option: false,
                 is_list: true,
                 inner_type: Some(Box::new(inner)),
@@ -382,9 +552,13 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             let core_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
             TypeRef {
                 original: base_name.clone(),
-                fqn: core_fqn,
+                fqn: core_fqn.clone(),
+                namespace_fqn: namespace_of_owned(&core_fqn),
+                type_name: last_segment_owned(&core_fqn),
                 lang_type: base_name,
                 is_primitive,
+                is_struct: !(is_primitive || is_enum),
+                is_enum,
                 is_option: false,
                 is_list: false,
                 inner_type: None,
@@ -399,8 +573,12 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
             let inner = TypeRef {
                 original: base_name.to_string(),
                 fqn: base_fqn.to_string(),
+                namespace_fqn: namespace_of_owned(base_fqn),
+                type_name: last_segment_owned(base_fqn),
                 lang_type: base_name.to_string(),
                 is_primitive: primitive_hint,
+                is_struct: !primitive_hint,
+                is_enum: false,
                 is_option: false,
                 is_list: false,
                 inner_type: None,
@@ -408,8 +586,12 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
             TypeRef {
                 original: format!("Option<{}>", base_name),
                 fqn: base_fqn.to_string(),
+                namespace_fqn: namespace_of_owned(base_fqn),
+                type_name: last_segment_owned(base_fqn),
                 lang_type: format!("Option<{}>", base_name),
                 is_primitive: false,
+                is_struct: !primitive_hint,
+                is_enum: false,
                 is_option: true,
                 is_list: false,
                 inner_type: Some(Box::new(inner)),
@@ -419,8 +601,12 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
             let inner = TypeRef {
                 original: base_name.to_string(),
                 fqn: base_fqn.to_string(),
+                namespace_fqn: namespace_of_owned(base_fqn),
+                type_name: last_segment_owned(base_fqn),
                 lang_type: base_name.to_string(),
                 is_primitive: primitive_hint,
+                is_struct: !primitive_hint,
+                is_enum: false,
                 is_option: false,
                 is_list: false,
                 inner_type: None,
@@ -428,8 +614,12 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
             TypeRef {
                 original: format!("List<{}>", base_name),
                 fqn: base_fqn.to_string(),
+                namespace_fqn: namespace_of_owned(base_fqn),
+                type_name: last_segment_owned(base_fqn),
                 lang_type: format!("List<{}>", base_name),
                 is_primitive: false,
+                is_struct: !primitive_hint,
+                is_enum: false,
                 is_option: false,
                 is_list: true,
                 inner_type: Some(Box::new(inner)),
@@ -438,8 +628,12 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
         None => TypeRef {
             original: base_name.to_string(),
             fqn: base_fqn.to_string(),
+            namespace_fqn: namespace_of_owned(base_fqn),
+            type_name: last_segment_owned(base_fqn),
             lang_type: base_name.to_string(),
             is_primitive: primitive_hint,
+            is_struct: !primitive_hint,
+            is_enum: false,
             is_option: false,
             is_list: false,
             inner_type: None,
@@ -452,6 +646,20 @@ fn qualify(base_fqn: &str, current_ns: &str) -> String {
         base_fqn.to_string()
     } else {
         format!("{}.{}", current_ns, base_fqn)
+    }
+}
+
+fn namespace_of_owned(fqn: &str) -> String {
+    match fqn.rfind('.') {
+        Some(i) => fqn[..i].to_string(),
+        None => String::new(),
+    }
+}
+
+fn last_segment_owned(fqn: &str) -> String {
+    match fqn.rfind('.') {
+        Some(i) => fqn[i + 1..].to_string(),
+        None => fqn.to_string(),
     }
 }
 

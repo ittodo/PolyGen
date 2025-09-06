@@ -11,7 +11,7 @@
 ## 빌드·실행·개발 명령어
 - 빌드: `cargo build` (최적화: `cargo build --release`).
 - 실행 예시:
-  - `cargo run -- --schema-path examples/character_types.poly --templates-dir templates --output-dir output --lang csharp`
+  - `cargo run -- --schema-path examples/character_types.poly`
 - 테스트: `cargo test` (스냅샷 테스트 실행).
 - 린트: `cargo clippy -- -D warnings`
 - 포맷: `cargo fmt --all`

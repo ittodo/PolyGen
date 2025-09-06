@@ -29,18 +29,18 @@ class Program
         });
 
         Console.WriteLine("== ReadCsvFast (Player) ==");
-        foreach (var p in game.character.PlayerCsv.ReadCsvFast(playerCsv, ',' , CsvUtils.GapMode.Sparse))
+        foreach (var p in game.character.PlayerCsv.ReadCsvFast(playerCsv, ',', CsvUtils.GapMode.Sparse))
         {
             Console.WriteLine($"Player {p.id}: {p.name} lv{p.level}, HP={p.stats?.health}, Status={p.status}");
         }
 
         Console.WriteLine();
         Console.WriteLine("== ReadCsvFast (Monster) ==");
-        foreach (var m in game.character.MonsterCsv.ReadCsvFast(monsterCsv, ',' , CsvUtils.GapMode.Sparse))
+        foreach (var m in game.character.MonsterCsv.ReadCsvFast(monsterCsv, ',', CsvUtils.GapMode.Sparse))
         {
             var patrol0 = (m.patrol_points != null && m.patrol_points.Count > 0) ? $"({m.patrol_points[0].x},{m.patrol_points[0].y})" : "-";
             var drop0 = (m.drop_items != null && m.drop_items.Count > 0) ? m.drop_items[0] : null;
-            Console.WriteLine($"Monster {m.id}: {m.name}, HP={m.stats?.health}, Spawn=({m.spawn_point?.x},{m.spawn_point?.y}), Patrol0={patrol0}, Status={m.status}, Drop0={(drop0!=null?drop0.item_id.ToString():"-")}");
+            Console.WriteLine($"Monster {m.id}: {m.name}, HP={m.stats?.health}, Spawn=({m.spawn_point?.x},{m.spawn_point?.y}), Patrol0={patrol0}, Status={m.status}, Drop0={(drop0 != null ? drop0.item_id.ToString() : "-")}");
         }
 
         Console.WriteLine();

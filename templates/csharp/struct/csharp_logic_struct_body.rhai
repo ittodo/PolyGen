@@ -18,7 +18,7 @@ ${
                 body += "   [ " + attributes + " ]\n";
             }
 
-            body += "   public " + type_utils::map_type(f.field_type.original) + " " + f.name + ";\n";
+            body += "   public " + type_utils::map_type(f.field_type) + " " + f.name + ";\n";
         }
         else if item.is_embedded_struct()
         {

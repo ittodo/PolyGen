@@ -9,84 +9,58 @@ ${
     for item in s.items {
         if item.is_field() {
             let f = item.as_field();
-            let t = f.field_type.original;
+            let tf = f.field_type; let base = if tf.is_option { tf.inner } else { tf };
             let prop = f.name;
 
-            if t.starts_with("Option<") {
-                let __s = "Option<".len(); let __l = t.len() - __s - 1; let inner = t.sub_string(__s, __l);
+            if tf.is_option {
+                let inner = base;
                 body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) {\n";
                 body += "            if (__p.ValueKind != JsonValueKind.Null) {\n";
-                if inner == "string" { body += "                obj." + f.name + " = __p.GetString();\n"; }
-                else if inner == "u8" { body += "                obj." + f.name + " = __p.GetByte();\n"; }
-                else if inner == "i8" { body += "                obj." + f.name + " = __p.GetSByte();\n"; }
-                else if inner == "u16" { body += "                obj." + f.name + " = __p.GetUInt16();\n"; }
-                else if inner == "i16" { body += "                obj." + f.name + " = __p.GetInt16();\n"; }
-                else if inner == "u32" { body += "                obj." + f.name + " = __p.GetUInt32();\n"; }
-                else if inner == "i32" { body += "                obj." + f.name + " = __p.GetInt32();\n"; }
-                else if inner == "u64" { body += "                obj." + f.name + " = __p.GetUInt64();\n"; }
-                else if inner == "i64" { body += "                obj." + f.name + " = __p.GetInt64();\n"; }
-                else if inner == "f32" { body += "                obj." + f.name + " = __p.GetSingle();\n"; }
-                else if inner == "f64" { body += "                obj." + f.name + " = __p.GetDouble();\n"; }
-                else if inner == "bool" { body += "                obj." + f.name + " = __p.GetBoolean();\n"; }
-                else if inner.ends_with("__Enum") || current_ns_enums.contains(inner) || current_struct_inline_enums.contains(inner) {
-                    let enum_type = if inner.ends_with("__Enum") { s.name + "." + inner } else { inner };
+                if inner.is_primitive {
+                    let k = inner.lang_type; // primitive tag
+                    let g = switch k { "string"=>"GetString()", "u8"=>"GetByte()", "i8"=>"GetSByte()", "u16"=>"GetUInt16()", "i16"=>"GetInt16()", "u32"=>"GetUInt32()", "i32"=>"GetInt32()", "u64"=>"GetUInt64()", "i64"=>"GetInt64()", "f32"=>"GetSingle()", "f64"=>"GetDouble()", "bool"=>"GetBoolean()", _=>"GetString()" };
+                    body += "                obj." + f.name + " = __p." + g + ";\n";
+                } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
+                    let enum_type = if inner.is_enum { s.name + "." + inner.type_name } else { inner.fqn };
                     body += "                obj." + f.name + " = JsonUtils.ReadEnum<" + enum_type + ">(__p);\n";
                 } else {
-                    let parts = inner.split("."); let call_type = parts[parts.len-1];
-                    let call_ns = if inner.contains(".") { let __ns = ""; let __i=0; for seg in parts { if __i < parts.len-1 { if __ns != "" { __ns += "."; } __ns += seg; } __i+=1; } __ns } else { current_ns_name };
-                    body += "                obj." + f.name + " = " + call_ns + ".JsonMappers.Read" + call_type + "(__p);\n";
+                    let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
+                    body += "                obj." + f.name + " = " + call_ns + ".JsonMappers.Read" + inner.type_name + "(__p);\n";
                 }
                 body += "            }\n";
                 body += "        }\n";
                 continue;
             }
 
-            if t.starts_with("List<") {
-                let __s = "List<".len(); let __l = t.len() - __s - 1; let inner = t.sub_string(__s, __l);
+            if base.is_list {
+                let inner = base.inner;
                 body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p) && __p.ValueKind == JsonValueKind.Array) {\n";
-                if inner == "string" { body += "            obj." + f.name + " = JsonUtils.ReadList<string>(__p, el => el.GetString()!);\n"; }
-                else if inner == "u8" { body += "            obj." + f.name + " = JsonUtils.ReadList<byte>(__p, el => el.GetByte());\n"; }
-                else if inner == "i8" { body += "            obj." + f.name + " = JsonUtils.ReadList<sbyte>(__p, el => el.GetSByte());\n"; }
-                else if inner == "u16" { body += "            obj." + f.name + " = JsonUtils.ReadList<ushort>(__p, el => el.GetUInt16());\n"; }
-                else if inner == "i16" { body += "            obj." + f.name + " = JsonUtils.ReadList<short>(__p, el => el.GetInt16());\n"; }
-                else if inner == "u32" { body += "            obj." + f.name + " = JsonUtils.ReadList<uint>(__p, el => el.GetUInt32());\n"; }
-                else if inner == "i32" { body += "            obj." + f.name + " = JsonUtils.ReadList<int>(__p, el => el.GetInt32());\n"; }
-                else if inner == "u64" { body += "            obj." + f.name + " = JsonUtils.ReadList<ulong>(__p, el => el.GetUInt64());\n"; }
-                else if inner == "i64" { body += "            obj." + f.name + " = JsonUtils.ReadList<long>(__p, el => el.GetInt64());\n"; }
-                else if inner == "f32" { body += "            obj." + f.name + " = JsonUtils.ReadList<float>(__p, el => el.GetSingle());\n"; }
-                else if inner == "f64" { body += "            obj." + f.name + " = JsonUtils.ReadList<double>(__p, el => el.GetDouble());\n"; }
-                else if inner == "bool" { body += "            obj." + f.name + " = JsonUtils.ReadList<bool>(__p, el => el.GetBoolean());\n"; }
-                else if inner.ends_with("__Enum") || current_ns_enums.contains(inner) || current_struct_inline_enums.contains(inner) {
-                    let enum_type = if inner.ends_with("__Enum") { s.name + "." + inner } else { inner };
+                if inner.is_primitive {
+                    let k = inner.lang_type;
+                    let cs = switch k { "string"=>"string", "u8"=>"byte", "i8"=>"sbyte", "u16"=>"ushort", "i16"=>"short", "u32"=>"uint", "i32"=>"int", "u64"=>"ulong", "i64"=>"long", "f32"=>"float", "f64"=>"double", "bool"=>"bool", _=>"string" };
+                    let g = switch k { "string"=>"el.GetString()!", "u8"=>"el.GetByte()", "i8"=>"el.GetSByte()", "u16"=>"el.GetUInt16()", "i16"=>"el.GetInt16()", "u32"=>"el.GetUInt32()", "i32"=>"el.GetInt32()", "u64"=>"el.GetUInt64()", "i64"=>"el.GetInt64()", "f32"=>"el.GetSingle()", "f64"=>"el.GetDouble()", "bool"=>"el.GetBoolean()", _=>"el.GetString()!" };
+                    body += "            obj." + f.name + " = JsonUtils.ReadList<" + cs + ">(__p, el => " + g + ");\n";
+                } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
+                    let enum_type = if inner.is_enum { s.name + "." + inner.type_name } else { inner.fqn };
                     body += "            obj." + f.name + " = JsonUtils.ReadList<" + enum_type + ">(__p, el => JsonUtils.ReadEnum<" + enum_type + ">(el));\n";
                 } else {
-                    let parts = inner.split("."); let call_type = parts[parts.len-1];
-                    let call_ns = if inner.contains(".") { let __ns = ""; let __i=0; for seg in parts { if __i < parts.len-1 { if __ns != "" { __ns += "."; } __ns += seg; } __i+=1; } __ns } else { current_ns_name };
-                    body += "            obj." + f.name + " = JsonUtils.ReadList<" + inner + ">(__p, el => " + call_ns + ".JsonMappers.Read" + call_type + "(el));\n";
+                    let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
+                    body += "            obj." + f.name + " = JsonUtils.ReadList<" + inner.type_name + ">(__p, el => " + call_ns + ".JsonMappers.Read" + inner.type_name + "(el));\n";
                 }
                 body += "        }\n";
                 continue;
             }
 
-            if t == "string" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p) && __p.ValueKind != JsonValueKind.Null) obj." + f.name + " = __p.GetString();\n"; }
-            else if t == "u8" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetByte();\n"; }
-            else if t == "i8" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetSByte();\n"; }
-            else if t == "u16" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetUInt16();\n"; }
-            else if t == "i16" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetInt16();\n"; }
-            else if t == "u32" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetUInt32();\n"; }
-            else if t == "i32" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetInt32();\n"; }
-            else if t == "u64" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetUInt64();\n"; }
-            else if t == "i64" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetInt64();\n"; }
-            else if t == "f32" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetSingle();\n"; }
-            else if t == "f64" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetDouble();\n"; }
-            else if t == "bool" { body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p.GetBoolean();\n"; }
-            else if t.ends_with("__Enum") || current_ns_enums.contains(t) || current_struct_inline_enums.contains(t) {
-                let enum_type = if t.ends_with("__Enum") { s.name + "." + t } else { t };
+            if base.is_primitive {
+                let k = base.lang_type; let g = switch k { "string"=>"GetString()", "u8"=>"GetByte()", "i8"=>"GetSByte()", "u16"=>"GetUInt16()", "i16"=>"GetInt16()", "u32"=>"GetUInt32()", "i32"=>"GetInt32()", "u64"=>"GetUInt64()", "i64"=>"GetInt64()", "f32"=>"GetSingle()", "f64"=>"GetDouble()", "bool"=>"GetBoolean()", _=>"GetString()" };
+                body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = __p." + g + ";\n";
+            }
+            else if base.is_enum || current_struct_inline_enums.contains(base.type_name) {
+                let enum_type = if base.is_enum { s.name + "." + base.type_name } else { base.fqn };
                 body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p)) obj." + f.name + " = JsonUtils.ReadEnum<" + enum_type + ">(__p);\n";
             } else {
-                let parts = t.split("."); let call_type = parts[parts.len-1];
-                let call_ns = if t.contains(".") { let __ns = ""; let __i=0; for seg in parts { if __i < parts.len-1 { if __ns != "" { __ns += "."; } __ns += seg; } __i+=1; } __ns } else { current_ns_name };
-                body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p) && __p.ValueKind == JsonValueKind.Object) obj." + f.name + " = " + call_ns + ".JsonMappers.Read" + call_type + "(__p);\n";
+                let call_ns = if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn };
+                body += "        if (JsonUtils.TryGetPropertyCaseInsensitive(e, \"" + prop + "\", out var __p) && __p.ValueKind == JsonValueKind.Object) obj." + f.name + " = " + call_ns + ".JsonMappers.Read" + base.type_name + "(__p);\n";
             }
         }
     }

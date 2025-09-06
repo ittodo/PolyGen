@@ -4,9 +4,8 @@ ${
     code += "        private static readonly string[] __Headers_" + s.name + " = new string[] { ";
     let first=true; 
     for it in s.items { if it.is_field() { let f = it.as_field();
-        let t = f.field_type.original;
-        if t.starts_with("Option<") { let ls = "Option<".len(); let ll = t.len()-ls-1; t = t.sub_string(ls, ll); }
-        if t.starts_with("List<") {
+        let tf=f.field_type; let base = if tf.is_option { tf.inner } else { tf };
+        if base.is_list {
             if !first { code += ", "; } code += "\""+f.name+"[0]\""; first=false;
         } else {
             if !first { code += ", "; } code += "\""+f.name+"\""; first=false;
@@ -17,22 +16,19 @@ ${
     code += "        public static string[] GetHeader_" + s.name + "() => (string[])__Headers_" + s.name + ".Clone();\n";
     code += "        public static void AppendRow(" + s.name + " obj, List<string> cols)\n        {\n";
     for it in s.items { if it.is_field() { let f=it.as_field();
-        let t = f.field_type.original; let expr = "obj."+f.name;
-        // unwrap option
-        if t.starts_with("Option<") { let ls = "Option<".len(); let ll = t.len()-ls-1; t = t.sub_string(ls, ll); }
-        if t.starts_with("List<") {
-            let ls = "List<".len(); let ll = t.len()-ls-1; let inner = t.sub_string(ls, ll);
+        let tf=f.field_type; let base = if tf.is_option { tf.inner } else { tf }; let expr = "obj."+f.name;
+        if base.is_list { let inner = base.inner;
             // primitive-like and enum handling; otherwise add empty placeholder(s)
-            if inner == "u8" || inner == "i8" || inner == "u16" || inner == "i16" || inner == "u32" || inner == "i32" || inner == "u64" || inner == "i64" || inner == "f32" || inner == "f64" || inner == "bool" || inner == "string" {
+            if inner.is_primitive || inner.lang_type == "string" {
                 code += "if ("+expr+" != null && "+expr+".Count > 0) cols.Add(CsvUtils.ToStringInvariant("+expr+"[0])); else cols.Add(string.Empty);\n";
-            } else if inner.ends_with("__Enum") { 
+            } else if inner.is_enum { 
                 code += "if ("+expr+" != null && "+expr+".Count > 0) cols.Add("+expr+"[0].ToString()); else cols.Add(string.Empty);\n";
             } else {
                 code += "cols.Add(string.Empty);\n";
             }
-        } else if t == "u8" || t == "i8" || t == "u16" || t == "i16" || t == "u32" || t == "i32" || t == "u64" || t == "i64" || t == "f32" || t == "f64" || t == "bool" || t == "string" {
+        } else if base.is_primitive || base.lang_type == "string" {
             code += "cols.Add(CsvUtils.ToStringInvariant("+expr+"));\n";
-        } else if t.ends_with("__Enum") || current_ns_enums.contains(t) {
+        } else if base.is_enum {
             code += "cols.Add("+expr+".ToString());\n";
         } else {
             code += "cols.Add(string.Empty);\n";

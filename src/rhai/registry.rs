@@ -220,9 +220,13 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("original", |t: &mut TypeRef| t.original.clone());
     engine.register_get("fqn", |t: &mut TypeRef| t.fqn.clone());
     engine.register_get("lang_type", |t: &mut TypeRef| t.lang_type.clone());
+    engine.register_get("namespace_fqn", |t: &mut TypeRef| t.namespace_fqn.clone());
+    engine.register_get("type_name", |t: &mut TypeRef| t.type_name.clone());
     engine.register_get("is_primitive", |t: &mut TypeRef| t.is_primitive);
     engine.register_get("is_option", |t: &mut TypeRef| t.is_option);
     engine.register_get("is_list", |t: &mut TypeRef| t.is_list);
+    engine.register_get("is_struct", |t: &mut TypeRef| t.is_struct);
+    engine.register_get("is_enum", |t: &mut TypeRef| t.is_enum);
     // For inner_type, return value or unit; and expose a convenience flag
     engine.register_get("has_inner", |t: &mut TypeRef| t.inner_type.is_some());
     engine.register_get("inner", |t: &mut TypeRef| {
