@@ -12,24 +12,49 @@ SchemaContext {
                     items: [
                         Namespace(
                             NamespaceDef {
-                                name: "character",
+                                name: "game.character",
                                 items: [
                                     Struct(
                                         StructDef {
                                             name: "Player",
+                                            fqn: "game.character.Player",
                                             header: [],
                                             items: [
                                                 Field(
                                                     FieldDef {
                                                         name: "id",
-                                                        field_type: "u32",
+                                                        field_type: TypeRef {
+                                                            original: "u32",
+                                                            fqn: "u32",
+                                                            namespace_fqn: "",
+                                                            type_name: "u32",
+                                                            lang_type: "u32",
+                                                            is_primitive: true,
+                                                            is_struct: false,
+                                                            is_enum: false,
+                                                            is_option: false,
+                                                            is_list: false,
+                                                            inner_type: None,
+                                                        },
                                                         attributes: [],
                                                     },
                                                 ),
                                                 Field(
                                                     FieldDef {
                                                         name: "name",
-                                                        field_type: "string",
+                                                        field_type: TypeRef {
+                                                            original: "string",
+                                                            fqn: "string",
+                                                            namespace_fqn: "",
+                                                            type_name: "string",
+                                                            lang_type: "string",
+                                                            is_primitive: true,
+                                                            is_struct: false,
+                                                            is_enum: false,
+                                                            is_option: false,
+                                                            is_list: false,
+                                                            inner_type: None,
+                                                        },
                                                         attributes: [],
                                                     },
                                                 ),
@@ -41,24 +66,49 @@ SchemaContext {
                         ),
                         Namespace(
                             NamespaceDef {
-                                name: "item",
+                                name: "game.item",
                                 items: [
                                     Struct(
                                         StructDef {
                                             name: "Item",
+                                            fqn: "game.item.Item",
                                             header: [],
                                             items: [
                                                 Field(
                                                     FieldDef {
                                                         name: "id",
-                                                        field_type: "u32",
+                                                        field_type: TypeRef {
+                                                            original: "u32",
+                                                            fqn: "u32",
+                                                            namespace_fqn: "",
+                                                            type_name: "u32",
+                                                            lang_type: "u32",
+                                                            is_primitive: true,
+                                                            is_struct: false,
+                                                            is_enum: false,
+                                                            is_option: false,
+                                                            is_list: false,
+                                                            inner_type: None,
+                                                        },
                                                         attributes: [],
                                                     },
                                                 ),
                                                 Field(
                                                     FieldDef {
                                                         name: "name",
-                                                        field_type: "string",
+                                                        field_type: TypeRef {
+                                                            original: "string",
+                                                            fqn: "string",
+                                                            namespace_fqn: "",
+                                                            type_name: "string",
+                                                            lang_type: "string",
+                                                            is_primitive: true,
+                                                            is_struct: false,
+                                                            is_enum: false,
+                                                            is_option: false,
+                                                            is_list: false,
+                                                            inner_type: None,
+                                                        },
                                                         attributes: [],
                                                     },
                                                 ),

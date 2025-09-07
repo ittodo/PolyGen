@@ -13,12 +13,25 @@ SchemaContext {
                         Struct(
                             StructDef {
                                 name: "ConstraintsTable",
+                                fqn: "ConstraintsTable",
                                 header: [],
                                 items: [
                                     Field(
                                         FieldDef {
                                             name: "id",
-                                            field_type: "u32",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [
                                                 "Key",
                                             ],
@@ -27,7 +40,19 @@ SchemaContext {
                                     Field(
                                         FieldDef {
                                             name: "code",
-                                            field_type: "string",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [
                                                 "Index(IsUnique = true)",
                                                 "MaxLength(10)",
@@ -37,14 +62,38 @@ SchemaContext {
                                     Field(
                                         FieldDef {
                                             name: "value",
-                                            field_type: "f32",
+                                            field_type: TypeRef {
+                                                original: "f32",
+                                                fqn: "f32",
+                                                namespace_fqn: "",
+                                                type_name: "f32",
+                                                lang_type: "f32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "category_id",
-                                            field_type: "u32",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),

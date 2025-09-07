@@ -13,6 +13,7 @@ SchemaContext {
                         Struct(
                             StructDef {
                                 name: "AnnotatedUser",
+                                fqn: "AnnotatedUser",
                                 header: [
                                     Annotation(
                                         AnnotationDef {
@@ -40,7 +41,19 @@ SchemaContext {
                                     Field(
                                         FieldDef {
                                             name: "id",
-                                            field_type: "u32",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [
                                                 "Key",
                                             ],
@@ -49,7 +62,19 @@ SchemaContext {
                                     Field(
                                         FieldDef {
                                             name: "name",
-                                            field_type: "string",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),

@@ -13,26 +13,63 @@ SchemaContext {
                         Struct(
                             StructDef {
                                 name: "Position",
+                                fqn: "Position",
                                 header: [],
                                 items: [
                                     Field(
                                         FieldDef {
                                             name: "x",
-                                            field_type: "f32",
+                                            field_type: TypeRef {
+                                                original: "f32",
+                                                fqn: "f32",
+                                                namespace_fqn: "",
+                                                type_name: "f32",
+                                                lang_type: "f32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "y",
-                                            field_type: "f32",
+                                            field_type: TypeRef {
+                                                original: "f32",
+                                                fqn: "f32",
+                                                namespace_fqn: "",
+                                                type_name: "f32",
+                                                lang_type: "f32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "z",
-                                            field_type: "f32",
+                                            field_type: TypeRef {
+                                                original: "f32",
+                                                fqn: "f32",
+                                                namespace_fqn: "",
+                                                type_name: "f32",
+                                                lang_type: "f32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),

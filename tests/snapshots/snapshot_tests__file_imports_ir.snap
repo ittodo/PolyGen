@@ -13,26 +13,63 @@ SchemaContext {
                         Struct(
                             StructDef {
                                 name: "MainTable",
+                                fqn: "MainTable",
                                 header: [],
                                 items: [
                                     Field(
                                         FieldDef {
                                             name: "id",
-                                            field_type: "u32",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "ref_a",
-                                            field_type: "ImportedA",
+                                            field_type: TypeRef {
+                                                original: "ImportedA",
+                                                fqn: "ImportedA",
+                                                namespace_fqn: "",
+                                                type_name: "ImportedA",
+                                                lang_type: "ImportedA",
+                                                is_primitive: false,
+                                                is_struct: true,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "status_b",
-                                            field_type: "StatusB",
+                                            field_type: TypeRef {
+                                                original: "StatusB",
+                                                fqn: "StatusB",
+                                                namespace_fqn: "",
+                                                type_name: "StatusB",
+                                                lang_type: "StatusB",
+                                                is_primitive: false,
+                                                is_struct: false,
+                                                is_enum: true,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
@@ -52,19 +89,44 @@ SchemaContext {
                         Struct(
                             StructDef {
                                 name: "ImportedA",
+                                fqn: "ImportedA",
                                 header: [],
                                 items: [
                                     Field(
                                         FieldDef {
                                             name: "id",
-                                            field_type: "u32",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "value",
-                                            field_type: "string",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
@@ -84,6 +146,7 @@ SchemaContext {
                         Enum(
                             EnumDef {
                                 name: "StatusB",
+                                fqn: "StatusB",
                                 items: [
                                     Member(
                                         EnumMember {

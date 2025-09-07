@@ -13,11 +13,13 @@ SchemaContext {
                         Struct(
                             StructDef {
                                 name: "Player",
+                                fqn: "MyGame.Player",
                                 header: [],
                                 items: [
                                     InlineEnum(
                                         EnumDef {
                                             name: "Status",
+                                            fqn: "MyGame.Player.Status",
                                             items: [
                                                 Comment(
                                                     "액티브",
@@ -52,28 +54,76 @@ SchemaContext {
                                     Field(
                                         FieldDef {
                                             name: "id",
-                                            field_type: "i32",
+                                            field_type: TypeRef {
+                                                original: "i32",
+                                                fqn: "i32",
+                                                namespace_fqn: "",
+                                                type_name: "i32",
+                                                lang_type: "i32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "name",
-                                            field_type: "string",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "status",
-                                            field_type: "Status",
+                                            field_type: TypeRef {
+                                                original: "Status",
+                                                fqn: "MyGame.Player.Status",
+                                                namespace_fqn: "MyGame.Player",
+                                                type_name: "Status",
+                                                lang_type: "Status",
+                                                is_primitive: false,
+                                                is_struct: false,
+                                                is_enum: true,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "level",
-                                            field_type: "i32",
+                                            field_type: TypeRef {
+                                                original: "i32",
+                                                fqn: "i32",
+                                                namespace_fqn: "",
+                                                type_name: "i32",
+                                                lang_type: "i32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
@@ -88,32 +138,70 @@ SchemaContext {
                         Struct(
                             StructDef {
                                 name: "Player",
+                                fqn: "MyGame.Player",
                                 header: [],
                                 items: [
                                     Field(
                                         FieldDef {
                                             name: "id",
-                                            field_type: "i32",
+                                            field_type: TypeRef {
+                                                original: "i32",
+                                                fqn: "i32",
+                                                namespace_fqn: "",
+                                                type_name: "i32",
+                                                lang_type: "i32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "name",
-                                            field_type: "string",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     Field(
                                         FieldDef {
                                             name: "status",
-                                            field_type: "Status__Enum",
+                                            field_type: TypeRef {
+                                                original: "Status__Enum",
+                                                fqn: "MyGame.Player.Status__Enum",
+                                                namespace_fqn: "MyGame.Player",
+                                                type_name: "Status__Enum",
+                                                lang_type: "Status__Enum",
+                                                is_primitive: false,
+                                                is_struct: false,
+                                                is_enum: true,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),
                                     InlineEnum(
                                         EnumDef {
                                             name: "Status__Enum",
+                                            fqn: "MyGame.Player.Status__Enum",
                                             items: [
                                                 Member(
                                                     EnumMember {
@@ -145,7 +233,19 @@ SchemaContext {
                                     Field(
                                         FieldDef {
                                             name: "level",
-                                            field_type: "i32",
+                                            field_type: TypeRef {
+                                                original: "i32",
+                                                fqn: "i32",
+                                                namespace_fqn: "",
+                                                type_name: "i32",
+                                                lang_type: "i32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
                                             attributes: [],
                                         },
                                     ),

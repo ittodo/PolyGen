@@ -13,6 +13,7 @@ SchemaContext {
                         Enum(
                             EnumDef {
                                 name: "StatusB",
+                                fqn: "StatusB",
                                 items: [
                                     Member(
                                         EnumMember {
