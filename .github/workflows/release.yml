@@ -1,0 +1,89 @@
+name: Release (tagged)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    name: Build release binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build (release)
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      # 필요 시 바이너리 이름을 프로젝트의 실제 패키지명으로 바꾸세요.
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG_NAME=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].name')
+          TARGET_DIR=target/${{ matrix.target }}/release
+          BIN_PATH="${TARGET_DIR}/${PKG_NAME}"
+          # 윈도우 실행파일 확장자 처리
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BIN_PATH="${BIN_PATH}.exe"
+          fi
+
+          STAGE_DIR="${PKG_NAME}-${{ matrix.target }}"
+          mkdir -p "$STAGE_DIR"
+          cp "$BIN_PATH" "$STAGE_DIR/"
+
+          # README/라이선스 등 포함(선택)
+          for f in README.md LICENSE; do
+            [[ -f "$f" ]] && cp "$f" "$STAGE_DIR/"
+          done
+
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            7z a "${STAGE_DIR}.zip" "$STAGE_DIR" >/dev/null
+            echo "ASSET=${STAGE_DIR}.zip" >> $GITHUB_ENV
+          else
+            tar -czf "${STAGE_DIR}.tar.gz" "$STAGE_DIR"
+            echo "ASSET=${STAGE_DIR}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload artifact (build logs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-release
+          path: |
+            target/${{ matrix.target }}/release/*
+            !**/*.dSYM/**
+            !**/*.pdb
+
+      - name: Create GitHub Release (upload asset)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          files: ${{ env.ASSET }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
