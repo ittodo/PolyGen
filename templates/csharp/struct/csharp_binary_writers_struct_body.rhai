@@ -1,5 +1,6 @@
 ${
     import "templates/csharp/rhai_utils/type_mapping" as type_utils;
+    import "templates/csharp/rhai_utils/csv_helpers" as csv_utils;
 
     let body = "";
     // inline enums in this struct
@@ -27,12 +28,13 @@ ${
                         let mapped = type_utils::map_type(elem);
                         let write_expr = "(bw2,v)=>bw2.Write(v)";
                         body += "        BinaryUtils.WriteOptionRef<IList<" + mapped + ">>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<" + mapped + ">(bw2, list, " + write_expr + "));\n";
-                    } else {
-                        let call_ns = if elem.namespace_fqn == "" { current_ns_name } else { elem.namespace_fqn };
-                        body += "        BinaryUtils.WriteOptionRef<IList<global::" + elem.fqn + ">>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<global::" + elem.fqn + ">(bw2, list, " + call_ns + ".BinaryWriters.Write" + elem.type_name + "));\n";
-                    }
+                } else {
+                    let es_nl = csv_utils::find_embedded_struct(s, elem.type_name);
+                    let call_ns = if es_nl != () { current_ns_name } else { if elem.namespace_fqn == "" { current_ns_name } else { elem.namespace_fqn } };
+                    body += "        BinaryUtils.WriteOptionRef<IList<global::" + elem.fqn + ">>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<global::" + elem.fqn + ">(bw2, list, " + call_ns + ".BinaryWriters.Write" + elem.type_name + "));\n";
+                }
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
-                    let enum_type = if inner.is_enum { s.name + "." + inner.type_name } else { inner.fqn };
+                    let enum_type = inner.fqn;
                     body += "        BinaryUtils.WriteOptionStruct<" + enum_type + ">(bw, obj." + f.name + ", BinaryUtils.WriteEnumInt32<" + enum_type + ">);\n";
                 } else if inner.is_primitive {
                     let mapped = type_utils::map_type(inner);
@@ -50,13 +52,14 @@ ${
                 if inner.lang_type == "string" {
                     body += "        BinaryUtils.WriteList<string>(bw, obj." + f.name + ", BinaryUtils.WriteUtf8String);\n";
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
-                    let enum_type = if inner.is_enum { s.name + "." + inner.type_name } else { inner.fqn };
+                    let enum_type = inner.fqn;
                     body += "        BinaryUtils.WriteList<" + enum_type + ">(bw, obj." + f.name + ", BinaryUtils.WriteEnumInt32<" + enum_type + ">);\n";
                 } else if inner.is_primitive {
                     let mapped = type_utils::map_type(inner);
                     body += "        BinaryUtils.WriteList<" + mapped + ">(bw, obj." + f.name + ", (bw2,v)=>bw2.Write(v));\n";
                 } else {
-                    let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
+                    let es_nl = csv_utils::find_embedded_struct(s, inner.type_name);
+                    let call_ns = if es_nl != () { current_ns_name } else { if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn } };
                     body += "        BinaryUtils.WriteList<global::" + inner.fqn + ">(bw, obj." + f.name + ", " + call_ns + ".BinaryWriters.Write" + inner.type_name + ");\n";
                 }
                 continue;
@@ -68,7 +71,7 @@ ${
             }
             // enum (inline or same-namespace)
             else if base.is_enum || current_struct_inline_enums.contains(base.type_name) {
-                let enum_type = if base.is_enum { s.name + "." + base.type_name } else { base.fqn };
+                let enum_type = base.fqn;
                 body += "        BinaryUtils.WriteEnumInt32<" + enum_type + ">(bw, obj." + f.name + ");\n";
             }
             // primitives
@@ -78,7 +81,8 @@ ${
             // custom class
             else {
                 let call_ns = if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn };
-                body += "        " + call_ns + ".BinaryWriters.Write" + base.type_name + "(bw, obj." + f.name + ");\n";
+                body += "        BinaryUtils.WriteOptionRef<global::" + base.fqn + ">(bw, obj." + f.name + ", " + call_ns + ".BinaryWriters.Write" + base.type_name + ");\n";
+                
             }
         }
     }

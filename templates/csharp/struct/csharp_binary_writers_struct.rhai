@@ -1,4 +1,4 @@
-public static void Write${s.name}(this BinaryWriter bw, ${s.name} obj)
+public static void Write${s.name}(this BinaryWriter bw, global::${s.fqn} obj)
 {
 ${
     let body_tmpl = include("templates/csharp/struct/csharp_binary_writers_struct_body.rhai");

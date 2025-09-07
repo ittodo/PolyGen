@@ -3,8 +3,8 @@ ${
     let struct_tmpl = include("templates/csharp/struct/csharp_binary_readers_struct.rhai");
     let nested_ns_tmpl = include("templates/csharp/csharp_binary_readers_namespace.rhai");
 
-    // Compute full namespace name using optional prefix
-    let full_ns_name = if ns_prefix == () || ns_prefix == "" { ns.name } else { ns_prefix + "." + ns.name };
+    // IR 의 ns.name 은 FQN 이므로 prefix를 사용하지 않는다
+    let full_ns_name = ns.name;
 
     let methods = "";
     let nested_blocks = "";
@@ -12,10 +12,8 @@ ${
     for item in ns.items {
         if item.is_struct() {
             let s = item.as_struct();
-            // provide current namespace to struct template
             let __prev_ns = current_ns_name;
             current_ns_name = full_ns_name;
-            // collect enums in current namespace for struct body
             let __prev_enums = current_ns_enums;
             let __enums = [];
             for it in ns.items { if it.is_enum() { let e = it.as_enum(); __enums.push(e.name); } }
@@ -26,13 +24,8 @@ ${
             methods += result + "\n";
         } else if item.is_namespace() {
             let ns = item.as_namespace();
-            // Push new prefix for nested namespace
-            let __prev_prefix = ns_prefix;
-            ns_prefix = full_ns_name;
             let result = eval("`" + nested_ns_tmpl + "`");
             nested_blocks += result + "\n";
-            // Restore prefix
-            ns_prefix = __prev_prefix;
         } else if item.is_comment() {
             let c = item.as_comment();
             methods += "// " + c + "\n";

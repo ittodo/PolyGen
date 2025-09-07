@@ -9,7 +9,7 @@
   <ItemGroup>
     <Compile Include="..\..\..\output\csharp\Common\*.cs" Link="Common\%(Filename)%(Extension)" />
     <Compile Include="..\..\..\output\csharp\*.cs"
-             Exclude="..\..\..\output\csharp\CsvSchemas\**\*.*;..\..\..\output\csharp\*.BinaryReaders.cs;..\..\..\output\csharp\*.BinaryWriters.cs;..\..\..\output\csharp\*.csproj"
+             Exclude="..\..\..\output\csharp\CsvSchemas\**\*.*;..\..\..\output\csharp\*.csproj"
              Link="Generated\%(Filename)%(Extension)" />
     <Compile Include="Attributes.cs" />
     <Compile Include="Program.cs" />

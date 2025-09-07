@@ -1,6 +1,6 @@
-public static ${s.name} Read${s.name}(this BinaryReader br)
+public static global::${s.fqn} Read${s.name}(this BinaryReader br)
 {
-    var obj = new ${s.name}();
+    var obj = new global::${s.fqn}();
 ${
     let body_tmpl = include("templates/csharp/struct/csharp_binary_readers_struct_body.rhai");
     // Capture current namespace name and inject it into inner eval scope

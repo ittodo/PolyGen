@@ -1,6 +1,7 @@
 ${
     import "templates/csharp/rhai_utils/type_mapping" as type_utils;
     import "templates/csharp/rhai_utils/read_mapping" as read_utils;
+    import "templates/csharp/rhai_utils/csv_helpers" as csv_utils;
 
     let body = "";
     // collect inline enums in this struct
@@ -24,10 +25,11 @@ ${
                     let k = inner.lang_type; let cs = type_utils::map_type(inner);
                     body += "            obj." + f.name + " = BinaryUtils.ReadOption<" + cs + ">(br, _ => " + read_utils::read_expr(k, "br") + ");\n";
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
-                    let enum_type = if inner.is_enum { s.name + "." + inner.type_name } else { inner.fqn };
+                    let enum_type = inner.fqn;
                     body += "            obj." + f.name + " = BinaryUtils.ReadOption<" + enum_type + ">(br, BinaryUtils.ReadEnumInt32<" + enum_type + ">);\n";
                 } else {
-                    let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
+                    let es_nl = csv_utils::find_embedded_struct(s, inner.type_name);
+                    let call_ns = if es_nl != () { current_ns_name } else { if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn } };
                     body += "            obj." + f.name + " = BinaryUtils.ReadOption<global::" + inner.fqn + ">(br, " + call_ns + ".BinaryReaders.Read" + inner.type_name + ");\n";
                 }
                 body += "        }\n";
@@ -44,10 +46,11 @@ ${
                     let k = inner.lang_type; let cs = type_utils::map_type(inner);
                     body += "            obj." + f.name + " = BinaryUtils.ReadList<" + cs + ">(br, _ => " + read_utils::read_expr(k, "br") + ");\n";
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
-                    let enum_type = if inner.is_enum { s.name + "." + inner.type_name } else { inner.fqn };
+                    let enum_type = inner.fqn;
                     body += "            obj." + f.name + " = BinaryUtils.ReadList<" + enum_type + ">(br, BinaryUtils.ReadEnumInt32<" + enum_type + ">);\n";
                 } else {
-                    let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
+                    let es_nl = csv_utils::find_embedded_struct(s, inner.type_name);
+                    let call_ns = if es_nl != () { current_ns_name } else { if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn } };
                     body += "            obj." + f.name + " = BinaryUtils.ReadList<global::" + inner.fqn + ">(br, " + call_ns + ".BinaryReaders.Read" + inner.type_name + ");\n";
                 }
                 body += "        }\n";
@@ -56,11 +59,11 @@ ${
 
             // string
             if base.lang_type == "string" {
-                body += "        { obj." + f.name + " = BinaryUtils.ReadUtf8String(br); }\n";
+                body += "        obj." + f.name + " = BinaryUtils.ReadUtf8String(br);\n";
             }
             // enum (inline or same-namespace)
             else if base.is_enum || current_struct_inline_enums.contains(base.type_name) {
-                let enum_type = if base.is_enum { s.name + "." + base.type_name } else { base.fqn };
+                let enum_type = base.fqn;
                 body += "        obj." + f.name + " = BinaryUtils.ReadEnumInt32<" + enum_type + ">(br);\n";
             }
             // primitives
@@ -69,8 +72,12 @@ ${
             }
             // custom struct
             else {
-                let call_ns = if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn };
+                let es_nl = csv_utils::find_embedded_struct(s, base.type_name);
+                let call_ns = if es_nl != () { current_ns_name } else { if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn } };
                 body += "        obj." + f.name + " = " + call_ns + ".BinaryReaders.Read" + base.type_name + "(br);\n";
+
+
+                body += "            obj." + f.name + " = BinaryUtils.ReadOption<global::" + f.field_type.fqn + ">(br, " + call_ns + ".BinaryReaders.Read" + base.type_name + ");\n";
             }
         } else if item.is_comment() {
             let c = item.as_comment();

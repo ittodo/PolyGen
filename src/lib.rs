@@ -167,6 +167,8 @@ pub fn run(cli: Cli) -> Result<()> {
                 (Path::new("static/csharp/DataSource.cs"), "DataSource.cs"),
                 (Path::new("static/csharp/BinaryUtils.cs"), "BinaryUtils.cs"),
                 (Path::new("static/csharp/CsvUtils.cs"), "CsvUtils.cs"),
+                (Path::new("static/csharp/JsonCsvConverter.cs"), "JsonCsvConverter.cs"),
+                (Path::new("static/csharp/JsonUtils.cs"), "JsonUtils.cs"),
             ];
             for (src, name) in static_files {
                 let dest_path = dest_dir.join(name);

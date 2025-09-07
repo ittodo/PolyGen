@@ -1,6 +1,7 @@
 ${
     import "templates/csharp/rhai_utils/type_mapping" as type_utils;
     import "templates/csharp/rhai_utils/csv_helpers" as csv_utils;
+    import "templates/rhai_utils/indent" as indent_utils;
 
     let code = "";
 
@@ -43,36 +44,39 @@ ${
 
     // Stack-based rendering to allow nested classes without defining Rhai functions
     let stack = [];
-    stack.push([s, 0]); // 0=open+body, 1=close
+    stack.push([s, 0, 0]); // 0=open+body, 1=close, depth=0 for top-level class
 
     while stack.len > 0 {
         let frame = stack.pop();
         let def = frame[0];
         let stage = frame[1];
+        let depth = frame[2];
 
         let saved_s = s;
         s = def;
 
         if stage == 0 {
-            // Open class and emit body
-            code += "public static class " + s.name + "\n";
-            code += "{\n";
+            // Open class and emit body with indentation by depth
+            let header = "public static class " + s.name + "\n" + "{\n";
+            code += indent_utils::indent_text(header, depth);
+
             let full_t = "global::" + s.fqn;
-            code += eval("`" + writer_tmpl + "`");
-            code += eval("`" + reader_tmpl + "`");
+            let body = eval("`" + writer_tmpl + "`") + eval("`" + reader_tmpl + "`");
+            // writer/reader 템플릿 내부에서 이미 클래스 상대 들여쓰기를 포함하므로 추가 들여쓰기를 하지 않는다.
+            code += body;
 
             // Schedule close after children
-            stack.push([def, 1]);
+            stack.push([def, 1, depth]);
 
             // Collect child struct defs to render nested: embedded only
             let children = [];
             for it in s.items { if it.is_embedded_struct() { children.push(it.as_embedded_struct()); } }
             // Push children in reverse to preserve source order
             let i = children.len;
-            while i > 0 { i -= 1; stack.push([children[i], 0]); }
+            while i > 0 { i -= 1; stack.push([children[i], 0, depth + 1]); }
         } else {
             // Close class
-            code += "}\n";
+            code += indent_utils::indent_text("}\n", depth);
         }
 
         s = saved_s;

@@ -439,22 +439,30 @@ ${
                     code += `                for (int i=0;;i++)`+"\n";
                     code += `                {`+"\n";
                     let owner_fqn = s.fqn;
-                    code += `                    var sub = global::Csv.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}["+i+"]."); `+"\n";
-                    code += `if (!sub.HasAny()) break; ch.IndexList.Add(sub); }`+"\n";
+                    code += `                    var sub = global::Csv.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}["+i+"].");`+"\n";
+                    code += `                    if (!sub.HasAny()) break;`+"\n";
+                    code += `                    ch.IndexList.Add(sub);`+"\n";
+                    code += `                }`+"\n";
                 } else {
                     let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
                     code += `                for (int i=0;;i++)`+"\n";
                     code += `                {`+"\n";
-                    code += `                    var sub = global::Csv.${call_ns}.${inner.type_name}.BuildHeader(header, prefix + "${f.name}["+i+"]."); `+"\n";
-                    code += `if (!sub.HasAny()) break; ch.IndexList.Add(sub); }`+"\n";
+                    code += `                    var sub = global::Csv.${call_ns}.${inner.type_name}.BuildHeader(header, prefix + "${f.name}["+i+"].");`+"\n";
+                    code += `                    if (!sub.HasAny()) break;`+"\n";
+                    code += `                    ch.IndexList.Add(sub);`+"\n";
+                    code += `                }`+"\n";
                 }
             }
-            code += `                root.IndexList.Add(ch); }`+"\n";
+            code += `                root.IndexList.Add(ch);`+"\n";
+            code += `            }`+"\n";
         } else {
             let es = csv_utils::find_embedded_struct(s, base.type_name);
             if es != () {
                 let owner_fqn = s.fqn;
-                code += `            root.IndexList.Add(global::Csv.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}."));`+"\n";
+                code += `            {`+"\n";
+                code += `                var sub = global::Csv.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}.");`+"\n";
+                code += `                if (sub.HasAny()) root.IndexList.Add(sub);`+"\n";
+                code += `            }`+"\n";
             } else if base.is_primitive || base.lang_type == "string" || base.is_enum {
                 code += `            {`+"\n";
                 code += `                int __ix;`+"\n";
@@ -467,7 +475,10 @@ ${
                 code += `            }`+"\n";
             } else {
                 let call_ns = if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn };
-                code += `            root.IndexList.Add(global::Csv.${call_ns}.${base.type_name}.BuildHeader(header, prefix + "${f.name}."));`+"\n";
+                code += `            {`+"\n";
+                code += `                var sub = global::Csv.${call_ns}.${base.type_name}.BuildHeader(header, prefix + "${f.name}.");`+"\n";
+                code += `                if (sub.HasAny()) root.IndexList.Add(sub);`+"\n";
+                code += `            }`+"\n";
             }
             //code += `            }`+"\n";
         }

@@ -10,6 +10,12 @@ Polygen은 **간결하고 강력한 스키마(`.poly`)**를 프로젝트의 "단
 
 이 접근 방식을 통해 개발자는 **작성할 때는 간결함의 이점**을 누리고, **이해할 때는 풍부한 문서의 도움**을 받을 수 있습니다. Polygen은 단순한 코드 생성기를 넘어, 스키마 정의의 부담을 줄이고 생성된 아키텍처에 대한 깊은 통찰력을 제공하는 개발 파트너입니다.
 
+### 생성되는 언어 
+✅ C# - 지원 (현재)
+📋 Prisma (DB) - 미지원 (향후 지원 예정)
+📋 TypeScript - 미지원 ( NA )  
+📋 Unreal - 미지원 (향후 지원 예정)
+
 ### **정의 (Definitions)**
 
 Polygen의 스키마는 `table`, `field`, `enum`, `embed` 등 몇 가지 핵심적인 구성 요소로 이루어집니다. 각 요소는 데이터 모델을 명확하고 구조적으로 표현하기 위한 고유한 역할을 가집니다.
@@ -371,3 +377,12 @@ Polygen은 다양한 프로그래밍 언어와 데이터베이스에서 공통�
 
 ## Data Conversion
 - See JSON → Table → CSV conversion spec: [docs/json-to-csv-conversion-spec.md](docs/json-to-csv-conversion-spec.md)
+
+## Run Demo (C#)
+- Generate C# from example schema and run the demo app.
+- PowerShell: `./rundemo.ps1`
+- Options: `./rundemo.ps1 -SchemaPath examples/game_schema.poly -Lang csharp`
+- What happens:
+  - Runs `cargo run -- --schema-path <schema> --lang csharp` and writes to `output/csharp`.
+  - Builds and runs `dist/run-csharp/RunDemo`, which links the generated files.
+  - The demo writes small CSVs under `RunDemo/bin/.../data` and reads them using generated mappers.

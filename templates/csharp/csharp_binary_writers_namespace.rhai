@@ -3,7 +3,8 @@ ${
     let struct_tmpl = include("templates/csharp/struct/csharp_binary_writers_struct.rhai");
     let nested_ns_tmpl = include("templates/csharp/csharp_binary_writers_namespace.rhai");
 
-    let full_ns_name = if ns_prefix == () || ns_prefix == "" { ns.name } else { ns_prefix + "." + ns.name };
+    // IR 네임스페이스 이름은 FQN이므로 prefix를 합치지 않는다
+    let full_ns_name = ns.name;
 
     let methods = "";
     let nested_blocks = "";
@@ -18,10 +19,8 @@ ${
             methods += result + "\n";
         } else if item.is_namespace() {
             let ns = item.as_namespace();
-            let __prev_prefix = ns_prefix; ns_prefix = full_ns_name;
             let result = eval("`" + nested_ns_tmpl + "`");
             nested_blocks += result + "\n";
-            ns_prefix = __prev_prefix;
         } else if item.is_comment() {
             let c = item.as_comment();
             methods += "// " + c + "\n";
@@ -39,4 +38,3 @@ ${
 
     block + nested_blocks
 }
-
