@@ -1,10 +1,10 @@
 ${
     import "templates/rhai_utils/indent" as indent_utils;
-    let struct_tmpl = include("templates/csharp/struct/csharp_csv_mappers_struct.rhai");
-    let nested_ns_tmpl = include("templates/csharp/csharp_csv_mappers_namespace.rhai");
+    let struct_tmpl = include("templates/csharp/struct/csharp_csv_readers_struct.rhai");
+    let nested_ns_tmpl = include("templates/csharp/csharp_csv_readers_namespace.rhai");
 
-    // IR의 네임스페이스 이름은 이미 FQN이므로 접두어를 합치지 않는다
     let full_ns_name = ns.name;
+    let ns_decl = if full_ns_name == "" { "Reader" } else { "Reader." + full_ns_name };
 
     let members = "";
     let nested_blocks = "";
@@ -14,21 +14,20 @@ ${
             let __prev_ns = current_ns_name; current_ns_name = full_ns_name;
             let result = eval("`" + struct_tmpl + "`");
             current_ns_name = __prev_ns;
-            members += result + "\n";
+            members += result;
         } else if item.is_namespace() {
             let ns = item.as_namespace();
             let result = eval("`" + nested_ns_tmpl + "`");
-            nested_blocks += result + "\n";
+            nested_blocks += result;
         } else if item.is_comment() {
-            let c = item.as_comment();
-            members += "// " + c + "\n";
+            // Skip schema comments in Reader outputs
         }
     }
 
     let block = "";
-    block += "namespace Csv." + full_ns_name + "\n";
+    block += "namespace " + ns_decl + "\n";
     block += "{\n";
-    block += indent_utils::indent_text(members, 1) + "\n";
-    block += "}\n\n";
+    block += members;
+    block += "}\n";
     block + nested_blocks
 }

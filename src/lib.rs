@@ -187,23 +187,29 @@ pub fn run(cli: Cli) -> Result<()> {
         rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
             .map_err(|e| anyhow::anyhow!(e))?;
 
-        // Additional C# codegen passes (keep original generation untouched)
+        // Additional C# codegen passes
         if lang == "csharp" {
-            let readers_template_path = cli
+            // Generate combined Reader.cs (BinaryReaders + CSV readers) under namespace Reader
+            let reader_file_tmpl = cli
                 .templates_dir
                 .join(&lang)
-                .join("csharp_binary_readers_file.rhai");
-            println!("\n--- C# Binary Readers generation ---");
-            rhai_generator::generate_code_with_rhai(&ir_context, &readers_template_path)
-                .map_err(|e| anyhow::anyhow!(e))?;
+                .join("csharp_reader_file.rhai");
+            if reader_file_tmpl.exists() {
+                println!("\n--- C# Reader (binary + CSV) generation ---");
+                rhai_generator::generate_code_with_rhai(&ir_context, &reader_file_tmpl)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            }
 
-            let writers_template_path = cli
+            // Generate combined Writer.cs (BinaryWriters + CSV writers) under namespace Writer
+            let writer_file_tmpl = cli
                 .templates_dir
                 .join(&lang)
-                .join("csharp_binary_writers_file.rhai");
-            println!("\n--- C# Binary Writers generation ---");
-            rhai_generator::generate_code_with_rhai(&ir_context, &writers_template_path)
-                .map_err(|e| anyhow::anyhow!(e))?;
+                .join("csharp_writer_file.rhai");
+            if writer_file_tmpl.exists() {
+                println!("\n--- C# Writer (binary + CSV) generation ---");
+                rhai_generator::generate_code_with_rhai(&ir_context, &writer_file_tmpl)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            }
 
             let csv_cols_template_path = cli
                 .templates_dir
@@ -212,16 +218,6 @@ pub fn run(cli: Cli) -> Result<()> {
             if csv_cols_template_path.exists() {
                 println!("\n--- C# CSV Columns generation ---");
                 rhai_generator::generate_code_with_rhai(&ir_context, &csv_cols_template_path)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-            }
-
-            let csv_mappers_template_path = cli
-                .templates_dir
-                .join(&lang)
-                .join("csharp_csv_mappers_file.rhai");
-            if csv_mappers_template_path.exists() {
-                println!("\n--- C# CSV Mappers generation ---");
-                rhai_generator::generate_code_with_rhai(&ir_context, &csv_mappers_template_path)
                     .map_err(|e| anyhow::anyhow!(e))?;
             }
         }

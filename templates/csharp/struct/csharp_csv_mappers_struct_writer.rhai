@@ -72,7 +72,7 @@ ${
                         } else { child_name = seg; } 
                         i += 1; 
                     }
-                    let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
+                    let call_prefix = if call_ns == "" { "global::Writer." } else { "global::Writer." + call_ns + "." };
                     let es_nl = csv_utils::find_embedded_struct(s, base.type_name);
                     code += `              if (__h != null && __h.IndexList != null)`+"\n";
                     code += `              {`+"\n";
@@ -80,7 +80,7 @@ ${
                     code += `                  {`+"\n";
                     if es_nl != () {
                         let owner_fqn_nl = s.fqn;
-                        code += `                      global::Csv.${owner_fqn_nl}.${es_nl.name}.AppendRowWithHeader(__h, obj.${field_name}, cols, gap);`+"\n";
+                        code += `                      global::Writer.${owner_fqn_nl}.${es_nl.name}.AppendRowWithHeader(__h, obj.${field_name}, cols, gap);`+"\n";
                     } else {
                         code += `                      ${call_prefix}${child_name}.AppendRowWithHeader(__h, obj.${field_name}, cols, gap);`+"\n";
                     }
@@ -150,7 +150,7 @@ ${
                         code += `                  {`+"\n";
                         code += `                      var sub = obj.${f.name}[j];`+"\n";
                     let owner_fqn = s.fqn;
-                    code += `                      global::Csv.${owner_fqn}.${es.name}.AppendRowWithHeader(subH, sub, cols, gap);`+"\n";
+                    code += `                      global::Writer.${owner_fqn}.${es.name}.AppendRowWithHeader(subH, sub, cols, gap);`+"\n";
                         code += `                  }`+"\n";
                         code += `                  else`+"\n";
                         code += `                  {`+"\n";
@@ -160,7 +160,7 @@ ${
                     } else {
                         let fqn = inner.fqn; let call_ns = ""; let child_name = ""; let parts = fqn.split("."); let i = 0; 
                         for seg in parts { if i < parts.len - 1 { if call_ns != "" { call_ns += "."; } call_ns += seg; } else { child_name = seg; } i += 1; }
-                        let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
+                        let call_prefix = if call_ns == "" { "global::Writer." } else { "global::Writer." + call_ns + "." };
                         code += `              int count = (__h != null && __h.IndexList != null) ? __h.IndexList.Count : 0; `+"\n";
                         code += `              for (int j=0;j<count;j++)`+"\n";
                         code += `              {`+"\n";
@@ -243,9 +243,9 @@ ${
                 code += `                } `+"\n";
                 if es != () {
                     let owner_fqn_b = s.fqn;
-                    code += `                ch.IndexList.Add(coll.Count > 0 ? global::Csv.`+owner_fqn_b+`.`+es.name+`.BuildWriteHeaderFromItems(coll) : new Polygen.Common.CsvIndexHeader());`+"\n";
+                    code += `                ch.IndexList.Add(coll.Count > 0 ? global::Writer.`+owner_fqn_b+`.`+es.name+`.BuildWriteHeaderFromItems(coll) : new Polygen.Common.CsvIndexHeader());`+"\n";
                 } else {
-                    let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
+                    let call_prefix = if call_ns == "" { "global::Writer." } else { "global::Writer." + call_ns + "." };
                     code += `                ch.IndexList.Add(coll.Count > 0 ? ${call_prefix}`+child_name+`.BuildWriteHeaderFromItems(coll) : new Polygen.Common.CsvIndexHeader());`+"\n";
                 }
                 code += `              }`+"\n";
@@ -275,9 +275,9 @@ ${
                 code += `                      _single.Add(__it.${f.name});`+"\n";
                 if es_nl2 != () {
                     let owner_fqn_nl2b = s.fqn;
-                    code += `                      var cand = global::Csv.${owner_fqn_nl2b}.${es_nl2.name}.BuildWriteHeaderFromItems(_single);`+"\n";
+                    code += `                      var cand = global::Writer.${owner_fqn_nl2b}.${es_nl2.name}.BuildWriteHeaderFromItems(_single);`+"\n";
                 } else {
-                    let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
+                    let call_prefix = if call_ns == "" { "global::Writer." } else { "global::Writer." + call_ns + "." };
                     code += `                      var cand = ${call_prefix}`+child_name+`.BuildWriteHeaderFromItems(_single);`+"\n";
                 }
                 code += `                      int cols = HeaderColumnCount(cand);`+"\n";
@@ -331,9 +331,9 @@ ${
                     let es_nl3 = csv_utils::find_embedded_struct(s, base.type_name);
                     if es_nl3 != () {
                         let owner_fqn_nl3 = s.fqn;
-                        code += `                  global::Csv.${owner_fqn_nl3}.${es_nl3.name}.CollectWriteHeaderNames(__h, `+"\n";
+                        code += `                  global::Writer.${owner_fqn_nl3}.${es_nl3.name}.CollectWriteHeaderNames(__h, `+"\n";
                     } else {
-                        let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
+                        let call_prefix = if call_ns == "" { "global::Writer." } else { "global::Writer." + call_ns + "." };
                         code += `                  ${call_prefix}${child_name}.CollectWriteHeaderNames(__h, `+"\n";
                     }
                     code += `                  (prefix==string.Empty? "${field_name}." : prefix + "${field_name}."), names);`+"\n";
@@ -363,7 +363,7 @@ ${
                     code += `              }`+"\n";
                 } else {
                     let call_ns = inner.namespace_fqn; let child_name = inner.type_name;
-                    let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
+                    let call_prefix = if call_ns == "" { "global::Writer." } else { "global::Writer." + call_ns + "." };
                     code += `              int count = (__h != null && __h.IndexList != null) ? __h.IndexList.Count : 0; `+"\n";
                     code += `              for (int j=0;j<count;j++)`+"\n";
                     code += `              {`+"\n";
@@ -439,7 +439,7 @@ ${
                     code += `                for (int i=0;;i++)`+"\n";
                     code += `                {`+"\n";
                     let owner_fqn = s.fqn;
-                    code += `                    var sub = global::Csv.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}["+i+"].");`+"\n";
+                    code += `                    var sub = global::Writer.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}["+i+"].");`+"\n";
                     code += `                    if (!sub.HasAny()) break;`+"\n";
                     code += `                    ch.IndexList.Add(sub);`+"\n";
                     code += `                }`+"\n";
@@ -447,7 +447,7 @@ ${
                     let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
                     code += `                for (int i=0;;i++)`+"\n";
                     code += `                {`+"\n";
-                    code += `                    var sub = global::Csv.${call_ns}.${inner.type_name}.BuildHeader(header, prefix + "${f.name}["+i+"].");`+"\n";
+                    code += `                    var sub = global::Writer.${call_ns}.${inner.type_name}.BuildHeader(header, prefix + "${f.name}["+i+"].");`+"\n";
                     code += `                    if (!sub.HasAny()) break;`+"\n";
                     code += `                    ch.IndexList.Add(sub);`+"\n";
                     code += `                }`+"\n";
@@ -460,7 +460,7 @@ ${
             if es != () {
                 let owner_fqn = s.fqn;
                 code += `            {`+"\n";
-                code += `                var sub = global::Csv.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}.");`+"\n";
+                code += `                var sub = global::Writer.${owner_fqn}.${es.name}.BuildHeader(header, prefix + "${f.name}.");`+"\n";
                 code += `                if (sub.HasAny()) root.IndexList.Add(sub);`+"\n";
                 code += `            }`+"\n";
             } else if base.is_primitive || base.lang_type == "string" || base.is_enum {
@@ -476,7 +476,7 @@ ${
             } else {
                 let call_ns = if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn };
                 code += `            {`+"\n";
-                code += `                var sub = global::Csv.${call_ns}.${base.type_name}.BuildHeader(header, prefix + "${f.name}.");`+"\n";
+                code += `                var sub = global::Writer.${call_ns}.${base.type_name}.BuildHeader(header, prefix + "${f.name}.");`+"\n";
                 code += `                if (sub.HasAny()) root.IndexList.Add(sub);`+"\n";
                 code += `            }`+"\n";
             }

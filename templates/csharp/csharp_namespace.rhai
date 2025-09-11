@@ -19,12 +19,11 @@ ${
             let res = eval("`" + enum_tmpl + "`");
             methods += indent_utils::indent_text(res, 1) + "\n";
         } else if item.is_comment() {
-            let c = item.as_comment();
-            methods += indent_utils::indent_text("// " + c, 1) + "\n";
+            // Skip schema comments to avoid extra blank lines
         } else if item.is_namespace() {
             let child = item.as_namespace();
             let res = eval("let ns = child;\n`" + ns_tmpl + "`");
-            nested_blocks += res + "\n";
+            nested_blocks += res;
         }
     }
 
@@ -32,7 +31,7 @@ ${
     block += "namespace " + ns.name + "\n";
     block += "{\n";
     block += methods;
-    block += "}\n\n";
+    block += "}\n";
 
     block + nested_blocks
 }

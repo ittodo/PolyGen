@@ -300,8 +300,10 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
                 }
 
                 // Then handle the field itself
+                // Use the current struct's FQN as the qualification context so
+                // nested inline types (e.g., DropItems.Enchantment) resolve correctly.
                 let (field_def, mut new_nested_structs, mut new_nested_enums) =
-                    convert_field_to_ir(field, current_ns, &fqn);
+                    convert_field_to_ir(field, &fqn, &fqn);
                 items.push(StructItem::Field(field_def));
                 // Add the new nested types to the items list
                 items.extend(new_nested_structs.into_iter().map(StructItem::EmbeddedStruct));

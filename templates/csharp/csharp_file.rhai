@@ -27,8 +27,8 @@ for file in schema.files {
     // Add using statements and the common logic namespace
     file_content += eval("`" + using_template + "`");
     file_content += eval("`" + csharp_logic_namespace + "`");
-
-    
+    // compact excessive blank lines after composition
+    while file_content.contains("\n\n\n") { file_content.replace("\n\n\n", "\n\n"); }
 
     print("Generating file: " + final_path);
     write_file(final_path, file_content);

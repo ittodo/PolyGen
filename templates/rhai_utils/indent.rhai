@@ -1,6 +1,6 @@
 // Function to indent a multi-line string.
 // - text: the string to indent.
-// - indent_level: how many tabs to prepend to each line.
+// - indent_level: how many 4-space indents to prepend to each line.
 fn indent_text(text, indent_level) {
     if text == () || text.len == 0 {
         return "";
@@ -8,7 +8,7 @@ fn indent_text(text, indent_level) {
 
     let indentation = "";
     for i in 0..indent_level {
-        indentation += "	";
+        indentation += "    "; // 4 spaces per level
     }
 
     let lines = text.split("\n");

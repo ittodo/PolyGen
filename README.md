@@ -16,6 +16,22 @@ Polygen은 **간결하고 강력한 스키마(`.poly`)**를 프로젝트의 "단
 📋 TypeScript - 미지원 ( NA )  
 📋 Unreal - 미지원 (향후 지원 예정)
 
+### C# 코드 생성 산출물(Reader/Writer 2파일 체계)
+- 출력 파일(스키마 파일별 2개)
+  - `output/csharp/<스키마>.Reader.cs`
+  - `output/csharp/<스키마>.Writer.cs`
+- 네임스페이스 구성
+  - `namespace Reader.<FQN>`: 구조체별 정적 클래스 안에 CSV Reader + 바이너리 ReadBinary 포함
+  - `namespace Writer.<FQN>`: 구조체별 정적 클래스 안에 CSV Writer + 바이너리 WriteBinary 포함
+- 주요 API
+  - 읽기: `Reader.<NS>.<Struct>.ReadBinary(this BinaryReader br)`
+  - 쓰기: `Writer.<NS>.<Struct>.WriteBinary(this BinaryWriter bw, global::<FQN>.<Struct> obj)`
+  - CSV: 각 구조체 클래스 내부에 `FromRowWithHeader`, `ReadCsvFast`, `AppendRowWithHeader`, `BuildHeader` 등 포함
+- 변경 사항(레거시 제거)
+  - `BinaryReaders`/`BinaryWriters` 집합 클래스 제거(함수는 각 구조체 클래스에 병합)
+  - `Csv.*` 네임스페이스 기반 매퍼 템플릿 제거(Reader/Writer 네임스페이스로 대체)
+  - 오래된 Rhai 템플릿들(csharp_binary_* / csharp_csv_mappers_*)는 정리됨
+
 ### **정의 (Definitions)**
 
 Polygen의 스키마는 `table`, `field`, `enum`, `embed` 등 몇 가지 핵심적인 구성 요소로 이루어집니다. 각 요소는 데이터 모델을 명확하고 구조적으로 표현하기 위한 고유한 역할을 가집니다.

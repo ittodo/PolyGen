@@ -7,7 +7,7 @@ ${
         if item.is_comment() 
         {
             let c = item.as_comment();
-            body += "   // " + c + "\n";
+            body += "    // " + c + "\n";
         }
         else if item.is_field()
         {
@@ -15,10 +15,10 @@ ${
 
             for attributes in f.attributes
             {
-                body += "   [ " + attributes + " ]\n";
+                body += "    [ " + attributes + " ]\n";
             }
 
-            body += "   public " + type_utils::map_type(f.field_type) + " " + f.name + ";\n";
+            body += "    public " + type_utils::map_type(f.field_type) + " " + f.name + ";\n";
         }
         else if item.is_embedded_struct()
         {

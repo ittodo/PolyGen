@@ -63,9 +63,9 @@ ${
                 code += `                            }`+"\n";
                 if es != () {
                     let owner_fqn = s.fqn;
-                    code += `                            var sub = global::Csv.`+owner_fqn+`.`+es.name+`.FromRowWithHeader(subH, row, gap);`+"\n";
+                    code += `                            var sub = global::Reader.`+owner_fqn+`.`+es.name+`.FromRowWithHeader(subH, row, gap);`+"\n";
                 } else {
-                    let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
+                    let call_prefix = if call_ns == "" { "global::Reader." } else { "global::Reader." + call_ns + "." };
                     code += `                            var sub = ${call_prefix}${child_name}.FromRowWithHeader(subH, row, gap);`+"\n";
                 }
                 code += `                            list.Add(sub);`+"\n";
@@ -77,34 +77,34 @@ ${
         } else {
             let es = csv_utils::find_embedded_struct(s, base.type_name);
             if es != () {
-                code += `            if (!Polygen.Common.CsvUtils.HeaderHasValues(__h, row))`+"\n";
-                code += `            {`+"\n";
-                code += `                obj.${f.name} = null;`+"\n";
-                code += `            }`+"\n";
-                code += `            else`+"\n";
-                code += `            {`+"\n";
+                code += `                if (!Polygen.Common.CsvUtils.HeaderHasValues(__h, row))`+"\n";
+                code += `                {`+"\n";
+                code += `                    obj.${f.name} = null;`+"\n";
+                code += `                }`+"\n";
+                code += `                else`+"\n";
+                code += `                {`+"\n";
                 let owner_fqn = s.fqn;
-                code += `                obj.${f.name} = global::Csv.${owner_fqn}.${es.name}.FromRowWithHeader(__h, row, gap);`+"\n";
-                code += `            }`+"\n";
+                code += `                obj.${f.name} = global::Reader.${owner_fqn}.${es.name}.FromRowWithHeader(__h, row, gap);`+"\n";
+                code += `                }`+"\n";
             } else if base.is_primitive || base.lang_type == "string" || base.is_enum {
                 let cs_t = type_utils::map_type(base);
                 let generic_t = if base.is_enum { "global::" + base.fqn } else { cs_t };
-                code += `            if (__h != null && __h.Index >= 0 && __h.Index < row.Length)`+"\n";
-                code += `            {`+"\n";
-                code += `                var __cell = row[__h.Index];`+"\n";
-                code += `                obj.${f.name} = DataSourceFactory.ConvertValue<${generic_t}>(__cell);`+"\n";
-                code += `            }`+"\n";
+                code += `                if (__h != null && __h.Index >= 0 && __h.Index < row.Length)`+"\n";
+                code += `                {`+"\n";
+                code += `                    var __cell = row[__h.Index];`+"\n";
+                code += `                    obj.${f.name} = DataSourceFactory.ConvertValue<${generic_t}>(__cell);`+"\n";
+                code += `                }`+"\n";
             } else {
                 let call_ns = base.namespace_fqn; let child_name = base.type_name;
-                let call_prefix = if call_ns == "" { "global::Csv." } else { "global::Csv." + call_ns + "." };
-                code += `            if (!Polygen.Common.CsvUtils.HeaderHasValues(__h, row))`+"\n";
-                code += `            {`+"\n";
-                code += `                obj.${f.name} = null;`+"\n";
-                code += `            }`+"\n";
-                code += `            else`+"\n";
-                code += `            {`+"\n";
-                code += `                obj.${f.name} = ${call_prefix}${child_name}.FromRowWithHeader(__h, row, gap);`+"\n";
-                code += `            }`+"\n";
+                let call_prefix = if call_ns == "" { "global::Reader." } else { "global::Reader." + call_ns + "." };
+                code += `                if (!Polygen.Common.CsvUtils.HeaderHasValues(__h, row))`+"\n";
+                code += `                {`+"\n";
+                code += `                    obj.${f.name} = null;`+"\n";
+                code += `                }`+"\n";
+                code += `                else`+"\n";
+                code += `                {`+"\n";
+                code += `                    obj.${f.name} = ${call_prefix}${child_name}.FromRowWithHeader(__h, row, gap);`+"\n";
+                code += `                }`+"\n";
             }
         }
         code += `            }`+"\n";
