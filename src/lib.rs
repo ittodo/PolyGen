@@ -169,6 +169,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 (Path::new("static/csharp/CsvUtils.cs"), "CsvUtils.cs"),
                 (Path::new("static/csharp/JsonCsvConverter.cs"), "JsonCsvConverter.cs"),
                 (Path::new("static/csharp/JsonUtils.cs"), "JsonUtils.cs"),
+                (Path::new("static/csharp/PolygenAttributes.cs"), "PolygenAttributes.cs"),
             ];
             for (src, name) in static_files {
                 let dest_path = dest_dir.join(name);
@@ -184,7 +185,7 @@ pub fn run(cli: Cli) -> Result<()> {
             .templates_dir
             .join(&lang)
             .join(format!("{}_file.rhai", lang));
-        rhai_generator::generate_code_with_rhai(&ir_context, &template_path)
+        rhai_generator::generate_code_with_rhai(&ir_context, &template_path, &cli.output_dir)
             .map_err(|e| anyhow::anyhow!(e))?;
 
         // Additional C# codegen passes (keep original generation untouched)
@@ -194,7 +195,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 .join(&lang)
                 .join("csharp_binary_readers_file.rhai");
             println!("\n--- C# Binary Readers generation ---");
-            rhai_generator::generate_code_with_rhai(&ir_context, &readers_template_path)
+            rhai_generator::generate_code_with_rhai(&ir_context, &readers_template_path, &cli.output_dir)
                 .map_err(|e| anyhow::anyhow!(e))?;
 
             let writers_template_path = cli
@@ -202,7 +203,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 .join(&lang)
                 .join("csharp_binary_writers_file.rhai");
             println!("\n--- C# Binary Writers generation ---");
-            rhai_generator::generate_code_with_rhai(&ir_context, &writers_template_path)
+            rhai_generator::generate_code_with_rhai(&ir_context, &writers_template_path, &cli.output_dir)
                 .map_err(|e| anyhow::anyhow!(e))?;
 
             let csv_cols_template_path = cli
@@ -211,7 +212,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 .join("csharp_csv_columns_file.rhai");
             if csv_cols_template_path.exists() {
                 println!("\n--- C# CSV Columns generation ---");
-                rhai_generator::generate_code_with_rhai(&ir_context, &csv_cols_template_path)
+                rhai_generator::generate_code_with_rhai(&ir_context, &csv_cols_template_path, &cli.output_dir)
                     .map_err(|e| anyhow::anyhow!(e))?;
             }
 
@@ -221,7 +222,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 .join("csharp_csv_mappers_file.rhai");
             if csv_mappers_template_path.exists() {
                 println!("\n--- C# CSV Mappers generation ---");
-                rhai_generator::generate_code_with_rhai(&ir_context, &csv_mappers_template_path)
+                rhai_generator::generate_code_with_rhai(&ir_context, &csv_mappers_template_path, &cli.output_dir)
                     .map_err(|e| anyhow::anyhow!(e))?;
             }
         }

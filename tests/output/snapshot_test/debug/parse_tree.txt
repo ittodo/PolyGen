@@ -1,0 +1,998 @@
+Pair {
+    rule: main,
+    span: Span {
+        str: "namespace test.csv {\n    enum Color { RED; GREEN; BLUE; }\n\n    embed Point { x: i32; y: i32; }\n\n    table TestObject {\n        id: u32 primary_key;\n        name: string;\n        active: bool;\n        score: f32;\n        tags: string[];\n        color: Color;\n        location: Point;\n        history: Point[];\n    }\n}\n",
+        start: 0,
+        end: 317,
+    },
+    inner: [
+        Pair {
+            rule: toplevel_item,
+            span: Span {
+                str: "namespace test.csv {\n    enum Color { RED; GREEN; BLUE; }\n\n    embed Point { x: i32; y: i32; }\n\n    table TestObject {\n        id: u32 primary_key;\n        name: string;\n        active: bool;\n        score: f32;\n        tags: string[];\n        color: Color;\n        location: Point;\n        history: Point[];\n    }\n}",
+                start: 0,
+                end: 316,
+            },
+            inner: [
+                Pair {
+                    rule: definition,
+                    span: Span {
+                        str: "namespace test.csv {\n    enum Color { RED; GREEN; BLUE; }\n\n    embed Point { x: i32; y: i32; }\n\n    table TestObject {\n        id: u32 primary_key;\n        name: string;\n        active: bool;\n        score: f32;\n        tags: string[];\n        color: Color;\n        location: Point;\n        history: Point[];\n    }\n}",
+                        start: 0,
+                        end: 316,
+                    },
+                    inner: [
+                        Pair {
+                            rule: namespace,
+                            span: Span {
+                                str: "namespace test.csv {\n    enum Color { RED; GREEN; BLUE; }\n\n    embed Point { x: i32; y: i32; }\n\n    table TestObject {\n        id: u32 primary_key;\n        name: string;\n        active: bool;\n        score: f32;\n        tags: string[];\n        color: Color;\n        location: Point;\n        history: Point[];\n    }\n}",
+                                start: 0,
+                                end: 316,
+                            },
+                            inner: [
+                                Pair {
+                                    rule: path,
+                                    span: Span {
+                                        str: "test.csv",
+                                        start: 10,
+                                        end: 18,
+                                    },
+                                    inner: [
+                                        Pair {
+                                            rule: IDENT,
+                                            span: Span {
+                                                str: "test",
+                                                start: 10,
+                                                end: 14,
+                                            },
+                                            inner: [],
+                                        },
+                                        Pair {
+                                            rule: IDENT,
+                                            span: Span {
+                                                str: "csv",
+                                                start: 15,
+                                                end: 18,
+                                            },
+                                            inner: [],
+                                        },
+                                    ],
+                                },
+                                Pair {
+                                    rule: namespace_body_item,
+                                    span: Span {
+                                        str: "enum Color { RED; GREEN; BLUE; }",
+                                        start: 25,
+                                        end: 57,
+                                    },
+                                    inner: [
+                                        Pair {
+                                            rule: definition,
+                                            span: Span {
+                                                str: "enum Color { RED; GREEN; BLUE; }",
+                                                start: 25,
+                                                end: 57,
+                                            },
+                                            inner: [
+                                                Pair {
+                                                    rule: enum_def,
+                                                    span: Span {
+                                                        str: "enum Color { RED; GREEN; BLUE; }",
+                                                        start: 25,
+                                                        end: 57,
+                                                    },
+                                                    inner: [
+                                                        Pair {
+                                                            rule: IDENT,
+                                                            span: Span {
+                                                                str: "Color",
+                                                                start: 30,
+                                                                end: 35,
+                                                            },
+                                                            inner: [],
+                                                        },
+                                                        Pair {
+                                                            rule: enum_variant,
+                                                            span: Span {
+                                                                str: "RED;",
+                                                                start: 38,
+                                                                end: 42,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: IDENT,
+                                                                    span: Span {
+                                                                        str: "RED",
+                                                                        start: 38,
+                                                                        end: 41,
+                                                                    },
+                                                                    inner: [],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: enum_variant,
+                                                            span: Span {
+                                                                str: "GREEN;",
+                                                                start: 43,
+                                                                end: 49,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: IDENT,
+                                                                    span: Span {
+                                                                        str: "GREEN",
+                                                                        start: 43,
+                                                                        end: 48,
+                                                                    },
+                                                                    inner: [],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: enum_variant,
+                                                            span: Span {
+                                                                str: "BLUE;",
+                                                                start: 50,
+                                                                end: 55,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: IDENT,
+                                                                    span: Span {
+                                                                        str: "BLUE",
+                                                                        start: 50,
+                                                                        end: 54,
+                                                                    },
+                                                                    inner: [],
+                                                                },
+                                                            ],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                Pair {
+                                    rule: namespace_body_item,
+                                    span: Span {
+                                        str: "embed Point { x: i32; y: i32; }",
+                                        start: 63,
+                                        end: 94,
+                                    },
+                                    inner: [
+                                        Pair {
+                                            rule: definition,
+                                            span: Span {
+                                                str: "embed Point { x: i32; y: i32; }",
+                                                start: 63,
+                                                end: 94,
+                                            },
+                                            inner: [
+                                                Pair {
+                                                    rule: embed_def,
+                                                    span: Span {
+                                                        str: "embed Point { x: i32; y: i32; }",
+                                                        start: 63,
+                                                        end: 94,
+                                                    },
+                                                    inner: [
+                                                        Pair {
+                                                            rule: IDENT,
+                                                            span: Span {
+                                                                str: "Point",
+                                                                start: 69,
+                                                                end: 74,
+                                                            },
+                                                            inner: [],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "x: i32;",
+                                                                start: 77,
+                                                                end: 84,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "x: i32",
+                                                                        start: 77,
+                                                                        end: 83,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "x: i32",
+                                                                                start: 77,
+                                                                                end: 83,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "x",
+                                                                                        start: 77,
+                                                                                        end: 78,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "i32",
+                                                                                        start: 80,
+                                                                                        end: 83,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "i32",
+                                                                                                start: 80,
+                                                                                                end: 83,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: basic_type,
+                                                                                                    span: Span {
+                                                                                                        str: "i32",
+                                                                                                        start: 80,
+                                                                                                        end: 83,
+                                                                                                    },
+                                                                                                    inner: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "y: i32;",
+                                                                start: 85,
+                                                                end: 92,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "y: i32",
+                                                                        start: 85,
+                                                                        end: 91,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "y: i32",
+                                                                                start: 85,
+                                                                                end: 91,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "y",
+                                                                                        start: 85,
+                                                                                        end: 86,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "i32",
+                                                                                        start: 88,
+                                                                                        end: 91,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "i32",
+                                                                                                start: 88,
+                                                                                                end: 91,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: basic_type,
+                                                                                                    span: Span {
+                                                                                                        str: "i32",
+                                                                                                        start: 88,
+                                                                                                        end: 91,
+                                                                                                    },
+                                                                                                    inner: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                Pair {
+                                    rule: namespace_body_item,
+                                    span: Span {
+                                        str: "table TestObject {\n        id: u32 primary_key;\n        name: string;\n        active: bool;\n        score: f32;\n        tags: string[];\n        color: Color;\n        location: Point;\n        history: Point[];\n    }",
+                                        start: 100,
+                                        end: 314,
+                                    },
+                                    inner: [
+                                        Pair {
+                                            rule: definition,
+                                            span: Span {
+                                                str: "table TestObject {\n        id: u32 primary_key;\n        name: string;\n        active: bool;\n        score: f32;\n        tags: string[];\n        color: Color;\n        location: Point;\n        history: Point[];\n    }",
+                                                start: 100,
+                                                end: 314,
+                                            },
+                                            inner: [
+                                                Pair {
+                                                    rule: table,
+                                                    span: Span {
+                                                        str: "table TestObject {\n        id: u32 primary_key;\n        name: string;\n        active: bool;\n        score: f32;\n        tags: string[];\n        color: Color;\n        location: Point;\n        history: Point[];\n    }",
+                                                        start: 100,
+                                                        end: 314,
+                                                    },
+                                                    inner: [
+                                                        Pair {
+                                                            rule: IDENT,
+                                                            span: Span {
+                                                                str: "TestObject",
+                                                                start: 106,
+                                                                end: 116,
+                                                            },
+                                                            inner: [],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "id: u32 primary_key;",
+                                                                start: 127,
+                                                                end: 147,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "id: u32 primary_key",
+                                                                        start: 127,
+                                                                        end: 146,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "id: u32 primary_key",
+                                                                                start: 127,
+                                                                                end: 146,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "id",
+                                                                                        start: 127,
+                                                                                        end: 129,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "u32 ",
+                                                                                        start: 131,
+                                                                                        end: 135,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "u32",
+                                                                                                start: 131,
+                                                                                                end: 134,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: basic_type,
+                                                                                                    span: Span {
+                                                                                                        str: "u32",
+                                                                                                        start: 131,
+                                                                                                        end: 134,
+                                                                                                    },
+                                                                                                    inner: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: constraint,
+                                                                                    span: Span {
+                                                                                        str: "primary_key",
+                                                                                        start: 135,
+                                                                                        end: 146,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: primary_key,
+                                                                                            span: Span {
+                                                                                                str: "primary_key",
+                                                                                                start: 135,
+                                                                                                end: 146,
+                                                                                            },
+                                                                                            inner: [],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "name: string;",
+                                                                start: 156,
+                                                                end: 169,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "name: string",
+                                                                        start: 156,
+                                                                        end: 168,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "name: string",
+                                                                                start: 156,
+                                                                                end: 168,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "name",
+                                                                                        start: 156,
+                                                                                        end: 160,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "string",
+                                                                                        start: 162,
+                                                                                        end: 168,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "string",
+                                                                                                start: 162,
+                                                                                                end: 168,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: basic_type,
+                                                                                                    span: Span {
+                                                                                                        str: "string",
+                                                                                                        start: 162,
+                                                                                                        end: 168,
+                                                                                                    },
+                                                                                                    inner: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "active: bool;",
+                                                                start: 178,
+                                                                end: 191,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "active: bool",
+                                                                        start: 178,
+                                                                        end: 190,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "active: bool",
+                                                                                start: 178,
+                                                                                end: 190,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "active",
+                                                                                        start: 178,
+                                                                                        end: 184,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "bool",
+                                                                                        start: 186,
+                                                                                        end: 190,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "bool",
+                                                                                                start: 186,
+                                                                                                end: 190,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: basic_type,
+                                                                                                    span: Span {
+                                                                                                        str: "bool",
+                                                                                                        start: 186,
+                                                                                                        end: 190,
+                                                                                                    },
+                                                                                                    inner: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "score: f32;",
+                                                                start: 200,
+                                                                end: 211,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "score: f32",
+                                                                        start: 200,
+                                                                        end: 210,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "score: f32",
+                                                                                start: 200,
+                                                                                end: 210,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "score",
+                                                                                        start: 200,
+                                                                                        end: 205,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "f32",
+                                                                                        start: 207,
+                                                                                        end: 210,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "f32",
+                                                                                                start: 207,
+                                                                                                end: 210,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: basic_type,
+                                                                                                    span: Span {
+                                                                                                        str: "f32",
+                                                                                                        start: 207,
+                                                                                                        end: 210,
+                                                                                                    },
+                                                                                                    inner: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "tags: string[];",
+                                                                start: 220,
+                                                                end: 235,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "tags: string[]",
+                                                                        start: 220,
+                                                                        end: 234,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "tags: string[]",
+                                                                                start: 220,
+                                                                                end: 234,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "tags",
+                                                                                        start: 220,
+                                                                                        end: 224,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "string[]",
+                                                                                        start: 226,
+                                                                                        end: 234,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "string",
+                                                                                                start: 226,
+                                                                                                end: 232,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: basic_type,
+                                                                                                    span: Span {
+                                                                                                        str: "string",
+                                                                                                        start: 226,
+                                                                                                        end: 232,
+                                                                                                    },
+                                                                                                    inner: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                        Pair {
+                                                                                            rule: cardinality,
+                                                                                            span: Span {
+                                                                                                str: "[]",
+                                                                                                start: 232,
+                                                                                                end: 234,
+                                                                                            },
+                                                                                            inner: [],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "color: Color;",
+                                                                start: 244,
+                                                                end: 257,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "color: Color",
+                                                                        start: 244,
+                                                                        end: 256,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "color: Color",
+                                                                                start: 244,
+                                                                                end: 256,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "color",
+                                                                                        start: 244,
+                                                                                        end: 249,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "Color",
+                                                                                        start: 251,
+                                                                                        end: 256,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "Color",
+                                                                                                start: 251,
+                                                                                                end: 256,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: path,
+                                                                                                    span: Span {
+                                                                                                        str: "Color",
+                                                                                                        start: 251,
+                                                                                                        end: 256,
+                                                                                                    },
+                                                                                                    inner: [
+                                                                                                        Pair {
+                                                                                                            rule: IDENT,
+                                                                                                            span: Span {
+                                                                                                                str: "Color",
+                                                                                                                start: 251,
+                                                                                                                end: 256,
+                                                                                                            },
+                                                                                                            inner: [],
+                                                                                                        },
+                                                                                                    ],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "location: Point;",
+                                                                start: 266,
+                                                                end: 282,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "location: Point",
+                                                                        start: 266,
+                                                                        end: 281,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "location: Point",
+                                                                                start: 266,
+                                                                                end: 281,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "location",
+                                                                                        start: 266,
+                                                                                        end: 274,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "Point",
+                                                                                        start: 276,
+                                                                                        end: 281,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "Point",
+                                                                                                start: 276,
+                                                                                                end: 281,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: path,
+                                                                                                    span: Span {
+                                                                                                        str: "Point",
+                                                                                                        start: 276,
+                                                                                                        end: 281,
+                                                                                                    },
+                                                                                                    inner: [
+                                                                                                        Pair {
+                                                                                                            rule: IDENT,
+                                                                                                            span: Span {
+                                                                                                                str: "Point",
+                                                                                                                start: 276,
+                                                                                                                end: 281,
+                                                                                                            },
+                                                                                                            inner: [],
+                                                                                                        },
+                                                                                                    ],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Pair {
+                                                            rule: table_member,
+                                                            span: Span {
+                                                                str: "history: Point[];",
+                                                                start: 291,
+                                                                end: 308,
+                                                            },
+                                                            inner: [
+                                                                Pair {
+                                                                    rule: field_definition,
+                                                                    span: Span {
+                                                                        str: "history: Point[]",
+                                                                        start: 291,
+                                                                        end: 307,
+                                                                    },
+                                                                    inner: [
+                                                                        Pair {
+                                                                            rule: regular_field,
+                                                                            span: Span {
+                                                                                str: "history: Point[]",
+                                                                                start: 291,
+                                                                                end: 307,
+                                                                            },
+                                                                            inner: [
+                                                                                Pair {
+                                                                                    rule: IDENT,
+                                                                                    span: Span {
+                                                                                        str: "history",
+                                                                                        start: 291,
+                                                                                        end: 298,
+                                                                                    },
+                                                                                    inner: [],
+                                                                                },
+                                                                                Pair {
+                                                                                    rule: type_with_cardinality,
+                                                                                    span: Span {
+                                                                                        str: "Point[]",
+                                                                                        start: 300,
+                                                                                        end: 307,
+                                                                                    },
+                                                                                    inner: [
+                                                                                        Pair {
+                                                                                            rule: type_name,
+                                                                                            span: Span {
+                                                                                                str: "Point",
+                                                                                                start: 300,
+                                                                                                end: 305,
+                                                                                            },
+                                                                                            inner: [
+                                                                                                Pair {
+                                                                                                    rule: path,
+                                                                                                    span: Span {
+                                                                                                        str: "Point",
+                                                                                                        start: 300,
+                                                                                                        end: 305,
+                                                                                                    },
+                                                                                                    inner: [
+                                                                                                        Pair {
+                                                                                                            rule: IDENT,
+                                                                                                            span: Span {
+                                                                                                                str: "Point",
+                                                                                                                start: 300,
+                                                                                                                end: 305,
+                                                                                                            },
+                                                                                                            inner: [],
+                                                                                                        },
+                                                                                                    ],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                        Pair {
+                                                                                            rule: cardinality,
+                                                                                            span: Span {
+                                                                                                str: "[]",
+                                                                                                start: 305,
+                                                                                                end: 307,
+                                                                                            },
+                                                                                            inner: [],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Pair {
+            rule: EOI,
+            span: Span {
+                str: "",
+                start: 317,
+                end: 317,
+            },
+            inner: [],
+        },
+    ],
+}

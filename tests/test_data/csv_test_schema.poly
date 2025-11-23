@@ -1,0 +1,16 @@
+namespace test.csv {
+    enum Color { RED; GREEN; BLUE; }
+
+    embed Point { x: i32; y: i32; }
+
+    table TestObject {
+        id: u32 primary_key;
+        name: string;
+        active: bool;
+        score: f32;
+        tags: string[];
+        color: Color;
+        location: Point;
+        history: Point[];
+    }
+}

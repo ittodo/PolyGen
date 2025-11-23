@@ -189,7 +189,7 @@ for file in schema.files {
 
                 let out_dir = "output/csharp/CsvSchemas";
                 let out_name = ns.name + "." + s.name + ".csv";
-                let final_path = out_dir + "/" + out_name;
+                let final_path = output_dir + "/csharp/CsvSchemas/" + out_name;
                 write_file(final_path, header_line + "\n");
             }
         }

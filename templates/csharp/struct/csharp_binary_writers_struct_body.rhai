@@ -31,7 +31,7 @@ ${
                 } else {
                     let es_nl = csv_utils::find_embedded_struct(s, elem.type_name);
                     let call_ns = if es_nl != () { current_ns_name } else { if elem.namespace_fqn == "" { current_ns_name } else { elem.namespace_fqn } };
-                    body += "        BinaryUtils.WriteOptionRef<IList<global::" + elem.fqn + ">>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<global::" + elem.fqn + ">(bw2, list, " + call_ns + ".BinaryWriters.Write" + elem.type_name + "));\n";
+                    body += "        BinaryUtils.WriteOptionRef<IList<global::" + elem.fqn + ">>( bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<global::" + elem.fqn + ">(bw2, list, " + call_ns + ".BinaryWriters.Write" + elem.type_name + "));\n";
                 }
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
                     let enum_type = inner.fqn;
@@ -40,7 +40,8 @@ ${
                     let mapped = type_utils::map_type(inner);
                     body += "        BinaryUtils.WriteOptionStruct<" + mapped + ">(bw, obj." + f.name + ", (bw2,v)=>bw2.Write(v));\n";
                 } else {
-                    let call_ns = if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn };
+                    let es_nl = csv_utils::find_embedded_struct(s, inner.type_name);
+                    let call_ns = if es_nl != () { current_ns_name } else { if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn } };
                     body += "        BinaryUtils.WriteOptionRef<global::" + inner.fqn + ">(bw, obj." + f.name + ", " + call_ns + ".BinaryWriters.Write" + inner.type_name + ");\n";
                 }
                 continue;
@@ -80,7 +81,8 @@ ${
             }
             // custom class
             else {
-                let call_ns = if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn };
+                let es_nl = csv_utils::find_embedded_struct(s, base.type_name);
+                let call_ns = if es_nl != () { current_ns_name } else { if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn } };
                 body += "        BinaryUtils.WriteOptionRef<global::" + base.fqn + ">(bw, obj." + f.name + ", " + call_ns + ".BinaryWriters.Write" + base.type_name + ");\n";
                 
             }

@@ -75,6 +75,9 @@ pub struct TypeRef {
     pub namespace_fqn: String,
     /// Final type identifier (last segment of FQN).
     pub type_name: String,
+    /// Parent class path for nested types (e.g., "Monster.DropItems" for Monster.DropItems.Enchantment).
+    /// Empty string for top-level types.
+    pub parent_type_path: String,
     /// The language-specific representation, e.g., "List<Game.Common.StatBlock>".
     pub lang_type: String,
     pub is_primitive: bool,

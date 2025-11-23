@@ -222,6 +222,7 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("lang_type", |t: &mut TypeRef| t.lang_type.clone());
     engine.register_get("namespace_fqn", |t: &mut TypeRef| t.namespace_fqn.clone());
     engine.register_get("type_name", |t: &mut TypeRef| t.type_name.clone());
+    engine.register_get("parent_type_path", |t: &mut TypeRef| t.parent_type_path.clone());
     engine.register_get("is_primitive", |t: &mut TypeRef| t.is_primitive);
     engine.register_get("is_option", |t: &mut TypeRef| t.is_option);
     engine.register_get("is_list", |t: &mut TypeRef| t.is_list);

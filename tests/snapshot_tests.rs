@@ -23,3 +23,29 @@ fn test_ast_snapshots() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn test_csv_mappers_snapshot() -> Result<()> {
+    use PolyGen::{Cli, run};
+    use std::path::PathBuf;
+
+    let schema_path = PathBuf::from("tests/test_data/csv_test_schema.poly");
+    let output_dir = PathBuf::from("tests/output/snapshot_test");
+    let templates_dir = PathBuf::from("templates");
+
+    let cli = Cli {
+        schema_path,
+        templates_dir,
+        output_dir: output_dir.clone(),
+        lang: Some("csharp".to_string()),
+    };
+
+    run(cli)?;
+
+    // Read generated file
+    let generated_path = output_dir.join("csharp/csv_test_schema.CsvMappers.cs");
+    let content = std::fs::read_to_string(generated_path)?;
+
+    assert_debug_snapshot!("csv_mappers_csharp", content);
+    Ok(())
+}

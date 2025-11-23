@@ -19,7 +19,7 @@ for file in schema.files {
     let output_filename = filename;
     output_filename.replace(".poly", ".cs");
     print("  - Replaced filename: " + output_filename); // <== 추가
-    let final_path = "output/csharp/" + output_filename;
+    let final_path = output_dir + "/csharp/" + output_filename;
 
     let file_content = "";
     let indent = 0;

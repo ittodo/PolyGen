@@ -107,7 +107,7 @@ ${
             let tf = f.field_type;
             let base = if tf.is_option { tf.inner } else { tf };
             if base.is_list {
-                let inner = base;
+                let inner = base.inner;
                 code += `            {`+"\n";
                 code += `                var __h = (h != null && h.IndexList != null && __idx < h.IndexList.Count) ? h.IndexList[__idx++] : null;`+"\n";
                 if inner.is_enum {

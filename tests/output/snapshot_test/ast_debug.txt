@@ -1,0 +1,262 @@
+[
+    AstRoot {
+        path: "tests/test_data/csv_test_schema.poly",
+        file_imports: [],
+        definitions: [
+            Namespace(
+                Namespace {
+                    path: [
+                        "test",
+                        "csv",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Enum(
+                            Enum {
+                                metadata: [],
+                                name: Some(
+                                    "Color",
+                                ),
+                                variants: [
+                                    EnumVariant {
+                                        metadata: [],
+                                        name: Some(
+                                            "RED",
+                                        ),
+                                        value: None,
+                                    },
+                                    EnumVariant {
+                                        metadata: [],
+                                        name: Some(
+                                            "GREEN",
+                                        ),
+                                        value: None,
+                                    },
+                                    EnumVariant {
+                                        metadata: [],
+                                        name: Some(
+                                            "BLUE",
+                                        ),
+                                        value: None,
+                                    },
+                                ],
+                            },
+                        ),
+                        Embed(
+                            Embed {
+                                metadata: [],
+                                name: Some(
+                                    "Point",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "x",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        I32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "y",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        I32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [],
+                                name: Some(
+                                    "TestObject",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "active",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        Bool,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "score",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        F32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "tags",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: Some(
+                                                        Array,
+                                                    ),
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "color",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "Color",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "location",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "Point",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "history",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "Point",
+                                                        ],
+                                                    ),
+                                                    cardinality: Some(
+                                                        Array,
+                                                    ),
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]

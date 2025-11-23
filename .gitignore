@@ -1,5 +1,6 @@
 /target
 /output
+/temp_output_review
 dist/**/.vs/
 dist/**/bin/
 dist/**/obj/

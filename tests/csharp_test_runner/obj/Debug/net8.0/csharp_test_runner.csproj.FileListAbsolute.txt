@@ -1,0 +1,15 @@
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.GeneratedMSBuildEditorConfig.editorconfig
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.AssemblyInfoInputs.cache
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.AssemblyInfo.cs
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.csproj.CoreCompileInputs.cache
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.sourcelink.json
+D:\Rust\PolyGen\tests\csharp_test_runner\bin\Debug\net8.0\csharp_test_runner.exe
+D:\Rust\PolyGen\tests\csharp_test_runner\bin\Debug\net8.0\csharp_test_runner.deps.json
+D:\Rust\PolyGen\tests\csharp_test_runner\bin\Debug\net8.0\csharp_test_runner.runtimeconfig.json
+D:\Rust\PolyGen\tests\csharp_test_runner\bin\Debug\net8.0\csharp_test_runner.dll
+D:\Rust\PolyGen\tests\csharp_test_runner\bin\Debug\net8.0\csharp_test_runner.pdb
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.dll
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\refint\csharp_test_runner.dll
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.pdb
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\csharp_test_runner.genruntimeconfig.cache
+D:\Rust\PolyGen\tests\csharp_test_runner\obj\Debug\net8.0\ref\csharp_test_runner.dll

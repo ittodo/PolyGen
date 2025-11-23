@@ -301,7 +301,7 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
 
                 // Then handle the field itself
                 let (field_def, mut new_nested_structs, mut new_nested_enums) =
-                    convert_field_to_ir(field, current_ns, &fqn);
+                    convert_field_to_ir(field, &fqn, &fqn);
                 items.push(StructItem::Field(field_def));
                 // Add the new nested types to the items list
                 items.extend(new_nested_structs.into_iter().map(StructItem::EmbeddedStruct));
@@ -492,11 +492,13 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
     match t.cardinality {
         Some(ast_model::Cardinality::Optional) => {
             let inner_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
+            let inner_ns = namespace_of_owned(&inner_fqn);
             let inner = TypeRef {
                 original: base_name.clone(),
                 fqn: inner_fqn.clone(),
-                namespace_fqn: namespace_of_owned(&inner_fqn),
+                namespace_fqn: inner_ns.clone(),
                 type_name: last_segment_owned(&inner_fqn),
+                parent_type_path: parent_type_path_of(&inner_fqn, &inner_ns),
                 lang_type: base_name.clone(),
                 is_primitive,
                 is_struct: !(is_primitive || is_enum),
@@ -505,11 +507,13 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
                 is_list: false,
                 inner_type: None,
             };
+            let outer_ns = namespace_of_owned(&inner_fqn);
             TypeRef {
                 original: format!("Option<{}>", base_name),
                 fqn: inner_fqn.clone(),
-                namespace_fqn: namespace_of_owned(&inner_fqn),
+                namespace_fqn: outer_ns.clone(),
                 type_name: last_segment_owned(&inner_fqn),
+                parent_type_path: parent_type_path_of(&inner_fqn, &outer_ns),
                 lang_type: format!("Option<{}>", inner.lang_type),
                 is_primitive: false,
                 is_struct: !(is_primitive || is_enum),
@@ -521,11 +525,13 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
         }
         Some(ast_model::Cardinality::Array) => {
             let inner_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
+            let inner_ns = namespace_of_owned(&inner_fqn);
             let inner = TypeRef {
                 original: base_name.clone(),
                 fqn: inner_fqn.clone(),
-                namespace_fqn: namespace_of_owned(&inner_fqn),
+                namespace_fqn: inner_ns.clone(),
                 type_name: last_segment_owned(&inner_fqn),
+                parent_type_path: parent_type_path_of(&inner_fqn, &inner_ns),
                 lang_type: base_name.clone(),
                 is_primitive,
                 is_struct: !(is_primitive || is_enum),
@@ -534,11 +540,13 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
                 is_list: false,
                 inner_type: None,
             };
+            let outer_ns = namespace_of_owned(&inner_fqn);
             TypeRef {
                 original: format!("List<{}>", base_name),
                 fqn: inner_fqn.clone(),
-                namespace_fqn: namespace_of_owned(&inner_fqn),
+                namespace_fqn: outer_ns.clone(),
                 type_name: last_segment_owned(&inner_fqn),
+                parent_type_path: parent_type_path_of(&inner_fqn, &outer_ns),
                 lang_type: format!("List<{}>", inner.lang_type),
                 is_primitive: false,
                 is_struct: !(is_primitive || is_enum),
@@ -550,11 +558,13 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
         }
         None => {
             let core_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
+            let core_ns = namespace_of_owned(&core_fqn);
             TypeRef {
                 original: base_name.clone(),
                 fqn: core_fqn.clone(),
-                namespace_fqn: namespace_of_owned(&core_fqn),
+                namespace_fqn: core_ns.clone(),
                 type_name: last_segment_owned(&core_fqn),
+                parent_type_path: parent_type_path_of(&core_fqn, &core_ns),
                 lang_type: base_name,
                 is_primitive,
                 is_struct: !(is_primitive || is_enum),
@@ -570,11 +580,13 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
 fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_model::Cardinality>, primitive_hint: bool) -> TypeRef {
     match c {
         Some(ast_model::Cardinality::Optional) => {
+            let inner_ns = namespace_of_owned(base_fqn);
             let inner = TypeRef {
                 original: base_name.to_string(),
                 fqn: base_fqn.to_string(),
-                namespace_fqn: namespace_of_owned(base_fqn),
+                namespace_fqn: inner_ns.clone(),
                 type_name: last_segment_owned(base_fqn),
+                parent_type_path: parent_type_path_of(base_fqn, &inner_ns),
                 lang_type: base_name.to_string(),
                 is_primitive: primitive_hint,
                 is_struct: !primitive_hint,
@@ -583,11 +595,13 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
                 is_list: false,
                 inner_type: None,
             };
+            let outer_ns = namespace_of_owned(base_fqn);
             TypeRef {
                 original: format!("Option<{}>", base_name),
                 fqn: base_fqn.to_string(),
-                namespace_fqn: namespace_of_owned(base_fqn),
+                namespace_fqn: outer_ns.clone(),
                 type_name: last_segment_owned(base_fqn),
+                parent_type_path: parent_type_path_of(base_fqn, &outer_ns),
                 lang_type: format!("Option<{}>", base_name),
                 is_primitive: false,
                 is_struct: !primitive_hint,
@@ -598,11 +612,13 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
             }
         }
         Some(ast_model::Cardinality::Array) => {
+            let inner_ns = namespace_of_owned(base_fqn);
             let inner = TypeRef {
                 original: base_name.to_string(),
                 fqn: base_fqn.to_string(),
-                namespace_fqn: namespace_of_owned(base_fqn),
+                namespace_fqn: inner_ns.clone(),
                 type_name: last_segment_owned(base_fqn),
+                parent_type_path: parent_type_path_of(base_fqn, &inner_ns),
                 lang_type: base_name.to_string(),
                 is_primitive: primitive_hint,
                 is_struct: !primitive_hint,
@@ -611,11 +627,13 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
                 is_list: false,
                 inner_type: None,
             };
+            let outer_ns = namespace_of_owned(base_fqn);
             TypeRef {
                 original: format!("List<{}>", base_name),
                 fqn: base_fqn.to_string(),
-                namespace_fqn: namespace_of_owned(base_fqn),
+                namespace_fqn: outer_ns.clone(),
                 type_name: last_segment_owned(base_fqn),
+                parent_type_path: parent_type_path_of(base_fqn, &outer_ns),
                 lang_type: format!("List<{}>", base_name),
                 is_primitive: false,
                 is_struct: !primitive_hint,
@@ -625,19 +643,23 @@ fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_mode
                 inner_type: Some(Box::new(inner)),
             }
         }
-        None => TypeRef {
-            original: base_name.to_string(),
-            fqn: base_fqn.to_string(),
-            namespace_fqn: namespace_of_owned(base_fqn),
-            type_name: last_segment_owned(base_fqn),
-            lang_type: base_name.to_string(),
-            is_primitive: primitive_hint,
-            is_struct: !primitive_hint,
-            is_enum: false,
-            is_option: false,
-            is_list: false,
-            inner_type: None,
-        },
+        None => {
+            let ns = namespace_of_owned(base_fqn);
+            TypeRef {
+                original: base_name.to_string(),
+                fqn: base_fqn.to_string(),
+                namespace_fqn: ns.clone(),
+                type_name: last_segment_owned(base_fqn),
+                parent_type_path: parent_type_path_of(base_fqn, &ns),
+                lang_type: base_name.to_string(),
+                is_primitive: primitive_hint,
+                is_struct: !primitive_hint,
+                is_enum: false,
+                is_option: false,
+                is_list: false,
+                inner_type: None,
+            }
+        }
     }
 }
 
@@ -660,6 +682,29 @@ fn last_segment_owned(fqn: &str) -> String {
     match fqn.rfind('.') {
         Some(i) => fqn[i + 1..].to_string(),
         None => fqn.to_string(),
+    }
+}
+
+/// Extracts the parent type path from an FQN.
+/// For "game.character.Monster.DropItems.Enchantment", returns "Monster.DropItems".
+/// For top-level types or primitives, returns empty string.
+fn parent_type_path_of(fqn: &str, namespace_fqn: &str) -> String {
+    // If there's no namespace, the type is either primitive or top-level
+    if namespace_fqn.is_empty() {
+        return String::new();
+    }
+    
+    // Remove namespace prefix from FQN to get the type path
+    let type_path = if fqn.starts_with(namespace_fqn) && fqn.len() > namespace_fqn.len() {
+        &fqn[namespace_fqn.len() + 1..]  // +1 to skip the dot
+    } else {
+        fqn
+    };
+    
+    // Find the last dot in the type path
+    match type_path.rfind('.') {
+        Some(i) => type_path[..i].to_string(),
+        None => String::new(),  // Top-level type in namespace
     }
 }
 

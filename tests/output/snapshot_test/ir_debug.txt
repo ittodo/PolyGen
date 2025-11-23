@@ -1,0 +1,296 @@
+SchemaContext {
+    files: [
+        FileDef {
+            path: "csv_test_schema.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "test.csv",
+                    items: [
+                        Enum(
+                            EnumDef {
+                                name: "Color",
+                                fqn: "test.csv.Color",
+                                items: [
+                                    Member(
+                                        EnumMember {
+                                            name: "RED",
+                                            value: Some(
+                                                0,
+                                            ),
+                                        },
+                                    ),
+                                    Member(
+                                        EnumMember {
+                                            name: "GREEN",
+                                            value: Some(
+                                                1,
+                                            ),
+                                        },
+                                    ),
+                                    Member(
+                                        EnumMember {
+                                            name: "BLUE",
+                                            value: Some(
+                                                2,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                        Struct(
+                            StructDef {
+                                name: "Point",
+                                fqn: "test.csv.Point",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "x",
+                                            field_type: TypeRef {
+                                                original: "i32",
+                                                fqn: "i32",
+                                                namespace_fqn: "",
+                                                type_name: "i32",
+                                                parent_type_path: "",
+                                                lang_type: "i32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "y",
+                                            field_type: TypeRef {
+                                                original: "i32",
+                                                fqn: "i32",
+                                                namespace_fqn: "",
+                                                type_name: "i32",
+                                                parent_type_path: "",
+                                                lang_type: "i32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                        Struct(
+                            StructDef {
+                                name: "TestObject",
+                                fqn: "test.csv.TestObject",
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                parent_type_path: "",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "active",
+                                            field_type: TypeRef {
+                                                original: "bool",
+                                                fqn: "bool",
+                                                namespace_fqn: "",
+                                                type_name: "bool",
+                                                parent_type_path: "",
+                                                lang_type: "bool",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "score",
+                                            field_type: TypeRef {
+                                                original: "f32",
+                                                fqn: "f32",
+                                                namespace_fqn: "",
+                                                type_name: "f32",
+                                                parent_type_path: "",
+                                                lang_type: "f32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "tags",
+                                            field_type: TypeRef {
+                                                original: "List<string>",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "List<string>",
+                                                is_primitive: false,
+                                                is_struct: true,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: true,
+                                                inner_type: Some(
+                                                    TypeRef {
+                                                        original: "string",
+                                                        fqn: "string",
+                                                        namespace_fqn: "",
+                                                        type_name: "string",
+                                                        parent_type_path: "",
+                                                        lang_type: "string",
+                                                        is_primitive: true,
+                                                        is_struct: false,
+                                                        is_enum: false,
+                                                        is_option: false,
+                                                        is_list: false,
+                                                        inner_type: None,
+                                                    },
+                                                ),
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "color",
+                                            field_type: TypeRef {
+                                                original: "Color",
+                                                fqn: "test.csv.Color",
+                                                namespace_fqn: "test.csv",
+                                                type_name: "Color",
+                                                parent_type_path: "",
+                                                lang_type: "Color",
+                                                is_primitive: false,
+                                                is_struct: false,
+                                                is_enum: true,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "location",
+                                            field_type: TypeRef {
+                                                original: "Point",
+                                                fqn: "test.csv.TestObject.Point",
+                                                namespace_fqn: "test.csv.TestObject",
+                                                type_name: "Point",
+                                                parent_type_path: "",
+                                                lang_type: "Point",
+                                                is_primitive: false,
+                                                is_struct: true,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "history",
+                                            field_type: TypeRef {
+                                                original: "List<Point>",
+                                                fqn: "test.csv.TestObject.Point",
+                                                namespace_fqn: "test.csv.TestObject",
+                                                type_name: "Point",
+                                                parent_type_path: "",
+                                                lang_type: "List<Point>",
+                                                is_primitive: false,
+                                                is_struct: true,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: true,
+                                                inner_type: Some(
+                                                    TypeRef {
+                                                        original: "Point",
+                                                        fqn: "test.csv.TestObject.Point",
+                                                        namespace_fqn: "test.csv.TestObject",
+                                                        type_name: "Point",
+                                                        parent_type_path: "",
+                                                        lang_type: "Point",
+                                                        is_primitive: false,
+                                                        is_struct: true,
+                                                        is_enum: false,
+                                                        is_option: false,
+                                                        is_list: false,
+                                                        inner_type: None,
+                                                    },
+                                                ),
+                                            },
+                                            attributes: [],
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+}

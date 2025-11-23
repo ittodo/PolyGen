@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "name": "Alice",
+    "active": true,
+    "score": 95.5,
+    "tags": ["admin", "user"],
+    "color": "RED",
+    "location": { "x": 10, "y": 20 },
+    "history": [ { "x": 1, "y": 1 }, { "x": 2, "y": 2 } ]
+  },
+  {
+    "id": 2,
+    "name": "Bob",
+    "active": false,
+    "score": 80.0,
+    "tags": [],
+    "color": "GREEN",
+    "location": { "x": 30, "y": 40 },
+    "history": []
+  }
+]

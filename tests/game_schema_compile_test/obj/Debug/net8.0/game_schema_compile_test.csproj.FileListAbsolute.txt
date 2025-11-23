@@ -1,0 +1,15 @@
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.GeneratedMSBuildEditorConfig.editorconfig
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.AssemblyInfoInputs.cache
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.AssemblyInfo.cs
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.csproj.CoreCompileInputs.cache
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.sourcelink.json
+D:\Rust\PolyGen\tests\game_schema_compile_test\bin\Debug\net8.0\game_schema_compile_test.exe
+D:\Rust\PolyGen\tests\game_schema_compile_test\bin\Debug\net8.0\game_schema_compile_test.deps.json
+D:\Rust\PolyGen\tests\game_schema_compile_test\bin\Debug\net8.0\game_schema_compile_test.runtimeconfig.json
+D:\Rust\PolyGen\tests\game_schema_compile_test\bin\Debug\net8.0\game_schema_compile_test.dll
+D:\Rust\PolyGen\tests\game_schema_compile_test\bin\Debug\net8.0\game_schema_compile_test.pdb
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.dll
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\refint\game_schema_compile_test.dll
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.pdb
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\game_schema_compile_test.genruntimeconfig.cache
+D:\Rust\PolyGen\tests\game_schema_compile_test\obj\Debug\net8.0\ref\game_schema_compile_test.dll

@@ -75,9 +75,6 @@ ${
                 let es_nl = csv_utils::find_embedded_struct(s, base.type_name);
                 let call_ns = if es_nl != () { current_ns_name } else { if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn } };
                 body += "        obj." + f.name + " = " + call_ns + ".BinaryReaders.Read" + base.type_name + "(br);\n";
-
-
-                body += "            obj." + f.name + " = BinaryUtils.ReadOption<global::" + f.field_type.fqn + ">(br, " + call_ns + ".BinaryReaders.Read" + base.type_name + ");\n";
             }
         } else if item.is_comment() {
             let c = item.as_comment();
