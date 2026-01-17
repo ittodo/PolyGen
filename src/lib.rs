@@ -1,3 +1,39 @@
+//! # PolyGen - Polyglot Code Generator
+//!
+//! PolyGen is a code generation tool that transforms custom schema definitions into
+//! code for multiple target languages. It uses a pipeline approach:
+//!
+//! 1. **Parsing**: Schema files (`.poly`) are parsed into an Abstract Syntax Tree (AST)
+//! 2. **Validation**: The AST is validated for correctness (duplicate types, undefined references)
+//! 3. **IR Building**: The AST is transformed into an Intermediate Representation (IR)
+//! 4. **Code Generation**: The IR is passed to Rhai templates to generate target language code
+//!
+//! ## Quick Start
+//!
+//! ```ignore
+//! use polygen::{CompilationPipeline, PipelineConfig};
+//!
+//! let config = PipelineConfig::new(
+//!     "schemas/main.poly",
+//!     "templates",
+//!     "output",
+//! );
+//! let pipeline = CompilationPipeline::new(config);
+//! pipeline.run()?;
+//! ```
+//!
+//! ## Modules
+//!
+//! - [`ast_model`]: AST types representing parsed schema definitions
+//! - [`ast_parser`]: Parser for `.poly` schema files
+//! - [`ir_model`]: Intermediate Representation types for template consumption
+//! - [`ir_builder`]: Transforms AST to IR
+//! - [`type_registry`]: Centralized type management for type resolution
+//! - [`validation`]: AST validation (duplicate detection, type reference checking)
+//! - [`pipeline`]: High-level compilation pipeline orchestration
+//! - [`codegen`]: Code generation utilities
+//! - [`rhai`] / [`rhai_generator`]: Rhai template engine integration
+
 use anyhow::Result;
 use clap::Parser as ClapParser;
 use pest_derive::Parser;
@@ -10,9 +46,11 @@ pub mod codegen;
 pub mod error;
 pub mod ir_builder;
 pub mod ir_model;
+pub mod lang_config;
 pub mod pipeline;
 pub mod rhai;
 pub mod rhai_generator;
+pub mod type_registry;
 pub mod validation;
 
 // Re-exports for convenience

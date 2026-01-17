@@ -1,0 +1,28 @@
+# C# Language Configuration for PolyGen
+# This file configures the C# code generation settings.
+
+# File extension for generated C# files
+extension = ".cs"
+
+# Static files to copy to the output directory
+# Format: "destination/path.ext" = "source/path.ext"
+[static_files]
+"Common/DataSource.cs" = "static/csharp/DataSource.cs"
+"Common/BinaryUtils.cs" = "static/csharp/BinaryUtils.cs"
+"Common/CsvUtils.cs" = "static/csharp/CsvUtils.cs"
+"Common/JsonCsvConverter.cs" = "static/csharp/JsonCsvConverter.cs"
+"Common/JsonUtils.cs" = "static/csharp/JsonUtils.cs"
+"Common/PolygenAttributes.cs" = "static/csharp/PolygenAttributes.cs"
+
+# Template configuration
+[templates]
+# Main template for generating entity classes
+main = "csharp_file.rhai"
+
+# Extra templates to run after the main template
+extra = [
+    "csharp_binary_readers_file.rhai",
+    "csharp_binary_writers_file.rhai",
+    "csharp_csv_columns_file.rhai",
+    "csharp_csv_mappers_file.rhai",
+]

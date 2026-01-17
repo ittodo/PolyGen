@@ -1,8 +1,24 @@
+//! Intermediate Representation (IR) model for code generation.
+//!
+//! The IR is a template-friendly representation of the schema that can be easily
+//! consumed by Rhai templates. All type references are fully resolved, and the
+//! structure is optimized for code generation rather than parsing.
+//!
+//! # Key Differences from AST
+//!
+//! - All type references include resolved FQNs and type flags
+//! - Nested types are flattened into their parent containers
+//! - Metadata is pre-processed into template-friendly formats
+//! - All structures implement `Serialize` for Rhai integration
+
 use serde::Serialize;
 
 /// The root context object passed to the template engine.
+///
+/// Contains all parsed and processed schema files with their namespaces and definitions.
 #[derive(Serialize, Debug, Default, Clone)]
 pub struct SchemaContext {
+    /// All schema files that were processed.
     pub files: Vec<FileDef>,
 }
 
@@ -11,96 +27,130 @@ pub struct SchemaContext {
 /// Represents a single source schema file and its contents.
 #[derive(Serialize, Debug, Default, Clone)]
 pub struct FileDef {
+    /// The file name (without directory path).
     pub path: String,
+    /// Top-level namespaces defined in this file.
     pub namespaces: Vec<NamespaceDef>,
 }
 
 // --- Namespace Definition ---
 
-/// Represents a namespace containing various definitions. Can be nested.
+/// Represents a namespace containing various definitions.
+///
+/// Namespaces can be nested and contain structs, enums, and other namespaces.
 #[derive(Serialize, Debug, Default, Clone)]
 pub struct NamespaceDef {
-    /// The name of the namespace as declared in the schema (e.g., "game.character").
+    /// The fully-qualified namespace name (e.g., "game.character").
     pub name: String,
-    /// A list of items, including structs, enums, and nested namespaces, in declaration order.
+    /// Items within this namespace, in declaration order.
     pub items: Vec<NamespaceItem>,
 }
 
-/// An enum representing any item that can appear directly within a namespace.
+/// An item that can appear directly within a namespace.
 #[derive(Serialize, Debug, Clone)]
 pub enum NamespaceItem {
+    /// A struct (table) definition.
     Struct(StructDef),
+    /// An enum definition.
     Enum(EnumDef),
+    /// A comment.
     Comment(String),
-    Namespace(Box<NamespaceDef>), // A nested namespace is now an item.
+    /// A nested namespace.
+    Namespace(Box<NamespaceDef>),
 }
 
 // --- Struct Definition ---
 
-/// Represents a struct or class definition.
+/// Represents a struct (class) definition.
+///
+/// Structs contain fields, nested types, and metadata. The `header` field
+/// contains annotations and comments that apply to the struct itself.
 #[derive(Serialize, Debug, Clone)]
 pub struct StructDef {
+    /// The simple name of the struct.
     pub name: String,
-    pub fqn: String, // Fully Qualified Name, e.g., game.common.StatBlock
+    /// Fully qualified name (e.g., "game.common.StatBlock").
+    pub fqn: String,
+    /// Header items (struct-level annotations and comments).
     pub header: Vec<StructItem>,
+    /// Body items (fields, nested types, inline comments).
     pub items: Vec<StructItem>,
 }
 
-/// An enum representing any item that can appear within a struct.
+/// An item that can appear within a struct.
 #[derive(Serialize, Debug, Clone)]
 pub enum StructItem {
+    /// A field definition.
     Field(FieldDef),
+    /// A comment.
     Comment(String),
+    /// An annotation.
     Annotation(AnnotationDef),
+    /// An embedded struct (nested type).
     EmbeddedStruct(StructDef),
+    /// An inline enum (nested enum type).
     InlineEnum(EnumDef),
 }
 
-/// Represents a field/property within a struct.
+/// A field/property within a struct.
 #[derive(Serialize, Debug, Clone)]
 pub struct FieldDef {
+    /// The field name.
     pub name: String,
-    pub field_type: TypeRef, // Changed from String to a structured TypeRef
-    pub attributes: Vec<String>, // For annotations like [Key], [MaxLength(30)]
+    /// The resolved type reference.
+    pub field_type: TypeRef,
+    /// Attributes derived from constraints (e.g., `["Key", "MaxLength(30)"]`).
+    pub attributes: Vec<String>,
 }
 
-/// Represents a reference to a type, containing all resolved information.
+/// A fully-resolved type reference.
+///
+/// Contains all information needed for code generation, including the FQN,
+/// namespace, type flags, and inner types for generic containers.
 #[derive(Serialize, Debug, Clone)]
 pub struct TypeRef {
-    /// The original name used in the schema, e.g., "List<StatBlock>".
+    /// The original type name as written in the schema.
     pub original: String,
-    /// The fully qualified name of the core type, e.g., "game.common.StatBlock".
+    /// Fully qualified name of the core type (e.g., "game.common.StatBlock").
     pub fqn: String,
-    /// Namespace portion of FQN (without the final type name). Empty for primitives.
+    /// Namespace portion of the FQN (empty for primitives).
     pub namespace_fqn: String,
-    /// Final type identifier (last segment of FQN).
+    /// Simple type name (last segment of FQN).
     pub type_name: String,
-    /// Parent class path for nested types (e.g., "Monster.DropItems" for Monster.DropItems.Enchantment).
-    /// Empty string for top-level types.
+    /// Parent type path for nested types (e.g., "Monster.DropItems").
+    /// Empty for top-level types.
     pub parent_type_path: String,
-    /// The language-specific representation, e.g., "List<Game.Common.StatBlock>".
+    /// Language-specific type representation.
     pub lang_type: String,
+    /// Whether this is a built-in primitive type.
     pub is_primitive: bool,
+    /// Whether this references a struct type.
     pub is_struct: bool,
+    /// Whether this references an enum type.
     pub is_enum: bool,
+    /// Whether this is an optional type (`?`).
     pub is_option: bool,
+    /// Whether this is a list/array type (`[]`).
     pub is_list: bool,
-    /// For List<T> or Option<T>, this refers to the inner type T.
+    /// For container types (Option, List), the inner type.
     pub inner_type: Option<Box<TypeRef>>,
 }
 
-
-/// Represents a single annotation for the template.
+/// An annotation definition for templates.
 #[derive(Serialize, Debug, Clone)]
 pub struct AnnotationDef {
+    /// The annotation name.
     pub name: String,
+    /// Key-value parameters.
     pub params: Vec<AnnotationParam>,
 }
 
-/// Represents a key-value parameter for an annotation.
+/// A key-value parameter in an annotation.
 #[derive(Serialize, Debug, Clone)]
 pub struct AnnotationParam {
+    /// The parameter key.
     pub key: String,
+    /// The parameter value (as a string).
     pub value: String,
 }
 
@@ -109,21 +159,28 @@ pub struct AnnotationParam {
 /// Represents an enum definition.
 #[derive(Serialize, Debug, Clone)]
 pub struct EnumDef {
+    /// The simple name of the enum.
     pub name: String,
-    pub fqn: String, // Fully Qualified Name, e.g., game.common.Element
+    /// Fully qualified name (e.g., "game.common.Element").
+    pub fqn: String,
+    /// Enum items (members and comments).
     pub items: Vec<EnumItem>,
 }
 
-/// An enum representing any item that can appear within an enum.
+/// An item within an enum definition.
 #[derive(Serialize, Debug, Clone)]
 pub enum EnumItem {
+    /// An enum member/variant.
     Member(EnumMember),
+    /// A comment.
     Comment(String),
 }
 
-/// Represents a member of an enum.
+/// A member (variant) of an enum.
 #[derive(Serialize, Debug, Clone)]
 pub struct EnumMember {
+    /// The member name.
     pub name: String,
+    /// Optional explicit integer value.
     pub value: Option<i64>,
 }

@@ -148,9 +148,9 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| 4.1 TypeRegistry 설계 | ⬜ 대기 | |
-| 4.2 TypeRegistry 적용 | ⬜ 대기 | |
-| 4.3 clone() 최적화 | ⬜ 대기 | |
-| 4.4 String interning | ⬜ 대기 | |
-| 4.5 languages.toml | ⬜ 대기 | |
-| 4.6 문서화 | ⬜ 대기 | |
+| 4.1 TypeRegistry 설계 | ✅ 완료 | `src/type_registry.rs` 생성, TypeRegistry/TypeInfo/TypeKind 구조체 구현 |
+| 4.2 TypeRegistry 적용 | ✅ 완료 | `ir_builder.rs`의 resolve_type_kinds() 리팩토링 완료 |
+| 4.3 clone() 최적화 | ✅ 완료 | clippy로 redundant clone 6개 제거 (ir_builder.rs, rhai/csv.rs) |
+| 4.4 String interning | ⏸️ 보류 | 현재 성능 이슈 없음, 필요시 추후 적용 |
+| 4.5 languages.toml | ✅ 완료 | `src/lang_config.rs` 생성, `templates/csharp/csharp.toml` 설정 파일 생성, CodeGenerator 연동 |
+| 4.6 문서화 | ✅ 완료 | lib.rs, ast_model.rs, ir_model.rs, pipeline.rs, codegen.rs 문서화 완료 |

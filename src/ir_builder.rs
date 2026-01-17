@@ -3,6 +3,7 @@ use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, FieldDef, FileDef, NamespaceDef,
     NamespaceItem, SchemaContext, StructDef, StructItem, TypeRef,
 };
+use crate::type_registry::{TypeKind, TypeRegistry};
 use heck::ToPascalCase;
 
 /// Builds the template-friendly Intermediate Representation (IR) from the AST definitions.
@@ -77,7 +78,7 @@ fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition, cur
         Definition::Namespace(ns_ast) => {
             let this = ns_ast.path.join(".");
             let next_ns = if current_ns.is_empty() {
-                this.clone()
+                this
             } else if this.is_empty() {
                 current_ns.to_string()
             } else {
@@ -106,155 +107,120 @@ fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition, cur
     }
 }
 
-use std::collections::{HashMap, HashSet};
-
-// Traverse the built IR and fix TypeRef.is_enum / is_struct flags based on declared enums
+// Traverse the built IR and fix TypeRef.is_enum / is_struct flags based on declared types
 fn resolve_type_kinds(ctx: &mut SchemaContext) {
-    let mut enum_fqns: HashSet<String> = HashSet::new();
-    let mut enum_by_ns_and_name: HashSet<(String, String)> = HashSet::new();
-    let mut enum_by_name: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut registry = TypeRegistry::new();
 
-    // Collect all enum FQNs from all files/namespaces (including inline enums)
+    // Pass 1: Collect all types (enums and structs) from all files/namespaces
     for file in &ctx.files {
         for ns in &file.namespaces {
-            collect_enum_fqns_from_namespace_items(&ns.items, &mut enum_fqns, &mut enum_by_ns_and_name, &mut enum_by_name);
+            collect_types_from_namespace_items(&ns.items, &mut registry);
         }
     }
 
-    // Adjust all TypeRefs in struct fields recursively
+    // Pass 2: Adjust all TypeRefs in struct fields recursively
     for file in &mut ctx.files {
         for ns in &mut file.namespaces {
-            adjust_namespace_items_typerefs(&mut ns.items, &enum_fqns, &enum_by_ns_and_name, &enum_by_name);
+            adjust_namespace_items_typerefs(&mut ns.items, &registry);
         }
     }
 }
 
-fn collect_enum_fqns_from_namespace_items(
-    items: &Vec<NamespaceItem>,
-    set: &mut HashSet<String>,
-    by_ns_and_name: &mut HashSet<(String, String)>,
-    by_name: &mut HashMap<String, HashSet<String>>,
-) {
-    for it in items {
-        match it {
+/// Recursively collects all type definitions from namespace items into the registry.
+fn collect_types_from_namespace_items(items: &[NamespaceItem], registry: &mut TypeRegistry) {
+    for item in items {
+        match item {
             NamespaceItem::Enum(e) => {
-                set.insert(e.fqn.clone());
-                let ns = namespace_of_owned(&e.fqn);
-                by_ns_and_name.insert((ns.clone(), last_segment_owned(&e.fqn)));
-                by_name.entry(last_segment_owned(&e.fqn)).or_default().insert(e.fqn.clone());
+                registry.register(&e.fqn, TypeKind::Enum);
             }
             NamespaceItem::Struct(s) => {
-                collect_enum_fqns_from_struct(s, set, by_ns_and_name, by_name);
+                registry.register(&s.fqn, TypeKind::Struct);
+                collect_types_from_struct(s, registry);
             }
             NamespaceItem::Namespace(inner) => {
-                collect_enum_fqns_from_namespace_items(&inner.items, set, by_ns_and_name, by_name);
+                collect_types_from_namespace_items(&inner.items, registry);
             }
             NamespaceItem::Comment(_) => {}
         }
     }
 }
 
-fn collect_enum_fqns_from_struct(
-    s: &StructDef,
-    set: &mut HashSet<String>,
-    by_ns_and_name: &mut HashSet<(String, String)>,
-    by_name: &mut HashMap<String, HashSet<String>>,
-) {
+/// Recursively collects types from within a struct (inline enums, embedded structs).
+fn collect_types_from_struct(s: &StructDef, registry: &mut TypeRegistry) {
     for item in &s.items {
         match item {
             StructItem::InlineEnum(e) => {
-                set.insert(e.fqn.clone());
-                let ns = namespace_of_owned(&e.fqn);
-                by_ns_and_name.insert((ns.clone(), last_segment_owned(&e.fqn)));
-                by_name.entry(last_segment_owned(&e.fqn)).or_default().insert(e.fqn.clone());
+                registry.register(&e.fqn, TypeKind::Enum);
             }
-            StructItem::EmbeddedStruct(sub) => collect_enum_fqns_from_struct(sub, set, by_ns_and_name, by_name),
+            StructItem::EmbeddedStruct(sub) => {
+                registry.register(&sub.fqn, TypeKind::Embed);
+                collect_types_from_struct(sub, registry);
+            }
             StructItem::Field(_) | StructItem::Annotation(_) | StructItem::Comment(_) => {}
         }
     }
 }
 
-fn adjust_namespace_items_typerefs(
-    items: &mut Vec<NamespaceItem>,
-    enum_fqns: &HashSet<String>,
-    by_ns_and_name: &HashSet<(String, String)>,
-    by_name: &HashMap<String, HashSet<String>>,
-) {
-    for it in items {
-        match it {
-            NamespaceItem::Struct(ref mut s) => adjust_struct_typerefs(s, enum_fqns, by_ns_and_name, by_name),
-            NamespaceItem::Namespace(ref mut inner) => adjust_namespace_items_typerefs(&mut inner.items, enum_fqns, by_ns_and_name, by_name),
+/// Recursively adjusts TypeRef flags in namespace items using the registry.
+fn adjust_namespace_items_typerefs(items: &mut [NamespaceItem], registry: &TypeRegistry) {
+    for item in items {
+        match item {
+            NamespaceItem::Struct(ref mut s) => adjust_struct_typerefs(s, registry),
+            NamespaceItem::Namespace(ref mut inner) => {
+                adjust_namespace_items_typerefs(&mut inner.items, registry)
+            }
             NamespaceItem::Enum(_) | NamespaceItem::Comment(_) => {}
         }
     }
 }
 
-fn adjust_struct_typerefs(
-    s: &mut StructDef,
-    enum_fqns: &HashSet<String>,
-    by_ns_and_name: &HashSet<(String, String)>,
-    by_name: &HashMap<String, HashSet<String>>,
-) {
+/// Recursively adjusts TypeRef flags in a struct's fields.
+fn adjust_struct_typerefs(s: &mut StructDef, registry: &TypeRegistry) {
     for item in &mut s.items {
         match item {
             StructItem::Field(ref mut f) => {
-                adjust_typeref(&mut f.field_type, enum_fqns, by_ns_and_name, by_name);
+                adjust_typeref(&mut f.field_type, registry);
             }
-            StructItem::EmbeddedStruct(ref mut sub) => adjust_struct_typerefs(sub, enum_fqns, by_ns_and_name, by_name),
+            StructItem::EmbeddedStruct(ref mut sub) => adjust_struct_typerefs(sub, registry),
             StructItem::InlineEnum(_) | StructItem::Annotation(_) | StructItem::Comment(_) => {}
         }
     }
 }
 
-fn adjust_typeref(
-    t: &mut TypeRef,
-    enum_fqns: &HashSet<String>,
-    by_ns_and_name: &HashSet<(String, String)>,
-    by_name: &HashMap<String, HashSet<String>>,
-) {
+/// Adjusts a single TypeRef's is_enum/is_struct flags using the registry.
+fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry) {
+    // First, recursively process inner types (for Option<T> or List<T>)
     if let Some(inner) = &mut t.inner_type {
-        adjust_typeref(inner.as_mut(), enum_fqns, by_ns_and_name, by_name);
+        adjust_typeref(inner.as_mut(), registry);
     }
 
-    if !t.is_primitive {
-        if enum_fqns.contains(&t.fqn) {
+    // Skip primitives - they don't need resolution
+    if t.is_primitive {
+        return;
+    }
+
+    // Try to resolve the type using the registry
+    // Strategy 1: Direct FQN match
+    if registry.is_enum(&t.fqn) {
+        t.is_enum = true;
+        t.is_struct = false;
+        return;
+    }
+
+    // Strategy 2: Resolve using namespace context
+    if let Some(resolved_fqn) = registry.resolve(&t.type_name, &t.namespace_fqn) {
+        if registry.is_enum(&resolved_fqn) {
+            t.fqn = resolved_fqn.clone();
+            t.namespace_fqn = namespace_of_owned(&resolved_fqn);
             t.is_enum = true;
             t.is_struct = false;
             return;
         }
-
-        // Fallback 1: same-namespace + type name match
-        if by_ns_and_name.contains(&(t.namespace_fqn.clone(), t.type_name.clone())) {
-            let fqn = if t.namespace_fqn.is_empty() {
-                t.type_name.clone()
-            } else {
-                format!("{}.{}", t.namespace_fqn, t.type_name)
-            };
-            if enum_fqns.contains(&fqn) {
-                t.fqn = fqn;
-                t.is_enum = true;
-                t.is_struct = false;
-                return;
-            }
-        }
-
-        // Fallback 2: unique type name across all enums
-        if let Some(set) = by_name.get(&t.type_name) {
-            if set.len() == 1 {
-                if let Some(only_fqn) = set.iter().next() {
-                    t.fqn = only_fqn.clone();
-                    t.namespace_fqn = namespace_of_owned(only_fqn);
-                    t.is_enum = true;
-                    t.is_struct = false;
-                    return;
-                }
-            }
-        }
-
-        // Default: treat as struct
-        t.is_enum = false;
-        t.is_struct = true;
     }
+
+    // Default: treat as struct (could be a struct reference or external type)
+    t.is_enum = false;
+    t.is_struct = true;
 }
 
 fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> StructDef {
@@ -488,7 +454,7 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
     };
     match t.cardinality {
         Some(ast_model::Cardinality::Optional) => {
-            let inner_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
+            let inner_fqn = if is_primitive { base_fqn } else { qualify(&base_fqn, current_ns) };
             let inner_ns = namespace_of_owned(&inner_fqn);
             let inner = TypeRef {
                 original: base_name.clone(),
@@ -521,7 +487,7 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             }
         }
         Some(ast_model::Cardinality::Array) => {
-            let inner_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
+            let inner_fqn = if is_primitive { base_fqn } else { qualify(&base_fqn, current_ns) };
             let inner_ns = namespace_of_owned(&inner_fqn);
             let inner = TypeRef {
                 original: base_name.clone(),
@@ -554,7 +520,7 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             }
         }
         None => {
-            let core_fqn = if is_primitive { base_fqn.clone() } else { qualify(&base_fqn, current_ns) };
+            let core_fqn = if is_primitive { base_fqn } else { qualify(&base_fqn, current_ns) };
             let core_ns = namespace_of_owned(&core_fqn);
             TypeRef {
                 original: base_name.clone(),

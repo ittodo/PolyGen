@@ -839,7 +839,7 @@ fn gen_read_assign_indexed(
         let enum_ty = if is_inline_enum_name(&t) {
             format!("{}.{}", ctx_struct.name, t)
         } else {
-            t.clone()
+            t
         };
         code.push_str(&format!(
             "{{ int __idx; string __cell=null; if (map.TryGetValue({pref} + \"{fname}\", out __idx) && __idx>=0 && __idx < row.Length) __cell = row[__idx]; {obj}.{fname} = DataSourceFactory.ConvertValue<{ety}>(__cell); }}\n",
@@ -1246,7 +1246,7 @@ fn generate_read_assign_for_field(
             format!("{}.{}", ctx_struct.name, t)
         } else {
             // best-effort: t may be fully-qualified enum name; use it directly
-            t.clone()
+            t
         };
         code.push_str(&format!(
             "{obj}.{fn} = DataSourceFactory.ConvertSingleValue<{ety}>(row, {pref} + \"{fn}\");\n",

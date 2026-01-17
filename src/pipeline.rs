@@ -1,6 +1,31 @@
-//! Compilation pipeline module
+//! Compilation pipeline module.
 //!
-//! Handles the complete schema compilation process from parsing to code generation.
+//! This module provides the high-level orchestration for the schema compilation process.
+//! It handles the complete workflow from parsing schema files to generating target code.
+//!
+//! # Pipeline Stages
+//!
+//! 1. **Preparation**: Create/clean output directory
+//! 2. **Parsing**: Parse all schema files (including imports) into ASTs
+//! 3. **Validation**: Validate ASTs for correctness
+//! 4. **IR Building**: Transform ASTs into the Intermediate Representation
+//! 5. **Code Generation**: Generate code for target languages using Rhai templates
+//!
+//! # Example
+//!
+//! ```ignore
+//! use polygen::{CompilationPipeline, PipelineConfig};
+//!
+//! let config = PipelineConfig::new(
+//!     "schemas/main.poly".into(),
+//!     "templates".into(),
+//!     "output".into(),
+//! )
+//! .with_language("csharp");
+//!
+//! let pipeline = CompilationPipeline::new(config);
+//! pipeline.run()?;
+//! ```
 
 use anyhow::Result;
 use pest::Parser;
@@ -9,25 +34,31 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ast_model::{AstRoot, Definition};
-use crate::codegen::{csharp_static_files, discover_languages, CodeGenerator};
+use crate::codegen::{discover_languages, CodeGenerator};
 use crate::ir_model::SchemaContext;
 use crate::{ast_parser, ir_builder, validation, Polygen, Rule};
 
-/// Configuration for the compilation pipeline
+/// Configuration for the compilation pipeline.
+///
+/// Specifies the input schema, template directory, output directory,
+/// and optional settings like target language and debug output.
 pub struct PipelineConfig {
-    /// Path to the root schema file
+    /// Path to the root schema file (entry point).
     pub schema_path: PathBuf,
-    /// Directory containing templates
+    /// Directory containing Rhai templates organized by language.
     pub templates_dir: PathBuf,
-    /// Base output directory
+    /// Base output directory for generated code.
     pub output_dir: PathBuf,
-    /// Optional specific language to generate (None = all languages)
+    /// Optional specific language to generate. If `None`, generates for all languages.
     pub target_lang: Option<String>,
-    /// Whether to write debug output files
+    /// Whether to write debug output files (AST, IR dumps).
     pub debug_output: bool,
 }
 
 impl PipelineConfig {
+    /// Creates a new pipeline configuration with the given paths.
+    ///
+    /// By default, debug output is enabled and all languages are targeted.
     pub fn new(schema_path: PathBuf, templates_dir: PathBuf, output_dir: PathBuf) -> Self {
         Self {
             schema_path,
@@ -38,28 +69,47 @@ impl PipelineConfig {
         }
     }
 
+    /// Sets a specific target language for code generation.
+    ///
+    /// Use this to generate code for only one language instead of all available.
     pub fn with_language(mut self, lang: impl Into<String>) -> Self {
         self.target_lang = Some(lang.into());
         self
     }
 
+    /// Enables or disables debug output file generation.
     pub fn with_debug_output(mut self, enabled: bool) -> Self {
         self.debug_output = enabled;
         self
     }
 }
 
-/// The compilation pipeline handles the complete schema-to-code process
+/// The main compilation pipeline for schema-to-code generation.
+///
+/// Orchestrates the complete process from parsing schema files to
+/// generating code in one or more target languages.
 pub struct CompilationPipeline {
     config: PipelineConfig,
 }
 
 impl CompilationPipeline {
+    /// Creates a new compilation pipeline with the given configuration.
     pub fn new(config: PipelineConfig) -> Self {
         Self { config }
     }
 
-    /// Run the complete compilation pipeline
+    /// Runs the complete compilation pipeline.
+    ///
+    /// This executes all pipeline stages in order:
+    /// 1. Prepare output directory
+    /// 2. Parse schema files
+    /// 3. Validate ASTs
+    /// 4. Build IR
+    /// 5. Generate code
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any stage fails (parsing, validation, IO, etc.).
     pub fn run(&self) -> Result<()> {
         self.prepare_output_dir()?;
         let asts = self.parse_schemas()?;
@@ -144,7 +194,13 @@ impl CompilationPipeline {
         }
     }
 
-    /// Generate code for a specific language
+    /// Generate code for a specific language.
+    ///
+    /// This method:
+    /// 1. Creates a CodeGenerator which loads the language config if available
+    /// 2. Copies static files (from config or defaults)
+    /// 3. Runs the main template
+    /// 4. Runs any extra templates defined in the config
     fn generate_for_language(&self, lang: &str, ir_context: &SchemaContext) -> Result<()> {
         println!("\n--- {} 코드 생성 중 ---", lang.to_uppercase());
 
@@ -154,44 +210,40 @@ impl CompilationPipeline {
             self.config.output_dir.clone(),
         );
 
-        // Copy static files for language-specific assets
-        if lang == "csharp" {
-            generator.copy_static_files(&csharp_static_files())?;
-        }
+        // Get the current working directory for resolving static file paths
+        let base_dir = std::env::current_dir()?;
+
+        // Copy static files from language configuration
+        generator.copy_configured_static_files(&base_dir)?;
 
         // Generate main code
         generator.generate(ir_context)?;
 
-        // Generate additional templates for C#
-        if lang == "csharp" {
-            self.generate_csharp_extras(&generator, ir_context)?;
-        }
+        // Generate extra templates from configuration
+        generator.generate_extras(ir_context)?;
 
         println!("{} 코드 생성이 완료되었습니다.", lang.to_uppercase());
         Ok(())
     }
-
-    /// Generate additional C# code (readers, writers, CSV mappers)
-    fn generate_csharp_extras(&self, generator: &CodeGenerator, ir_context: &SchemaContext) -> Result<()> {
-        let extras = [
-            ("csharp_binary_readers_file.rhai", "C# Binary Readers"),
-            ("csharp_binary_writers_file.rhai", "C# Binary Writers"),
-            ("csharp_csv_columns_file.rhai", "C# CSV Columns"),
-            ("csharp_csv_mappers_file.rhai", "C# CSV Mappers"),
-        ];
-
-        for (template, name) in extras {
-            if generator.has_template(template) {
-                println!("\n--- {} generation ---", name);
-                generator.generate_with_template(ir_context, template)?;
-            }
-        }
-
-        Ok(())
-    }
 }
 
-/// Parse and merge all schema files starting from the initial path
+/// Parses and merges all schema files starting from an initial entry point.
+///
+/// This function performs a breadth-first traversal of schema files, following
+/// `import` statements to discover and parse all dependent schemas.
+///
+/// # Arguments
+///
+/// * `initial_path` - The entry point schema file
+/// * `output_dir` - Optional output directory for debug files (parse tree dump)
+///
+/// # Returns
+///
+/// A vector of parsed AST roots, one for each schema file processed.
+///
+/// # Errors
+///
+/// Returns an error if any file cannot be read or parsed.
 pub fn parse_and_merge_schemas(initial_path: &Path, output_dir: Option<&Path>) -> Result<Vec<AstRoot>> {
     let mut files_to_process: VecDeque<PathBuf> = VecDeque::new();
     let mut processed_files: HashSet<PathBuf> = HashSet::new();
