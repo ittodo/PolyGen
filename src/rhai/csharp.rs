@@ -1,5 +1,5 @@
 use crate::ir_model::{FieldDef, TypeRef};
-use rhai::{Engine, EvalAltResult};
+use rhai::Engine;
 
 pub fn register_csharp(engine: &mut Engine) {
     engine.register_fn("cs_csv_header_name", cs_csv_header_name);
@@ -57,7 +57,7 @@ fn generate_write_logic(t: &TypeRef, access: &str) -> String {
         // Let's stick to the previous logic pattern:
         // if (val != null) add(val); else add("");
         
-        let inner_write = generate_value_write(inner, access); // Recurse? No, inner logic might assume non-null.
+        let _inner_write = generate_value_write(inner, access); // Recurse? No, inner logic might assume non-null.
         
         // Actually, let's just use the value write logic directly on the nullable type
         // if CsvUtils supports it.

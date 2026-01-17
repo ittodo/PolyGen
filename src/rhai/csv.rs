@@ -9,8 +9,7 @@
 use crate::ir_model::{
     EnumDef, FieldDef, FileDef, NamespaceDef, NamespaceItem, StructDef, StructItem,
 };
-use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
-use std::path::Path;
+use rhai::{Array, Dynamic, Engine};
 
 /// English: Register CSV helpers. Call after `register_core`.
 /// 한국어: CSV 헬퍼 등록. `register_core` 이후 호출하세요.
@@ -119,8 +118,7 @@ fn array_to_files(arr: &Array) -> Vec<FileDef> {
 fn unwrap_option(t: &str) -> &str {
     const P: &str = "Option<";
     if t.starts_with(P) && t.ends_with('>') {
-        let inner = &t[P.len()..t.len() - 1];
-        inner
+        &t[P.len()..t.len() - 1]
     } else {
         t
     }
@@ -473,7 +471,7 @@ fn collect_columns_with<'a>(
     files: &'a [FileDef],
 ) -> Vec<String> {
     let mut cols = Vec::new();
-    let mut t = unwrap_option(type_string).to_string();
+    let t = unwrap_option(type_string).to_string();
     if depth >= 10 {
         cols.push(prefix.to_string());
         return cols;
@@ -600,15 +598,15 @@ fn map_cs_primitive(t: &str) -> Option<&'static str> {
     }
 }
 
-fn cs_type_for<'a>(
-    files: &'a [FileDef],
+fn cs_type_for(
+    _files: &[FileDef],
     ctx_struct: &StructDef,
-    current_ns_name: &str,
+    _current_ns_name: &str,
     type_string: &str,
 ) -> String {
     let core = unwrap_option(type_string);
     if let Some(inner) = core.strip_prefix("List<").and_then(|s| s.strip_suffix('>')) {
-        let inner_cs = cs_type_for(files, ctx_struct, current_ns_name, inner);
+        let inner_cs = cs_type_for(_files, ctx_struct, _current_ns_name, inner);
         return format!("List<{}>", inner_cs);
     }
     if let Some(p) = map_cs_primitive(core) {
@@ -657,17 +655,6 @@ fn generate_read_fields_for_struct_indexed(
     files: &[FileDef],
     owner_fqn: &str,
 ) -> String {
-    fn gen_get_cell(expr_key: &str) -> String {
-        format!(
-            "{{ int __idx; string __cell=null; if (map.TryGetValue({key}, out __idx) && __idx >= 0 && __idx < row.Length) __cell = row[__idx]; ",
-            key = expr_key
-        )
-    }
-
-    fn fmt_key(prefix_var: &str, suffix: &str) -> String {
-        format!("{pref} + \"{suf}\"", pref = prefix_var, suf = suffix)
-    }
-
     let mut code = String::new();
     for it in &s.items {
         if let StructItem::Field(f) = it {
@@ -687,6 +674,7 @@ fn generate_read_fields_for_struct_indexed(
     code
 }
 
+#[allow(clippy::too_many_arguments, clippy::ptr_arg)]
 fn gen_read_assign_indexed(
     ctx_struct: &StructDef,
     field: &FieldDef,
@@ -700,7 +688,7 @@ fn gen_read_assign_indexed(
 ) -> String {
     let mut code = String::new();
     let field_name = &field.name;
-    let mut t = unwrap_option(&field.field_type.original).to_string();
+    let t = unwrap_option(&field.field_type.original).to_string();
     if depth >= 10 {
         return code;
     }
@@ -1110,6 +1098,7 @@ fn generate_dynamic_methods_for_struct(
     code
 }
 
+#[allow(clippy::too_many_arguments, clippy::ptr_arg)]
 fn generate_read_assign_for_field(
     ctx_struct: &StructDef,
     field: &FieldDef,
@@ -1123,7 +1112,7 @@ fn generate_read_assign_for_field(
 ) -> String {
     let mut code = String::new();
     let field_name = &field.name;
-    let mut t = unwrap_option(&field.field_type.original).to_string();
+    let t = unwrap_option(&field.field_type.original).to_string();
     if depth >= 10 {
         return code;
     }
@@ -1287,7 +1276,7 @@ fn generate_read_assign_for_field(
                 sub_headers.extend(sub);
             }
         }
-        code.push_str(&format!("{{ bool any=false; string tmp; "));
+        code.push_str("{ bool any=false; string tmp; ");
         for h in &sub_headers {
             code.push_str(&format!(
                 "if (row.TryGetValue({pref} + \"{field}.{}\", out tmp) && !string.IsNullOrEmpty(tmp)) {{ any=true; }} ",
@@ -1378,7 +1367,7 @@ fn generate_append_code(
     depth: usize,
 ) -> String {
     let mut code = String::new();
-    let mut t = unwrap_option(type_string).to_string();
+    let t = unwrap_option(type_string).to_string();
     if depth >= 10 {
         code.push_str("cols.Add(string.Empty);\n");
         return code;

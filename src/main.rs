@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use PolyGen::{run, Cli};
+use polygen::{run, Cli};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();

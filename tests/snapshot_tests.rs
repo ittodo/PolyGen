@@ -1,6 +1,6 @@
 use anyhow::Result;
 use insta::assert_debug_snapshot;
-use PolyGen::{parse_and_merge_schemas, build_ir_from_asts};
+use polygen::{parse_and_merge_schemas, build_ir_from_asts};
 use walkdir::WalkDir;
 
 #[test]
@@ -26,7 +26,7 @@ fn test_ast_snapshots() -> Result<()> {
 
 #[test]
 fn test_csv_mappers_snapshot() -> Result<()> {
-    use PolyGen::{Cli, run};
+    use polygen::{Cli, run};
     use std::path::PathBuf;
 
     let schema_path = PathBuf::from("tests/test_data/csv_test_schema.poly");

@@ -221,3 +221,370 @@ fn validate_all_types(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast_model::*;
+
+    /// Helper to create a simple table with a name
+    fn make_table(name: &str, members: Vec<TableMember>) -> Definition {
+        Definition::Table(Table {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            members,
+        })
+    }
+
+    /// Helper to create a simple enum with a name
+    fn make_enum(name: &str) -> Definition {
+        Definition::Enum(Enum {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            variants: vec![],
+        })
+    }
+
+    /// Helper to create a simple embed with a name
+    fn make_embed(name: &str, members: Vec<TableMember>) -> Definition {
+        Definition::Embed(Embed {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            members,
+        })
+    }
+
+    /// Helper to create a namespace
+    fn make_namespace(path: Vec<&str>, definitions: Vec<Definition>) -> Definition {
+        Definition::Namespace(Namespace {
+            path: path.into_iter().map(String::from).collect(),
+            imports: vec![],
+            definitions,
+        })
+    }
+
+    /// Helper to create a regular field with a path type
+    fn make_field_with_type(name: &str, type_path: Vec<&str>) -> TableMember {
+        TableMember::Field(FieldDefinition::Regular(RegularField {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            field_type: TypeWithCardinality {
+                base_type: TypeName::Path(type_path.into_iter().map(String::from).collect()),
+                cardinality: None,
+            },
+            constraints: vec![],
+            field_number: None,
+        }))
+    }
+
+    /// Helper to create a regular field with a basic type
+    fn make_field_basic(name: &str, basic_type: BasicType) -> TableMember {
+        TableMember::Field(FieldDefinition::Regular(RegularField {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            field_type: TypeWithCardinality {
+                base_type: TypeName::Basic(basic_type),
+                cardinality: None,
+            },
+            constraints: vec![],
+            field_number: None,
+        }))
+    }
+
+    /// Helper to create an inline embed field
+    fn make_inline_embed(name: &str, members: Vec<TableMember>) -> TableMember {
+        TableMember::Field(FieldDefinition::InlineEmbed(InlineEmbedField {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            members,
+            cardinality: None,
+            field_number: None,
+        }))
+    }
+
+    // ========== Basic Validation Tests ==========
+
+    #[test]
+    fn test_empty_definitions_is_valid() {
+        let definitions: Vec<Definition> = vec![];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_single_table_is_valid() {
+        let definitions = vec![make_table("User", vec![])];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_single_enum_is_valid() {
+        let definitions = vec![make_enum("Status")];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_single_embed_is_valid() {
+        let definitions = vec![make_embed("Address", vec![])];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_table_with_basic_type_field_is_valid() {
+        let definitions = vec![make_table(
+            "User",
+            vec![make_field_basic("name", BasicType::String)],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    // ========== Duplicate Definition Tests ==========
+
+    #[test]
+    fn test_duplicate_table_names_fails() {
+        let definitions = vec![make_table("User", vec![]), make_table("User", vec![])];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::DuplicateDefinition("User".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_duplicate_enum_names_fails() {
+        let definitions = vec![make_enum("Status"), make_enum("Status")];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::DuplicateDefinition("Status".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_duplicate_embed_names_fails() {
+        let definitions = vec![
+            make_embed("Address", vec![]),
+            make_embed("Address", vec![]),
+        ];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::DuplicateDefinition("Address".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_table_and_enum_same_name_fails() {
+        let definitions = vec![make_table("Item", vec![]), make_enum("Item")];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::DuplicateDefinition("Item".to_string()))
+        );
+    }
+
+    // ========== Type Reference Tests ==========
+
+    #[test]
+    fn test_field_referencing_defined_type_is_valid() {
+        let definitions = vec![
+            make_enum("Status"),
+            make_table("User", vec![make_field_with_type("status", vec!["Status"])]),
+        ];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_field_referencing_undefined_type_fails() {
+        let definitions = vec![make_table(
+            "User",
+            vec![make_field_with_type("status", vec!["UndefinedType"])],
+        )];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::TypeNotFound("UndefinedType".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_field_referencing_table_type_is_valid() {
+        let definitions = vec![
+            make_embed("Address", vec![]),
+            make_table(
+                "User",
+                vec![make_field_with_type("address", vec!["Address"])],
+            ),
+        ];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    // ========== Namespace Tests ==========
+
+    #[test]
+    fn test_namespace_type_resolution() {
+        let definitions = vec![make_namespace(
+            vec!["game", "common"],
+            vec![
+                make_enum("Status"),
+                make_table("User", vec![make_field_with_type("status", vec!["Status"])]),
+            ],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_cross_namespace_reference_with_fqn() {
+        let definitions = vec![
+            make_namespace(vec!["game", "common"], vec![make_enum("Status")]),
+            make_namespace(
+                vec!["game", "user"],
+                vec![make_table(
+                    "User",
+                    vec![make_field_with_type("status", vec!["game", "common", "Status"])],
+                )],
+            ),
+        ];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_nested_namespace_type_resolution() {
+        // Type defined in parent namespace should be accessible from child
+        let definitions = vec![make_namespace(
+            vec!["game"],
+            vec![
+                make_enum("GlobalStatus"),
+                make_namespace(
+                    vec!["user"],
+                    vec![make_table(
+                        "Player",
+                        vec![make_field_with_type("status", vec!["GlobalStatus"])],
+                    )],
+                ),
+            ],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_duplicate_type_in_namespace_fails() {
+        let definitions = vec![make_namespace(
+            vec!["game"],
+            vec![make_enum("Status"), make_enum("Status")],
+        )];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::DuplicateDefinition(
+                "game.Status".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_same_name_different_namespaces_is_valid() {
+        let definitions = vec![
+            make_namespace(vec!["game", "user"], vec![make_enum("Status")]),
+            make_namespace(vec!["game", "item"], vec![make_enum("Status")]),
+        ];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    // ========== Inline Embed Tests ==========
+
+    #[test]
+    fn test_inline_embed_type_collection() {
+        let definitions = vec![make_table(
+            "User",
+            vec![make_inline_embed(
+                "Profile",
+                vec![make_field_basic("bio", BasicType::String)],
+            )],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_inline_embed_can_reference_external_type() {
+        let definitions = vec![
+            make_enum("Country"),
+            make_table(
+                "User",
+                vec![make_inline_embed(
+                    "Address",
+                    vec![make_field_with_type("country", vec!["Country"])],
+                )],
+            ),
+        ];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_duplicate_inline_embed_in_same_table_fails() {
+        let definitions = vec![make_table(
+            "User",
+            vec![
+                make_inline_embed("Profile", vec![]),
+                make_inline_embed("Profile", vec![]),
+            ],
+        )];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::DuplicateDefinition(
+                "User.Profile".to_string()
+            ))
+        );
+    }
+
+    // ========== Nested Embed Tests ==========
+
+    #[test]
+    fn test_nested_embed_in_table() {
+        let definitions = vec![make_table(
+            "User",
+            vec![TableMember::Embed(Embed {
+                metadata: vec![],
+                name: Some("Settings".to_string()),
+                members: vec![make_field_basic("darkMode", BasicType::Bool)],
+            })],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_nested_enum_in_table() {
+        let definitions = vec![make_table(
+            "User",
+            vec![TableMember::Enum(Enum {
+                metadata: vec![],
+                name: Some("Role".to_string()),
+                variants: vec![],
+            })],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    // ========== Comments and Annotations ==========
+
+    #[test]
+    fn test_comments_are_ignored() {
+        let definitions = vec![
+            Definition::Comment("This is a comment".to_string()),
+            make_table("User", vec![]),
+        ];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_annotations_are_ignored() {
+        let definitions = vec![
+            Definition::Annotation(Annotation {
+                name: Some("deprecated".to_string()),
+                params: vec![],
+            }),
+            make_table("User", vec![]),
+        ];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+}

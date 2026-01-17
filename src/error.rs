@@ -33,3 +33,26 @@ pub enum ValidationError {
     #[error("Duplicate definition for type: '{0}'")]
     DuplicateDefinition(String),
 }
+
+#[derive(Error, Debug)]
+pub enum CodeGenError {
+    #[error("Template file not found: {path}")]
+    TemplateNotFound { path: String },
+
+    #[error("Failed to read template file '{path}': {source}")]
+    TemplateReadError {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Rhai script execution failed: {message}")]
+    RhaiExecutionError { message: String },
+
+    #[error("Failed to write output file '{path}': {source}")]
+    OutputWriteError {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+}
