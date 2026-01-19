@@ -1,6 +1,4 @@
 ${
-    import "templates/csharp/rhai_utils/type_mapping" as type_utils;
-
     let body = "";
     let current_struct_inline_enums = [];
     for it in s.items { if it.is_inline_enum() { let e = it.as_inline_enum(); current_struct_inline_enums.push(e.name); } }
@@ -17,7 +15,7 @@ ${
                 if inner.lang_type == "string" {
                     body += "        JsonUtils.WriteOptionRef<string>(w, \"" + prop + "\", obj." + f.name + ", (w2,v)=> w2.WriteStringValue(v));\n";
                 } else if inner.is_primitive {
-                    let mapped = type_utils::map_type(inner);
+                    let mapped = cs_map_type(inner);
                     let write_expr = switch inner.lang_type {
                         "u8"=>"(w2,v)=>w2.WriteNumberValue(v)", "i8"=>"(w2,v)=>w2.WriteNumberValue(v)",
                         "u16"=>"(w2,v)=>w2.WriteNumberValue(v)", "i16"=>"(w2,v)=>w2.WriteNumberValue(v)",
@@ -44,7 +42,7 @@ ${
                 } else if inner.is_primitive && inner.lang_type == "bool" {
                     body += "        JsonUtils.WriteList<bool>(w, \"" + prop + "\", obj." + f.name + ", (w2,v)=>w2.WriteBooleanValue(v));\n";
                 } else if inner.is_primitive {
-                    let mapped = type_utils::map_type(inner);
+                    let mapped = cs_map_type(inner);
                     body += "        JsonUtils.WriteList<" + mapped + ">(w, \"" + prop + "\", obj." + f.name + ", (w2,v)=>w2.WriteNumberValue(v));\n";
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
                     let enum_type = if inner.is_enum { s.name + "." + inner.type_name } else { inner.fqn };

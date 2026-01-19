@@ -1,6 +1,4 @@
 ${
-    import "templates/csharp/rhai_utils/type_mapping" as type_utils;
-
     let body = "";
     let current_struct_inline_enums = [];
     for it in s.items { if it.is_inline_enum() { let e = it.as_inline_enum(); current_struct_inline_enums.push(e.name); } }

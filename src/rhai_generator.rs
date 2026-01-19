@@ -1,6 +1,6 @@
 use crate::error::CodeGenError;
 use crate::ir_model::SchemaContext;
-use crate::rhai::{register_core, register_csv};
+use crate::rhai::{register_core, register_csharp};
 use rhai::{Engine, Scope};
 use std::path::Path;
 
@@ -13,8 +13,7 @@ pub fn generate_code_with_rhai(
     // Increase recursion/complexity limits for larger templates
     engine.set_max_expr_depths(2048, 2048);
     register_core(&mut engine);
-    register_csv(&mut engine);
-    crate::rhai::register_csharp(&mut engine);
+    register_csharp(&mut engine);
 
     let mut scope = Scope::new();
 

@@ -1,7 +1,7 @@
 
 ${
     import "templates/rhai_utils/indent" as indent_utils;
-    let struct_tmpl = include("templates/csharp/struct/csharp_logic_struct.rhai");
+    let struct_tmpl = include("templates/csharp/class/csharp_logic_struct.rhai");
     let enum_tmpl = include("templates/csharp/enum/csharp_enum.rhai");
     let ns_tmpl = include("templates/csharp/csharp_namespace.rhai");
 

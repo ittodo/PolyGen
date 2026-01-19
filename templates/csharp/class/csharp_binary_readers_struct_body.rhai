@@ -1,7 +1,6 @@
 ${
-    import "templates/csharp/rhai_utils/type_mapping" as type_utils;
-    import "templates/csharp/rhai_utils/read_mapping" as read_utils;
-    import "templates/csharp/rhai_utils/csv_helpers" as csv_utils;
+    import "templates/csharp/rhai_utils/binary_mapping" as binary_utils;
+    import "templates/csharp/rhai_utils/type_utils" as type_utils;
 
     let body = "";
     // collect inline enums in this struct
@@ -22,13 +21,13 @@ ${
                 if inner.lang_type == "string" {
                     body += "            obj." + f.name + " = BinaryUtils.ReadOption<string>(br, BinaryUtils.ReadUtf8String);\n";
                 } else if inner.is_primitive {
-                    let k = inner.lang_type; let cs = type_utils::map_type(inner);
-                    body += "            obj." + f.name + " = BinaryUtils.ReadOption<" + cs + ">(br, _ => " + read_utils::read_expr(k, "br") + ");\n";
+                    let k = inner.lang_type; let cs = cs_map_type(inner);
+                    body += "            obj." + f.name + " = BinaryUtils.ReadOption<" + cs + ">(br, _ => " + binary_utils::read_expr(k, "br") + ");\n";
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
                     let enum_type = inner.fqn;
                     body += "            obj." + f.name + " = BinaryUtils.ReadOption<" + enum_type + ">(br, BinaryUtils.ReadEnumInt32<" + enum_type + ">);\n";
                 } else {
-                    let es_nl = csv_utils::find_embedded_struct(s, inner.type_name);
+                    let es_nl = type_utils::find_embedded_struct(s, inner.type_name);
                     let call_ns = if es_nl != () { current_ns_name } else { if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn } };
                     body += "            obj." + f.name + " = BinaryUtils.ReadOption<global::" + inner.fqn + ">(br, " + call_ns + ".BinaryReaders.Read" + inner.type_name + ");\n";
                 }
@@ -43,13 +42,13 @@ ${
                 if inner.lang_type == "string" {
                     body += "            obj." + f.name + " = BinaryUtils.ReadList<string>(br, BinaryUtils.ReadUtf8String);\n";
                 } else if inner.is_primitive {
-                    let k = inner.lang_type; let cs = type_utils::map_type(inner);
-                    body += "            obj." + f.name + " = BinaryUtils.ReadList<" + cs + ">(br, _ => " + read_utils::read_expr(k, "br") + ");\n";
+                    let k = inner.lang_type; let cs = cs_map_type(inner);
+                    body += "            obj." + f.name + " = BinaryUtils.ReadList<" + cs + ">(br, _ => " + binary_utils::read_expr(k, "br") + ");\n";
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
                     let enum_type = inner.fqn;
                     body += "            obj." + f.name + " = BinaryUtils.ReadList<" + enum_type + ">(br, BinaryUtils.ReadEnumInt32<" + enum_type + ">);\n";
                 } else {
-                    let es_nl = csv_utils::find_embedded_struct(s, inner.type_name);
+                    let es_nl = type_utils::find_embedded_struct(s, inner.type_name);
                     let call_ns = if es_nl != () { current_ns_name } else { if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn } };
                     body += "            obj." + f.name + " = BinaryUtils.ReadList<global::" + inner.fqn + ">(br, " + call_ns + ".BinaryReaders.Read" + inner.type_name + ");\n";
                 }
@@ -68,11 +67,11 @@ ${
             }
             // primitives
             else if base.is_primitive {
-                body += "        obj." + f.name + " = " + read_utils::read_expr(base.lang_type, "br") + ";\n";
+                body += "        obj." + f.name + " = " + binary_utils::read_expr(base.lang_type, "br") + ";\n";
             }
             // custom struct
             else {
-                let es_nl = csv_utils::find_embedded_struct(s, base.type_name);
+                let es_nl = type_utils::find_embedded_struct(s, base.type_name);
                 let call_ns = if es_nl != () { current_ns_name } else { if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn } };
                 body += "        obj." + f.name + " = " + call_ns + ".BinaryReaders.Read" + base.type_name + "(br);\n";
             }

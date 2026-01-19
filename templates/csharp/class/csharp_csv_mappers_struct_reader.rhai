@@ -14,7 +14,7 @@ ${
         if base.is_list {
             let inner = base.inner;
             if inner.is_primitive || inner.lang_type == "string" || inner.is_enum {
-                let cs_inner = type_utils::map_type(inner);
+                let cs_inner = cs_map_type(inner);
                 let generic_t = if inner.is_enum { "global::" + inner.fqn } else { cs_inner };
                 code += `                {`+"\n";
                 code += `                    var list = new System.Collections.Generic.List<${cs_inner}>();`+"\n";
@@ -87,7 +87,7 @@ ${
                 code += `                obj.${f.name} = global::Csv.${owner_fqn}.${es.name}.FromRowWithHeader(__h, row, gap);`+"\n";
                 code += `            }`+"\n";
             } else if base.is_primitive || base.lang_type == "string" || base.is_enum {
-                let cs_t = type_utils::map_type(base);
+                let cs_t = cs_map_type(base);
                 let generic_t = if base.is_enum { "global::" + base.fqn } else { cs_t };
                 code += `            if (__h != null && __h.Index >= 0 && __h.Index < row.Length)`+"\n";
                 code += `            {`+"\n";

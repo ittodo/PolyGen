@@ -1,6 +1,6 @@
 ${
     import "templates/rhai_utils/indent" as indent_utils;
-    let struct_tmpl = include("templates/csharp/struct/csharp_json_mappers_struct.rhai");
+    let struct_tmpl = include("templates/csharp/class/csharp_json_mappers_struct.rhai");
     let nested_ns_tmpl = include("templates/csharp/csharp_json_mappers_namespace.rhai");
 
     let full_ns_name = if ns_prefix == () || ns_prefix == "" { ns.name } else { ns_prefix + "." + ns.name };

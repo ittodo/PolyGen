@@ -1,3 +1,41 @@
+//! Core IR Type Registration for Rhai
+//!
+//! This module registers all IR (Intermediate Representation) types and their
+//! accessors with the Rhai scripting engine. This enables Rhai templates to
+//! inspect and traverse the schema structure.
+//!
+//! ## Registered Types
+//!
+//! | Type | Description |
+//! |------|-------------|
+//! | `SchemaContext` | Root context containing all files |
+//! | `FileDef` | A single schema file with namespaces |
+//! | `NamespaceDef` | A namespace containing items |
+//! | `NamespaceItem` | Enum: Struct, Enum, Comment, or Namespace |
+//! | `StructDef` | A struct/table definition |
+//! | `StructItem` | Enum: Field, Comment, or EmbeddedStruct |
+//! | `FieldDef` | A field within a struct |
+//! | `TypeRef` | Type information for a field |
+//! | `EnumDef` | An enum definition |
+//! | `EnumItem` | Enum: Member or Comment |
+//! | `EnumMember` | A single enum variant |
+//! | `AnnotationDef` | An annotation on a type or field |
+//! | `AnnotationParam` | A parameter within an annotation |
+//!
+//! ## Helper Functions
+//!
+//! - `write_file(path, content)` - Write content to a file
+//! - `run_template(path, scope)` - Execute another template
+//! - `run_template_str(script, scope)` - Execute template from string
+//! - `join(arr, sep)` - Join array elements with separator
+//! - `indent(text, spaces)` - Indent text by N spaces
+//! - `to_pascal_case(s)` / `to_camel_case(s)` / `to_snake_case(s)` - Case conversion
+//!
+//! ---
+//!
+//! 이 모듈은 모든 IR(중간 표현) 타입과 접근자를 Rhai 스크립팅 엔진에 등록합니다.
+//! 이를 통해 Rhai 템플릿에서 스키마 구조를 검사하고 순회할 수 있습니다.
+
 use crate::ir_model::{
     AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef, NamespaceDef,
     NamespaceItem, SchemaContext, StructDef, StructItem, TypeRef,
@@ -5,8 +43,21 @@ use crate::ir_model::{
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
 use std::path::Path;
 
-// Registers core IR types and common helper functions into a Rhai Engine.
-// This keeps engine setup modular and out of `rhai_generator.rs`.
+/// Registers core IR types and common helper functions into a Rhai Engine.
+///
+/// This function must be called before any template execution. It sets up:
+/// - All IR type registrations with getters
+/// - Type checking functions (`is_struct`, `is_enum`, etc.)
+/// - Type conversion functions (`as_struct`, `as_enum`, etc.)
+/// - Utility functions (`write_file`, `join`, `indent`, etc.)
+///
+/// # Example
+///
+/// ```ignore
+/// let mut engine = Engine::new();
+/// register_core(&mut engine);
+/// // Engine is now ready for template execution
+/// ```
 pub fn register_core(engine: &mut Engine) {
     register_types_and_getters(engine);
     register_common_helpers(engine);

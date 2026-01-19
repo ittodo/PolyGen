@@ -1,6 +1,6 @@
 ${
     import "templates/rhai_utils/indent" as indent_utils;
-    let struct_tmpl = include("templates/csharp/struct/csharp_csv_mappers_struct.rhai");
+    let struct_tmpl = include("templates/csharp/class/csharp_csv_mappers_struct.rhai");
     let nested_ns_tmpl = include("templates/csharp/csharp_csv_mappers_namespace.rhai");
 
     // IR의 네임스페이스 이름은 이미 FQN이므로 접두어를 합치지 않는다

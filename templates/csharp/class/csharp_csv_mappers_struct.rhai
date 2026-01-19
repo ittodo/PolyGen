@@ -1,12 +1,11 @@
 ${
-    import "templates/csharp/rhai_utils/type_mapping" as type_utils;
-    import "templates/csharp/rhai_utils/csv_helpers" as csv_utils;
+    import "templates/csharp/rhai_utils/type_utils" as csv_utils;
     import "templates/rhai_utils/indent" as indent_utils;
 
     let code = "";
 
-    let writer_tmpl = include("templates/csharp/struct/csharp_csv_mappers_struct_writer.rhai");
-    let reader_tmpl = include("templates/csharp/struct/csharp_csv_mappers_struct_reader.rhai");
+    let writer_tmpl = include("templates/csharp/class/csharp_csv_mappers_struct_writer.rhai");
+    let reader_tmpl = include("templates/csharp/class/csharp_csv_mappers_struct_reader.rhai");
 
     // If this struct appears as an embedded struct anywhere in the schema,
     // skip generating a top-level CSV class (it will be rendered nested under its owner).

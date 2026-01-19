@@ -1,3 +1,6 @@
+import "templates/csharp/rhai_utils/binary_mapping" as binary_utils;
+import "templates/csharp/rhai_utils/type_utils" as type_utils;
+
 let using_template = include("templates/csharp/csharp_using_writers.rhai");
 let writers_template = include("templates/csharp/csharp_binary_writers.rhai");
 

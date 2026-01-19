@@ -1,6 +1,5 @@
-${  
+${
     import "templates/rhai_utils/indent" as indent_utils;
-    import "templates/csharp/rhai_utils/type_mapping" as type_utils;
     let body = "";
     for item in s.items 
     {
@@ -18,11 +17,11 @@ ${
                 body += "   [ " + attributes + " ]\n";
             }
 
-            body += "   public " + type_utils::map_type(f.field_type) + " " + f.name + ";\n";
+            body += "   public " + cs_map_type(f.field_type) + " " + f.name + ";\n";
         }
         else if item.is_embedded_struct()
         {
-            let structString = render_items([item.as_embedded_struct()], "templates/csharp/struct/csharp_logic_struct.rhai", "s");
+            let structString = render_items([item.as_embedded_struct()], "templates/csharp/class/csharp_logic_struct.rhai", "s");
 
             body += indent_utils::indent_text(structString , 1) + "\n";
         }
