@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas\\inline_enum_field_table.poly",
+        path: "tests/schemas/inline_enum_field_table.poly",
         file_imports: [],
         definitions: [
             Table(
@@ -66,6 +66,7 @@ expression: all_asts
                                                 "Available",
                                             ),
                                             value: None,
+                                            inline_comment: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
@@ -73,6 +74,7 @@ expression: all_asts
                                                 "OutOfStock",
                                             ),
                                             value: None,
+                                            inline_comment: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
@@ -80,6 +82,7 @@ expression: all_asts
                                                 "Discontinued",
                                             ),
                                             value: None,
+                                            inline_comment: None,
                                         },
                                     ],
                                     cardinality: None,

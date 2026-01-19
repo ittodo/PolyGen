@@ -260,12 +260,14 @@ pub struct InlineEnumField {
 /// A variant in an enum definition.
 #[derive(Debug, PartialEq, Clone)]
 pub struct EnumVariant {
-    /// Metadata attached to this variant.
+    /// Metadata attached to this variant (doc comments, annotations).
     pub metadata: Vec<Metadata>,
     /// The variant name.
     pub name: Option<String>,
     /// Optional explicit integer value.
     pub value: Option<i64>,
+    /// Optional inline comment (e.g., `Cash = 1; // 현금`).
+    pub inline_comment: Option<String>,
 }
 
 /// An enum definition.

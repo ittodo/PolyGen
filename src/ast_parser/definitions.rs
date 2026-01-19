@@ -177,10 +177,28 @@ pub fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
                 }
             }
 
+            // Parse optional inline comment from enum_variant_end
+            let mut inline_comment: Option<String> = None;
+            if let Some(end_pair) = variant_inner.peek() {
+                if end_pair.as_rule() == Rule::enum_variant_end {
+                    let end_text = variant_inner.next().unwrap().as_str();
+                    // enum_variant_end contains: (";" | ",") ~ spaces ~ inline_comment?
+                    // Extract inline comment if present (starts with //)
+                    if let Some(comment_start) = end_text.find("//") {
+                        let comment_text = &end_text[comment_start..];
+                        let cleaned = comment_text.trim_start_matches("//").trim();
+                        if !cleaned.is_empty() {
+                            inline_comment = Some(cleaned.to_string());
+                        }
+                    }
+                }
+            }
+
             variants.push(EnumVariant {
                 metadata,
                 name: Some(variant_name),
                 value: variant_value,
+                inline_comment,
             });
         }
     }

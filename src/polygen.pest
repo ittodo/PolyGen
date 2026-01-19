@@ -7,12 +7,16 @@
 // Whitespace and Comments
 // =======================
 // `_` 접두사가 붙은 규칙(silent rule)은 파싱 트리에서 생략됩니다.
-WHITESPACE = _{ " " | "\t" | NEWLINE }
+WHITESPACE = _{ " " | "\t" | NEWLINE | skip_comment }
 NEWLINE    = _{ "\n" | "\r\n" | "\r" }
 
-doc_comment   =  { block_comment | line_comment }
+// Regular line comments (// but not ///) are silently skipped as whitespace
+skip_comment = _{ "//" ~ !("/") ~ (!NEWLINE ~ ANY)* }
+
+// Doc comments (/// or /* */) are captured and attached to items
+doc_comment   =  { block_comment | doc_line_comment }
 block_comment =  { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
-line_comment  = @{ "//" ~ (!NEWLINE ~ ANY)* }
+doc_line_comment = @{ "///" ~ (!NEWLINE ~ ANY)* }
 
 // Main entry point
 // ================
@@ -58,7 +62,10 @@ field_number = { "=" ~ INTEGER }
 // ====
 enum_def           = { "enum" ~ IDENT ~ "{" ~ enum_variant* ~ "}" }
 anonymous_enum_def = { "enum" ~ "{" ~ enum_variant* ~ "}" }
-enum_variant       = { doc_comment* ~ annotation* ~ IDENT ~ ("=" ~ INTEGER)? ~ (";" | ",")? }
+enum_variant       = { doc_comment* ~ annotation* ~ IDENT ~ ("=" ~ INTEGER)? ~ enum_variant_end? }
+// Atomic rule to capture terminator and inline comment together (no whitespace skipping)
+enum_variant_end   = @{ (";" | ",") ~ (" " | "\t")* ~ inline_comment? }
+inline_comment     = @{ "//" ~ !("/") ~ (!NEWLINE ~ ANY)* }
 
 // Types
 // =====

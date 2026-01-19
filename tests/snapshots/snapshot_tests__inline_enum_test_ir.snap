@@ -21,9 +21,6 @@ SchemaContext {
                                             name: "Status",
                                             fqn: "MyGame.Player.Status",
                                             items: [
-                                                Comment(
-                                                    "액티브",
-                                                ),
                                                 Member(
                                                     EnumMember {
                                                         name: "Active",

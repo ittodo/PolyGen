@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas\\named_enum.poly",
+        path: "tests/schemas/named_enum.poly",
         file_imports: [],
         definitions: [
             Enum(
@@ -20,6 +20,7 @@ expression: all_asts
                                 "Active",
                             ),
                             value: None,
+                            inline_comment: None,
                         },
                         EnumVariant {
                             metadata: [],
@@ -27,6 +28,7 @@ expression: all_asts
                                 "Inactive",
                             ),
                             value: None,
+                            inline_comment: None,
                         },
                         EnumVariant {
                             metadata: [],
@@ -34,6 +36,7 @@ expression: all_asts
                                 "Banned",
                             ),
                             value: None,
+                            inline_comment: None,
                         },
                     ],
                 },

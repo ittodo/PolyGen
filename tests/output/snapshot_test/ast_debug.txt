@@ -24,6 +24,7 @@
                                             "RED",
                                         ),
                                         value: None,
+                                        inline_comment: None,
                                     },
                                     EnumVariant {
                                         metadata: [],
@@ -31,6 +32,7 @@
                                             "GREEN",
                                         ),
                                         value: None,
+                                        inline_comment: None,
                                     },
                                     EnumVariant {
                                         metadata: [],
@@ -38,6 +40,7 @@
                                             "BLUE",
                                         ),
                                         value: None,
+                                        inline_comment: None,
                                     },
                                 ],
                             },

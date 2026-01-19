@@ -9,50 +9,34 @@ namespace budget {
 
     /// 계좌 유형
     enum AccountType {
-        /// 현금
-        Cash;
-        /// 은행 계좌
-        BankAccount;
-        /// 신용카드
-        CreditCard;
-        /// 체크카드
-        DebitCard;
-        /// 적금/저축
-        Savings;
-        /// 투자 계좌
-        Investment;
+        Cash = 1;        // 현금
+        BankAccount = 2; // 은행 계좌
+        CreditCard = 3;  // 신용카드
+        DebitCard = 4;   // 체크카드
+        Savings = 5;     // 적금/저축
+        Investment = 6;  // 투자 계좌
     }
 
     /// 거래 유형
     enum TransactionType {
-        /// 수입
-        Income;
-        /// 지출
-        Expense;
-        /// 이체
-        Transfer;
+        Income = 1;   // 수입
+        Expense = 2;  // 지출
+        Transfer = 3; // 이체
     }
 
     /// 카테고리 유형
     enum CategoryType {
-        /// 수입 카테고리
-        Income;
-        /// 지출 카테고리
-        Expense;
+        Income = 1;  // 수입 카테고리
+        Expense = 2; // 지출 카테고리
     }
 
     /// 반복 주기
     enum RecurrenceType {
-        /// 반복 없음
-        None;
-        /// 매일
-        Daily;
-        /// 매주
-        Weekly;
-        /// 매월
-        Monthly;
-        /// 매년
-        Yearly;
+        None = 0;    // 반복 없음
+        Daily = 1;   // 매일
+        Weekly = 2;  // 매주
+        Monthly = 3; // 매월
+        Yearly = 4;  // 매년
     }
 
     // ========================================
