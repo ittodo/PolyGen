@@ -167,33 +167,51 @@ cargo fmt --all -- --check
 ### 기본 구조
 
 ```poly
-// 네임스페이스 정의
-namespace game.character;
-
 // 파일 임포트
 import "other_schema.poly";
 
-// 테이블 정의 (클래스/구조체)
-table Player {
-    id: u32 @primary_key;
-    name: string @max_length(100);
-    level: u16 @default(1) @range(1, 100);
-    email: string? @unique;  // optional
-    skills: Skill[];         // array
-}
+// 네임스페이스 정의 (중괄호 필수)
+namespace game.character {
 
-// Enum 정의
-enum PlayerClass {
-    Warrior = 1,
-    Mage = 2,
-    Rogue = 3,
-}
+    // 테이블 정의 (클래스/구조체)
+    table Player {
+        id: u32 primary_key;
+        name: string max_length(100);
+        level: u16 default(1) range(1, 100);
+        email: string? unique;  // optional
+        skills: Skill[];        // array
+    }
 
-// Embed 정의 (재사용 가능한 필드 그룹)
-embed Stats {
-    hp: u32;
-    mp: u32;
-    attack: u32;
+    // Enum 정의 (값 할당 및 인라인 주석 지원)
+    enum PlayerClass {
+        Warrior = 1;  // 전사
+        Mage = 2;     // 마법사
+        Rogue = 3;    // 도적
+    }
+
+    // Embed 정의 (재사용 가능한 필드 그룹)
+    embed Stats {
+        hp: u32;
+        mp: u32;
+        attack: u32;
+    }
+}
+```
+
+### 주석 규칙 (위치 기반)
+
+`//`와 `///`는 **동일하게 처리**됩니다. 주석의 의미는 **위치**에 따라 결정됩니다:
+
+| 위치 | 의미 | 예시 |
+|------|------|------|
+| 항목 **앞** (별도 줄) | Doc Comment → 다음 항목에 붙음 | `// 전사 클래스`<br>`Warrior = 1;` |
+| 항목 **뒤** (같은 줄) | Inline Comment → 현재 항목에 붙음 | `Warrior = 1; // 전사 클래스` |
+
+```poly
+// 이 주석은 AccountType enum의 doc comment가 됨
+enum AccountType {
+    Cash = 1;        // 이 주석은 Cash의 inline comment
+    BankAccount = 2; // 이 주석은 BankAccount의 inline comment
 }
 ```
 
@@ -206,13 +224,23 @@ embed Stats {
 
 ### 제약조건
 
-- `@primary_key` - 기본 키
-- `@unique` - 고유 값
-- `@max_length(n)` - 최대 길이
-- `@default(value)` - 기본값
-- `@range(min, max)` - 범위 제한
-- `@regex("pattern")` - 정규식 검증
-- `@foreign_key(Table.field)` - 외래 키
+제약조건은 `@` 없이 공백으로 구분하여 나열합니다:
+
+```poly
+id: u32 primary_key;
+name: string unique max_length(100);
+level: u16 default(1) range(1, 100);
+```
+
+| 제약조건 | 설명 | 예시 |
+|---------|------|------|
+| `primary_key` | 기본 키 | `id: u32 primary_key;` |
+| `unique` | 고유 값 | `email: string unique;` |
+| `max_length(n)` | 최대 길이 | `name: string max_length(50);` |
+| `default(value)` | 기본값 | `level: u16 default(1);` |
+| `range(min, max)` | 범위 제한 | `hp: u32 range(0, 9999);` |
+| `regex("pattern")` | 정규식 검증 | `email: string regex(".*@.*");` |
+| `foreign_key(path)` | 외래 키 | `user_id: u32 foreign_key(User.id);` |
 
 ### 어노테이션
 

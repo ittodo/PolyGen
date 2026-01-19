@@ -29,7 +29,11 @@ expression: all_asts
                                             ),
                                             variants: [
                                                 EnumVariant {
-                                                    metadata: [],
+                                                    metadata: [
+                                                        DocComment(
+                                                            "액티브",
+                                                        ),
+                                                    ],
                                                     name: Some(
                                                         "Active",
                                                     ),

@@ -527,7 +527,7 @@ mod tests {
     fn test_parse_doc_comment_on_table() {
         let ast = parse_schema(
             r#"
-            /// This is a user table
+            // This is a user table
             table User {}
             "#,
         )
