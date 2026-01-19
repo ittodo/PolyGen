@@ -10,6 +10,10 @@
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 NEWLINE    = _{ "\n" | "\r\n" | "\r" }
 
+// Comments - position-based semantics:
+// - Comments BEFORE an item (on their own line) → doc_comment (attached to next item)
+// - Comments AFTER ; or , on the SAME line → inline_comment (attached to current item)
+// Both // and /// are treated the same - meaning is determined by position, not syntax.
 doc_comment   =  { block_comment | line_comment }
 block_comment =  { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 line_comment  = @{ "//" ~ (!NEWLINE ~ ANY)* }
@@ -58,7 +62,11 @@ field_number = { "=" ~ INTEGER }
 // ====
 enum_def           = { "enum" ~ IDENT ~ "{" ~ enum_variant* ~ "}" }
 anonymous_enum_def = { "enum" ~ "{" ~ enum_variant* ~ "}" }
-enum_variant       = { doc_comment* ~ annotation* ~ IDENT ~ ("=" ~ INTEGER)? ~ (";" | ",")? }
+enum_variant       = { doc_comment* ~ annotation* ~ IDENT ~ ("=" ~ INTEGER)? ~ enum_variant_end? }
+// Atomic rule to capture terminator and inline comment together (no whitespace skipping)
+// This ensures comments after ; or , stay with the current item, not the next one
+enum_variant_end   = @{ (";" | ",") ~ (" " | "\t")* ~ inline_comment? }
+inline_comment     = @{ "//" ~ (!NEWLINE ~ ANY)* }
 
 // Types
 // =====

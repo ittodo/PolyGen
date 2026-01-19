@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas\\inline_enum_test.poly",
+        path: "tests/schemas/inline_enum_test.poly",
         file_imports: [],
         definitions: [
             Namespace(
@@ -38,6 +38,7 @@ expression: all_asts
                                                         "Active",
                                                     ),
                                                     value: None,
+                                                    inline_comment: None,
                                                 },
                                                 EnumVariant {
                                                     metadata: [],
@@ -45,6 +46,7 @@ expression: all_asts
                                                         "Inactive",
                                                     ),
                                                     value: None,
+                                                    inline_comment: None,
                                                 },
                                                 EnumVariant {
                                                     metadata: [],
@@ -52,6 +54,7 @@ expression: all_asts
                                                         "Banned",
                                                     ),
                                                     value: None,
+                                                    inline_comment: None,
                                                 },
                                             ],
                                         },
@@ -200,6 +203,7 @@ expression: all_asts
                                                             "Active",
                                                         ),
                                                         value: None,
+                                                        inline_comment: None,
                                                     },
                                                     EnumVariant {
                                                         metadata: [],
@@ -207,6 +211,7 @@ expression: all_asts
                                                             "Inactive",
                                                         ),
                                                         value: None,
+                                                        inline_comment: None,
                                                     },
                                                     EnumVariant {
                                                         metadata: [],
@@ -214,6 +219,7 @@ expression: all_asts
                                                             "Banned",
                                                         ),
                                                         value: None,
+                                                        inline_comment: None,
                                                     },
                                                 ],
                                                 cardinality: None,

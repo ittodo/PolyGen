@@ -742,6 +742,7 @@ mod tests {
                     metadata: vec![],
                     name: Some(v.to_string()),
                     value: None,
+                    inline_comment: None,
                 })
                 .collect(),
         })
@@ -1064,11 +1065,13 @@ mod tests {
                     metadata: vec![],
                     name: Some("Admin".to_string()),
                     value: None,
+                    inline_comment: None,
                 },
                 EnumVariant {
                     metadata: vec![],
                     name: Some("User".to_string()),
                     value: None,
+                    inline_comment: None,
                 },
             ],
             cardinality: None,

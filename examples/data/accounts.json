@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1,
+    "name": "현금 지갑",
+    "account_type": 1,
+    "balance": 150000,
+    "description": "일상 현금",
+    "color": "#4CAF50",
+    "is_active": true,
+    "created_at": "2024-01-01"
+  },
+  {
+    "id": 2,
+    "name": "국민은행 급여통장",
+    "account_type": 2,
+    "balance": 2850000,
+    "description": "월급 입금 계좌",
+    "color": "#2196F3",
+    "is_active": true,
+    "created_at": "2024-01-01"
+  },
+  {
+    "id": 3,
+    "name": "신한카드",
+    "account_type": 3,
+    "balance": -320000,
+    "description": "주 사용 신용카드",
+    "color": "#F44336",
+    "is_active": true,
+    "created_at": "2024-01-01"
+  },
+  {
+    "id": 4,
+    "name": "카카오뱅크",
+    "account_type": 2,
+    "balance": 1200000,
+    "description": "생활비 계좌",
+    "color": "#FFEB3B",
+    "is_active": true,
+    "created_at": "2024-01-01"
+  },
+  {
+    "id": 5,
+    "name": "토스 체크카드",
+    "account_type": 4,
+    "balance": 580000,
+    "description": "간편결제용",
+    "color": "#9C27B0",
+    "is_active": true,
+    "created_at": "2024-01-15"
+  },
+  {
+    "id": 6,
+    "name": "적금 계좌",
+    "account_type": 5,
+    "balance": 5000000,
+    "description": "비상금 적금",
+    "color": "#607D8B",
+    "is_active": true,
+    "created_at": "2024-01-01"
+  },
+  {
+    "id": 7,
+    "name": "주식 계좌",
+    "account_type": 6,
+    "balance": 3500000,
+    "description": "투자용",
+    "color": "#FF9800",
+    "is_active": true,
+    "created_at": "2024-02-01"
+  }
+]

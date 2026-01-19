@@ -1,0 +1,151 @@
+// 가계부 스키마 (Household Budget Schema)
+// PolyGen 예제 - 다양한 기능 데모
+
+namespace budget {
+
+    // ========================================
+    // Enums
+    // ========================================
+
+    /// 계좌 유형
+    enum AccountType {
+        Cash = 1;        // 현금
+        BankAccount = 2; // 은행 계좌
+        CreditCard = 3;  // 신용카드
+        DebitCard = 4;   // 체크카드
+        Savings = 5;     // 적금/저축
+        Investment = 6;  // 투자 계좌
+    }
+
+    /// 거래 유형
+    enum TransactionType {
+        Income = 1;   // 수입
+        Expense = 2;  // 지출
+        Transfer = 3; // 이체
+    }
+
+    /// 카테고리 유형
+    enum CategoryType {
+        Income = 1;  // 수입 카테고리
+        Expense = 2; // 지출 카테고리
+    }
+
+    /// 반복 주기
+    enum RecurrenceType {
+        None = 0;    // 반복 없음
+        Daily = 1;   // 매일
+        Weekly = 2;  // 매주
+        Monthly = 3; // 매월
+        Yearly = 4;  // 매년
+    }
+
+    // ========================================
+    // Embeds (재사용 가능한 구조체)
+    // ========================================
+
+    // 금액 정보
+    embed Money {
+        amount: i64;        // 금액 (소수점 없이 원 단위)
+        currency: string default("KRW") max_length(3);
+    }
+
+    // 기간 정보
+    embed Period {
+        year: u16 range(2000, 2100);
+        month: u8 range(1, 12);
+    }
+
+    // ========================================
+    // Tables
+    // ========================================
+
+    // 계좌
+    @load(csv: "data/accounts.csv", json: "data/accounts.json")
+    table Account {
+        id: u32 primary_key;
+        name: string max_length(50);
+        account_type: AccountType;
+        balance: i64 default(0);           // 현재 잔액
+        description: string? max_length(200);
+        color: string? max_length(7);      // 색상 코드 (#FFFFFF)
+        is_active: bool default(true);
+        created_at: string;                 // ISO 8601 날짜
+    }
+
+    // 카테고리
+    @load(csv: "data/categories.csv", json: "data/categories.json")
+    table Category {
+        id: u32 primary_key;
+        name: string max_length(30);
+        category_type: CategoryType;
+        icon: string? max_length(50);      // 아이콘 이름
+        color: string? max_length(7);
+        parent_id: u32? foreign_key(Category.id);  // 상위 카테고리 (계층 구조)
+        sort_order: u16 default(0);
+    }
+
+    // 태그
+    @load(csv: "data/tags.csv", json: "data/tags.json")
+    table Tag {
+        id: u32 primary_key;
+        name: string max_length(20) unique;
+        color: string? max_length(7);
+    }
+
+    // 거래 내역
+    @load(csv: "data/transactions.csv", json: "data/transactions.json")
+    table Transaction {
+        id: u64 primary_key;
+        date: string;                       // ISO 8601 날짜 (YYYY-MM-DD)
+        transaction_type: TransactionType;
+        amount: i64;                        // 금액 (양수)
+
+        // 관계
+        account_id: u32 foreign_key(Account.id);
+        category_id: u32 foreign_key(Category.id);
+        to_account_id: u32? foreign_key(Account.id);  // 이체 시 대상 계좌
+
+        // 상세 정보
+        description: string? max_length(200);
+        memo: string? max_length(500);
+
+        // 반복 거래
+        recurrence: RecurrenceType default(None);
+
+        // 메타데이터
+        created_at: string;
+        updated_at: string?;
+    }
+
+    // 거래-태그 연결 (다대다 관계)
+    @load(csv: "data/transaction_tags.csv")
+    table TransactionTag {
+        transaction_id: u64 foreign_key(Transaction.id);
+        tag_id: u32 foreign_key(Tag.id);
+    }
+
+    // 월별 예산
+    @load(csv: "data/budgets.csv", json: "data/budgets.json")
+    table Budget {
+        id: u32 primary_key;
+        category_id: u32 foreign_key(Category.id);
+        year: u16 range(2000, 2100);
+        month: u8 range(1, 12);
+        planned_amount: i64;                // 계획 금액
+        actual_amount: i64 default(0);     // 실제 사용 금액
+        note: string? max_length(200);
+    }
+
+    // 저축 목표
+    @load(csv: "data/savings_goals.csv", json: "data/savings_goals.json")
+    table SavingsGoal {
+        id: u32 primary_key;
+        name: string max_length(50);
+        target_amount: i64;                 // 목표 금액
+        current_amount: i64 default(0);    // 현재 모은 금액
+        deadline: string?;                  // 목표 날짜
+        account_id: u32? foreign_key(Account.id);  // 연결된 계좌
+        is_completed: bool default(false);
+        created_at: string;
+    }
+}

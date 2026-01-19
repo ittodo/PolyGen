@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas\\anonymous_enum_field_table.poly",
+        path: "tests/schemas/anonymous_enum_field_table.poly",
         file_imports: [],
         definitions: [
             Table(
@@ -64,6 +64,7 @@ expression: all_asts
                                                 "Pieces",
                                             ),
                                             value: None,
+                                            inline_comment: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
@@ -71,6 +72,7 @@ expression: all_asts
                                                 "Kilograms",
                                             ),
                                             value: None,
+                                            inline_comment: None,
                                         },
                                         EnumVariant {
                                             metadata: [],
@@ -78,6 +80,7 @@ expression: all_asts
                                                 "Liters",
                                             ),
                                             value: None,
+                                            inline_comment: None,
                                         },
                                     ],
                                     cardinality: None,

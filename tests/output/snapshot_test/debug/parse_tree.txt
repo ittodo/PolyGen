@@ -94,9 +94,9 @@ Pair {
                                                         Pair {
                                                             rule: enum_variant,
                                                             span: Span {
-                                                                str: "RED;",
+                                                                str: "RED; ",
                                                                 start: 38,
-                                                                end: 42,
+                                                                end: 43,
                                                             },
                                                             inner: [
                                                                 Pair {
@@ -108,14 +108,23 @@ Pair {
                                                                     },
                                                                     inner: [],
                                                                 },
+                                                                Pair {
+                                                                    rule: enum_variant_end,
+                                                                    span: Span {
+                                                                        str: "; ",
+                                                                        start: 41,
+                                                                        end: 43,
+                                                                    },
+                                                                    inner: [],
+                                                                },
                                                             ],
                                                         },
                                                         Pair {
                                                             rule: enum_variant,
                                                             span: Span {
-                                                                str: "GREEN;",
+                                                                str: "GREEN; ",
                                                                 start: 43,
-                                                                end: 49,
+                                                                end: 50,
                                                             },
                                                             inner: [
                                                                 Pair {
@@ -127,14 +136,23 @@ Pair {
                                                                     },
                                                                     inner: [],
                                                                 },
+                                                                Pair {
+                                                                    rule: enum_variant_end,
+                                                                    span: Span {
+                                                                        str: "; ",
+                                                                        start: 48,
+                                                                        end: 50,
+                                                                    },
+                                                                    inner: [],
+                                                                },
                                                             ],
                                                         },
                                                         Pair {
                                                             rule: enum_variant,
                                                             span: Span {
-                                                                str: "BLUE;",
+                                                                str: "BLUE; ",
                                                                 start: 50,
-                                                                end: 55,
+                                                                end: 56,
                                                             },
                                                             inner: [
                                                                 Pair {
@@ -143,6 +161,15 @@ Pair {
                                                                         str: "BLUE",
                                                                         start: 50,
                                                                         end: 54,
+                                                                    },
+                                                                    inner: [],
+                                                                },
+                                                                Pair {
+                                                                    rule: enum_variant_end,
+                                                                    span: Span {
+                                                                        str: "; ",
+                                                                        start: 54,
+                                                                        end: 56,
                                                                     },
                                                                     inner: [],
                                                                 },

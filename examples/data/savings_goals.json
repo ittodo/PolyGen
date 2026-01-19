@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "name": "비상금",
+    "target_amount": 10000000,
+    "current_amount": 5000000,
+    "deadline": "2024-12-31",
+    "account_id": 6,
+    "is_completed": false,
+    "created_at": "2024-01-01"
+  },
+  {
+    "id": 2,
+    "name": "여행 자금",
+    "target_amount": 3000000,
+    "current_amount": 800000,
+    "deadline": "2024-08-01",
+    "account_id": null,
+    "is_completed": false,
+    "created_at": "2024-01-15"
+  },
+  {
+    "id": 3,
+    "name": "노트북 구매",
+    "target_amount": 2000000,
+    "current_amount": 2000000,
+    "deadline": "2024-03-01",
+    "account_id": null,
+    "is_completed": true,
+    "created_at": "2024-01-01"
+  },
+  {
+    "id": 4,
+    "name": "연말 보너스 저축",
+    "target_amount": 5000000,
+    "current_amount": 0,
+    "deadline": "2024-12-31",
+    "account_id": 6,
+    "is_completed": false,
+    "created_at": "2024-02-01"
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {"id": 1, "category_id": 4, "year": 2024, "month": 1, "planned_amount": 400000, "actual_amount": 320000, "note": "식비 전체"},
+  {"id": 2, "category_id": 8, "year": 2024, "month": 1, "planned_amount": 150000, "actual_amount": 95000, "note": "교통비"},
+  {"id": 3, "category_id": 12, "year": 2024, "month": 1, "planned_amount": 1000000, "actual_amount": 1000000, "note": "주거비 (월세+관리비)"},
+  {"id": 4, "category_id": 15, "year": 2024, "month": 1, "planned_amount": 100000, "actual_amount": 100000, "note": "통신비"},
+  {"id": 5, "category_id": 18, "year": 2024, "month": 1, "planned_amount": 100000, "actual_amount": 28000, "note": "문화생활"},
+  {"id": 6, "category_id": 19, "year": 2024, "month": 1, "planned_amount": 150000, "actual_amount": 85000, "note": "쇼핑"},
+  {"id": 7, "category_id": 20, "year": 2024, "month": 1, "planned_amount": 50000, "actual_amount": 0, "note": "의료비 예비"},
+  {"id": 8, "category_id": 4, "year": 2024, "month": 2, "planned_amount": 400000, "actual_amount": 250000, "note": "식비 전체"},
+  {"id": 9, "category_id": 8, "year": 2024, "month": 2, "planned_amount": 150000, "actual_amount": 70000, "note": "교통비"},
+  {"id": 10, "category_id": 12, "year": 2024, "month": 2, "planned_amount": 1000000, "actual_amount": 1000000, "note": "주거비"},
+  {"id": 11, "category_id": 15, "year": 2024, "month": 2, "planned_amount": 100000, "actual_amount": 100000, "note": "통신비"},
+  {"id": 12, "category_id": 18, "year": 2024, "month": 2, "planned_amount": 100000, "actual_amount": 65000, "note": "문화생활"},
+  {"id": 13, "category_id": 19, "year": 2024, "month": 2, "planned_amount": 150000, "actual_amount": 85000, "note": "쇼핑"},
+  {"id": 14, "category_id": 20, "year": 2024, "month": 2, "planned_amount": 50000, "actual_amount": 55000, "note": "병원 방문"}
+]
