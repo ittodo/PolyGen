@@ -1,12 +1,21 @@
 ${
     import "templates/rhai_utils/indent" as indent_utils;
     let body = "";
-    for item in s.items 
+
+    // Container reference for navigation properties
+    body += "    private IDataContainer? _container;\n\n";
+    body += "    public void SetContainer(IDataContainer container)\n";
+    body += "    {\n";
+    body += "        _container = container;\n";
+    body += "    }\n\n";
+
+    // Fields
+    for item in s.items
     {
-        if item.is_comment() 
+        if item.is_comment()
         {
             let c = item.as_comment();
-            body += "   // " + c + "\n";
+            body += "    // " + c + "\n";
         }
         else if item.is_field()
         {
@@ -14,10 +23,10 @@ ${
 
             for attributes in f.attributes
             {
-                body += "   [ " + attributes + " ]\n";
+                body += "    [" + attributes + "]\n";
             }
 
-            body += "   public " + cs_map_type(f.field_type) + " " + f.name + ";\n";
+            body += "    public " + cs_map_type(f.field_type) + " " + f.name + ";\n";
         }
         else if item.is_embedded_struct()
         {
@@ -31,5 +40,81 @@ ${
             body += indent_utils::indent_text(enumString , 1) + "\n";
         }
     }
+
+    // Check if we have any navigation properties to generate
+    let has_fk = false;
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.foreign_key != () {
+                has_fk = true;
+            }
+        }
+    }
+    let has_relations = s.relations.len() > 0;
+
+    // Forward navigation properties (from foreign_key)
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.foreign_key != () {
+                let fk = f.foreign_key;
+                // Get target table name (last part of FQN)
+                let fqn_parts = fk.target_table_fqn.split(".");
+                let target_table_name = "";
+                for part in fqn_parts {
+                    target_table_name = part;
+                }
+
+                // Navigation property name is field name without "Id" suffix, or target table name
+                let nav_name = target_table_name;
+                if f.name.ends_with("Id") {
+                    nav_name = f.name.sub_string(0, f.name.len() - 2);
+                }
+
+                body += "\n    /// <summary>\n";
+                body += "    /// Navigation property to " + target_table_name + ".\n";
+                body += "    /// </summary>\n";
+                body += "    public " + target_table_name + "? " + nav_name + "\n";
+                body += "    {\n";
+                body += "        get\n";
+                body += "        {\n";
+                body += "            if (_container is IHas" + target_table_name + "Table c)\n";
+                body += "                return c." + target_table_name + "s.ById[" + f.name + "];\n";
+                body += "            return null;\n";
+                body += "        }\n";
+                body += "    }\n";
+            }
+        }
+    }
+
+    // Reverse navigation properties (from relations)
+    for rel in s.relations {
+        // Convert source_field to PascalCase for index name
+        let field_parts = rel.source_field.split("_");
+        let pascal_field = "";
+        for part in field_parts {
+            if part.len() > 0 {
+                let first = part.sub_string(0, 1);
+                first = first.to_upper();
+                let rest = part.sub_string(1);
+                pascal_field += first + rest;
+            }
+        }
+
+        body += "\n    /// <summary>\n";
+        body += "    /// Reverse navigation: " + rel.source_table_name + " rows referencing this " + s.name + ".\n";
+        body += "    /// </summary>\n";
+        body += "    public IReadOnlyList<" + rel.source_table_name + "> " + rel.name + "\n";
+        body += "    {\n";
+        body += "        get\n";
+        body += "        {\n";
+        body += "            if (_container is IHas" + rel.source_table_name + "Table c)\n";
+        body += "                return c." + rel.source_table_name + "s.By" + pascal_field + "[Id];\n";
+        body += "            return Array.Empty<" + rel.source_table_name + ">();\n";
+        body += "        }\n";
+        body += "    }\n";
+    }
+
     body
 }

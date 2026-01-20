@@ -5,7 +5,22 @@ ${
 
     let content = "";
 
+    // Collect all namespaces including nested ones
+    let ns_stack = [];
     for ns in file.namespaces {
+        ns_stack.push(ns);
+    }
+
+    while ns_stack.len() > 0 {
+        let ns = ns_stack.pop();
+
+        // Check for nested namespaces and add them to the stack
+        for item in ns.items {
+            if item.is_namespace() {
+                ns_stack.push(item.as_namespace());
+            }
+        }
+
         // Collect all structs in this namespace for the container
         let structs = [];
         for item in ns.items {
@@ -14,7 +29,7 @@ ${
             }
         }
 
-        if structs.len == 0 {
+        if structs.len() == 0 {
             continue;
         }
 
@@ -33,7 +48,7 @@ ${
             content += "\n";
         }
 
-        // Generate the root container class
+        // Generate the namespace-level container class
         let container_content = eval("`" + container_class + "`");
         content += indent_utils::indent_text(container_content, 1);
         content += "\n";

@@ -18,10 +18,17 @@ namespace test.csv
 	}
 
 
-	public class Point
+	public class Point : IDataRow
 	{
-	   public int x;
-	   public int y;
+	    private IDataContainer? _container;
+
+	    public void SetContainer(IDataContainer container)
+	    {
+	        _container = container;
+	    }
+
+	    public int x;
+	    public int y;
 
 
 	}
@@ -29,17 +36,24 @@ namespace test.csv
 
 
 
-	public class TestObject
+	public class TestObject : IDataRow
 	{
-	   [ Key ]
-	   public uint id;
-	   public string name;
-	   public bool active;
-	   public float score;
-	   public List<string> tags;
-	   public Color color;
-	   public Point location;
-	   public List<Point> history;
+	    private IDataContainer? _container;
+
+	    public void SetContainer(IDataContainer container)
+	    {
+	        _container = container;
+	    }
+
+	    [Key]
+	    public uint id;
+	    public string name;
+	    public bool active;
+	    public float score;
+	    public List<string> tags;
+	    public Color color;
+	    public Point location;
+	    public List<Point> history;
 
 
 	}
