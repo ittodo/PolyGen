@@ -77,9 +77,10 @@ basic_type            = { "string" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16"
 
 // Constraints
 // ===========
-constraint      = { primary_key | unique | max_length | default_val | range_val | regex_val | foreign_key_val }
+constraint      = { primary_key | unique | index | max_length | default_val | range_val | regex_val | foreign_key_val }
 primary_key     = { "primary_key" }
 unique          = { "unique" }
+index           = { "index" }
 max_length      = { "max_length" ~ "(" ~ INTEGER ~ ")" }
 default_val     = { "default" ~ "(" ~ literal ~ ")" }
 range_val       = { "range" ~ "(" ~ literal ~ "," ~ literal ~ ")" }

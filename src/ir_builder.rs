@@ -1,10 +1,51 @@
 use crate::ast_model::{self, Definition, Metadata, TableMember};
 use crate::ir_model::{
-    self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, FieldDef, FileDef, NamespaceDef,
-    NamespaceItem, SchemaContext, StructDef, StructItem, TypeRef,
+    self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, FieldDef, FileDef, ForeignKeyDef,
+    IndexDef, NamespaceDef, NamespaceItem, RelationDef, SchemaContext, StructDef, StructItem,
+    TypeRef,
 };
 use crate::type_registry::{TypeKind, TypeRegistry};
 use heck::ToPascalCase;
+
+/// Information extracted from field constraints.
+#[derive(Debug, Default)]
+struct ConstraintInfo {
+    is_primary_key: bool,
+    is_unique: bool,
+    is_index: bool,
+    foreign_key: Option<ForeignKeyDef>,
+}
+
+/// Extracts structured constraint information from AST constraints.
+fn extract_constraint_info(constraints: &[ast_model::Constraint]) -> ConstraintInfo {
+    let mut info = ConstraintInfo::default();
+
+    for constraint in constraints {
+        match constraint {
+            ast_model::Constraint::PrimaryKey => info.is_primary_key = true,
+            ast_model::Constraint::Unique => info.is_unique = true,
+            ast_model::Constraint::ForeignKey(path, alias) => {
+                // Parse the path: e.g., ["game", "character", "Player", "id"]
+                // The last element is the field, everything before is the table FQN
+                if path.len() >= 2 {
+                    let target_field = path.last().unwrap().clone();
+                    let target_table_fqn = path[..path.len() - 1].join(".");
+                    info.foreign_key = Some(ForeignKeyDef {
+                        target_table_fqn,
+                        target_field,
+                        alias: alias.clone(),
+                    });
+                    // FK fields get a GroupIndex automatically
+                    info.is_index = true;
+                }
+            }
+            ast_model::Constraint::Index => info.is_index = true,
+            _ => {}
+        }
+    }
+
+    info
+}
 
 /// Builds the template-friendly Intermediate Representation (IR) from the AST definitions.
 pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
@@ -57,7 +98,116 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
     // After building the raw IR, resolve TypeRef flags (is_enum/is_struct) using the collected defs
     resolve_type_kinds(&mut context);
 
+    // Resolve reverse relations from foreign_key ... as definitions
+    resolve_relations(&mut context);
+
     context
+}
+
+/// Represents a pending relation to be added to a target table.
+struct PendingRelation {
+    /// FQN of the target table that should receive the relation.
+    target_table_fqn: String,
+    /// The relation definition to add.
+    relation: RelationDef,
+}
+
+/// Resolves reverse relations from foreign_key definitions with aliases.
+/// This must be called after all structs are built, as it needs to find
+/// target tables that may be in different files or namespaces.
+fn resolve_relations(context: &mut SchemaContext) {
+    // Step 1: Collect all pending relations from foreign_key ... as fields
+    let mut pending_relations: Vec<PendingRelation> = Vec::new();
+
+    for file in &context.files {
+        collect_relations_from_namespace(&file.namespaces, &mut pending_relations);
+    }
+
+    // Step 2: Apply relations to their target tables
+    for pending in pending_relations {
+        apply_relation_to_target(context, &pending);
+    }
+}
+
+/// Recursively collects relations from namespaces.
+fn collect_relations_from_namespace(
+    namespaces: &[NamespaceDef],
+    pending: &mut Vec<PendingRelation>,
+) {
+    for ns in namespaces {
+        for item in &ns.items {
+            match item {
+                NamespaceItem::Struct(s) => {
+                    collect_relations_from_struct(s, pending);
+                }
+                NamespaceItem::Namespace(nested_ns) => {
+                    collect_relations_from_namespace(&[(**nested_ns).clone()], pending);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Collects relations from a single struct's fields.
+fn collect_relations_from_struct(struct_def: &StructDef, pending: &mut Vec<PendingRelation>) {
+    for item in &struct_def.items {
+        if let StructItem::Field(field) = item {
+            if let Some(fk) = &field.foreign_key {
+                if let Some(alias) = &fk.alias {
+                    pending.push(PendingRelation {
+                        target_table_fqn: fk.target_table_fqn.clone(),
+                        relation: RelationDef {
+                            name: alias.to_pascal_case(),
+                            source_table_fqn: struct_def.fqn.clone(),
+                            source_table_name: struct_def.name.clone(),
+                            source_field: field.name.clone(),
+                        },
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Applies a pending relation to its target table.
+fn apply_relation_to_target(context: &mut SchemaContext, pending: &PendingRelation) {
+    for file in &mut context.files {
+        if apply_relation_to_namespaces(&mut file.namespaces, pending) {
+            return;
+        }
+    }
+}
+
+/// Recursively searches namespaces for the target table and applies the relation.
+fn apply_relation_to_namespaces(
+    namespaces: &mut [NamespaceDef],
+    pending: &PendingRelation,
+) -> bool {
+    for ns in namespaces {
+        for item in &mut ns.items {
+            match item {
+                NamespaceItem::Struct(s) => {
+                    if s.fqn == pending.target_table_fqn {
+                        s.relations.push(pending.relation.clone());
+                        return true;
+                    }
+                }
+                NamespaceItem::Namespace(nested_ns) => {
+                    if apply_relation_to_namespaces(
+                        &mut [(**nested_ns).clone()],
+                        pending,
+                    ) {
+                        // Need to update the boxed namespace
+                        // This is a bit awkward due to the Box
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
 }
 
 /// Recursively populates a list of items from AST definitions.
@@ -283,12 +433,56 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
         }
     }
 
+    // Build indexes from fields
+    let indexes = build_indexes_from_items(&items);
+
     StructDef {
         name,
         fqn,
         items,
         header: header_items,
+        indexes,
+        relations: Vec::new(), // Relations are populated in post-processing
     }
+}
+
+/// Builds index definitions from struct items by examining field constraints.
+fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
+    let mut indexes = Vec::new();
+
+    for item in items {
+        if let StructItem::Field(field) = item {
+            // Primary key creates a unique index
+            if field.is_primary_key {
+                indexes.push(IndexDef {
+                    name: format!("By{}", field.name.to_pascal_case()),
+                    field_name: field.name.clone(),
+                    field_type: field.field_type.clone(),
+                    is_unique: true,
+                });
+            }
+            // Unique constraint creates a unique index (if not already primary key)
+            else if field.is_unique {
+                indexes.push(IndexDef {
+                    name: format!("By{}", field.name.to_pascal_case()),
+                    field_name: field.name.clone(),
+                    field_type: field.field_type.clone(),
+                    is_unique: true,
+                });
+            }
+            // Index constraint or foreign key creates a group index
+            else if field.is_index {
+                indexes.push(IndexDef {
+                    name: format!("By{}", field.name.to_pascal_case()),
+                    field_name: field.name.clone(),
+                    field_type: field.field_type.clone(),
+                    is_unique: false,
+                });
+            }
+        }
+    }
+
+    indexes
 }
 
 /// Converts an `ast_model::FieldDefinition` into an `ir_model::FieldDef` and potential nested types (from inline embeds).
@@ -317,11 +511,18 @@ fn convert_field_to_ir(
                 _ => build_type_ref(&rf.field_type, current_ns),
             };
 
+            // Extract constraint info for the new fields
+            let constraint_info = extract_constraint_info(&rf.constraints);
+
             (
                 FieldDef {
                     name: rf.name.clone().expect("Regular field name must be present"),
                     field_type,
                     attributes,
+                    is_primary_key: constraint_info.is_primary_key,
+                    is_unique: constraint_info.is_unique,
+                    is_index: constraint_info.is_index,
+                    foreign_key: constraint_info.foreign_key,
                 },
                 Vec::new(),
                 inline_enums,
@@ -346,6 +547,10 @@ fn convert_field_to_ir(
                     false,
                 ),
                 attributes: Vec::new(),
+                is_primary_key: false,
+                is_unique: false,
+                is_index: false,
+                foreign_key: None,
             };
             (field_def, nested_items, Vec::new())
         }
@@ -370,6 +575,10 @@ fn convert_field_to_ir(
                     false,
                 ),
                 attributes: Vec::new(),
+                is_primary_key: false,
+                is_unique: false,
+                is_index: false,
+                foreign_key: None,
             };
             (field_def, Vec::new(), vec![enum_def])
         }
