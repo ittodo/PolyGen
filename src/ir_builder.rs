@@ -390,7 +390,7 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
                 header_items.push(StructItem::Comment(c.clone()));
             }
             Metadata::Annotation(a) => {
-                let annotation_def = convert_annotations_to_ir(std::slice::from_ref(a))[0].clone();
+                let annotation_def = convert_annotation_to_ir(a);
                 header_items.push(StructItem::Annotation(annotation_def));
             }
         }
@@ -409,7 +409,7 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
                     match meta {
                         Metadata::DocComment(c) => items.push(StructItem::Comment(c.clone())),
                         Metadata::Annotation(a) => {
-                            let annotation_def = convert_annotations_to_ir(std::slice::from_ref(a))[0].clone();
+                            let annotation_def = convert_annotation_to_ir(a);
                             items.push(StructItem::Annotation(annotation_def));
                         }
                     }
@@ -902,18 +902,23 @@ fn basic_name(b: &ast_model::BasicType) -> &'static str {
 fn convert_annotations_to_ir(annotations: &[ast_model::Annotation]) -> Vec<AnnotationDef> {
     annotations
         .iter()
-        .map(|ast_ann| AnnotationDef {
-            name: ast_ann.name.clone().unwrap(),
-            params: ast_ann
-                .params
-                .iter()
-                .map(|p| AnnotationParam {
-                    key: p.key.clone(),
-                    value: p.value.to_string(), // Assuming value is a simple literal
-                })
-                .collect(),
-        })
+        .map(convert_annotation_to_ir)
         .collect()
+}
+
+/// Converts a single AST annotation to IR annotation definition.
+fn convert_annotation_to_ir(ast_ann: &ast_model::Annotation) -> AnnotationDef {
+    AnnotationDef {
+        name: ast_ann.name.clone().unwrap(),
+        params: ast_ann
+            .params
+            .iter()
+            .map(|p| AnnotationParam {
+                key: p.key.clone(),
+                value: p.value.to_string(),
+            })
+            .collect(),
+    }
 }
 
 #[cfg(test)]
