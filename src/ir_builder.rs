@@ -359,9 +359,9 @@ fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry) {
 
     // Strategy 2: Resolve using namespace context
     if let Some(resolved_fqn) = registry.resolve(&t.type_name, &t.namespace_fqn) {
-        if registry.is_enum(&resolved_fqn) {
-            t.fqn = resolved_fqn.clone();
-            t.namespace_fqn = namespace_of_owned(&resolved_fqn);
+        if registry.is_enum(resolved_fqn) {
+            t.fqn = resolved_fqn.to_string();
+            t.namespace_fqn = namespace_of_owned(resolved_fqn);
             t.is_enum = true;
             t.is_struct = false;
             return;
@@ -452,17 +452,8 @@ fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
 
     for item in items {
         if let StructItem::Field(field) = item {
-            // Primary key creates a unique index
-            if field.is_primary_key {
-                indexes.push(IndexDef {
-                    name: format!("By{}", field.name.to_pascal_case()),
-                    field_name: field.name.clone(),
-                    field_type: field.field_type.clone(),
-                    is_unique: true,
-                });
-            }
-            // Unique constraint creates a unique index (if not already primary key)
-            else if field.is_unique {
+            // Primary key or unique constraint creates a unique index
+            if field.is_primary_key || field.is_unique {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
                     field_name: field.name.clone(),
@@ -897,13 +888,6 @@ fn basic_name(b: &ast_model::BasicType) -> &'static str {
         Bool => "bool",
         Bytes => "bytes",
     }
-}
-
-fn convert_annotations_to_ir(annotations: &[ast_model::Annotation]) -> Vec<AnnotationDef> {
-    annotations
-        .iter()
-        .map(convert_annotation_to_ir)
-        .collect()
 }
 
 /// Converts a single AST annotation to IR annotation definition.
