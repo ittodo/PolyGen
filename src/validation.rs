@@ -1,39 +1,39 @@
 use crate::ast_model::{Definition, FieldDefinition, TableMember, TypeName};
 use crate::error::ValidationError;
-use std::collections::HashSet;
+use crate::type_registry::{TypeKind, TypeRegistry};
 
 /// AST의 유효성을 검사하는 메인 함수입니다.
 pub fn validate_ast(definitions: &[Definition]) -> Result<(), ValidationError> {
-    let mut defined_types = HashSet::new();
+    let mut registry = TypeRegistry::new();
     // 1. 스키마에 정의된 모든 타입의 전체 경로(FQN)를 수집합니다.
-    collect_all_types(definitions, &mut Vec::new(), &mut defined_types)?;
+    collect_all_types(definitions, &mut Vec::new(), &mut registry)?;
     // 2. 사용된 타입들이 실제로 정의되었는지 확인합니다.
-    validate_all_types(definitions, &mut Vec::new(), &defined_types)?;
+    validate_all_types(definitions, &mut Vec::new(), &registry)?;
     Ok(())
 }
 
 fn collect_from_members(
     members: &[TableMember],
     path: &mut Vec<String>,
-    types: &mut HashSet<String>,
+    registry: &mut TypeRegistry,
 ) -> Result<(), ValidationError> {
     for member in members {
         match member {
             TableMember::Embed(e) => {
                 path.push(e.name.clone().expect("Embed name should be present"));
                 let embed_fqn = path.join(".");
-                if !types.insert(embed_fqn.clone()) {
+                if !registry.register(&embed_fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(embed_fqn));
                 }
                 // Recursively collect from the embed's members
-                collect_from_members(&e.members, path, types)?;
+                collect_from_members(&e.members, path, registry)?;
                 path.pop();
             }
             TableMember::Enum(e) => {
                 if let Some(name) = &e.name {
                     path.push(name.clone());
                     let enum_fqn = path.join(".");
-                    if !types.insert(enum_fqn.clone()) {
+                    if !registry.register(&enum_fqn, TypeKind::Enum) {
                         return Err(ValidationError::DuplicateDefinition(enum_fqn));
                     }
                     path.pop();
@@ -42,11 +42,11 @@ fn collect_from_members(
             TableMember::Field(FieldDefinition::InlineEmbed(ief)) => {
                 path.push(ief.name.clone().expect("Inline embed name should be present"));
                 let embed_fqn = path.join(".");
-                if !types.insert(embed_fqn.clone()) {
+                if !registry.register(&embed_fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(embed_fqn));
                 }
                 // Recursively collect from the inline embed's members
-                collect_from_members(&ief.members, path, types)?;
+                collect_from_members(&ief.members, path, registry)?;
                 path.pop();
             }
             _ => {} // Other members don't define new types in this context
@@ -55,17 +55,17 @@ fn collect_from_members(
     Ok(())
 }
 
-/// 재귀적으로 모든 타입 정의를 수집하여 `HashSet`에 추가합니다.
+/// 재귀적으로 모든 타입 정의를 수집하여 `TypeRegistry`에 등록합니다.
 fn collect_all_types(
     definitions: &[Definition],
     path: &mut Vec<String>,
-    types: &mut HashSet<String>,
+    registry: &mut TypeRegistry,
 ) -> Result<(), ValidationError> {
     for def in definitions {
         match def {
             Definition::Namespace(ns) => {
                 path.extend(ns.path.iter().cloned());
-                collect_all_types(&ns.definitions, path, types)?;
+                collect_all_types(&ns.definitions, path, registry)?;
                 for _ in 0..ns.path.len() {
                     path.pop();
                 }
@@ -77,12 +77,12 @@ fn collect_all_types(
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(".");
-                if !types.insert(fqn.clone()) {
+                if !registry.register(&fqn, TypeKind::Struct) {
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
 
                 path.push(t.name.as_ref().expect("Table name should be present").clone());
-                collect_from_members(&t.members, path, types)?;
+                collect_from_members(&t.members, path, registry)?;
                 path.pop();
             }
             Definition::Enum(e) => {
@@ -93,7 +93,7 @@ fn collect_all_types(
                         .cloned()
                         .collect::<Vec<_>>()
                         .join(".");
-                    if !types.insert(fqn.clone()) {
+                    if !registry.register(&fqn, TypeKind::Enum) {
                         return Err(ValidationError::DuplicateDefinition(fqn));
                     }
                 }
@@ -105,11 +105,11 @@ fn collect_all_types(
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(".");
-                if !types.insert(fqn.clone()) {
+                if !registry.register(&fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
                 path.push(e.name.as_ref().expect("Embed name should be present").clone());
-                collect_from_members(&e.members, path, types)?;
+                collect_from_members(&e.members, path, registry)?;
                 path.pop();
             }
             Definition::Comment(_) => { /* Comments are not types, so we ignore them. */ }
@@ -120,31 +120,30 @@ fn collect_all_types(
 }
 
 /// Checks if a given type path can be resolved to a known type.
-/// It first checks if the path is already a fully-qualified name (FQN).
-/// If not, it tries to resolve it relative to the current scope (e.g., `current.namespace.MyType`).
+/// Uses TypeRegistry's resolve method which handles:
+/// 1. Direct FQN match
+/// 2. Qualified with current namespace
+/// 3. Unique name resolution
 fn check_type_path(
     type_path: &[String],
     current_scope: &[String],
-    all_types: &HashSet<String>,
+    registry: &TypeRegistry,
 ) -> Result<(), ValidationError> {
     let used_type_str = type_path.join(".");
-    // 1. Check if the path is already a valid fully-qualified name (FQN).
-    if all_types.contains(&used_type_str) {
+    let current_namespace = current_scope.join(".");
+
+    // Use TypeRegistry's resolve method
+    if registry.resolve(&used_type_str, &current_namespace).is_some() {
         return Ok(());
     }
 
-    // 2. If not, try to resolve it by walking up the current scope.
-    // For a scope `a.b.c` and a type `T`, it checks:
-    // - a.b.c.T
-    // - a.b.T
-    // - a.T
-    // - T
+    // Also try walking up the scope for nested type resolution
     let mut scope = current_scope.to_vec();
     loop {
         let mut potential_fqn_parts = scope.clone();
         potential_fqn_parts.extend_from_slice(type_path);
         let potential_fqn = potential_fqn_parts.join(".");
-        if all_types.contains(&potential_fqn) {
+        if registry.contains(&potential_fqn) {
             return Ok(());
         }
         if scope.is_empty() {
@@ -152,33 +151,33 @@ fn check_type_path(
         }
         scope.pop();
     }
-    // 3. If no resolution worked, the type is not found.
+
     Err(ValidationError::TypeNotFound(used_type_str))
 }
 
 fn validate_table_members(
     members: &[TableMember],
     path: &mut Vec<String>,
-    all_types: &HashSet<String>,
+    registry: &TypeRegistry,
 ) -> Result<(), ValidationError> {
     for member in members {
         match member {
             TableMember::Field(field) => match field {
                 FieldDefinition::Regular(rf) => {
                     if let TypeName::Path(type_path) = &rf.field_type.base_type {
-                        check_type_path(type_path, path, all_types)?;
+                        check_type_path(type_path, path, registry)?;
                     }
                 }
                 FieldDefinition::InlineEmbed(ief) => {
                     path.push(ief.name.clone().expect("Inline embed must have a name"));
-                    validate_table_members(&ief.members, path, all_types)?;
+                    validate_table_members(&ief.members, path, registry)?;
                     path.pop();
                 }
                 FieldDefinition::InlineEnum(_) => {}
             },
             TableMember::Embed(embed) => {
                 path.push(embed.name.clone().expect("Embed must have a name"));
-                validate_table_members(&embed.members, path, all_types)?;
+                validate_table_members(&embed.members, path, registry)?;
                 path.pop();
             }
             TableMember::Enum(_) => {}
@@ -192,27 +191,27 @@ fn validate_table_members(
 fn validate_all_types(
     definitions: &[Definition],
     path: &mut Vec<String>,
-    all_types: &HashSet<String>,
+    registry: &TypeRegistry,
 ) -> Result<(), ValidationError> {
     for def in definitions {
         match def {
             Definition::Namespace(ns) => {
                 path.extend(ns.path.iter().cloned());
-                validate_all_types(&ns.definitions, path, all_types)?;
+                validate_all_types(&ns.definitions, path, registry)?;
                 for _ in 0..ns.path.len() {
                     path.pop();
                 }
             }
             Definition::Table(t) => {
                 path.push(t.name.clone().expect("Table name should be present"));
-                validate_table_members(&t.members, path, all_types)?;
+                validate_table_members(&t.members, path, registry)?;
                 path.pop();
             }
             Definition::Enum(_) => { /* Enums do not reference other types */ }
             Definition::Embed(e) => {
                 // Validate types used within the embed's fields.
                 path.push(e.name.clone().expect("Embed name should be present"));
-                validate_table_members(&e.members, path, all_types)?;
+                validate_table_members(&e.members, path, registry)?;
                 path.pop();
             }
             Definition::Comment(_) => { /* Comments do not reference other types */ }
