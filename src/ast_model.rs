@@ -215,6 +215,8 @@ pub enum Constraint {
     PrimaryKey,
     /// Unique constraint.
     Unique,
+    /// Index constraint (creates a GroupIndex for lookup).
+    Index,
     /// Maximum length constraint for strings/bytes.
     MaxLength(u32),
     /// Default value.

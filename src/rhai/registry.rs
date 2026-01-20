@@ -37,8 +37,9 @@
 //! 이를 통해 Rhai 템플릿에서 스키마 구조를 검사하고 순회할 수 있습니다.
 
 use crate::ir_model::{
-    AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef, NamespaceDef,
-    NamespaceItem, SchemaContext, StructDef, StructItem, TypeRef,
+    AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
+    ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RelationDef, SchemaContext, StructDef,
+    StructItem, TypeRef,
 };
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
 use std::path::Path;
@@ -169,6 +170,50 @@ fn register_types_and_getters(engine: &mut Engine) {
             .map(|item| Dynamic::from(item.clone()))
             .collect::<Vec<Dynamic>>()
     });
+    engine.register_get("indexes", |s: &mut StructDef| {
+        s.indexes
+            .iter()
+            .map(|idx| Dynamic::from(idx.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
+    engine.register_get("relations", |s: &mut StructDef| {
+        s.relations
+            .iter()
+            .map(|rel| Dynamic::from(rel.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
+
+    // Register IndexDef type and getters
+    engine.register_type_with_name::<IndexDef>("IndexDef");
+    engine.register_get("name", |idx: &mut IndexDef| idx.name.clone());
+    engine.register_get("field_name", |idx: &mut IndexDef| idx.field_name.clone());
+    engine.register_get("field_type", |idx: &mut IndexDef| idx.field_type.clone());
+    engine.register_get("is_unique", |idx: &mut IndexDef| idx.is_unique);
+
+    // Register RelationDef type and getters
+    engine.register_type_with_name::<RelationDef>("RelationDef");
+    engine.register_get("name", |rel: &mut RelationDef| rel.name.clone());
+    engine.register_get("source_table_fqn", |rel: &mut RelationDef| {
+        rel.source_table_fqn.clone()
+    });
+    engine.register_get("source_table_name", |rel: &mut RelationDef| {
+        rel.source_table_name.clone()
+    });
+    engine.register_get("source_field", |rel: &mut RelationDef| {
+        rel.source_field.clone()
+    });
+
+    // Register ForeignKeyDef type and getters
+    engine.register_type_with_name::<ForeignKeyDef>("ForeignKeyDef");
+    engine.register_get("target_table_fqn", |fk: &mut ForeignKeyDef| {
+        fk.target_table_fqn.clone()
+    });
+    engine.register_get("target_field", |fk: &mut ForeignKeyDef| {
+        fk.target_field.clone()
+    });
+    engine.register_get("alias", |fk: &mut ForeignKeyDef| {
+        fk.alias.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
 
     engine.register_type_with_name::<StructItem>("StructItem");
     engine.register_fn("is_field", |item: &mut StructItem| {
@@ -264,6 +309,15 @@ fn register_types_and_getters(engine: &mut Engine) {
             .iter()
             .map(|attr| Dynamic::from(attr.clone()))
             .collect::<Vec<Dynamic>>()
+    });
+    engine.register_get("is_primary_key", |f: &mut FieldDef| f.is_primary_key);
+    engine.register_get("is_unique", |f: &mut FieldDef| f.is_unique);
+    engine.register_get("is_index", |f: &mut FieldDef| f.is_index);
+    engine.register_get("foreign_key", |f: &mut FieldDef| {
+        f.foreign_key
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
     });
 
     // TypeRef: expose type info to templates

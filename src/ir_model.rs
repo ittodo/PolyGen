@@ -75,6 +75,36 @@ pub struct StructDef {
     pub header: Vec<StructItem>,
     /// Body items (fields, nested types, inline comments).
     pub items: Vec<StructItem>,
+    /// Indexes defined on this struct (from primary_key, unique, index, foreign_key).
+    pub indexes: Vec<IndexDef>,
+    /// Reverse relations pointing to this struct (from foreign_key ... as).
+    pub relations: Vec<RelationDef>,
+}
+
+/// Index definition for a struct field.
+#[derive(Serialize, Debug, Clone)]
+pub struct IndexDef {
+    /// Index name (e.g., "ById", "ByName", "ByPlayerId").
+    pub name: String,
+    /// The field name this index is on.
+    pub field_name: String,
+    /// The field type (for generic type parameter).
+    pub field_type: TypeRef,
+    /// Whether this is a unique index (single result) or group index (list result).
+    pub is_unique: bool,
+}
+
+/// Reverse relation definition (created from foreign_key ... as).
+#[derive(Serialize, Debug, Clone)]
+pub struct RelationDef {
+    /// Relation name (from `as` keyword, e.g., "Items", "Skills").
+    pub name: String,
+    /// Fully qualified name of the source table that has the foreign key.
+    pub source_table_fqn: String,
+    /// Simple name of the source table.
+    pub source_table_name: String,
+    /// The field in the source table that holds the foreign key.
+    pub source_field: String,
 }
 
 /// An item that can appear within a struct.
@@ -101,6 +131,26 @@ pub struct FieldDef {
     pub field_type: TypeRef,
     /// Attributes derived from constraints (e.g., `["Key", "MaxLength(30)"]`).
     pub attributes: Vec<String>,
+    /// Whether this field is a primary key.
+    pub is_primary_key: bool,
+    /// Whether this field has a unique constraint.
+    pub is_unique: bool,
+    /// Whether this field has an index constraint.
+    pub is_index: bool,
+    /// Foreign key reference information, if this field references another table.
+    pub foreign_key: Option<ForeignKeyDef>,
+}
+
+/// Foreign key reference definition.
+#[derive(Serialize, Debug, Clone)]
+pub struct ForeignKeyDef {
+    /// Fully qualified name of the target table (e.g., "game.character.Player").
+    pub target_table_fqn: String,
+    /// Target field name (e.g., "id").
+    pub target_field: String,
+    /// Alias for reverse relation (from `as` keyword), if specified.
+    /// This creates a navigation property on the target table.
+    pub alias: Option<String>,
 }
 
 /// A fully-resolved type reference.

@@ -111,6 +111,7 @@ pub fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
     let constraint = match inner_pair.as_rule() {
         Rule::primary_key => Constraint::PrimaryKey,
         Rule::unique => Constraint::Unique,
+        Rule::index => Constraint::Index,
         Rule::max_length => {
             let text = require_next!(inner_pair.into_inner(), Rule::max_length, "integer value", inner_line, inner_col)?.as_str();
             Constraint::MaxLength(text.parse().map_err(|_| AstBuildError::InvalidValue {

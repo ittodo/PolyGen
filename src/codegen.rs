@@ -232,8 +232,13 @@ pub fn csharp_static_files() -> Vec<StaticFileConfig> {
         },
         StaticFileConfig {
             source: PathBuf::from("static/csharp/PolygenAttributes.cs"),
-            dest_subdir: common,
+            dest_subdir: common.clone(),
             filename: "PolygenAttributes.cs".to_string(),
+        },
+        StaticFileConfig {
+            source: PathBuf::from("static/csharp/DataContainer.cs"),
+            dest_subdir: common,
+            filename: "DataContainer.cs".to_string(),
         },
     ]
 }

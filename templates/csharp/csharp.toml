@@ -13,6 +13,7 @@ extension = ".cs"
 "Common/JsonCsvConverter.cs" = "static/csharp/JsonCsvConverter.cs"
 "Common/JsonUtils.cs" = "static/csharp/JsonUtils.cs"
 "Common/PolygenAttributes.cs" = "static/csharp/PolygenAttributes.cs"
+"Common/DataContainer.cs" = "static/csharp/DataContainer.cs"
 
 # Template configuration
 [templates]
@@ -25,4 +26,5 @@ extra = [
     "csharp_binary_writers_file.rhai",
     "csharp_csv_columns_file.rhai",
     "csharp_csv_mappers_file.rhai",
+    "csharp_container_file.rhai",
 ]
