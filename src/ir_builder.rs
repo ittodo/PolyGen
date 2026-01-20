@@ -359,9 +359,9 @@ fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry) {
 
     // Strategy 2: Resolve using namespace context
     if let Some(resolved_fqn) = registry.resolve(&t.type_name, &t.namespace_fqn) {
-        if registry.is_enum(&resolved_fqn) {
-            t.fqn = resolved_fqn.clone();
-            t.namespace_fqn = namespace_of_owned(&resolved_fqn);
+        if registry.is_enum(resolved_fqn) {
+            t.fqn = resolved_fqn.to_string();
+            t.namespace_fqn = namespace_of_owned(resolved_fqn);
             t.is_enum = true;
             t.is_struct = false;
             return;
@@ -390,7 +390,7 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
                 header_items.push(StructItem::Comment(c.clone()));
             }
             Metadata::Annotation(a) => {
-                let annotation_def = convert_annotations_to_ir(std::slice::from_ref(a))[0].clone();
+                let annotation_def = convert_annotation_to_ir(a);
                 header_items.push(StructItem::Annotation(annotation_def));
             }
         }
@@ -409,7 +409,7 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
                     match meta {
                         Metadata::DocComment(c) => items.push(StructItem::Comment(c.clone())),
                         Metadata::Annotation(a) => {
-                            let annotation_def = convert_annotations_to_ir(std::slice::from_ref(a))[0].clone();
+                            let annotation_def = convert_annotation_to_ir(a);
                             items.push(StructItem::Annotation(annotation_def));
                         }
                     }
@@ -452,17 +452,8 @@ fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
 
     for item in items {
         if let StructItem::Field(field) = item {
-            // Primary key creates a unique index
-            if field.is_primary_key {
-                indexes.push(IndexDef {
-                    name: format!("By{}", field.name.to_pascal_case()),
-                    field_name: field.name.clone(),
-                    field_type: field.field_type.clone(),
-                    is_unique: true,
-                });
-            }
-            // Unique constraint creates a unique index (if not already primary key)
-            else if field.is_unique {
+            // Primary key or unique constraint creates a unique index
+            if field.is_primary_key || field.is_unique {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
                     field_name: field.name.clone(),
@@ -899,21 +890,19 @@ fn basic_name(b: &ast_model::BasicType) -> &'static str {
     }
 }
 
-fn convert_annotations_to_ir(annotations: &[ast_model::Annotation]) -> Vec<AnnotationDef> {
-    annotations
-        .iter()
-        .map(|ast_ann| AnnotationDef {
-            name: ast_ann.name.clone().unwrap(),
-            params: ast_ann
-                .params
-                .iter()
-                .map(|p| AnnotationParam {
-                    key: p.key.clone(),
-                    value: p.value.to_string(), // Assuming value is a simple literal
-                })
-                .collect(),
-        })
-        .collect()
+/// Converts a single AST annotation to IR annotation definition.
+fn convert_annotation_to_ir(ast_ann: &ast_model::Annotation) -> AnnotationDef {
+    AnnotationDef {
+        name: ast_ann.name.clone().unwrap(),
+        params: ast_ann
+            .params
+            .iter()
+            .map(|p| AnnotationParam {
+                key: p.key.clone(),
+                value: p.value.to_string(),
+            })
+            .collect(),
+    }
 }
 
 #[cfg(test)]

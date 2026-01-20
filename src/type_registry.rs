@@ -116,18 +116,19 @@ impl TypeRegistry {
     /// * `current_namespace` - The namespace context for resolution
     ///
     /// # Returns
-    /// The resolved FQN if found, `None` otherwise.
-    pub fn resolve(&self, type_ref: &str, current_namespace: &str) -> Option<String> {
+    /// A reference to the resolved FQN if found, `None` otherwise.
+    /// Returns a reference to the internally stored string, avoiding clone.
+    pub fn resolve(&self, type_ref: &str, current_namespace: &str) -> Option<&str> {
         // Strategy 1: Direct FQN match
-        if self.types.contains_key(type_ref) {
-            return Some(type_ref.to_string());
+        if let Some(info) = self.types.get(type_ref) {
+            return Some(&info.fqn);
         }
 
         // Strategy 2: Qualify with current namespace
         if !current_namespace.is_empty() {
             let qualified = format!("{}.{}", current_namespace, type_ref);
-            if self.types.contains_key(&qualified) {
-                return Some(qualified);
+            if let Some(info) = self.types.get(&qualified) {
+                return Some(&info.fqn);
             }
         }
 
@@ -135,7 +136,7 @@ impl TypeRegistry {
         let simple_name = last_segment(type_ref);
         if let Some(fqns) = self.by_name.get(simple_name) {
             if fqns.len() == 1 {
-                return Some(fqns[0].clone());
+                return Some(&fqns[0]);
             }
         }
 
@@ -298,7 +299,7 @@ mod tests {
         registry.register("game.common.Status", TypeKind::Enum);
 
         let resolved = registry.resolve("game.common.Status", "other");
-        assert_eq!(resolved, Some("game.common.Status".to_string()));
+        assert_eq!(resolved, Some("game.common.Status"));
     }
 
     #[test]
@@ -307,7 +308,7 @@ mod tests {
         registry.register("game.common.Status", TypeKind::Enum);
 
         let resolved = registry.resolve("Status", "game.common");
-        assert_eq!(resolved, Some("game.common.Status".to_string()));
+        assert_eq!(resolved, Some("game.common.Status"));
     }
 
     #[test]
@@ -317,7 +318,7 @@ mod tests {
 
         // UniqueType is unique, so it should resolve even from different namespace
         let resolved = registry.resolve("UniqueType", "other.namespace");
-        assert_eq!(resolved, Some("game.common.UniqueType".to_string()));
+        assert_eq!(resolved, Some("game.common.UniqueType"));
     }
 
     #[test]
