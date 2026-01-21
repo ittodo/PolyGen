@@ -70,6 +70,101 @@ fn generate_json_loader(s, namespace_fqn) {
     return result;
 }
 
+// Generate CSV writer for a struct
+fn generate_csv_writer(s, namespace_fqn) {
+    let struct_name = ue_types::get_struct_name(s.name);
+    let result = "";
+
+    result += "// CSV writer for " + struct_name + "\n";
+    result += "inline bool SaveToCsv(const FString& CsvPath, const TArray<" + struct_name + ">& InArray)\n";
+    result += "{\n";
+    result += "    if (InArray.Num() == 0)\n";
+    result += "    {\n";
+    result += "        return true; // Nothing to write\n";
+    result += "    }\n";
+    result += "    \n";
+    result += "    FString CsvContent;\n";
+    result += "    \n";
+
+    // Build header row
+    result += "    // Header row\n";
+    result += "    CsvContent += TEXT(\"";
+
+    let field_names = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            // Skip arrays and complex types for CSV
+            if !f.field_type.is_list && !f.field_type.is_option {
+                field_names.push(f.name);
+            }
+        }
+    }
+
+    for i in 0..field_names.len() {
+        if i > 0 {
+            result += ",";
+        }
+        result += field_names[i];
+    }
+    result += "\") + LINE_TERMINATOR;\n";
+    result += "    \n";
+
+    // Write data rows
+    result += "    // Data rows\n";
+    result += "    for (const " + struct_name + "& Row : InArray)\n";
+    result += "    {\n";
+
+    for i in 0..field_names.len() {
+        let field_name = field_names[i];
+        if i > 0 {
+            result += "        CsvContent += TEXT(\",\");\n";
+        }
+
+        // Find the field type
+        for item in s.items {
+            if item.is_field() {
+                let f = item.as_field();
+                if f.name == field_name {
+                    let n = f.field_type.type_name;
+                    if n == "string" {
+                        // Escape quotes and wrap in quotes if contains comma
+                        result += "        {\n";
+                        result += "            FString EscapedValue = Row." + field_name + ".Replace(TEXT(\"\\\"\"), TEXT(\"\\\"\\\"\"));\n";
+                        result += "            if (EscapedValue.Contains(TEXT(\",\")) || EscapedValue.Contains(TEXT(\"\\\"\")))\n";
+                        result += "            {\n";
+                        result += "                CsvContent += TEXT(\"\\\"\") + EscapedValue + TEXT(\"\\\"\");\n";
+                        result += "            }\n";
+                        result += "            else\n";
+                        result += "            {\n";
+                        result += "                CsvContent += EscapedValue;\n";
+                        result += "            }\n";
+                        result += "        }\n";
+                    } else if n == "bool" {
+                        result += "        CsvContent += Row." + field_name + " ? TEXT(\"true\") : TEXT(\"false\");\n";
+                    } else if n == "f32" || n == "f64" {
+                        result += "        CsvContent += FString::SanitizeFloat(Row." + field_name + ");\n";
+                    } else if f.field_type.is_enum || is_likely_enum(n) {
+                        result += "        CsvContent += FString::FromInt(static_cast<int32>(Row." + field_name + "));\n";
+                    } else {
+                        // Integer types
+                        result += "        CsvContent += FString::FromInt(Row." + field_name + ");\n";
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    result += "        CsvContent += LINE_TERMINATOR;\n";
+    result += "    }\n";
+    result += "    \n";
+    result += "    return FFileHelper::SaveStringToFile(CsvContent, *CsvPath);\n";
+    result += "}\n\n";
+
+    return result;
+}
+
 // Generate CSV loader for a struct
 fn generate_csv_loader(s, namespace_fqn) {
     let struct_name = ue_types::get_struct_name(s.name);
@@ -217,6 +312,11 @@ for file in schema.files {
     result += "#include \"Serialization/JsonSerializer.h\"\n";
     result += "\n";
 
+    // Line terminator definition
+    result += "#ifndef LINE_TERMINATOR\n";
+    result += "#define LINE_TERMINATOR TEXT(\"\\n\")\n";
+    result += "#endif\n\n";
+
     // Namespace for loader functions
     result += "namespace PolygenLoaders\n";
     result += "{\n\n";
@@ -241,6 +341,17 @@ for file in schema.files {
         let s = entry.struct_def;
         let ns = entry.namespace_name;
         result += generate_csv_loader(s, ns);
+    }
+
+    // Generate CSV writers
+    result += "// ============================================================================\n";
+    result += "// CSV Writers\n";
+    result += "// ============================================================================\n\n";
+
+    for entry in all_structs {
+        let s = entry.struct_def;
+        let ns = entry.namespace_name;
+        result += generate_csv_writer(s, ns);
     }
 
     result += "} // namespace PolygenLoaders\n";

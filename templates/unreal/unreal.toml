@@ -14,6 +14,8 @@ main = "unreal_file.rhai"
 
 # Extra templates to run after the main template
 extra = [
-    # CSV/JSON loaders using Unreal's built-in systems
+    # CSV/JSON loaders and writers using Unreal's built-in systems
     "unreal_loaders_file.rhai",
+    # Hot reload system for development (file watching + auto reload)
+    "unreal_hotreload_file.rhai",
 ]
