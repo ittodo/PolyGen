@@ -1,0 +1,17 @@
+{
+  "name": "polygen-typescript-tests",
+  "version": "1.0.0",
+  "description": "TypeScript integration tests for PolyGen",
+  "type": "module",
+  "scripts": {
+    "generate": "cd ../../.. && cargo run --release -- --schema-path tests/integration/08_complex_schema/schema.poly --lang typescript --output-dir tests/runners/typescript/generated",
+    "build": "tsc --noEmit",
+    "test": "npm run generate && npm run build",
+    "test:all": "npm run generate:all && npm run build",
+    "generate:all": "cd ../../.. && for dir in tests/integration/*/; do cargo run --release -- --schema-path \"${dir}schema.poly\" --lang typescript --output-dir tests/runners/typescript/generated 2>/dev/null; done"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "zod": "^3.22.0"
+  }
+}

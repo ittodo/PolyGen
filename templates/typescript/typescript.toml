@@ -1,0 +1,20 @@
+# TypeScript Language Configuration for PolyGen
+# This file configures the TypeScript code generation settings.
+
+# File extension for generated TypeScript files
+extension = ".ts"
+
+# Static files to copy to the output directory
+[static_files]
+# No static files needed - TypeScript uses npm packages
+
+# Template configuration
+[templates]
+# Main template for generating TypeScript interfaces
+main = "typescript_file.rhai"
+
+# Extra templates to run after the main template
+extra = [
+    # Zod schema validation
+    "typescript_zod_file.rhai",
+]
