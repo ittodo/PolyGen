@@ -20,3 +20,6 @@ dist/**/*.genruntimeconfig.cache
 tests/runners/typescript/node_modules/
 tests/runners/typescript/generated/
 tests/runners/typescript/package-lock.json
+
+# Go test runner
+tests/runners/go/output/
