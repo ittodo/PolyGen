@@ -26,14 +26,21 @@
 - [x] 3.5 단위 테스트 추가 - type resolution (20개 테스트)
 - [x] 3.6 단위 테스트 추가 - parser (24개 테스트)
 
-## Phase 4: 장기 개선 (성능 & 확장성)
+## Phase 4: 장기 개선 (성능 & 확장성) ✅ 완료
 
-- [ ] 4.1 TypeRegistry 구조체 설계
-- [ ] 4.2 TypeRegistry ir_builder.rs에 적용
-- [ ] 4.3 불필요한 clone() 제거 최적화
-- [ ] 4.4 String interning 도입 검토
-- [ ] 4.5 언어별 설정 파일 시스템 (languages.toml)
-- [ ] 4.6 코드 문서화 (doc comments)
+- [x] 4.1 TypeRegistry 구조체 설계
+- [x] 4.2 TypeRegistry ir_builder.rs에 적용
+- [x] 4.3 불필요한 clone() 제거 최적화
+- [x] 4.4 String interning 도입 검토 (불필요 판단)
+- [x] 4.5 언어별 설정 파일 시스템 (languages.toml → `<lang>.toml`)
+- [x] 4.6 코드 문서화 (doc comments)
+
+## Phase 5: 새 언어 지원 ✅ 완료
+
+- [x] 5.1 C++ 언어 지원 (헤더 전용, 구조체, Enum)
+- [x] 5.2 Rust 언어 지원 (모듈, Struct, Enum)
+- [x] 5.3 통합 테스트 프레임워크 구축
+- [x] 5.4 Cross-namespace 타입 경로 버그 수정 (Rust)
 
 ---
 
@@ -44,12 +51,38 @@
 | Phase 1 | 4 | 4 | 100% |
 | Phase 2 | 7 | 7 | 100% |
 | Phase 3 | 6 | 6 | 100% |
-| Phase 4 | 0 | 6 | 0% |
-| **Total** | **17** | **23** | **74%** |
+| Phase 4 | 6 | 6 | 100% |
+| Phase 5 | 4 | 4 | 100% |
+| **Total** | **27** | **27** | **100%** |
 
 ---
 
 ## 작업 로그
+
+### 2026-01-21 (Phase 5)
+- Phase 5 완료: 새 언어 지원
+  - C++ 언어 지원 추가
+    - 헤더 전용 코드 생성 (`<schema>.hpp`)
+    - 구조체, Enum, 중첩 네임스페이스
+    - CSV/JSON/Binary 로더
+  - Rust 언어 지원 추가
+    - 모듈 기반 코드 생성 (`<schema>.rs`)
+    - Struct, Enum, serde 통합
+    - CSV/Binary 로더
+  - 통합 테스트 프레임워크 구축
+    - 8개 테스트 케이스 (기본 타입 ~ 종합 스키마)
+    - C++, C#, Rust 언어별 테스트 러너
+  - Rust cross-namespace 타입 경로 버그 수정
+    - `compute_relative_path()` 함수 재작성
+    - 중첩 네임스페이스 모듈 경로 정확도 개선
+    - CSV 로더 구조체 필드 처리 수정
+
+### 2026-01-19 (Phase 4)
+- Phase 4 완료
+  - TypeRegistry 구조체 설계 및 적용
+  - 불필요한 clone() 최적화
+  - 언어별 설정 파일 시스템 (`<lang>.toml`)
+  - 코드 문서화 완료
 
 ### 2026-01-17 (Phase 3)
 - Phase 3 완료

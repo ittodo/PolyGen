@@ -1,0 +1,17 @@
+# Go Language Configuration for PolyGen
+# This file configures the Go code generation settings.
+
+# File extension for generated Go files
+extension = ".go"
+
+# Static files to copy to the output directory
+[static_files]
+# No static files needed
+
+# Template configuration
+[templates]
+# Main template for generating Go structs
+main = "go_file.rhai"
+
+# Extra templates to run after the main template
+extra = []
