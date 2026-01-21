@@ -1,0 +1,14 @@
+// Test schema for @index annotation
+
+@index(name)
+@index(guild_id, level)
+@index(region, guild_id, level)
+@index(email, unique: true)
+table Player {
+    id: u32 primary_key;
+    name: string;
+    email: string;
+    region: u8;
+    guild_id: u32;
+    level: u16;
+}

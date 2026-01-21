@@ -433,8 +433,12 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
         }
     }
 
-    // Build indexes from fields
-    let indexes = build_indexes_from_items(&items);
+    // Build indexes from field constraints
+    let mut indexes = build_indexes_from_items(&items);
+
+    // Build indexes from @index annotations
+    let annotation_indexes = build_indexes_from_annotations(&header_items, &items);
+    indexes.extend(annotation_indexes);
 
     StructDef {
         name,
@@ -456,19 +460,91 @@ fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
             if field.is_primary_key || field.is_unique {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
-                    field_name: field.name.clone(),
-                    field_type: field.field_type.clone(),
+                    fields: vec![ir_model::IndexFieldDef {
+                        name: field.name.clone(),
+                        field_type: field.field_type.clone(),
+                    }],
                     is_unique: true,
+                    source: "constraint".to_string(),
                 });
             }
             // Index constraint or foreign key creates a group index
             else if field.is_index {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
-                    field_name: field.name.clone(),
-                    field_type: field.field_type.clone(),
+                    fields: vec![ir_model::IndexFieldDef {
+                        name: field.name.clone(),
+                        field_type: field.field_type.clone(),
+                    }],
                     is_unique: false,
+                    source: "constraint".to_string(),
                 });
+            }
+        }
+    }
+
+    indexes
+}
+
+/// Builds index definitions from @index annotations on a table.
+fn build_indexes_from_annotations(
+    header: &[StructItem],
+    items: &[StructItem],
+) -> Vec<IndexDef> {
+    let mut indexes = Vec::new();
+
+    // Build a map of field names to their types for lookup
+    let field_types: std::collections::HashMap<String, TypeRef> = items
+        .iter()
+        .filter_map(|item| {
+            if let StructItem::Field(field) = item {
+                Some((field.name.clone(), field.field_type.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for item in header {
+        if let StructItem::Annotation(ann) = item {
+            if ann.name == "index" && !ann.positional_args.is_empty() {
+                // Check if "unique: true" is specified in params
+                let is_unique = ann.params.iter().any(|p| {
+                    p.key == "unique" && (p.value == "true" || p.value == "1")
+                });
+
+                // Build field definitions from positional args
+                let fields: Vec<ir_model::IndexFieldDef> = ann
+                    .positional_args
+                    .iter()
+                    .filter_map(|field_name| {
+                        field_types.get(field_name).map(|field_type| {
+                            ir_model::IndexFieldDef {
+                                name: field_name.clone(),
+                                field_type: field_type.clone(),
+                            }
+                        })
+                    })
+                    .collect();
+
+                if !fields.is_empty() {
+                    // Generate index name from field names
+                    let name = format!(
+                        "By{}",
+                        fields
+                            .iter()
+                            .map(|f| f.name.to_pascal_case())
+                            .collect::<Vec<_>>()
+                            .join("")
+                    );
+
+                    indexes.push(IndexDef {
+                        name,
+                        fields,
+                        is_unique,
+                        source: "annotation".to_string(),
+                    });
+                }
             }
         }
     }
@@ -892,16 +968,27 @@ fn basic_name(b: &ast_model::BasicType) -> &'static str {
 
 /// Converts a single AST annotation to IR annotation definition.
 fn convert_annotation_to_ir(ast_ann: &ast_model::Annotation) -> AnnotationDef {
+    let mut positional_args = Vec::new();
+    let mut params = Vec::new();
+
+    for arg in &ast_ann.args {
+        match arg {
+            ast_model::AnnotationArg::Positional(lit) => {
+                positional_args.push(lit.to_string());
+            }
+            ast_model::AnnotationArg::Named(p) => {
+                params.push(AnnotationParam {
+                    key: p.key.clone(),
+                    value: p.value.to_string(),
+                });
+            }
+        }
+    }
+
     AnnotationDef {
         name: ast_ann.name.clone().unwrap(),
-        params: ast_ann
-            .params
-            .iter()
-            .map(|p| AnnotationParam {
-                key: p.key.clone(),
-                value: p.value.to_string(),
-            })
-            .collect(),
+        positional_args,
+        params,
     }
 }
 

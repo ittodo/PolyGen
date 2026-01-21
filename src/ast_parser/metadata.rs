@@ -1,5 +1,5 @@
 use pest::iterators::Pair;
-use crate::ast_model::{Annotation, AnnotationParam, Metadata};
+use crate::ast_model::{Annotation, AnnotationArg, AnnotationParam, Metadata};
 use crate::error::AstBuildError;
 use crate::Rule;
 
@@ -33,6 +33,13 @@ pub fn parse_metadata(
     Ok(metadata)
 }
 
+/// Parse an annotation with support for both positional and named arguments.
+///
+/// Examples:
+/// - `@taggable` - no arguments
+/// - `@load(csv: "data.csv")` - named only
+/// - `@index(name, level)` - positional only
+/// - `@index(name, level, unique: true)` - mixed
 pub fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
@@ -46,37 +53,83 @@ pub fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, AstBuildError> {
         })?
         .as_str()
         .to_string();
-    let mut params = Vec::new();
-    if let Some(params_list_pair) = inner.next() {
-        for p in params_list_pair.into_inner() {
-            if p.as_rule() == Rule::annotation_param {
-                let (p_line, p_col) = p.line_col();
-                let mut param_inner = p.into_inner();
-                let key = param_inner
-                    .next()
-                    .ok_or(AstBuildError::MissingElement {
+
+    let mut args = Vec::new();
+
+    if let Some(args_list_pair) = inner.next() {
+        for arg_pair in args_list_pair.into_inner() {
+            match arg_pair.as_rule() {
+                Rule::annotation_arg => {
+                    // annotation_arg = { annotation_param | literal }
+                    let inner_pair = arg_pair.into_inner().next().unwrap();
+                    match inner_pair.as_rule() {
+                        Rule::annotation_param => {
+                            let (p_line, p_col) = inner_pair.line_col();
+                            let mut param_inner = inner_pair.into_inner();
+                            let key = param_inner
+                                .next()
+                                .ok_or(AstBuildError::MissingElement {
+                                    rule: Rule::annotation_param,
+                                    element: "key".to_string(),
+                                    line: p_line,
+                                    col: p_col,
+                                })?
+                                .as_str()
+                                .to_string();
+                            let value_pair = param_inner.next().ok_or(AstBuildError::MissingElement {
+                                rule: Rule::annotation_param,
+                                element: "value".to_string(),
+                                line: p_line,
+                                col: p_col,
+                            })?;
+                            args.push(AnnotationArg::Named(AnnotationParam {
+                                key,
+                                value: parse_literal(value_pair)?,
+                            }));
+                        }
+                        _ => {
+                            // Positional argument (literal, which includes IDENT)
+                            let value = parse_literal(inner_pair)?;
+                            args.push(AnnotationArg::Positional(value));
+                        }
+                    }
+                }
+                Rule::annotation_param => {
+                    // Direct annotation_param (for backward compatibility if needed)
+                    let (p_line, p_col) = arg_pair.line_col();
+                    let mut param_inner = arg_pair.into_inner();
+                    let key = param_inner
+                        .next()
+                        .ok_or(AstBuildError::MissingElement {
+                            rule: Rule::annotation_param,
+                            element: "key".to_string(),
+                            line: p_line,
+                            col: p_col,
+                        })?
+                        .as_str()
+                        .to_string();
+                    let value_pair = param_inner.next().ok_or(AstBuildError::MissingElement {
                         rule: Rule::annotation_param,
-                        element: "key".to_string(),
+                        element: "value".to_string(),
                         line: p_line,
                         col: p_col,
-                    })?
-                    .as_str()
-                    .to_string();
-                let value_pair = param_inner.next().ok_or(AstBuildError::MissingElement {
-                    rule: Rule::annotation_param,
-                    element: "value".to_string(),
-                    line: p_line,
-                    col: p_col,
-                })?;
-                params.push(AnnotationParam {
-                    key,
-                    value: parse_literal(value_pair)?,
-                });
+                    })?;
+                    args.push(AnnotationArg::Named(AnnotationParam {
+                        key,
+                        value: parse_literal(value_pair)?,
+                    }));
+                }
+                _ => {
+                    // Positional argument
+                    let value = parse_literal(arg_pair)?;
+                    args.push(AnnotationArg::Positional(value));
+                }
             }
         }
     }
+
     Ok(Annotation {
         name: Some(name),
-        params,
+        args,
     })
 }
