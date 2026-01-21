@@ -190,6 +190,63 @@ ALTER TABLE Player RENAME COLUMN user_name TO name;
 
 ---
 
+## 테이블/필드 어노테이션
+
+### @cache - 캐시 전략
+
+```poly
+@cache(strategy: full_load)     // 시작시 전체 로드 (정적 데이터)
+table ItemTable { ... }
+
+@cache(strategy: on_demand)     // 필요시 로드
+@cache(ttl: 300)                // 5분 후 만료
+table Player { ... }
+```
+
+| 전략 | 설명 | 용도 |
+|------|------|------|
+| `full_load` | 시작시 전체 로드 | 정적 데이터, 설정 테이블 |
+| `on_demand` | 필요시 로드 | 유저 데이터 |
+| `write_through` | 쓰기시 즉시 DB 반영 | 중요 데이터 |
+| `write_back` | 지연 쓰기 (배치) | 로그, 통계 |
+
+### @readonly - 읽기 전용
+
+```poly
+@readonly
+table ItemTable { ... }  // 수정 불가 (정적 데이터)
+```
+
+- SaveChanges()에서 무시
+- 수정 시도시 예외 발생
+
+### @soft_delete - 논리 삭제
+
+```poly
+@soft_delete("deleted_at")
+table Player {
+    deleted_at: timestamp?;  // NULL이면 활성, 값 있으면 삭제됨
+}
+```
+
+- DELETE → UPDATE deleted_at = NOW()
+- SELECT시 자동으로 deleted_at IS NULL 조건 추가
+- 필요시 삭제된 데이터도 조회 가능
+
+### 자동 타임스탬프
+
+```poly
+table Player {
+    created_at: timestamp auto_create;   // INSERT시 자동 설정
+    updated_at: timestamp auto_update;   // UPDATE시 자동 갱신
+}
+```
+
+- `auto_create`: INSERT시 현재 시간
+- `auto_update`: UPDATE시 현재 시간
+
+---
+
 ## Phase 4: 쿼리/뷰 (검토 필요)
 
 ### 쿼리 정의
