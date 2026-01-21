@@ -1,0 +1,18 @@
+# Rust Language Configuration for PolyGen
+# This file configures the Rust code generation settings.
+
+# File extension for generated Rust files
+extension = ".rs"
+
+# Static files to copy to the output directory
+# Format: "destination/path.ext" = "source/path.ext"
+[static_files]
+# No static files for basic Rust generation yet
+
+# Template configuration
+[templates]
+# Main template for generating Rust modules
+main = "rust_file.rhai"
+
+# Extra templates to run after the main template
+extra = []

@@ -41,6 +41,7 @@ use crate::ir_model::{
     ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RelationDef, SchemaContext, StructDef,
     StructItem, TypeRef,
 };
+use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
 use std::path::Path;
 
@@ -386,6 +387,9 @@ fn register_types_and_getters(engine: &mut Engine) {
 
     engine.register_type_with_name::<EnumMember>("EnumMember");
     engine.register_get("name", |m: &mut EnumMember| m.name.clone());
+    engine.register_get("value", |m: &mut EnumMember| {
+        m.value.map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
 
     engine.register_type_with_name::<AnnotationDef>("AnnotationDef");
     engine.register_get("name", |a: &mut AnnotationDef| a.name.clone());
@@ -402,6 +406,11 @@ fn register_types_and_getters(engine: &mut Engine) {
 }
 
 fn register_common_helpers(engine: &mut Engine) {
+    // Case conversion functions
+    engine.register_fn("to_snake_case", |s: &str| s.to_snake_case());
+    engine.register_fn("to_pascal_case", |s: &str| s.to_pascal_case());
+    engine.register_fn("to_camel_case", |s: &str| s.to_lower_camel_case());
+
     // render_items(items[], template_path, var_name) -> string
     engine.register_fn(
         "render_items",
