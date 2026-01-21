@@ -409,7 +409,7 @@ impl GameContainer {
 | 언어 | Level 1 | Level 2 | Level 3 | 상태 |
 |------|---------|---------|---------|------|
 | **C#** | ✅ | ✅ | ✅ | 완전 지원 |
-| **Rust** | ✅ | ❌ | ❌ | 기본만 |
+| **Rust** | ✅ | ✅ | ✅ | 완전 지원 |
 | **MySQL** | ✅ | - | - | DDL만 |
 | **TypeScript** | ❌ | ❌ | ❌ | 미구현 |
 | **C++** | ❌ | ❌ | ❌ | 미구현 |
@@ -473,8 +473,83 @@ let indented = indent_utils::indent_text(content, 1);  // 4스페이스 * 1
 
 - C# 템플릿: `templates/csharp/`
 - C# 정적 파일: `static/csharp/`
+- Rust 템플릿: `templates/rust/`
+- Rust 정적 파일: `static/rust/`
 - IR 모델: `src/ir_model.rs`
 - Rhai 함수 등록: `src/rhai/registry.rs`
+
+---
+
+## Rust 구현 세부사항
+
+### 파일 구조
+
+```
+templates/rust/
+├── rust.toml                      # 언어 설정
+├── rust_file.rhai                 # 메인 진입점
+├── rust_mod.rhai                  # 모듈 생성
+├── rust_struct.rhai               # 구조체 생성
+├── rust_enum.rhai                 # Enum 생성
+├── rust_loaders_file.rhai         # JSON/CSV/Binary 로더 통합
+├── rust_container_file.rhai       # 컨테이너 및 인덱스
+└── rhai_utils/
+    └── type_mapping.rhai          # 타입 매핑
+
+static/rust/
+└── polygen_support.rs             # 런타임 지원 라이브러리
+```
+
+### Binary I/O 형식
+
+Rust에서 사용하는 바이너리 직렬화 형식:
+
+```
+타입               | 형식
+-------------------|------------------------------------------
+u8, i8            | 1 byte
+u16, i16          | 2 bytes, little-endian
+u32, i32, f32     | 4 bytes, little-endian
+u64, i64, f64     | 8 bytes, little-endian
+bool              | 1 byte (0 or 1)
+String            | [u32: length][bytes: UTF-8 data]
+Option<T>         | [u8: flag][T: value if flag == 1]
+Vec<T>            | [u32: length][T: element1][T: element2]...
+Enum              | [i32: variant value]
+```
+
+### 사용 예시
+
+```rust
+use polygen_support::{BinaryReadExt, BinaryWriteExt};
+use game_schema_loaders::BinaryIO;
+use std::io::Cursor;
+
+// 직렬화
+let item = Item { id: 1, name: "Sword".to_string(), ... };
+let mut buffer: Vec<u8> = Vec::new();
+item.write_binary(&mut buffer)?;
+
+// 역직렬화
+let mut cursor = Cursor::new(&buffer);
+let loaded = Item::read_binary(&mut cursor)?;
+
+// 다중 아이템
+buffer.write_u32(items.len() as u32)?;
+for item in &items {
+    item.write_binary(&mut buffer)?;
+}
+```
+
+### 의존성
+
+`Cargo.toml`에 필요한 의존성:
+
+```toml
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+```
 
 ---
 
