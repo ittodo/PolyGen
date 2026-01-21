@@ -7,12 +7,17 @@ extension = ".rs"
 # Static files to copy to the output directory
 # Format: "destination/path.ext" = "source/path.ext"
 [static_files]
-# No static files for basic Rust generation yet
+"polygen_support.rs" = "static/rust/polygen_support.rs"
 
 # Template configuration
 [templates]
-# Main template for generating Rust modules
+# Main template for generating Rust modules (Level 1: Basic)
 main = "rust_file.rhai"
 
 # Extra templates to run after the main template
-extra = []
+extra = [
+    # Level 2: Data Loaders (JSON, CSV, Binary)
+    "rust_loaders_file.rhai",
+    # Level 3: Container System (indexes, relations)
+    "rust_container_file.rhai",
+]
