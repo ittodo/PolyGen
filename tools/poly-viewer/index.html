@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PolyGen Schema Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PolyGen Schema Viewer</h1>
+            <div class="controls">
+                <button id="theme-toggle" title="Toggle dark/light mode">🌙</button>
+                <button id="load-file" title="Load .poly file">📁 파일 열기</button>
+                <input type="file" id="file-input" accept=".poly" hidden>
+            </div>
+        </header>
+
+        <main>
+            <div class="editor-panel">
+                <div class="panel-header">
+                    <span>입력 (.poly)</span>
+                    <button id="clear-btn" title="Clear">지우기</button>
+                </div>
+                <textarea id="poly-input" placeholder=".poly 스키마를 여기에 입력하거나 파일을 드래그하세요..."></textarea>
+            </div>
+
+            <div class="preview-panel">
+                <div class="panel-header">
+                    <span>렌더링 결과</span>
+                    <button id="copy-btn" title="Copy HTML">HTML 복사</button>
+                </div>
+                <div id="poly-output" class="code-output"></div>
+            </div>
+        </main>
+
+        <footer>
+            <div class="legend">
+                <span class="legend-item"><span class="sample keyword">keyword</span> 키워드</span>
+                <span class="legend-item"><span class="sample type">type</span> 타입</span>
+                <span class="legend-item"><span class="sample annotation">@annotation</span> 어노테이션</span>
+                <span class="legend-item"><span class="sample constraint">constraint</span> 제약조건</span>
+                <span class="legend-item"><span class="sample string">"string"</span> 문자열</span>
+                <span class="legend-item"><span class="sample number">123</span> 숫자</span>
+                <span class="legend-item"><span class="sample comment">// comment</span> 주석</span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="poly-renderer.js"></script>
+    <script>
+        const input = document.getElementById('poly-input');
+        const output = document.getElementById('poly-output');
+        const themeToggle = document.getElementById('theme-toggle');
+        const loadFileBtn = document.getElementById('load-file');
+        const fileInput = document.getElementById('file-input');
+        const clearBtn = document.getElementById('clear-btn');
+        const copyBtn = document.getElementById('copy-btn');
+
+        // Sample schema
+        const sampleSchema = `// PolyGen 스키마 예제
+import "common.poly";
+
+namespace game.character {
+
+    // 플레이어 테이블
+    @load(csv: "data/players.csv", json: "data/players.json")
+    @index(name)
+    @index(guild_id, level)
+    table Player {
+        id: u32 primary_key;
+        name: string max_length(100);
+        level: u16 default(1) range(1, 100);
+        email: string? unique;
+        class: PlayerClass;
+        stats: Stats;
+        skills: Skill[];
+    }
+
+    // 플레이어 클래스 열거형
+    enum PlayerClass {
+        Warrior = 1;  // 전사
+        Mage = 2;     // 마법사
+        Rogue = 3;    // 도적
+        Priest = 4;   // 사제
+    }
+
+    // 스탯 임베드
+    embed Stats {
+        hp: u32 default(100);
+        mp: u32 default(50);
+        attack: u32;
+        defense: u32;
+    }
+}`;
+
+        // Initialize with sample
+        input.value = sampleSchema;
+        render();
+
+        // Render on input
+        input.addEventListener('input', render);
+
+        function render() {
+            output.innerHTML = PolyRenderer.render(input.value);
+        }
+
+        // Theme toggle
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('light-theme');
+            themeToggle.textContent = document.body.classList.contains('light-theme') ? '🌙' : '☀️';
+        });
+
+        // File loading
+        loadFileBtn.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    input.value = e.target.result;
+                    render();
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // Drag and drop
+        input.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            input.classList.add('dragover');
+        });
+
+        input.addEventListener('dragleave', () => {
+            input.classList.remove('dragover');
+        });
+
+        input.addEventListener('drop', (e) => {
+            e.preventDefault();
+            input.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.poly')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    input.value = e.target.result;
+                    render();
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // Clear button
+        clearBtn.addEventListener('click', () => {
+            input.value = '';
+            render();
+        });
+
+        // Copy button
+        copyBtn.addEventListener('click', () => {
+            const html = output.innerHTML;
+            navigator.clipboard.writeText(html).then(() => {
+                copyBtn.textContent = '복사됨!';
+                setTimeout(() => copyBtn.textContent = 'HTML 복사', 1500);
+            });
+        });
+    </script>
+</body>
+</html>
