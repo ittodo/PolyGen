@@ -1,0 +1,19 @@
+# Unreal Engine Language Configuration for PolyGen
+# Generates USTRUCT/UENUM with Unreal Engine macros
+
+# File extension for generated Unreal header files
+extension = ".h"
+
+# Static files to copy to the output directory
+[static_files]
+
+# Template configuration
+[templates]
+# Main template for generating Unreal headers (USTRUCT/UENUM)
+main = "unreal_file.rhai"
+
+# Extra templates to run after the main template
+extra = [
+    # CSV/JSON loaders using Unreal's built-in systems
+    "unreal_loaders_file.rhai",
+]
