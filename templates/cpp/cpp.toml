@@ -1,0 +1,23 @@
+# C++ Language Configuration for PolyGen
+# This file configures the C++ code generation settings.
+
+# File extension for generated C++ header files
+extension = ".hpp"
+
+# Static files to copy to the output directory
+# Format: "destination/path.ext" = "source/path.ext"
+[static_files]
+"polygen_support.hpp" = "static/cpp/polygen_support.hpp"
+
+# Template configuration
+[templates]
+# Main template for generating C++ headers (Level 1: Basic)
+main = "cpp_file.rhai"
+
+# Extra templates to run after the main template
+extra = [
+    # Level 2: Data Loaders (JSON, CSV, Binary)
+    "cpp_loaders_file.rhai",
+    # Level 3: Container System (indexes, relations)
+    "cpp_container_file.rhai",
+]
