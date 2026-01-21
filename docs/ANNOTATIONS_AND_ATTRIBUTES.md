@@ -201,16 +201,94 @@ table Player {
 ```poly
 @index(name)                    // 단일 필드 인덱스
 @index(name, unique: true)      // 유니크 인덱스
-@index(guild_id, level)         // 복합 인덱스
+@index(guild_id, level)         // 복합 인덱스 (2개)
+@index(region, guild_id, level) // 복합 인덱스 (3개)
 table Player {
     id: u32 primary_key;
     name: string;
+    region: u8;
     guild_id: u32;
     level: u16;
 }
 ```
 
-### 3.2 자동 인덱스 생성
+### 3.2 타겟별 인덱스 지원 정책
+
+복합 인덱스는 메모리 오버헤드가 크므로, 타겟별로 지원 범위가 다릅니다:
+
+| 필드 수 | 인메모리 (C#/Rust) | Redis | DB (MySQL) |
+|:------:|:-----------------:|:-----:|:----------:|
+| 1개 | ✅ 인덱스 | ✅ 인덱스 | ✅ 인덱스 |
+| 2개 | ✅ 복합 인덱스 | ✅ 복합 키 | ✅ 인덱스 |
+| 3개+ | ⚠️ 2개 인덱스 + 필터 | ⚠️ 2개 + 필터 | ✅ 인덱스 |
+
+**메모리 오버헤드 예시:**
+```
+단일 인덱스: HashMap<guild_id, Vec<&Player>>
+- 길드 100개 → 엔트리 ~100개
+
+2필드 복합: HashMap<(guild_id, level), Vec<&Player>>
+- 길드 100개 × 레벨 100개 → 엔트리 최대 ~10,000개 (관리 가능)
+
+3필드 복합: HashMap<(region, guild_id, level), Vec<&Player>>
+- 지역 10개 × 길드 100개 × 레벨 100개 → 엔트리 최대 ~100,000개 (비효율)
+```
+
+### 3.3 생성 코드 예시
+
+**스키마:**
+```poly
+@index(guild_id)                    // 1개: 모든 타겟
+@index(guild_id, level)             // 2개: 모든 타겟
+@index(region, guild_id, level)     // 3개: DB만 인덱스, 나머진 필터
+table Player {
+    id: u32 primary_key;
+    region: u8;
+    guild_id: u32;
+    level: u16;
+}
+```
+
+**C# 생성 코드:**
+```csharp
+public class PlayerTable
+{
+    // 1개 필드 - 직접 인덱스
+    private Dictionary<uint, List<Player>> _byGuildId;
+
+    // 2개 필드 - 복합 인덱스 (튜플 키)
+    private Dictionary<(uint, ushort), List<Player>> _byGuildIdLevel;
+
+    // 3개 필드 - 인덱스 생성 안함 (DB에서만 사용)
+
+    // 조회 메서드
+    public IReadOnlyList<Player> ByGuildId(uint guildId)
+        => _byGuildId.TryGetValue(guildId, out var list) ? list : Empty;
+
+    public IReadOnlyList<Player> ByGuildIdLevel(uint guildId, ushort level)
+        => _byGuildIdLevel.TryGetValue((guildId, level), out var list) ? list : Empty;
+
+    // 3개 필드 - 2개 인덱스 + 필터로 대체
+    public IEnumerable<Player> ByRegionGuildIdLevel(byte region, uint guildId, ushort level)
+        => ByGuildIdLevel(guildId, level).Where(p => p.Region == region);
+}
+```
+
+**MySQL DDL:**
+```sql
+CREATE TABLE Player (
+    id INT UNSIGNED NOT NULL,
+    region TINYINT UNSIGNED NOT NULL,
+    guild_id INT UNSIGNED NOT NULL,
+    level SMALLINT UNSIGNED NOT NULL,
+    PRIMARY KEY (id),
+    INDEX idx_player_guild_id (guild_id),
+    INDEX idx_player_guild_id_level (guild_id, level),
+    INDEX idx_player_region_guild_id_level (region, guild_id, level)  -- DB는 3개도 OK
+);
+```
+
+### 3.4 자동 인덱스 생성
 
 다음 어트리뷰트는 자동으로 인덱스를 생성합니다:
 
@@ -228,17 +306,18 @@ table Item {
 }
 ```
 
-### 3.3 인덱스 이름 규칙
+### 3.5 인덱스 이름 규칙
 
 | 소스 | 생성되는 인덱스 이름 |
 |------|-------------------|
 | `@index(name)` | `ByName` |
 | `@index(guild_id, level)` | `ByGuildIdLevel` |
+| `@index(region, guild_id, level)` | `ByRegionGuildIdLevel` (DB만) |
 | `primary_key` on `id` | `ById` |
 | `unique` on `code` | `ByCode` |
 | `foreign_key` on `player_id` | `ByPlayerId` |
 
-### 3.4 기존 `index` 제약조건 제거
+### 3.6 기존 `index` 제약조건 제거
 
 **변경 전 (deprecated):**
 ```poly
@@ -259,6 +338,7 @@ table Player {
 - 복합 인덱스 지원 불가 문제 해결
 - 테이블 레벨에서 인덱스 관리 일원화
 - 어노테이션/어트리뷰트 역할 명확화
+- 타겟별 지원 정책 적용 가능
 
 ---
 
