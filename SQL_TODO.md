@@ -4,11 +4,90 @@
 
 ---
 
+## 목표
+
+**DB 캐시 전용 라이브러리 세트 생성**
+- 기존 DataSource 스타일 유지/확장
+- 여러 DB를 키-밸류로 연결
+- 정적 데이터 / 유저 데이터 / 캐시 통합 관리
+
+---
+
 ## 우선순위
 
 1. **SQLite** (먼저) - 단순, 테스트 쉬움, 임베디드/게임에 적합
 2. **MySQL/MariaDB** (나중) - SQLite 기반 확장
 3. **PostgreSQL** (옵션) - 필요시
+4. **Redis** (옵션) - 캐시 전용
+
+---
+
+## DataSource 아키텍처
+
+### @datasource 어노테이션
+
+```poly
+// 데이터소스 선언 (파일 상단)
+datasource main = mysql;
+datasource cache = redis;
+datasource static = sqlite;
+
+// namespace 단위 기본값 설정
+@datasource("main")
+namespace game {
+    table Player { ... }           // → main (상속)
+    table Guild { ... }            // → main (상속)
+
+    @datasource("static")
+    namespace data {
+        table ItemTable { ... }    // → static (상속)
+        table SkillTable { ... }   // → static (상속)
+
+        @datasource("cache")
+        table HotData { ... }      // → cache (오버라이드)
+    }
+
+    @datasource("cache")
+    table Session { ... }          // → cache (오버라이드)
+}
+```
+
+### 우선순위 규칙
+
+```
+테이블 직접 지정 > 가장 가까운 namespace > 상위 namespace > 기본값
+```
+
+### 생성되는 코드 (C# 예시)
+
+```csharp
+var data = new GameDataSource();
+
+// 키-밸류로 DB 연결
+data.Connect("static", "game_data.db");           // SQLite 파일
+data.Connect("main", "server=localhost;db=game"); // MySQL
+data.Connect("cache", "localhost:6379");          // Redis
+
+// 사용 (기존 DataSource 스타일)
+var item = data.ItemTables.GetById(1001);    // → static (SQLite)
+var player = data.Players.GetById(123);       // → main (MySQL)
+var session = data.Sessions.Get("token_xx");  // → cache (Redis)
+
+// 변경 후 저장
+player.Level = 50;
+data.SaveChanges();  // 각 DB에 맞게 저장
+```
+
+### DB별 지원 기능
+
+| 기능 | SQLite | MySQL | Redis |
+|------|--------|-------|-------|
+| DDL 생성 | ✅ | ✅ | ❌ |
+| 마이그레이션 | ✅ | ✅ | ❌ |
+| CRUD | ✅ | ✅ | ✅ (Key-Value) |
+| 트랜잭션 | ✅ | ✅ | MULTI/EXEC |
+| 캐시 전략 | 전체 로드 | 온디맨드 | 네이티브 |
+| TTL/만료 | 수동 | 수동 | 네이티브 |
 
 ---
 
