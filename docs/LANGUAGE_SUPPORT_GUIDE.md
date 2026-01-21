@@ -502,7 +502,20 @@ static/rust/
 
 ### Binary I/O 형식
 
-Rust에서 사용하는 바이너리 직렬화 형식:
+PolyGen의 바이너리 형식은 **모든 지원 언어에서 동일**합니다. C#에서 직렬화한 데이터를 Rust에서 읽을 수 있고, 그 반대도 가능합니다.
+
+#### 언어 간 호환성
+
+| 항목 | C# | Rust | 호환 |
+|------|-----|------|------|
+| 엔디안 | Little-endian | Little-endian | ✅ |
+| 정수형 | `BinaryReader.ReadUInt32()` | `read_u32()` (LE) | ✅ |
+| 문자열 | `[u32: len][UTF-8]` | `[u32: len][UTF-8]` | ✅ |
+| Optional | `[byte: 0/1][T]` | `[u8: 0/1][T]` | ✅ |
+| 배열 | `[u32: count][T...]` | `[u32: count][T...]` | ✅ |
+| Enum | `[i32: value]` | `[i32: value]` | ✅ |
+
+#### 직렬화 형식 상세
 
 ```
 타입               | 형식
