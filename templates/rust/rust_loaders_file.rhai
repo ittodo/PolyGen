@@ -10,6 +10,10 @@ fn csv_getter(f) {
 
     if t.is_option {
         if t.type_name == "string" { return "row.get_optional_string(\"" + n + "\")"; }
+        // Structs can't be parsed from CSV - use None
+        if t.is_struct { return "None"; }
+        // Enums need special handling
+        if t.is_enum { return "row.get_i32(\"" + n + "\").map(|v| unsafe { std::mem::transmute(v) }).ok()"; }
         return "row.get(\"" + n + "\").filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())";
     }
     if t.is_list {
@@ -17,6 +21,8 @@ fn csv_getter(f) {
         if t.is_struct { return "Default::default()"; }
         return "row.get(\"" + n + "\").map(|s| s.split(',').filter_map(|v| v.trim().parse().ok()).collect()).unwrap_or_default()";
     }
+    // Non-optional struct fields use default
+    if t.is_struct { return "Default::default()"; }
     if t.type_name == "string" { return "row.get_string(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "u32" { return "row.get_u32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "u16" { return "row.get_u16(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
