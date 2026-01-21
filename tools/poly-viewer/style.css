@@ -274,6 +274,181 @@ footer {
 .legend-item .sample.number { color: var(--syn-number); }
 .legend-item .sample.comment { color: var(--syn-comment); font-style: italic; }
 
+/* Tab buttons */
+.tab-buttons {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.tab-btn {
+    padding: 0.25rem 0.75rem;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    background-color: var(--bg-secondary);
+}
+
+.tab-btn.active {
+    background-color: var(--accent);
+    color: var(--bg-primary);
+    border-color: var(--accent);
+}
+
+/* Diagram output */
+.diagram-output {
+    flex: 1;
+    padding: 1rem;
+    background-color: var(--bg-panel);
+    overflow: auto;
+}
+
+.diagram-output svg {
+    width: 100%;
+    height: auto;
+    min-height: 400px;
+}
+
+/* Diagram legend */
+.rel-line {
+    font-weight: bold;
+}
+
+.rel-fk-sample { color: var(--syn-annotation); }
+.rel-many-sample { color: var(--syn-type); }
+.rel-one-sample { color: var(--syn-constraint); }
+
+/* SVG Diagram Styles */
+.poly-diagram {
+    --table-bg: var(--bg-secondary);
+    --table-header: var(--accent);
+    --table-border: var(--border-color);
+    --table-text: var(--text-primary);
+    --table-text-dim: var(--text-secondary);
+    --enum-header: var(--syn-keyword);
+    --arrow-color: var(--text-secondary);
+    --rel-fk-color: var(--syn-annotation);
+    --rel-many-color: var(--syn-type);
+    --rel-one-color: var(--syn-constraint);
+}
+
+/* Table styles */
+.table-bg {
+    fill: var(--table-bg);
+    stroke: var(--table-border);
+    stroke-width: 1;
+}
+
+.table-header {
+    fill: var(--table-header);
+}
+
+.table-header-bottom {
+    fill: var(--table-header);
+}
+
+.table-name {
+    fill: var(--bg-primary);
+    font-size: 14px;
+    font-weight: 600;
+    text-anchor: middle;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.table-divider {
+    stroke: var(--table-border);
+    stroke-width: 1;
+}
+
+.field-icon {
+    font-size: 12px;
+}
+
+.field-name {
+    fill: var(--syn-field-name);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.field-name.field-embedded {
+    fill: var(--text-secondary);
+    font-style: italic;
+}
+
+.field-type {
+    fill: var(--syn-type);
+    font-size: 11px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    text-anchor: end;
+}
+
+/* Enum styles */
+.enum-bg {
+    fill: var(--table-bg);
+    stroke: var(--table-border);
+    stroke-width: 1;
+}
+
+.enum-header {
+    fill: var(--enum-header);
+}
+
+.enum-header-bottom {
+    fill: var(--enum-header);
+}
+
+.enum-label {
+    fill: rgba(255,255,255,0.7);
+    font-size: 10px;
+    font-style: italic;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.enum-name {
+    fill: var(--bg-primary);
+    font-size: 14px;
+    font-weight: 600;
+    text-anchor: middle;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.enum-value {
+    fill: var(--table-text);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.enum-number {
+    fill: var(--syn-number);
+    font-size: 11px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    text-anchor: end;
+}
+
+/* Relationship lines */
+.relationship {
+    fill: none;
+    stroke-width: 2;
+}
+
+.rel-fk {
+    stroke: var(--rel-fk-color);
+}
+
+.rel-many {
+    stroke: var(--rel-many-color);
+}
+
+.rel-one {
+    stroke: var(--rel-one-color);
+}
+
 /* Responsive */
 @media (max-width: 900px) {
     main {

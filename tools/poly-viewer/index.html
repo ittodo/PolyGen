@@ -28,15 +28,19 @@
 
             <div class="preview-panel">
                 <div class="panel-header">
-                    <span>렌더링 결과</span>
-                    <button id="copy-btn" title="Copy HTML">HTML 복사</button>
+                    <div class="tab-buttons">
+                        <button id="tab-code" class="tab-btn active">코드</button>
+                        <button id="tab-diagram" class="tab-btn">다이어그램</button>
+                    </div>
+                    <button id="copy-btn" title="Copy">복사</button>
                 </div>
                 <div id="poly-output" class="code-output"></div>
+                <div id="diagram-output" class="diagram-output" style="display: none;"></div>
             </div>
         </main>
 
         <footer>
-            <div class="legend">
+            <div class="legend" id="code-legend">
                 <span class="legend-item"><span class="sample keyword">keyword</span> 키워드</span>
                 <span class="legend-item"><span class="sample type">type</span> 타입</span>
                 <span class="legend-item"><span class="sample annotation">@annotation</span> 어노테이션</span>
@@ -45,18 +49,34 @@
                 <span class="legend-item"><span class="sample number">123</span> 숫자</span>
                 <span class="legend-item"><span class="sample comment">// comment</span> 주석</span>
             </div>
+            <div class="legend" id="diagram-legend" style="display: none;">
+                <span class="legend-item">🔑 Primary Key</span>
+                <span class="legend-item">🔗 Foreign Key</span>
+                <span class="legend-item">📦 Embed (inline)</span>
+                <span class="legend-item"><span class="sample rel-line rel-fk-sample">―→</span> FK 관계</span>
+                <span class="legend-item"><span class="sample rel-line rel-many-sample">―⟫</span> 1:N 관계</span>
+                <span class="legend-item"><span class="sample rel-line rel-one-sample">―→</span> 1:1 참조</span>
+            </div>
         </footer>
     </div>
 
     <script src="poly-renderer.js"></script>
+    <script src="poly-diagram.js"></script>
     <script>
         const input = document.getElementById('poly-input');
-        const output = document.getElementById('poly-output');
+        const codeOutput = document.getElementById('poly-output');
+        const diagramOutput = document.getElementById('diagram-output');
         const themeToggle = document.getElementById('theme-toggle');
         const loadFileBtn = document.getElementById('load-file');
         const fileInput = document.getElementById('file-input');
         const clearBtn = document.getElementById('clear-btn');
         const copyBtn = document.getElementById('copy-btn');
+        const tabCode = document.getElementById('tab-code');
+        const tabDiagram = document.getElementById('tab-diagram');
+        const codeLegend = document.getElementById('code-legend');
+        const diagramLegend = document.getElementById('diagram-legend');
+
+        let currentTab = 'code';
 
         // Sample schema
         const sampleSchema = `// PolyGen 스키마 예제
@@ -65,7 +85,7 @@ import "common.poly";
 namespace game.character {
 
     // 플레이어 테이블
-    @load(csv: "data/players.csv", json: "data/players.json")
+    @load(csv: "data/players.csv")
     @index(name)
     @index(guild_id, level)
     table Player {
@@ -74,19 +94,37 @@ namespace game.character {
         level: u16 default(1) range(1, 100);
         email: string? unique;
         class: PlayerClass;
+        guild_id: u32 foreign_key(Guild.id);
         stats: Stats;
         skills: Skill[];
     }
 
-    // 플레이어 클래스 열거형
-    enum PlayerClass {
-        Warrior = 1;  // 전사
-        Mage = 2;     // 마법사
-        Rogue = 3;    // 도적
-        Priest = 4;   // 사제
+    // 길드 테이블
+    table Guild {
+        id: u32 primary_key;
+        name: string max_length(50);
+        leader_id: u32;
+        created_at: string;
     }
 
-    // 스탯 임베드
+    // 스킬 테이블
+    table Skill {
+        id: u32 primary_key;
+        player_id: u32 foreign_key(Player.id);
+        name: string;
+        level: u8 default(1);
+        damage: u32;
+    }
+
+    // 플레이어 클래스 열거형
+    enum PlayerClass {
+        Warrior = 1;
+        Mage = 2;
+        Rogue = 3;
+        Priest = 4;
+    }
+
+    // 스탯 임베드 (인라인 확장)
     embed Stats {
         hp: u32 default(100);
         mp: u32 default(50);
@@ -103,7 +141,34 @@ namespace game.character {
         input.addEventListener('input', render);
 
         function render() {
-            output.innerHTML = PolyRenderer.render(input.value);
+            // Always render both
+            codeOutput.innerHTML = PolyRenderer.render(input.value);
+            diagramOutput.innerHTML = PolyDiagram.render(input.value);
+        }
+
+        // Tab switching
+        tabCode.addEventListener('click', () => switchTab('code'));
+        tabDiagram.addEventListener('click', () => switchTab('diagram'));
+
+        function switchTab(tab) {
+            currentTab = tab;
+            if (tab === 'code') {
+                tabCode.classList.add('active');
+                tabDiagram.classList.remove('active');
+                codeOutput.style.display = 'block';
+                diagramOutput.style.display = 'none';
+                codeLegend.style.display = 'flex';
+                diagramLegend.style.display = 'none';
+                copyBtn.textContent = 'HTML 복사';
+            } else {
+                tabCode.classList.remove('active');
+                tabDiagram.classList.add('active');
+                codeOutput.style.display = 'none';
+                diagramOutput.style.display = 'block';
+                codeLegend.style.display = 'none';
+                diagramLegend.style.display = 'flex';
+                copyBtn.textContent = 'SVG 복사';
+            }
         }
 
         // Theme toggle
@@ -159,10 +224,11 @@ namespace game.character {
 
         // Copy button
         copyBtn.addEventListener('click', () => {
-            const html = output.innerHTML;
-            navigator.clipboard.writeText(html).then(() => {
+            const content = currentTab === 'code' ? codeOutput.innerHTML : diagramOutput.innerHTML;
+            navigator.clipboard.writeText(content).then(() => {
+                const originalText = copyBtn.textContent;
                 copyBtn.textContent = '복사됨!';
-                setTimeout(() => copyBtn.textContent = 'HTML 복사', 1500);
+                setTimeout(() => copyBtn.textContent = originalText, 1500);
             });
         });
     </script>
