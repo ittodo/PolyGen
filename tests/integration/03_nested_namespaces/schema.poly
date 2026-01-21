@@ -1,0 +1,41 @@
+// Test Case 03: Nested Namespaces
+// Tests deeply nested namespace structures
+
+namespace app {
+    namespace data {
+        namespace models {
+            /// Deeply nested table
+            table User {
+                id: u32 primary_key;
+                username: string;
+            }
+        }
+
+        namespace enums {
+            /// Enum in nested namespace
+            enum Permission {
+                Read = 1;
+                Write = 2;
+                Admin = 3;
+            }
+        }
+    }
+
+    namespace services {
+        /// Service using types from sibling namespaces
+        table UserService {
+            id: u32;
+            target_user_id: u32;  // references app.data.models.User
+            permission: app.data.enums.Permission;
+        }
+    }
+}
+
+// Separate top-level namespace
+namespace util {
+    /// Helper table in different namespace
+    table Config {
+        key: string primary_key;
+        value: string;
+    }
+}

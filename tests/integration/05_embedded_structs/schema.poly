@@ -1,0 +1,60 @@
+// Test Case 05: Embedded Structs
+// Tests embed definitions and nested embeds
+
+namespace test.embed {
+    /// Reusable address embed
+    embed Address {
+        street: string;
+        city: string;
+        country: string;
+        postal_code: string;
+    }
+
+    /// Reusable contact info
+    embed ContactInfo {
+        email: string;
+        phone: string?;
+    }
+
+    /// Company with embedded types
+    table Company {
+        id: u32 primary_key;
+        name: string;
+        address: Address;
+        contact: ContactInfo;
+    }
+
+    /// Person with inline embedded struct
+    table Person {
+        id: u32 primary_key;
+        name: string;
+
+        /// Inline embed for personal details
+        embed Details {
+            birth_date: string;
+            nationality: string;
+        }
+        details: Details;
+
+        home_address: Address;
+        work_address: Address?;  // optional embedded
+    }
+
+    /// Nested embed example
+    table Product {
+        id: u32 primary_key;
+        name: string;
+
+        /// Dimensions embed with nested measurement
+        embed Dimensions {
+            embed Measurement {
+                value: f32;
+                unit: string;
+            }
+            width: Measurement;
+            height: Measurement;
+            depth: Measurement;
+        }
+        size: Dimensions;
+    }
+}

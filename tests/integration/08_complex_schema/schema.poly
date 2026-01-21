@@ -1,0 +1,238 @@
+// Test Case 08: Complex Schema
+// Comprehensive test combining all features
+
+namespace game {
+    namespace common {
+        /// 2D position
+        embed Vec2 {
+            x: f32;
+            y: f32;
+        }
+
+        /// 3D position
+        embed Vec3 {
+            x: f32;
+            y: f32;
+            z: f32;
+        }
+
+        /// RGBA color
+        embed Color {
+            r: u8;
+            g: u8;
+            b: u8;
+            a: u8;
+        }
+
+        /// Element type for damage/resistance
+        enum Element {
+            Physical = 0;
+            Fire = 1;
+            Ice = 2;
+            Lightning = 3;
+            Poison = 4;
+            Holy = 5;
+            Dark = 6;
+        }
+    }
+
+    namespace character {
+        /// Character stats block
+        embed Stats {
+            hp: u32;
+            max_hp: u32;
+            mp: u32;
+            max_mp: u32;
+            strength: u16;
+            agility: u16;
+            intelligence: u16;
+            vitality: u16;
+        }
+
+        /// Equipment slot type
+        enum EquipSlot {
+            Head = 0;
+            Body = 1;
+            Hands = 2;
+            Legs = 3;
+            Feet = 4;
+            MainHand = 5;
+            OffHand = 6;
+            Accessory1 = 7;
+            Accessory2 = 8;
+        }
+
+        /// Player character
+        @load(csv: "players.csv", json: "players.json")
+        @taggable
+        table Player {
+            id: u32 primary_key;
+            name: string unique max_length(32);
+            level: u16 default(1) range(1, 100);
+            experience: u64 default(0);
+            stats: Stats;
+            position: game.common.Vec3;
+
+            enum Status {
+                Online = 0;
+                Offline = 1;
+                Away = 2;
+                InBattle = 3;
+            }
+            status: Status;
+
+            guild_id: u32?;  // optional guild membership
+        }
+
+        /// NPC definition
+        @load(csv: "npcs.csv")
+        table NPC {
+            id: u32 primary_key;
+            name: string;
+            title: string?;
+            stats: Stats;
+            spawn_position: game.common.Vec3;
+
+            enum AIType {
+                Passive = 0;
+                Aggressive = 1;
+                Neutral = 2;
+                Friendly = 3;
+            }
+            ai_type: AIType;
+
+            embed DialogOption {
+                text: string;
+                next_dialog_id: u32?;
+            }
+            dialog_options: DialogOption[];
+        }
+    }
+
+    namespace item {
+        /// Item rarity
+        enum Rarity {
+            Common = 0;
+            Uncommon = 1;
+            Rare = 2;
+            Epic = 3;
+            Legendary = 4;
+        }
+
+        /// Base item definition
+        @load(csv: "items.csv", json: "items.json")
+        table Item {
+            id: u32 primary_key;
+            name: string unique;
+            description: string?;
+            rarity: Rarity;
+            sell_price: u32 default(0);
+            max_stack: u16 default(1);
+            icon: string;
+
+            enum ItemType {
+                Weapon = 0;
+                Armor = 1;
+                Consumable = 2;
+                Material = 3;
+                Quest = 4;
+            }
+            item_type: ItemType;
+        }
+
+        /// Weapon-specific data
+        @load(csv: "weapons.csv")
+        table Weapon {
+            item_id: u32 primary_key foreign_key(Item.id);
+            damage_min: u32;
+            damage_max: u32;
+            attack_speed: f32;
+            element: game.common.Element;
+            equip_slot: game.character.EquipSlot;
+
+            embed BonusStat {
+                stat_name: string;
+                value: i32;
+            }
+            bonus_stats: BonusStat[];
+        }
+
+        /// Armor-specific data
+        @load(csv: "armors.csv")
+        table Armor {
+            item_id: u32 primary_key foreign_key(Item.id);
+            defense: u32;
+            magic_defense: u32;
+            equip_slot: game.character.EquipSlot;
+
+            embed Resistance {
+                element: game.common.Element;
+                value: i32;  // can be negative for weakness
+            }
+            resistances: Resistance[];
+        }
+    }
+
+    namespace inventory {
+        /// Player inventory slot
+        @load(csv: "inventory.csv")
+        table InventorySlot {
+            id: u32 primary_key;
+            player_id: u32 foreign_key(game.character.Player.id);
+            item_id: u32 foreign_key(game.item.Item.id);
+            slot_index: u16;
+            quantity: u16 default(1);
+
+            embed Enhancement {
+                level: u8;
+                bonus_value: i32;
+            }
+            enhancement: Enhancement?;
+        }
+
+        /// Equipment currently worn
+        @load(csv: "equipment.csv")
+        table Equipment {
+            player_id: u32 foreign_key(game.character.Player.id);
+            slot: game.character.EquipSlot;
+            item_id: u32 foreign_key(game.item.Item.id);
+        }
+    }
+
+    namespace social {
+        /// Guild definition
+        @load(csv: "guilds.csv")
+        table Guild {
+            id: u32 primary_key;
+            name: string unique max_length(24);
+            tag: string max_length(4);
+            leader_id: u32 foreign_key(game.character.Player.id);
+            level: u16 default(1);
+            emblem_color: game.common.Color;
+            created_at: u64;
+        }
+
+        /// Guild membership
+        @load(csv: "guild_members.csv")
+        table GuildMember {
+            guild_id: u32 foreign_key(Guild.id);
+            player_id: u32 foreign_key(game.character.Player.id);
+
+            enum Rank {
+                Member = 0;
+                Officer = 1;
+                ViceLeader = 2;
+                Leader = 3;
+            }
+            rank: Rank;
+            joined_at: u64;
+        }
+
+        /// Friend relationship
+        table Friendship {
+            player_a_id: u32 foreign_key(game.character.Player.id);
+            player_b_id: u32 foreign_key(game.character.Player.id);
+            since: u64;
+        }
+    }
+}

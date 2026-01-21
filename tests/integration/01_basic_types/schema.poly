@@ -1,0 +1,33 @@
+// Test Case 01: Basic Types
+// Tests all primitive types and simple struct generation
+
+namespace test.basic {
+    /// Tests all supported primitive types
+    table AllTypes {
+        // Integer types
+        val_u8: u8;
+        val_u16: u16;
+        val_u32: u32 primary_key;
+        val_u64: u64;
+        val_i8: i8;
+        val_i16: i16;
+        val_i32: i32;
+        val_i64: i64;
+
+        // Float types
+        val_f32: f32;
+        val_f64: f64;
+
+        // Other types
+        val_bool: bool;
+        val_string: string;
+        val_bytes: bytes;
+    }
+
+    /// Simple struct with common field patterns
+    table SimpleStruct {
+        id: u32 primary_key;
+        name: string;
+        value: i32;
+    }
+}
