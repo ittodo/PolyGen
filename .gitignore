@@ -15,3 +15,8 @@ dist/**/*.nuget*/
 dist/**/*.csproj.FileListAbsolute.txt
 dist/**/*.genruntimeconfig.cache
 *.vsidx
+
+# TypeScript test runner
+tests/runners/typescript/node_modules/
+tests/runners/typescript/generated/
+tests/runners/typescript/package-lock.json
