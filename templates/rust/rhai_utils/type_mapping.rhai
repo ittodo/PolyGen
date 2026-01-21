@@ -32,8 +32,116 @@ fn is_primitive_name(type_name) {
     }
 }
 
+/// Convert namespace FQN to Rust module name
+/// "game.common" -> "game_common"
+fn ns_to_module_name(ns_fqn) {
+    let result = ns_fqn;
+    result.replace(".", "_");
+    to_snake_case(result)
+}
+
+/// Get parent namespace from FQN
+/// "game.character" -> "game"
+/// "game" -> ""
+fn get_parent_ns(ns_fqn) {
+    let last_dot = -1;
+    for i in 0..ns_fqn.len() {
+        if ns_fqn[i] == '.' {
+            last_dot = i;
+        }
+    }
+    if last_dot < 0 {
+        return "";
+    }
+    ns_fqn.sub_string(0, last_dot)
+}
+
+/// Build namespace FQN from parts array up to index (exclusive)
+/// ["app", "data", "enums"], index=2 -> "app.data"
+fn build_ns_fqn(parts, end_index) {
+    let result = "";
+    for i in 0..end_index {
+        if i > 0 {
+            result += ".";
+        }
+        result += parts[i];
+    }
+    result
+}
+
+/// Compute relative module path from current_ns to ref_ns
+/// Both are namespace FQNs like "game.character" and "game.common"
+fn compute_relative_path(current_ns, ref_ns) {
+    // Get parents
+    let current_parent = get_parent_ns(current_ns);
+    let ref_parent = get_parent_ns(ref_ns);
+
+    // If both have the same parent, they're siblings
+    // Use super::<ref_mod>::
+    if current_parent == ref_parent && current_parent != "" {
+        return "super::" + ns_to_module_name(ref_ns) + "::";
+    }
+
+    // If ref_ns is the parent of current_ns
+    // e.g., current = "game.character.skills", ref = "game.character"
+    if current_ns.starts_with(ref_ns + ".") {
+        let depth = current_ns.split(".").len - ref_ns.split(".").len;
+        let path = "";
+        for i in 0..depth {
+            path += "super::";
+        }
+        return path;
+    }
+
+    // If current_ns is parent of ref_ns (ref is a child namespace)
+    // e.g., current = "game", ref = "game.common"
+    if ref_ns.starts_with(current_ns + ".") {
+        // Navigate down to the child module - build path one level at a time
+        let ref_parts = ref_ns.split(".");
+        let current_depth = current_ns.split(".").len;
+        let path = "";
+        for i in current_depth..ref_parts.len {
+            let level_ns = build_ns_fqn(ref_parts, i + 1);
+            path += ns_to_module_name(level_ns) + "::";
+        }
+        return path;
+    }
+
+    // General case: find common ancestor and compute path
+    let current_parts = current_ns.split(".");
+    let ref_parts = ref_ns.split(".");
+
+    // Find common prefix length
+    let common_len = 0;
+    let min_len = if current_parts.len < ref_parts.len { current_parts.len } else { ref_parts.len };
+    for i in 0..min_len {
+        if current_parts[i] == ref_parts[i] {
+            common_len = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    // Calculate number of super:: needed to reach common ancestor
+    let supers_needed = current_parts.len - common_len;
+
+    // Build the path with super::
+    let path = "";
+    for i in 0..supers_needed {
+        path += "super::";
+    }
+
+    // Navigate down from common ancestor to target, one level at a time
+    for i in common_len..ref_parts.len {
+        let level_ns = build_ns_fqn(ref_parts, i + 1);
+        path += ns_to_module_name(level_ns) + "::";
+    }
+
+    return path;
+}
+
 /// Map a TypeRef to its Rust type string
-/// current_ns: the current namespace FQN (e.g., "game.item")
+/// current_ns: the current namespace FQN (e.g., "game.character")
 fn map_type_with_ns(type_ref, current_ns) {
     let base_type = "";
 
@@ -52,20 +160,8 @@ fn map_type_with_ns(type_ref, current_ns) {
             // So just use the type name directly
             base_type = type_ref.type_name;
         } else {
-            // Different namespace - need to determine which file contains it
-            // Convert namespace to module path
-            let ns_path = ref_ns;
-            ns_path.replace(".", "_");
-
-            // Heuristic: check if it's likely from common_types file
-            // Namespaces containing "common" are assumed to be in common_types.rs
-            // This is a workaround - proper solution needs namespace-to-file mapping in IR
-            if ref_ns.starts_with("game.common") {
-                base_type = "crate::common_types::" + ns_path + "::" + type_ref.type_name;
-            } else {
-                // Assume it's in the same file but different namespace module
-                base_type = "super::" + ns_path + "::" + type_ref.type_name;
-            }
+            // Different namespace - compute relative module path
+            base_type = compute_relative_path(current_ns, ref_ns) + type_ref.type_name;
         }
     }
 
