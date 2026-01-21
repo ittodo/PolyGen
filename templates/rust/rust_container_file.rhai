@@ -241,11 +241,21 @@ for file in schema.files {
                     }
                 }
 
-                let rel_path = rel.source_table_fqn;
-                rel_path.replace(".", "_");
+                // Extract namespace from FQN: "game.junction.PlayerSkill" -> "game.junction"
+                // Then convert to module path: "game.junction" -> "game_junction"
+                let fqn = rel.source_table_fqn;
+                let type_suffix = "." + rel.source_table_name;
+                let ns_fqn = fqn;
+                // Remove the type name suffix to get just namespace
+                if fqn.ends_with(type_suffix) {
+                    ns_fqn = fqn.sub_string(0, fqn.len() - type_suffix.len());
+                }
+                let rel_ns_path = ns_fqn;
+                rel_ns_path.replace(".", "_");
+
                 c += "        /// Get related " + rel.name + "\n";
                 c += "        pub fn " + method_name + "<'a>(&self, container: &'a " + container_name + ") -> Vec<&'a super::";
-                c += rel_path + "::" + rel.source_table_name + "> {\n";
+                c += rel_ns_path + "::" + rel.source_table_name + "> {\n";
                 c += "            container." + source_table + ".get_by_" + source_field + "(self." + pk_field + ")\n";
                 c += "        }\n\n";
             }
