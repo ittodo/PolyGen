@@ -3,6 +3,20 @@
 
 import "templates/unreal/rhai_utils/type_mapping" as ue_types;
 
+// Check if type name looks like an enum
+fn is_likely_enum(type_name) {
+    if type_name == "Element" || type_name == "Status" || type_name == "ItemType" ||
+       type_name == "PlayerClass" || type_name == "Status__Enum" {
+        return true;
+    }
+    if type_name.contains("Type") || type_name.contains("Status") ||
+       type_name.contains("Kind") || type_name.contains("Mode") ||
+       type_name.contains("State") {
+        return true;
+    }
+    return false;
+}
+
 // Generate CSV parsing helper for a field type
 fn csv_parse_expr(type_ref, column_expr) {
     let n = type_ref.type_name;
@@ -18,9 +32,10 @@ fn csv_parse_expr(type_ref, column_expr) {
         return "FCString::Atof(*" + column_expr + ")";
     }
 
-    // For enums, parse as int and cast
-    if type_ref.is_enum {
-        let enum_name = ue_types::get_enum_name(type_ref.type_name);
+    // For enums, parse as int and cast (check is_enum flag OR common patterns)
+    if type_ref.is_enum || is_likely_enum(n) {
+        // Add E prefix for Unreal enum naming
+        let enum_name = "E" + n;
         return "static_cast<" + enum_name + ">(FCString::Atoi(*" + column_expr + "))";
     }
 
