@@ -491,4 +491,121 @@ table Player {
 
 ---
 
+## 8. 검토 중 (Draft)
+
+> 아래 기능들은 실제 프로젝트 적용 후 문법을 확정할 예정입니다.
+
+### 8.1 Output 카테고리 시스템
+
+테이블의 데이터 소스와 직렬화 방식을 카테고리로 관리하는 방안입니다.
+
+**목표:**
+- 데이터 모델과 배포 설정 분리
+- 테이블마다 서버/클라이언트 데이터 소스 지정
+- 네임스페이스 레벨 기본값 + 테이블 오버라이드
+
+**문법 초안:**
+```poly
+// 1. 카테고리 정의 (프로젝트당 한번)
+output static_data {
+    server: binary("data/static.bin");
+    client: binary("data/static.bin");
+}
+
+output db_only {
+    server: mysql("main");
+    client: none;
+}
+
+output synced {
+    server: mysql("main");
+    client: json;  // 서버에서 수신
+}
+
+// 2. 네임스페이스 레벨 기본값
+@output(static_data)
+namespace game.data {
+
+    // 상속받음
+    table Item {
+        id: u32 primary_key;
+        name: string;
+    }
+
+    // 오버라이드
+    @output(db_only)
+    table Player { ... }
+}
+```
+
+**일반적인 카테고리 패턴:**
+
+| 카테고리 | 서버 | 클라이언트 | 용도 |
+|---------|------|-----------|------|
+| `static_data` | 바이너리 | 바이너리 | 아이템, 스킬 정의 |
+| `db_only` | DB | 없음 | 플레이어, 인벤토리 |
+| `synced` | DB | 서버에서 수신 | 내 캐릭터 정보 |
+| `log` | DB (쓰기) | 없음 | 로그, 통계 |
+
+### 8.2 필드 레벨 타겟 분기
+
+같은 테이블인데 서버/클라이언트에서 필드가 약간 다른 경우를 처리하는 방안입니다.
+
+**문법 후보 1: 단순 태그**
+```poly
+table Item {
+    id: u32 primary_key;
+    name: string;              // 공통
+
+    @server drop_rate: f32;    // 서버만
+    @client sprite_id: u32;    // 클라만
+}
+```
+
+**문법 후보 2: 조건부 블록**
+```poly
+table Item {
+    id: u32 primary_key;
+    name: string;
+
+    #server {
+        drop_rate: f32;
+        spawn_weight: u32;
+    }
+
+    #client {
+        sprite_id: u32;
+        sound_id: u32;
+    }
+}
+```
+
+**문법 후보 3: Embed 확장**
+```poly
+embed ServerItemData {
+    drop_rate: f32;
+    spawn_weight: u32;
+}
+
+embed ClientItemData {
+    sprite_id: u32;
+}
+
+table Item {
+    id: u32 primary_key;
+    name: string;
+
+    @server ...ServerItemData;
+    @client ...ClientItemData;
+}
+```
+
+### 8.3 결정 보류 사유
+
+- 실제 게임 프로젝트에서 사용 패턴 확인 필요
+- 클라/서버 분기가 얼마나 자주 발생하는지 측정 필요
+- 문법 복잡도 vs 실용성 트레이드오프 검증 필요
+
+---
+
 *최종 업데이트: 2026-01-21*
