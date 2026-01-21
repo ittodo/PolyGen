@@ -11,7 +11,7 @@
 ### 핵심 개념
 
 - **입력**: `.poly` 스키마 파일 (선언적 데이터 모델 정의)
-- **출력**: 타겟 언어 코드 (C#, C++, Rust 지원, TypeScript/MySQL 확장 예정)
+- **출력**: 타겟 언어 코드 (C#, C++, Rust, TypeScript 지원, MySQL 확장 예정)
 - **목적**: 데이터 모델을 한 번 정의하고 모든 플랫폼에서 일관된 코드 생성
 
 ---
@@ -87,6 +87,11 @@ PolyGen/
 │   │   ├── rust_file.rhai    # 메인 모듈 생성
 │   │   ├── rust_loaders_file.rhai  # CSV 로더
 │   │   └── rhai_utils/       # 유틸리티 스크립트
+│   ├── typescript/           # TypeScript 템플릿
+│   │   ├── typescript.toml   # 언어 설정
+│   │   ├── typescript_file.rhai  # 인터페이스 생성
+│   │   ├── typescript_zod_file.rhai  # Zod 스키마 생성
+│   │   └── rhai_utils/       # 유틸리티 스크립트
 │   └── mysql/                # MySQL 템플릿
 │
 ├── static/                   # 런타임 정적 파일
@@ -114,7 +119,8 @@ PolyGen/
 │   └── runners/              # 언어별 테스트 러너
 │       ├── cpp/              # C++ 테스트 (CMake)
 │       ├── csharp/           # C# 테스트 (.NET)
-│       └── rust/             # Rust 테스트 (Cargo)
+│       ├── rust/             # Rust 테스트 (Cargo)
+│       └── typescript/       # TypeScript 테스트 (npm/tsc)
 │
 ├── examples/                 # 예제 스키마
 │   └── game_schema.poly      # 게임 데이터 예제
@@ -342,6 +348,9 @@ cd tests/runners/csharp && dotnet test
 
 # Rust 테스트 실행
 cd tests/runners/rust && cargo test
+
+# TypeScript 테스트 실행
+cd tests/runners/typescript && ./run_tests.sh
 ```
 
 | 테스트 케이스 | 검증 내용 |
@@ -420,7 +429,7 @@ cd tests/runners/rust && cargo test
 | C++ | ✅ 완료 | 헤더 전용, 구조체, Enum, CSV/JSON/Binary 로더 |
 | Rust | ✅ 완료 | 모듈, Struct, Enum, CSV/Binary 로더 |
 | MySQL | 🚧 진행중 | DDL 스크립트 생성 |
-| TypeScript | 📋 계획됨 | - |
+| TypeScript | ✅ 완료 | 인터페이스, Enum, Zod 스키마 검증 |
 
 ---
 
