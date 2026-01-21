@@ -81,17 +81,51 @@ pub struct StructDef {
     pub relations: Vec<RelationDef>,
 }
 
-/// Index definition for a struct field.
+/// Index definition for a struct.
+///
+/// Supports both single-field and composite indexes.
 #[derive(Serialize, Debug, Clone)]
 pub struct IndexDef {
-    /// Index name (e.g., "ById", "ByName", "ByPlayerId").
+    /// Index name (e.g., "ById", "ByNameLevel", "ByPlayerId").
     pub name: String,
-    /// The field name this index is on.
-    pub field_name: String,
-    /// The field type (for generic type parameter).
-    pub field_type: TypeRef,
+    /// Fields that make up this index (1 for single, 2+ for composite).
+    pub fields: Vec<IndexFieldDef>,
     /// Whether this is a unique index (single result) or group index (list result).
     pub is_unique: bool,
+    /// Source of this index: "constraint" (from primary_key/unique/index/foreign_key)
+    /// or "annotation" (from @index).
+    pub source: String,
+}
+
+impl IndexDef {
+    /// Returns the first field name (for single-field index compatibility).
+    pub fn field_name(&self) -> &str {
+        self.fields.first().map(|f| f.name.as_str()).unwrap_or("")
+    }
+
+    /// Returns the first field type (for single-field index compatibility).
+    pub fn field_type(&self) -> Option<&TypeRef> {
+        self.fields.first().map(|f| &f.field_type)
+    }
+
+    /// Returns true if this is a composite index (2+ fields).
+    pub fn is_composite(&self) -> bool {
+        self.fields.len() > 1
+    }
+
+    /// Returns the number of fields in this index.
+    pub fn field_count(&self) -> usize {
+        self.fields.len()
+    }
+}
+
+/// A field within an index definition.
+#[derive(Serialize, Debug, Clone)]
+pub struct IndexFieldDef {
+    /// The field name.
+    pub name: String,
+    /// The field type.
+    pub field_type: TypeRef,
 }
 
 /// Reverse relation definition (created from foreign_key ... as).
@@ -187,11 +221,18 @@ pub struct TypeRef {
 }
 
 /// An annotation definition for templates.
+///
+/// Supports both positional arguments and named parameters:
+/// - `@index(name, level)` → positional_args: ["name", "level"]
+/// - `@load(csv: "data.csv")` → params: [{key: "csv", value: "data.csv"}]
+/// - `@index(name, unique: true)` → both populated
 #[derive(Serialize, Debug, Clone)]
 pub struct AnnotationDef {
     /// The annotation name.
     pub name: String,
-    /// Key-value parameters.
+    /// Positional arguments (values only, as strings).
+    pub positional_args: Vec<String>,
+    /// Named parameters (key-value pairs).
     pub params: Vec<AnnotationParam>,
 }
 

@@ -89,8 +89,13 @@ foreign_key_val = { "foreign_key" ~ "(" ~ path ~ ")" ~ ("as" ~ IDENT)? }
 
 // Annotations
 // ===========
-annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_params_list? ~ ")")? }
-annotation_params_list = { annotation_param ~ ("," ~ annotation_param)* }
+// Annotations support both positional arguments and key-value parameters:
+//   @load(csv: "data.csv")           - key-value only
+//   @index(name, level)              - positional only (field names)
+//   @index(name, level, unique: true) - mixed
+annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_args_list? ~ ")")? }
+annotation_args_list   = { annotation_arg ~ ("," ~ annotation_arg)* }
+annotation_arg         = { annotation_param | literal }
 annotation_param       = { IDENT ~ ":" ~ literal }
 
 // Literals

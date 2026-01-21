@@ -37,7 +37,7 @@
 //! 이를 통해 Rhai 템플릿에서 스키마 구조를 검사하고 순회할 수 있습니다.
 
 use crate::ir_model::{
-    AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
+    self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
     ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RelationDef, SchemaContext, StructDef,
     StructItem, TypeRef,
 };
@@ -187,9 +187,44 @@ fn register_types_and_getters(engine: &mut Engine) {
     // Register IndexDef type and getters
     engine.register_type_with_name::<IndexDef>("IndexDef");
     engine.register_get("name", |idx: &mut IndexDef| idx.name.clone());
-    engine.register_get("field_name", |idx: &mut IndexDef| idx.field_name.clone());
-    engine.register_get("field_type", |idx: &mut IndexDef| idx.field_type.clone());
+    // Backward compatible: first field name/type for single-field indexes
+    engine.register_get("field_name", |idx: &mut IndexDef| {
+        idx.field_name().to_string()
+    });
+    engine.register_get("field_type", |idx: &mut IndexDef| {
+        idx.field_type().cloned().unwrap_or_else(|| TypeRef {
+            original: String::new(),
+            fqn: String::new(),
+            namespace_fqn: String::new(),
+            type_name: String::new(),
+            parent_type_path: String::new(),
+            lang_type: String::new(),
+            is_primitive: false,
+            is_struct: false,
+            is_enum: false,
+            is_option: false,
+            is_list: false,
+            inner_type: None,
+        })
+    });
     engine.register_get("is_unique", |idx: &mut IndexDef| idx.is_unique);
+    // New composite index support
+    engine.register_get("fields", |idx: &mut IndexDef| {
+        idx.fields
+            .iter()
+            .map(|f| Dynamic::from(f.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
+    engine.register_get("is_composite", |idx: &mut IndexDef| idx.is_composite());
+    engine.register_get("field_count", |idx: &mut IndexDef| idx.field_count() as i64);
+    engine.register_get("source", |idx: &mut IndexDef| idx.source.clone());
+
+    // Register IndexFieldDef type and getters
+    engine.register_type_with_name::<ir_model::IndexFieldDef>("IndexFieldDef");
+    engine.register_get("name", |f: &mut ir_model::IndexFieldDef| f.name.clone());
+    engine.register_get("field_type", |f: &mut ir_model::IndexFieldDef| {
+        f.field_type.clone()
+    });
 
     // Register RelationDef type and getters
     engine.register_type_with_name::<RelationDef>("RelationDef");
@@ -393,6 +428,12 @@ fn register_types_and_getters(engine: &mut Engine) {
 
     engine.register_type_with_name::<AnnotationDef>("AnnotationDef");
     engine.register_get("name", |a: &mut AnnotationDef| a.name.clone());
+    engine.register_get("positional_args", |a: &mut AnnotationDef| {
+        a.positional_args
+            .iter()
+            .map(|s| Dynamic::from(s.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
     engine.register_get("params", |a: &mut AnnotationDef| {
         a.params
             .iter()

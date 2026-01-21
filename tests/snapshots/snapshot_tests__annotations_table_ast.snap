@@ -15,19 +15,23 @@ expression: all_asts
                                 name: Some(
                                     "load",
                                 ),
-                                params: [
-                                    AnnotationParam {
-                                        key: "type",
-                                        value: String(
-                                            "DB",
-                                        ),
-                                    },
-                                    AnnotationParam {
-                                        key: "path",
-                                        value: String(
-                                            "Users",
-                                        ),
-                                    },
+                                args: [
+                                    Named(
+                                        AnnotationParam {
+                                            key: "type",
+                                            value: String(
+                                                "DB",
+                                            ),
+                                        },
+                                    ),
+                                    Named(
+                                        AnnotationParam {
+                                            key: "path",
+                                            value: String(
+                                                "Users",
+                                            ),
+                                        },
+                                    ),
                                 ],
                             },
                         ),
@@ -36,7 +40,7 @@ expression: all_asts
                                 name: Some(
                                     "taggable",
                                 ),
-                                params: [],
+                                args: [],
                             },
                         ),
                     ],

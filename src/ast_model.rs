@@ -113,15 +113,27 @@ pub enum Metadata {
     Annotation(Annotation),
 }
 
-/// An annotation with optional parameters.
+/// An annotation with optional arguments.
 ///
-/// Example: `@deprecated(reason = "Use NewType instead")`
+/// Supports both positional arguments and key-value parameters:
+/// - `@load(csv: "data.csv")` - key-value only
+/// - `@index(name, level)` - positional only
+/// - `@index(name, level, unique: true)` - mixed
 #[derive(Debug, PartialEq, Clone)]
 pub struct Annotation {
     /// The annotation name.
     pub name: Option<String>,
-    /// Key-value parameters.
-    pub params: Vec<AnnotationParam>,
+    /// Arguments (positional or named).
+    pub args: Vec<AnnotationArg>,
+}
+
+/// An argument in an annotation (either positional or named).
+#[derive(Debug, PartialEq, Clone)]
+pub enum AnnotationArg {
+    /// A positional argument (just a value).
+    Positional(Literal),
+    /// A named/keyed argument (key: value).
+    Named(AnnotationParam),
 }
 
 /// A key-value parameter in an annotation.

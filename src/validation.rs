@@ -580,7 +580,7 @@ mod tests {
         let definitions = vec![
             Definition::Annotation(Annotation {
                 name: Some("deprecated".to_string()),
-                params: vec![],
+                args: vec![],
             }),
             make_table("User", vec![]),
         ];

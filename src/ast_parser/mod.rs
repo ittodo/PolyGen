@@ -411,7 +411,7 @@ mod tests {
             assert_eq!(table.metadata.len(), 1);
             if let Metadata::Annotation(ann) = &table.metadata[0] {
                 assert_eq!(ann.name, Some("deprecated".to_string()));
-                assert!(ann.params.is_empty());
+                assert!(ann.args.is_empty());
             } else {
                 panic!("Expected Annotation metadata");
             }
@@ -433,9 +433,82 @@ mod tests {
         if let Definition::Table(table) = &ast.definitions[0] {
             if let Metadata::Annotation(ann) = &table.metadata[0] {
                 assert_eq!(ann.name, Some("csv".to_string()));
-                assert_eq!(ann.params.len(), 2);
-                assert_eq!(ann.params[0].key, "name");
-                assert_eq!(ann.params[1].key, "delimiter");
+                assert_eq!(ann.args.len(), 2);
+                // Both should be Named args
+                if let AnnotationArg::Named(p) = &ann.args[0] {
+                    assert_eq!(p.key, "name");
+                } else {
+                    panic!("Expected Named argument");
+                }
+                if let AnnotationArg::Named(p) = &ann.args[1] {
+                    assert_eq!(p.key, "delimiter");
+                } else {
+                    panic!("Expected Named argument");
+                }
+            } else {
+                panic!("Expected Annotation metadata");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_annotation_with_positional_args() {
+        let ast = parse_schema(
+            r#"
+            @index(name, level)
+            table User {}
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let Metadata::Annotation(ann) = &table.metadata[0] {
+                assert_eq!(ann.name, Some("index".to_string()));
+                assert_eq!(ann.args.len(), 2);
+                // Both should be Positional args
+                if let AnnotationArg::Positional(lit) = &ann.args[0] {
+                    assert_eq!(lit.to_string(), "name");
+                } else {
+                    panic!("Expected Positional argument");
+                }
+                if let AnnotationArg::Positional(lit) = &ann.args[1] {
+                    assert_eq!(lit.to_string(), "level");
+                } else {
+                    panic!("Expected Positional argument");
+                }
+            } else {
+                panic!("Expected Annotation metadata");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_annotation_with_mixed_args() {
+        let ast = parse_schema(
+            r#"
+            @index(name, level, unique: true)
+            table User {}
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let Metadata::Annotation(ann) = &table.metadata[0] {
+                assert_eq!(ann.name, Some("index".to_string()));
+                assert_eq!(ann.args.len(), 3);
+                // First two are Positional
+                assert!(matches!(&ann.args[0], AnnotationArg::Positional(_)));
+                assert!(matches!(&ann.args[1], AnnotationArg::Positional(_)));
+                // Third is Named
+                if let AnnotationArg::Named(p) = &ann.args[2] {
+                    assert_eq!(p.key, "unique");
+                } else {
+                    panic!("Expected Named argument for third arg");
+                }
             } else {
                 panic!("Expected Annotation metadata");
             }
