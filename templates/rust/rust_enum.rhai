@@ -4,9 +4,15 @@ ${
 
     // Generate enum members
     let members = "";
+    let first_member = true;
     for item in e.items {
         if item.is_member() {
             let m = item.as_member();
+            // Add #[default] attribute to first member
+            if first_member {
+                members += "    #[default]\n";
+                first_member = false;
+            }
             if m.value != () {
                 members += "    " + m.name + " = " + m.value + ",\n";
             } else {
@@ -18,7 +24,7 @@ ${
     }
 
     let result = "";
-    result += "#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\n";
+    result += "#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]\n";
     result += "#[repr(i32)]\n";
     result += "pub enum " + e.name + " {\n";
     result += members;
