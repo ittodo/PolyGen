@@ -1,0 +1,55 @@
+// Test Case 07: Indexes
+// Tests primary_key, unique, and foreign_key constraints
+
+namespace test.indexes {
+    /// User table with primary key and unique constraint
+    @load(csv: "users.csv")
+    table User {
+        id: u32 primary_key;
+        username: string unique;
+        email: string unique;
+        display_name: string;
+    }
+
+    /// Category with simple primary key
+    @load(csv: "categories.csv")
+    table Category {
+        id: u32 primary_key;
+        name: string unique;
+        description: string?;
+    }
+
+    /// Post with foreign keys
+    @load(csv: "posts.csv")
+    table Post {
+        id: u32 primary_key;
+        title: string;
+        content: string;
+        author_id: u32 foreign_key(User.id);
+        category_id: u32 foreign_key(Category.id);
+    }
+
+    /// Comment with multiple foreign keys
+    @load(csv: "comments.csv")
+    table Comment {
+        id: u32 primary_key;
+        post_id: u32 foreign_key(Post.id);
+        author_id: u32 foreign_key(User.id);
+        content: string;
+        parent_id: u32?;  // optional self-reference
+    }
+
+    /// Tag for many-to-many relationship
+    @load(csv: "tags.csv")
+    table Tag {
+        id: u32 primary_key;
+        name: string unique;
+    }
+
+    /// Junction table for Post-Tag relationship
+    @load(csv: "post_tags.csv")
+    table PostTag {
+        post_id: u32 foreign_key(Post.id);
+        tag_id: u32 foreign_key(Tag.id);
+    }
+}

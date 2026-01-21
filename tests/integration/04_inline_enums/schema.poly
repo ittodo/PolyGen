@@ -1,0 +1,49 @@
+// Test Case 04: Inline Enums
+// Tests enum definitions inside tables
+
+namespace test.enums {
+    /// Table with inline enum
+    table Order {
+        id: u32 primary_key;
+        customer_name: string;
+
+        /// Order status enum defined inline
+        enum Status {
+            Pending = 0;    // Waiting for payment
+            Paid = 1;       // Payment received
+            Shipped = 2;    // Order shipped
+            Delivered = 3;  // Order delivered
+            Cancelled = 4;  // Order cancelled
+        }
+        status: Status;
+
+        /// Priority level
+        enum Priority {
+            Low = 0;
+            Normal = 1;
+            High = 2;
+            Urgent = 3;
+        }
+        priority: Priority;
+    }
+
+    /// Another table with its own inline enum
+    table Task {
+        id: u32 primary_key;
+        title: string;
+
+        enum State {
+            Todo = 0;
+            InProgress = 1;
+            Done = 2;
+        }
+        state: State;
+    }
+
+    /// Named enum for comparison
+    enum GlobalStatus {
+        Unknown = 0;
+        Active = 1;
+        Disabled = 2;
+    }
+}

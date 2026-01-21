@@ -1,0 +1,43 @@
+// Test Case 02: Cross-namespace references
+// Tests referencing types from different namespaces within the same file
+
+namespace common {
+    /// Shared position type
+    embed Position {
+        x: f32;
+        y: f32;
+        z: f32;
+    }
+
+    /// Status enum used across namespaces
+    enum Status {
+        Active = 0;
+        Inactive = 1;
+        Deleted = 2;
+    }
+
+    /// Base entity with common fields
+    table Entity {
+        id: u32 primary_key;
+        name: string;
+        status: Status;
+    }
+}
+
+namespace game {
+    /// Player using types from common namespace
+    table Player {
+        id: u32 primary_key;
+        name: string;
+        position: common.Position;  // cross-namespace embed
+        status: common.Status;      // cross-namespace enum
+    }
+
+    /// NPC referencing types from common namespace
+    table NPC {
+        id: u32 primary_key;
+        display_name: string;
+        spawn_point: common.Position;
+        ai_state: common.Status;
+    }
+}

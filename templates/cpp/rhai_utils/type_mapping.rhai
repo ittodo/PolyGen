@@ -54,12 +54,8 @@ fn map_type_with_ns(type_ref, current_ns) {
             // Note: Rhai's replace() mutates in place, so we need to copy first
             let ns_copy = type_namespace + "";
             ns_copy.replace(".", "::");
-            if ns_copy == "" || ns_copy == type_namespace {
-                // Couldn't convert, use global prefix with name only
-                base_type = type_name;
-            } else {
-                base_type = "::" + ns_copy + "::" + type_name;
-            }
+            // Always use fully qualified name for cross-namespace references
+            base_type = "::" + ns_copy + "::" + type_name;
         }
     }
 

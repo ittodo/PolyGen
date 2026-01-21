@@ -1,0 +1,59 @@
+// Test Case 06: Arrays and Optionals
+// Tests array and optional field types
+
+namespace test.collections {
+    /// Simple tag for arrays
+    embed Tag {
+        name: string;
+        color: string;
+    }
+
+    /// Table with various array types
+    table ArrayTest {
+        id: u32 primary_key;
+
+        // Primitive arrays
+        int_list: i32[];
+        string_list: string[];
+        float_list: f32[];
+        bool_list: bool[];
+
+        // Complex type array
+        tags: Tag[];
+    }
+
+    /// Table with optional fields
+    table OptionalTest {
+        id: u32 primary_key;
+        required_name: string;
+
+        // Optional primitives
+        opt_int: i32?;
+        opt_string: string?;
+        opt_float: f64?;
+        opt_bool: bool?;
+
+        // Optional complex type
+        opt_tag: Tag?;
+    }
+
+    /// Combined arrays and optionals
+    table MixedTest {
+        id: u32 primary_key;
+
+        // Array of tags (optional arrays not supported, using regular array)
+        opt_tags: Tag[];
+
+        // Required array with optional elements - NOT directly supported
+        // but we can have optional items in other ways
+
+        /// Metadata that may or may not exist
+        embed Metadata {
+            created_by: string?;
+            updated_by: string?;
+            version: u32;
+        }
+        meta: Metadata?;
+        history: Metadata[];
+    }
+}

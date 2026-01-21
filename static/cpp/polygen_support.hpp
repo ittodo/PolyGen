@@ -17,6 +17,7 @@
 #include <functional>
 #include <unordered_map>
 #include <map>
+#include <deque>
 
 namespace polygen {
 
@@ -660,6 +661,9 @@ private:
 // Data Table (container for rows with indexes)
 // ============================================================================
 
+// NOTE: Using std::deque instead of std::vector to ensure pointer stability.
+// When elements are added, existing element pointers remain valid, which is
+// required for the index system to work correctly.
 template<typename T>
 class DataTable {
 public:
@@ -679,18 +683,18 @@ public:
     T& operator[](size_t index) { return rows_[index]; }
     const T& operator[](size_t index) const { return rows_[index]; }
 
-    typename std::vector<T>::iterator begin() { return rows_.begin(); }
-    typename std::vector<T>::iterator end() { return rows_.end(); }
-    typename std::vector<T>::const_iterator begin() const { return rows_.begin(); }
-    typename std::vector<T>::const_iterator end() const { return rows_.end(); }
+    typename std::deque<T>::iterator begin() { return rows_.begin(); }
+    typename std::deque<T>::iterator end() { return rows_.end(); }
+    typename std::deque<T>::const_iterator begin() const { return rows_.begin(); }
+    typename std::deque<T>::const_iterator end() const { return rows_.end(); }
 
-    std::vector<T>& rows() { return rows_; }
-    const std::vector<T>& rows() const { return rows_; }
+    std::deque<T>& rows() { return rows_; }
+    const std::deque<T>& rows() const { return rows_; }
 
     void clear() { rows_.clear(); }
 
 private:
-    std::vector<T> rows_;
+    std::deque<T> rows_;
 };
 
 // ============================================================================
