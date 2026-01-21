@@ -1,0 +1,374 @@
+// C++ Loaders File Template for PolyGen
+// Generates Binary, JSON, and CSV loading functions
+// NOTE: Rhai passes arrays by value, so we must collect structs inline
+
+import "templates/cpp/rhai_utils/type_mapping" as cpp_types;
+
+// Get the fully qualified C++ type name
+fn get_full_cpp_type(namespace_fqn, type_name) {
+    if namespace_fqn == "" {
+        return type_name;
+    }
+    // Rhai's replace() mutates in-place and returns (), so we must copy first
+    let ns_cpp = namespace_fqn + "";
+    ns_cpp.replace(".", "::");
+    return "::" + ns_cpp + "::" + type_name;
+}
+
+// Check if a string starts with uppercase (likely a struct/class name)
+fn is_pascal_case(s) {
+    if s.len() == 0 { return false; }
+    let first = s.sub_string(0, 1);
+    return first >= "A" && first <= "Z";
+}
+
+// Get namespace FQN, stripping parent struct name if present
+// For embedded structs, namespace_fqn might be "game.character.Monster"
+// but we need "game.character" since embedded structs are generated as siblings
+fn get_clean_namespace(ns_fqn) {
+    if ns_fqn == "" { return ""; }
+    let parts = ns_fqn.split(".");
+    if parts.len() <= 1 { return ns_fqn; }
+
+    // Check if last segment is PascalCase (likely a struct name)
+    let last = parts[parts.len() - 1];
+    if is_pascal_case(last) {
+        // Remove the last segment (parent struct name)
+        let clean_ns = "";
+        for i in 0..(parts.len() - 1) {
+            if i > 0 { clean_ns += "."; }
+            clean_ns += parts[i];
+        }
+        return clean_ns;
+    }
+    return ns_fqn;
+}
+
+// Get fully qualified type for a type_ref
+fn get_type_fqn(type_ref) {
+    if type_ref.is_primitive || cpp_types::is_primitive_name(type_ref.type_name) {
+        return cpp_types::map_primitive_type(type_ref.type_name);
+    }
+
+    // For inline enums, keep the full namespace (they are nested inside structs)
+    // For embedded structs, strip the parent struct name (they are siblings)
+    if type_ref.is_enum {
+        // Inline enums keep full path including parent struct
+        return get_full_cpp_type(type_ref.namespace_fqn, type_ref.type_name);
+    }
+
+    // For other types (embedded structs), strip the parent struct name
+    let clean_ns = get_clean_namespace(type_ref.namespace_fqn);
+    return get_full_cpp_type(clean_ns, type_ref.type_name);
+}
+
+// Binary read for a field type
+fn bin_read_expr(type_ref) {
+    let n = type_ref.type_name;
+    if n == "string" { return "reader.read_string()"; }
+    if n == "bool" { return "reader.read_bool()"; }
+    if n == "u8" { return "reader.read_u8()"; }
+    if n == "u16" { return "reader.read_u16()"; }
+    if n == "u32" { return "reader.read_u32()"; }
+    if n == "u64" { return "reader.read_u64()"; }
+    if n == "i8" { return "reader.read_i8()"; }
+    if n == "i16" { return "reader.read_i16()"; }
+    if n == "i32" { return "reader.read_i32()"; }
+    if n == "i64" { return "reader.read_i64()"; }
+    if n == "f32" { return "reader.read_f32()"; }
+    if n == "f64" { return "reader.read_f64()"; }
+    if n == "bytes" { return "reader.read_bytes()"; }
+
+    // For enums and custom types, use fully qualified names
+    let full_type = get_type_fqn(type_ref);
+    if type_ref.is_enum {
+        return "reader.read_enum<" + full_type + ">()";
+    }
+    return "read_" + n + "(reader)";
+}
+
+// Binary write for a field type
+fn bin_write_expr(type_ref, value_expr) {
+    let n = type_ref.type_name;
+    if n == "string" { return "writer.write_string(" + value_expr + ")"; }
+    if n == "bool" { return "writer.write_bool(" + value_expr + ")"; }
+    if n == "u8" { return "writer.write_u8(" + value_expr + ")"; }
+    if n == "u16" { return "writer.write_u16(" + value_expr + ")"; }
+    if n == "u32" { return "writer.write_u32(" + value_expr + ")"; }
+    if n == "u64" { return "writer.write_u64(" + value_expr + ")"; }
+    if n == "i8" { return "writer.write_i8(" + value_expr + ")"; }
+    if n == "i16" { return "writer.write_i16(" + value_expr + ")"; }
+    if n == "i32" { return "writer.write_i32(" + value_expr + ")"; }
+    if n == "i64" { return "writer.write_i64(" + value_expr + ")"; }
+    if n == "f32" { return "writer.write_f32(" + value_expr + ")"; }
+    if n == "f64" { return "writer.write_f64(" + value_expr + ")"; }
+    if n == "bytes" { return "writer.write_bytes(" + value_expr + ")"; }
+
+    if type_ref.is_enum {
+        return "writer.write_enum(" + value_expr + ")";
+    }
+    return "write_" + n + "(writer, " + value_expr + ")";
+}
+
+fn get_primitive_reader(type_name) {
+    switch type_name {
+        "string" => "read_string",
+        "bool" => "read_bool",
+        "u8" => "read_u8",
+        "u16" => "read_u16",
+        "u32" => "read_u32",
+        "u64" => "read_u64",
+        "i8" => "read_i8",
+        "i16" => "read_i16",
+        "i32" => "read_i32",
+        "i64" => "read_i64",
+        "f32" => "read_f32",
+        "f64" => "read_f64",
+        "bytes" => "read_bytes",
+        _ => "read_i32"
+    }
+}
+
+fn get_primitive_writer(type_name) {
+    switch type_name {
+        "string" => "write_string",
+        "bool" => "write_bool",
+        "u8" => "write_u8",
+        "u16" => "write_u16",
+        "u32" => "write_u32",
+        "u64" => "write_u64",
+        "i8" => "write_i8",
+        "i16" => "write_i16",
+        "i32" => "write_i32",
+        "i64" => "write_i64",
+        "f32" => "write_f32",
+        "f64" => "write_f64",
+        "bytes" => "write_bytes",
+        _ => "write_i32"
+    }
+}
+
+// Generate binary read function for a struct
+fn generate_binary_read(s, namespace_fqn) {
+    let result = "";
+    let full_type = get_full_cpp_type(namespace_fqn, s.name);
+
+    result += "inline " + full_type + " read_" + s.name + "(polygen::BinaryReader& reader) {\n";
+    result += "    " + full_type + " obj;\n";
+
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            let t = f.field_type;
+            let n = f.name;
+            let elem_type = get_type_fqn(t);
+
+            if t.is_list {
+                if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+                    result += "    obj." + n + " = reader.read_vector<" + elem_type + ">([](polygen::BinaryReader& r) { return r." + get_primitive_reader(t.type_name) + "(); });\n";
+                } else {
+                    result += "    obj." + n + " = reader.read_vector<" + elem_type + ">([](polygen::BinaryReader& r) { return read_" + t.type_name + "(r); });\n";
+                }
+            } else if t.is_option {
+                if t.type_name == "string" {
+                    result += "    obj." + n + " = reader.read_optional_string();\n";
+                } else if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+                    result += "    obj." + n + " = reader.read_optional<" + elem_type + ">([](polygen::BinaryReader& r) { return r." + get_primitive_reader(t.type_name) + "(); });\n";
+                } else {
+                    result += "    obj." + n + " = reader.read_optional<" + elem_type + ">([](polygen::BinaryReader& r) { return read_" + t.type_name + "(r); });\n";
+                }
+            } else {
+                result += "    obj." + n + " = " + bin_read_expr(t) + ";\n";
+            }
+        }
+    }
+
+    result += "    return obj;\n";
+    result += "}\n\n";
+
+    return result;
+}
+
+// Generate binary write function for a struct
+fn generate_binary_write(s, namespace_fqn) {
+    let result = "";
+    let full_type = get_full_cpp_type(namespace_fqn, s.name);
+
+    result += "inline void write_" + s.name + "(polygen::BinaryWriter& writer, const " + full_type + "& obj) {\n";
+
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            let t = f.field_type;
+            let n = f.name;
+            let elem_type = get_type_fqn(t);
+
+            if t.is_list {
+                if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+                    result += "    writer.write_vector(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { w." + get_primitive_writer(t.type_name) + "(v); });\n";
+                } else {
+                    result += "    writer.write_vector(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { write_" + t.type_name + "(w, v); });\n";
+                }
+            } else if t.is_option {
+                if t.type_name == "string" {
+                    result += "    writer.write_optional_string(obj." + n + ");\n";
+                } else if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+                    result += "    writer.write_optional(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { w." + get_primitive_writer(t.type_name) + "(v); });\n";
+                } else {
+                    result += "    writer.write_optional(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { write_" + t.type_name + "(w, v); });\n";
+                }
+            } else {
+                result += "    " + bin_write_expr(t, "obj." + n) + ";\n";
+            }
+        }
+    }
+
+    result += "}\n\n";
+
+    return result;
+}
+
+// First, collect all loader header names for cross-file includes
+let all_loader_headers = [];
+for f in schema.files {
+    if f.path == () || f.path == "" { continue; }
+    let parts = f.path.split("/");
+    let fname = parts[parts.len - 1];
+    let bn = fname + "";
+    bn.replace(".poly", "");
+    all_loader_headers.push(bn + "_loaders.hpp");
+}
+
+// Main entry point - runs for each file
+for file in schema.files {
+    if file.path == () || file.path == "" {
+        continue;
+    }
+
+    // Extract filename from path
+    let parts = file.path.split("/");
+    let filename = parts[parts.len - 1];
+    let base_name = filename + "";
+    base_name.replace(".poly", "");
+
+    let output_filename = base_name + "_loaders.hpp";
+    let final_path = output_dir + "/cpp/" + output_filename;
+
+    // Collect all structs from all namespaces in this file (inline, not via function)
+    // Rhai passes arrays by value, so helper functions won't work
+    let all_structs = [];
+    for ns in file.namespaces {
+        for item in ns.items {
+            if item.is_struct() {
+                let s = item.as_struct();
+                all_structs.push(#{ struct_def: s, namespace_name: ns.name });
+                // Also collect embedded structs
+                for si in s.items {
+                    if si.is_embedded_struct() {
+                        let es = si.as_embedded_struct();
+                        all_structs.push(#{ struct_def: es, namespace_name: ns.name });
+                        // Check for doubly nested embedded structs
+                        for esi in es.items {
+                            if esi.is_embedded_struct() {
+                                let nes = esi.as_embedded_struct();
+                                all_structs.push(#{ struct_def: nes, namespace_name: ns.name });
+                            }
+                        }
+                    }
+                }
+            } else if item.is_namespace() {
+                // Handle nested namespaces
+                let child_ns = item.as_namespace();
+                for child_item in child_ns.items {
+                    if child_item.is_struct() {
+                        let cs = child_item.as_struct();
+                        all_structs.push(#{ struct_def: cs, namespace_name: child_ns.name });
+                        // Collect embedded structs from nested namespace
+                        for csi in cs.items {
+                            if csi.is_embedded_struct() {
+                                let ces = csi.as_embedded_struct();
+                                all_structs.push(#{ struct_def: ces, namespace_name: child_ns.name });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if all_structs.is_empty() {
+        continue;
+    }
+
+    let result = "";
+
+    // File header
+    result += "// Auto-generated by PolyGen - DO NOT EDIT\n";
+    result += "// Loaders for binary serialization\n";
+    result += "#pragma once\n\n";
+
+    // Includes
+    result += "#include \"" + base_name + ".hpp\"\n";
+    result += "#include \"polygen_support.hpp\"\n";
+
+    // Include other loader headers for cross-file dependencies
+    for other_header in all_loader_headers {
+        if other_header != output_filename {
+            result += "#include \"" + other_header + "\"\n";
+        }
+    }
+    result += "\n";
+
+    // All loader functions go into a single namespace to avoid cross-file dependency issues
+    result += "namespace polygen_loaders {\n\n";
+
+    // Generate binary readers for all structs
+    result += "// ============================================================================\n";
+    result += "// Binary Readers\n";
+    result += "// ============================================================================\n\n";
+
+    // Forward declarations
+    for entry in all_structs {
+        let s = entry.struct_def;
+        let ns = entry.namespace_name;
+        let full_type = get_full_cpp_type(ns, s.name);
+        result += "inline " + full_type + " read_" + s.name + "(polygen::BinaryReader& reader);\n";
+    }
+    result += "\n";
+
+    // Implementations
+    for entry in all_structs {
+        let s = entry.struct_def;
+        let ns = entry.namespace_name;
+        result += generate_binary_read(s, ns);
+    }
+
+    // Generate binary writers for all structs
+    result += "// ============================================================================\n";
+    result += "// Binary Writers\n";
+    result += "// ============================================================================\n\n";
+
+    // Forward declarations
+    for entry in all_structs {
+        let s = entry.struct_def;
+        let ns = entry.namespace_name;
+        let full_type = get_full_cpp_type(ns, s.name);
+        result += "inline void write_" + s.name + "(polygen::BinaryWriter& writer, const " + full_type + "& obj);\n";
+    }
+    result += "\n";
+
+    // Implementations
+    for entry in all_structs {
+        let s = entry.struct_def;
+        let ns = entry.namespace_name;
+        result += generate_binary_write(s, ns);
+    }
+
+    // Close loader namespace
+    result += "} // namespace polygen_loaders\n";
+
+    print("Generating loader file: " + final_path);
+    write_file(final_path, result);
+}
+
+""
