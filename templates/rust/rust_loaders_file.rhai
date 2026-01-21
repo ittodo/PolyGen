@@ -1,0 +1,269 @@
+// Rust Loaders file generator
+// Generates JSON, CSV, and Binary I/O in a single module file
+
+import "templates/rust/rhai_utils/type_mapping" as rust_types;
+
+// CSV getter helper
+fn csv_getter(f) {
+    let t = f.field_type;
+    let n = f.name;
+
+    if t.is_option {
+        if t.type_name == "string" { return "row.get_optional_string(\"" + n + "\")"; }
+        return "row.get(\"" + n + "\").filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())";
+    }
+    if t.is_list {
+        return "row.get(\"" + n + "\").map(|s| s.split(',').filter_map(|v| v.trim().parse().ok()).collect()).unwrap_or_default()";
+    }
+    if t.type_name == "string" { return "row.get_string(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "u32" { return "row.get_u32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "u16" { return "row.get_u16(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "u64" { return "row.get_u64(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "i32" { return "row.get_i32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "f32" { return "row.get_f32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "f64" { return "row.get_f64(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "bool" { return "row.get_bool(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.is_enum { return "row.get_i32(\"" + n + "\").map(|v| unsafe { std::mem::transmute(v) }).ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    return "Default::default()";
+}
+
+// Binary read helper - generates read expression for a type
+// For wrapped types (Option/Vec), uses closures with |r| parameter
+// For direct types, uses 'reader' variable name
+fn bin_read(t) {
+    let n = t.type_name;
+    if t.is_option {
+        let inner = bin_read_closure(t);
+        return "reader.read_optional(|r| " + inner + ")?";
+    }
+    if t.is_list {
+        let inner = bin_read_closure(t);
+        return "reader.read_vec(|r| " + inner + ")?";
+    }
+    return bin_read_direct(t) + "?";
+}
+
+// For use inside closures where variable is 'r'
+fn bin_read_closure(t) {
+    let n = t.type_name;
+    if n == "string" { return "r.read_string()"; }
+    if n == "bool" { return "r.read_bool()"; }
+    if n == "u8" { return "r.read_u8()"; }
+    if n == "u16" { return "r.read_u16()"; }
+    if n == "u32" { return "r.read_u32()"; }
+    if n == "u64" { return "r.read_u64()"; }
+    if n == "i8" { return "r.read_i8()"; }
+    if n == "i16" { return "r.read_i16()"; }
+    if n == "i32" { return "r.read_i32()"; }
+    if n == "i64" { return "r.read_i64()"; }
+    if n == "f32" { return "r.read_f32()"; }
+    if n == "f64" { return "r.read_f64()"; }
+    if n == "bytes" { return "r.read_bytes()"; }
+    if t.is_enum { return "r.read_i32().map(|v| unsafe { std::mem::transmute(v) })"; }
+    return n + "::read_binary(r)";
+}
+
+// For direct use where variable is 'reader'
+fn bin_read_direct(t) {
+    let n = t.type_name;
+    if n == "string" { return "reader.read_string()"; }
+    if n == "bool" { return "reader.read_bool()"; }
+    if n == "u8" { return "reader.read_u8()"; }
+    if n == "u16" { return "reader.read_u16()"; }
+    if n == "u32" { return "reader.read_u32()"; }
+    if n == "u64" { return "reader.read_u64()"; }
+    if n == "i8" { return "reader.read_i8()"; }
+    if n == "i16" { return "reader.read_i16()"; }
+    if n == "i32" { return "reader.read_i32()"; }
+    if n == "i64" { return "reader.read_i64()"; }
+    if n == "f32" { return "reader.read_f32()"; }
+    if n == "f64" { return "reader.read_f64()"; }
+    if n == "bytes" { return "reader.read_bytes()"; }
+    if t.is_enum { return "reader.read_i32().map(|v| unsafe { std::mem::transmute(v) })"; }
+    return n + "::read_binary(reader)";
+}
+
+// Binary write helper
+fn bin_write(t, expr) {
+    let n = t.type_name;
+    if t.is_option {
+        let inner = bin_write_inner(t);
+        return "writer.write_optional(&" + expr + ", |w, v| " + inner + ")?";
+    }
+    if t.is_list {
+        let inner = bin_write_inner(t);
+        return "writer.write_vec(&" + expr + ", |w, v| " + inner + ")?";
+    }
+    return bin_write_direct(t, expr) + "?";
+}
+
+fn bin_write_inner(t) {
+    let n = t.type_name;
+    if n == "string" { return "w.write_string(v)"; }
+    if n == "bool" { return "w.write_bool(*v)"; }
+    if n == "u8" { return "w.write_u8(*v)"; }
+    if n == "u16" { return "w.write_u16(*v)"; }
+    if n == "u32" { return "w.write_u32(*v)"; }
+    if n == "u64" { return "w.write_u64(*v)"; }
+    if n == "i8" { return "w.write_i8(*v)"; }
+    if n == "i16" { return "w.write_i16(*v)"; }
+    if n == "i32" { return "w.write_i32(*v)"; }
+    if n == "i64" { return "w.write_i64(*v)"; }
+    if n == "f32" { return "w.write_f32(*v)"; }
+    if n == "f64" { return "w.write_f64(*v)"; }
+    if n == "bytes" { return "w.write_bytes(v)"; }
+    if t.is_enum { return "w.write_i32(*v as i32)"; }
+    return "v.write_binary(w)";
+}
+
+fn bin_write_direct(t, expr) {
+    let n = t.type_name;
+    if n == "string" { return "writer.write_string(&" + expr + ")"; }
+    if n == "bool" { return "writer.write_bool(" + expr + ")"; }
+    if n == "u8" { return "writer.write_u8(" + expr + ")"; }
+    if n == "u16" { return "writer.write_u16(" + expr + ")"; }
+    if n == "u32" { return "writer.write_u32(" + expr + ")"; }
+    if n == "u64" { return "writer.write_u64(" + expr + ")"; }
+    if n == "i8" { return "writer.write_i8(" + expr + ")"; }
+    if n == "i16" { return "writer.write_i16(" + expr + ")"; }
+    if n == "i32" { return "writer.write_i32(" + expr + ")"; }
+    if n == "i64" { return "writer.write_i64(" + expr + ")"; }
+    if n == "f32" { return "writer.write_f32(" + expr + ")"; }
+    if n == "f64" { return "writer.write_f64(" + expr + ")"; }
+    if n == "bytes" { return "writer.write_bytes(&" + expr + ")"; }
+    if t.is_enum { return "writer.write_i32(" + expr + " as i32)"; }
+    return expr + ".write_binary(writer)";
+}
+
+for file in schema.files {
+    if file.path == () || file.path == "" {
+        continue;
+    }
+
+    let parts = file.path.split("/");
+    let filename = parts[parts.len - 1];
+    let output_filename = filename;
+    output_filename.replace(".poly", "_loaders.rs");
+    let final_path = output_dir + "/rust/" + output_filename;
+
+    // Collect all structs inline (not via function, since Rhai passes arrays by value)
+    let all_structs = [];
+    for ns in file.namespaces {
+        // Convert namespace name: "game.item" -> "game_item"
+        let ns_mod_path = ns.name;
+        ns_mod_path.replace(".", "_");
+
+        for item in ns.items {
+            if item.is_struct() {
+                let s = item.as_struct();
+                all_structs.push(#{
+                    name: s.name,
+                    mod_path: ns_mod_path + "::" + s.name,
+                    def: s
+                });
+            } else if item.is_namespace() {
+                // Handle nested namespace
+                let child = item.as_namespace();
+                let child_name = child.name;
+                child_name.replace(".", "_");
+                let child_mod_path = ns_mod_path + "::" + child_name;
+                for child_item in child.items {
+                    if child_item.is_struct() {
+                        let cs = child_item.as_struct();
+                        all_structs.push(#{
+                            name: cs.name,
+                            mod_path: child_mod_path + "::" + cs.name,
+                            def: cs
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let c = "";
+    c += "//! Generated by PolyGen - Data Loaders\n";
+    c += "//! Source: " + file.path + "\n\n";
+
+    c += "use std::fs;\n";
+    c += "use std::io::{Read, Write, Result as IoResult};\n";
+    c += "use std::path::Path;\n";
+    c += "use crate::polygen_support::*;\n\n";
+
+    // ===== JSON Loader =====
+    c += "// ============ JSON Loader ============\n\n";
+    c += "pub trait JsonLoadable: Sized + serde::de::DeserializeOwned {\n";
+    c += "    fn load_json<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {\n";
+    c += "        Ok(serde_json::from_str(&fs::read_to_string(path)?)?)\n";
+    c += "    }\n";
+    c += "    fn load_json_vec<P: AsRef<Path>>(path: P) -> Result<Vec<Self>, Box<dyn std::error::Error>> {\n";
+    c += "        Ok(serde_json::from_str(&fs::read_to_string(path)?)?)\n";
+    c += "    }\n";
+    c += "}\n\n";
+
+    for s in all_structs {
+        c += "impl JsonLoadable for super::" + s.mod_path + " {}\n";
+    }
+    c += "\n";
+
+    // ===== CSV Loader =====
+    c += "// ============ CSV Loader ============\n\n";
+    c += "pub trait CsvLoadable: Sized {\n";
+    c += "    fn from_csv_row(row: &CsvRow) -> LoadResult<Self>;\n";
+    c += "    fn load_csv(path: &str) -> LoadResult<Vec<Self>> {\n";
+    c += "        CsvReader::from_file(path).map_err(LoadError::Csv)?.rows().map(|r| Self::from_csv_row(&r)).collect()\n";
+    c += "    }\n";
+    c += "}\n\n";
+
+    for s in all_structs {
+        c += "impl CsvLoadable for super::" + s.mod_path + " {\n";
+        c += "    fn from_csv_row(row: &CsvRow) -> LoadResult<Self> {\n";
+        c += "        Ok(Self {\n";
+        for item in s.def.items {
+            if item.is_field() {
+                let f = item.as_field();
+                c += "            " + to_snake_case(f.name) + ": " + csv_getter(f) + ",\n";
+            }
+        }
+        c += "        })\n";
+        c += "    }\n";
+        c += "}\n\n";
+    }
+
+    // ===== Binary I/O =====
+    c += "// ============ Binary I/O ============\n\n";
+    c += "pub trait BinaryIO: Sized {\n";
+    c += "    fn read_binary<R: Read>(r: &mut R) -> IoResult<Self>;\n";
+    c += "    fn write_binary<W: Write>(&self, w: &mut W) -> IoResult<()>;\n";
+    c += "}\n\n";
+
+    for s in all_structs {
+        c += "impl BinaryIO for super::" + s.mod_path + " {\n";
+        c += "    fn read_binary<R: Read>(reader: &mut R) -> IoResult<Self> {\n";
+        c += "        Ok(Self {\n";
+        for item in s.def.items {
+            if item.is_field() {
+                let f = item.as_field();
+                c += "            " + to_snake_case(f.name) + ": " + bin_read(f.field_type) + ",\n";
+            }
+        }
+        c += "        })\n";
+        c += "    }\n";
+        c += "    fn write_binary<W: Write>(&self, writer: &mut W) -> IoResult<()> {\n";
+        for item in s.def.items {
+            if item.is_field() {
+                let f = item.as_field();
+                let fname = to_snake_case(f.name);
+                c += "        " + bin_write(f.field_type, "self." + fname) + ";\n";
+            }
+        }
+        c += "        Ok(())\n";
+        c += "    }\n";
+        c += "}\n\n";
+    }
+
+    print("Generating file: " + final_path);
+    write_file(final_path, c);
+}
+
+""
