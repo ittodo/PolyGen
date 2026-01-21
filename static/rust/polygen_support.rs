@@ -333,6 +333,13 @@ pub trait BinaryWriteExt: Write {
 
 impl<W: Write> BinaryWriteExt for W {}
 
+/// Trait for types that can be serialized to/from binary format.
+/// Implement this for custom struct types.
+pub trait BinaryIO: Sized {
+    fn read_binary<R: Read>(reader: &mut R) -> IoResult<Self>;
+    fn write_binary<W: Write>(&self, writer: &mut W) -> IoResult<()>;
+}
+
 // ============================================================================
 // CSV Parsing Utilities
 // ============================================================================

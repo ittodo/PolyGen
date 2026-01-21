@@ -13,6 +13,8 @@ fn csv_getter(f) {
         return "row.get(\"" + n + "\").filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())";
     }
     if t.is_list {
+        // Struct arrays can't be parsed from CSV, use default
+        if t.is_struct { return "Default::default()"; }
         return "row.get(\"" + n + "\").map(|s| s.split(',').filter_map(|v| v.trim().parse().ok()).collect()).unwrap_or_default()";
     }
     if t.type_name == "string" { return "row.get_string(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
@@ -135,6 +137,27 @@ fn bin_write_direct(t, expr) {
     return expr + ".write_binary(writer)";
 }
 
+// First pass: build namespace -> schema_mod mapping for all files
+let ns_to_schema = #{};
+for f in schema.files {
+    if f.path == () || f.path == "" { continue; }
+    let parts = f.path.split("/");
+    let fname = parts[parts.len - 1];
+    let mod_name = fname;
+    mod_name.replace(".poly", "");
+
+    for ns in f.namespaces {
+        ns_to_schema[ns.name] = mod_name;
+        // Also handle nested namespaces
+        for item in ns.items {
+            if item.is_namespace() {
+                let child = item.as_namespace();
+                ns_to_schema[child.name] = mod_name;
+            }
+        }
+    }
+}
+
 for file in schema.files {
     if file.path == () || file.path == "" {
         continue;
@@ -146,7 +169,23 @@ for file in schema.files {
     output_filename.replace(".poly", "_loaders.rs");
     let final_path = output_dir + "/rust/" + output_filename;
 
+    // Get schema module name: "game_schema.poly" -> "game_schema"
+    let schema_mod = filename;
+    schema_mod.replace(".poly", "");
+
+    // Collect current file's namespaces
+    let current_namespaces = [];
+    for ns in file.namespaces {
+        current_namespaces.push(ns.name);
+        for item in ns.items {
+            if item.is_namespace() {
+                current_namespaces.push(item.as_namespace().name);
+            }
+        }
+    }
+
     // Collect all structs inline (not via function, since Rhai passes arrays by value)
+    // Also collect embedded structs recursively
     let all_structs = [];
     for ns in file.namespaces {
         // Convert namespace name: "game.item" -> "game_item"
@@ -158,9 +197,31 @@ for file in schema.files {
                 let s = item.as_struct();
                 all_structs.push(#{
                     name: s.name,
-                    mod_path: ns_mod_path + "::" + s.name,
+                    mod_path: "crate::" + schema_mod + "::" + ns_mod_path + "::" + s.name,
                     def: s
                 });
+                // Collect embedded structs from this struct
+                for si in s.items {
+                    if si.is_embedded_struct() {
+                        let es = si.as_embedded_struct();
+                        all_structs.push(#{
+                            name: es.name,
+                            mod_path: "crate::" + schema_mod + "::" + ns_mod_path + "::" + es.name,
+                            def: es
+                        });
+                        // Check for nested embedded structs
+                        for esi in es.items {
+                            if esi.is_embedded_struct() {
+                                let nes = esi.as_embedded_struct();
+                                all_structs.push(#{
+                                    name: nes.name,
+                                    mod_path: "crate::" + schema_mod + "::" + ns_mod_path + "::" + nes.name,
+                                    def: nes
+                                });
+                            }
+                        }
+                    }
+                }
             } else if item.is_namespace() {
                 // Handle nested namespace
                 let child = item.as_namespace();
@@ -172,9 +233,20 @@ for file in schema.files {
                         let cs = child_item.as_struct();
                         all_structs.push(#{
                             name: cs.name,
-                            mod_path: child_mod_path + "::" + cs.name,
+                            mod_path: "crate::" + schema_mod + "::" + child_mod_path + "::" + cs.name,
                             def: cs
                         });
+                        // Collect embedded structs from nested namespace struct
+                        for csi in cs.items {
+                            if csi.is_embedded_struct() {
+                                let ces = csi.as_embedded_struct();
+                                all_structs.push(#{
+                                    name: ces.name,
+                                    mod_path: "crate::" + schema_mod + "::" + child_mod_path + "::" + ces.name,
+                                    def: ces
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -188,7 +260,33 @@ for file in schema.files {
     c += "use std::fs;\n";
     c += "use std::io::{Read, Write, Result as IoResult};\n";
     c += "use std::path::Path;\n";
-    c += "use crate::polygen_support::*;\n\n";
+    c += "use crate::polygen_support::*;\n";
+
+    // Import types from all schemas (including current file) for BinaryIO usage
+    for other_file in schema.files {
+        if other_file.path == () || other_file.path == "" { continue; }
+        let other_parts = other_file.path.split("/");
+        let other_fname = other_parts[other_parts.len - 1];
+        let other_mod = other_fname;
+        other_mod.replace(".poly", "");
+
+        for ns in other_file.namespaces {
+            let ns_path = ns.name;
+            ns_path.replace(".", "_");
+            c += "use crate::" + other_mod + "::" + ns_path + "::*;\n";
+
+            // Also import nested namespaces
+            for item in ns.items {
+                if item.is_namespace() {
+                    let child = item.as_namespace();
+                    let child_path = child.name;
+                    child_path.replace(".", "_");
+                    c += "use crate::" + other_mod + "::" + ns_path + "::" + child_path + "::*;\n";
+                }
+            }
+        }
+    }
+    c += "\n";
 
     // ===== JSON Loader =====
     c += "// ============ JSON Loader ============\n\n";
@@ -202,7 +300,7 @@ for file in schema.files {
     c += "}\n\n";
 
     for s in all_structs {
-        c += "impl JsonLoadable for super::" + s.mod_path + " {}\n";
+        c += "impl JsonLoadable for " + s.mod_path + " {}\n";
     }
     c += "\n";
 
@@ -216,7 +314,7 @@ for file in schema.files {
     c += "}\n\n";
 
     for s in all_structs {
-        c += "impl CsvLoadable for super::" + s.mod_path + " {\n";
+        c += "impl CsvLoadable for " + s.mod_path + " {\n";
         c += "    fn from_csv_row(row: &CsvRow) -> LoadResult<Self> {\n";
         c += "        Ok(Self {\n";
         for item in s.def.items {
@@ -232,13 +330,10 @@ for file in schema.files {
 
     // ===== Binary I/O =====
     c += "// ============ Binary I/O ============\n\n";
-    c += "pub trait BinaryIO: Sized {\n";
-    c += "    fn read_binary<R: Read>(r: &mut R) -> IoResult<Self>;\n";
-    c += "    fn write_binary<W: Write>(&self, w: &mut W) -> IoResult<()>;\n";
-    c += "}\n\n";
+    c += "pub use crate::polygen_support::BinaryIO;\n\n";
 
     for s in all_structs {
-        c += "impl BinaryIO for super::" + s.mod_path + " {\n";
+        c += "impl BinaryIO for " + s.mod_path + " {\n";
         c += "    fn read_binary<R: Read>(reader: &mut R) -> IoResult<Self> {\n";
         c += "        Ok(Self {\n";
         for item in s.def.items {

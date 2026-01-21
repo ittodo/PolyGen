@@ -15,11 +15,14 @@ ${
     let members = "";
     let nested_mods = "";
 
+    // Current namespace FQN for type resolution
+    let current_ns = ns.name;
+
     // Process items in the namespace
     for item in ns.items {
         if item.is_struct() {
             let s = item.as_struct();
-            let res = eval("`" + struct_tmpl + "`");
+            let res = eval("let current_ns = \"" + current_ns + "\";\n`" + struct_tmpl + "`");
             members += indent_utils::indent_text(res, 1) + "\n";
         } else if item.is_enum() {
             let e = item.as_enum();

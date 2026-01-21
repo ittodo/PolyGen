@@ -14,6 +14,10 @@ for file in schema.files {
     output_filename.replace(".poly", "_container.rs");
     let final_path = output_dir + "/rust/" + output_filename;
 
+    // Get schema module name: "game_schema.poly" -> "game_schema"
+    let schema_mod = filename;
+    schema_mod.replace(".poly", "");
+
     // Collect all tables inline (Rhai passes arrays by value)
     let all_tables = [];
     for ns in file.namespaces {
@@ -27,7 +31,7 @@ for file in schema.files {
                 if !s.name.ends_with("__Enum") {
                     all_tables.push(#{
                         name: s.name,
-                        path: "super::" + ns_mod_path + "::" + s.name,
+                        path: "crate::" + schema_mod + "::" + ns_mod_path + "::" + s.name,
                         table_name: to_snake_case(s.name) + "s",
                         def: s
                     });
@@ -43,7 +47,7 @@ for file in schema.files {
                         if !cs.name.ends_with("__Enum") {
                             all_tables.push(#{
                                 name: cs.name,
-                                path: "super::" + child_mod_path + "::" + cs.name,
+                                path: "crate::" + schema_mod + "::" + child_mod_path + "::" + cs.name,
                                 table_name: to_snake_case(cs.name) + "s",
                                 def: cs
                             });
@@ -114,7 +118,7 @@ for file in schema.files {
             } else {
                 c += "        /// Get by " + idx.field_name + " (group)\n";
                 c += "        pub fn " + method_name + "(&self, key: " + key_type + ") -> Vec<&" + table.path + "> {\n";
-                c += "            self." + idx_field + ".get(&key).iter().map(|&idx| &self.rows[*idx]).collect()\n";
+                c += "            self." + idx_field + ".get(&key).iter().map(|&idx| &self.rows[idx]).collect()\n";
                 c += "        }\n\n";
             }
         }
@@ -191,7 +195,7 @@ for file in schema.files {
                 if s.relations.len() > 0 {
                     structs_with_relations.push(#{
                         name: s.name,
-                        path: "super::" + ns_mod_path2 + "::" + s.name,
+                        path: "crate::" + schema_mod + "::" + ns_mod_path2 + "::" + s.name,
                         def: s
                     });
                 }
@@ -206,7 +210,7 @@ for file in schema.files {
                         if cs.relations.len() > 0 {
                             structs_with_relations.push(#{
                                 name: cs.name,
-                                path: "super::" + child_mod_path2 + "::" + cs.name,
+                                path: "crate::" + schema_mod + "::" + child_mod_path2 + "::" + cs.name,
                                 def: cs
                             });
                         }
@@ -254,8 +258,8 @@ for file in schema.files {
                 rel_ns_path.replace(".", "_");
 
                 c += "        /// Get related " + rel.name + "\n";
-                c += "        pub fn " + method_name + "<'a>(&self, container: &'a " + container_name + ") -> Vec<&'a super::";
-                c += rel_ns_path + "::" + rel.source_table_name + "> {\n";
+                c += "        pub fn " + method_name + "<'a>(&self, container: &'a " + container_name + ") -> Vec<&'a crate::";
+                c += schema_mod + "::" + rel_ns_path + "::" + rel.source_table_name + "> {\n";
                 c += "            container." + source_table + ".get_by_" + source_field + "(self." + pk_field + ")\n";
                 c += "        }\n\n";
             }

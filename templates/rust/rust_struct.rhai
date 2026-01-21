@@ -13,12 +13,14 @@ ${
     }
 
     // Generate fields
+    // current_ns is expected to be set by the caller (namespace FQN)
+    let ns_fqn = if current_ns != () { current_ns } else { "" };
     let fields = "";
     for item in s.items {
         if item.is_field() {
             let f = item.as_field();
             let field_name = to_snake_case(f.name);
-            let rust_type = rust_types::map_type(f.field_type);
+            let rust_type = rust_types::map_type_with_ns(f.field_type, ns_fqn);
 
             // Add serde rename if field name differs from original
             let rename_attr = "";
@@ -38,7 +40,7 @@ ${
         if item.is_embedded_struct() {
             let es = item.as_embedded_struct();
             let struct_tmpl = include("templates/rust/rust_struct.rhai");
-            let res = eval("let s = es;\n`" + struct_tmpl + "`");
+            let res = eval("let s = es; let current_ns = \"" + ns_fqn + "\";\n`" + struct_tmpl + "`");
             embedded += "\n" + res;
         } else if item.is_inline_enum() {
             let ie = item.as_inline_enum();
@@ -50,7 +52,7 @@ ${
 
     let result = "";
     result += doc_comments;
-    result += "#[derive(Debug, Clone, Serialize, Deserialize)]\n";
+    result += "#[derive(Debug, Clone, Default, Serialize, Deserialize)]\n";
     result += "pub struct " + s.name + " {\n";
     result += fields;
     result += "}\n";
