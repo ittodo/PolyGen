@@ -9,9 +9,36 @@ use heck::ToPascalCase;
 
 /// Extracts the @datasource value from metadata.
 fn extract_datasource(metadata: &[Metadata]) -> Option<String> {
+    extract_annotation_string(metadata, "datasource")
+}
+
+/// Extracts the @cache strategy from metadata.
+fn extract_cache_strategy(metadata: &[Metadata]) -> Option<String> {
+    extract_annotation_string(metadata, "cache")
+}
+
+/// Extracts the @soft_delete field name from metadata.
+fn extract_soft_delete_field(metadata: &[Metadata]) -> Option<String> {
+    extract_annotation_string(metadata, "soft_delete")
+}
+
+/// Checks if @readonly annotation is present.
+fn is_readonly(metadata: &[Metadata]) -> bool {
     for meta in metadata {
         if let Metadata::Annotation(ann) = meta {
-            if ann.name.as_deref() == Some("datasource") {
+            if ann.name.as_deref() == Some("readonly") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Helper to extract a string value from an annotation.
+fn extract_annotation_string(metadata: &[Metadata], annotation_name: &str) -> Option<String> {
+    for meta in metadata {
+        if let Metadata::Annotation(ann) = meta {
+            if ann.name.as_deref() == Some(annotation_name) {
                 // Get the first positional or the value parameter
                 if let Some(arg) = ann.args.first() {
                     match arg {
@@ -23,6 +50,8 @@ fn extract_datasource(metadata: &[Metadata]) -> Option<String> {
                         }
                     }
                 }
+                // For annotations without arguments (like @readonly), return empty string
+                return Some(String::new());
             }
         }
     }
@@ -452,6 +481,11 @@ fn convert_table_to_struct(
     let table_datasource = extract_datasource(&table.metadata)
         .or_else(|| inherited_datasource.map(String::from));
 
+    // Extract advanced annotations
+    let cache_strategy = extract_cache_strategy(&table.metadata);
+    let readonly = is_readonly(&table.metadata);
+    let soft_delete_field = extract_soft_delete_field(&table.metadata);
+
     // Process metadata for the struct header
     for meta in &table.metadata {
         match meta {
@@ -513,6 +547,9 @@ fn convert_table_to_struct(
         name,
         fqn,
         datasource: table_datasource,
+        cache_strategy,
+        is_readonly: readonly,
+        soft_delete_field,
         items,
         header: header_items,
         indexes,

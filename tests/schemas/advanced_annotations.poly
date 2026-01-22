@@ -1,0 +1,32 @@
+// Test schema for advanced annotations
+@datasource("sqlite")
+namespace game.data {
+
+    // Static data table - full load and read-only
+    @cache("full_load")
+    @readonly
+    table ItemTable {
+        id: u32 primary_key;
+        name: string;
+        price: u32;
+        description: string?;
+    }
+
+    // User data table - on-demand loading with soft delete
+    @cache("on_demand")
+    @soft_delete("deleted_at")
+    table PlayerData {
+        id: u32 primary_key;
+        name: string;
+        level: u32;
+        deleted_at: string?;  // null = active, timestamp = deleted
+    }
+
+    // Session data - write-through caching
+    @cache("write_through")
+    table SessionData {
+        token: string primary_key;
+        user_id: u32;
+        expires_at: string;
+    }
+}

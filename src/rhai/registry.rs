@@ -195,6 +195,13 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("datasource", |s: &mut StructDef| {
         s.datasource.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
     });
+    engine.register_get("cache_strategy", |s: &mut StructDef| {
+        s.cache_strategy.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("is_readonly", |s: &mut StructDef| s.is_readonly);
+    engine.register_get("soft_delete_field", |s: &mut StructDef| {
+        s.soft_delete_field.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
 
     // Register IndexDef type and getters
     engine.register_type_with_name::<IndexDef>("IndexDef");

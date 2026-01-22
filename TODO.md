@@ -33,22 +33,33 @@
   - 모든 언어(C#, C++, Rust, TypeScript)에서 자동 DDL 생성
   - datasource별 테이블 필터링 (sqlite/mysql)
 
+#### CLI 명령어 & 고급 어노테이션 (Phase 4)
+- [x] CLI 서브커맨드 구조 (`polygen generate`, `polygen migrate`)
+- [x] 마이그레이션 전용 CLI (`polygen migrate --baseline <old> --schema-path <new>`)
+- [x] `@cache` 어노테이션 (full_load, on_demand, write_through)
+- [x] `@readonly` 어노테이션
+- [x] `@soft_delete` 어노테이션
+
 ---
 
 ## ❌ 미완료 (우선순위순)
 
-### SQLite/DB 지원 (Phase 4)
+### SQLite/DB 지원 (Phase 4) ✅ 완료
 - [x] 마이그레이션 diff 로직 (`--baseline` 옵션으로 스키마 비교)
-- [ ] CLI 명령어 (`polygen migrate`)
+- [x] CLI 명령어 (`polygen migrate`) - 서브커맨드 구조 도입
 - [x] 언어별 DB accessor 코드 생성 (C#, Rust, C++, TypeScript 완료)
+
+### 고급 어노테이션 ✅ 완료
+- [x] `@cache` 어노테이션 (full_load, on_demand, write_through 전략)
+- [x] `@readonly` 어노테이션 (읽기 전용 테이블)
+- [x] `@soft_delete` 어노테이션 (소프트 삭제 필드 지정)
 
 ### 추가 DB 지원
 - [ ] MySQL/MariaDB 지원 (SQLite 기반 확장)
 - [ ] PostgreSQL (옵션)
 - [ ] Redis 캐시 (옵션)
 
-### 고급 기능
-- [ ] `@cache`, `@readonly`, `@soft_delete` 어노테이션
+### 남은 고급 기능
 - [ ] 자동 타임스탬프 (`auto_create`, `auto_update`)
 - [ ] 쿼리/뷰 지원 (검토 필요)
 
