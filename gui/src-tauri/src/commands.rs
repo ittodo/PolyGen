@@ -1,0 +1,97 @@
+use std::process::Command;
+
+fn get_polygen_path() -> String {
+    // In bundled app, the binary is in the resources folder
+    // During development, use the built binary from parent project
+    if cfg!(debug_assertions) {
+        // Development: use the binary built by cargo
+        // Path is relative from gui/src-tauri/ to project root
+        if cfg!(target_os = "windows") {
+            "../../target/release/polygen.exe".to_string()
+        } else {
+            "../../target/release/polygen".to_string()
+        }
+    } else {
+        // Production: bundled binary (in resources folder)
+        "polygen".to_string()
+    }
+}
+
+#[tauri::command]
+pub fn run_generate(
+    schema_path: String,
+    lang: String,
+    output_dir: String,
+    templates_dir: Option<String>,
+) -> Result<String, String> {
+    let polygen = get_polygen_path();
+
+    let mut cmd = Command::new(&polygen);
+    cmd.arg("generate")
+        .arg("--schema-path")
+        .arg(&schema_path)
+        .arg("--lang")
+        .arg(&lang)
+        .arg("--output-dir")
+        .arg(&output_dir);
+
+    if let Some(templates) = templates_dir {
+        cmd.arg("--templates-dir").arg(&templates);
+    }
+
+    let output = cmd.output().map_err(|e| format!("Failed to execute polygen: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(format!("Generated successfully. {}", stdout.trim()))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Err(format!("{}{}", stdout, stderr))
+    }
+}
+
+#[tauri::command]
+pub fn run_migrate(
+    baseline_path: String,
+    schema_path: String,
+    output_dir: String,
+) -> Result<String, String> {
+    let polygen = get_polygen_path();
+
+    let output = Command::new(&polygen)
+        .arg("migrate")
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--schema-path")
+        .arg(&schema_path)
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .output()
+        .map_err(|e| format!("Failed to execute polygen: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(format!("Migration generated. {}", stdout.trim()))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(stderr.to_string())
+    }
+}
+
+#[tauri::command]
+pub fn get_polygen_version() -> Result<String, String> {
+    let polygen = get_polygen_path();
+
+    let output = Command::new(&polygen)
+        .arg("--version")
+        .output()
+        .map_err(|e| format!("Failed to execute polygen: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.trim().to_string())
+    } else {
+        Err("Failed to get version".to_string())
+    }
+}
