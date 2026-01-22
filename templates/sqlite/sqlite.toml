@@ -8,3 +8,5 @@ extension = ".sql"
 [templates]
 # Main template for generating DDL
 main = "sqlite_file.rhai"
+# Extra templates to run after main
+extra = ["sqlite_migration_file.rhai"]

@@ -1,6 +1,5 @@
 ---
 source: tests/snapshot_tests.rs
-assertion_line: 22
 expression: ir_context
 ---
 SchemaContext {
@@ -126,6 +125,7 @@ SchemaContext {
                     ],
                 },
             ],
+            renames: [],
         },
     ],
 }

@@ -98,6 +98,7 @@ SchemaContext {
                     ],
                 },
             ],
+            renames: [],
         },
         FileDef {
             path: "imported_schema_a.poly",
@@ -169,6 +170,7 @@ SchemaContext {
                     ],
                 },
             ],
+            renames: [],
         },
         FileDef {
             path: "imported_schema_b.poly",
@@ -204,6 +206,7 @@ SchemaContext {
                     ],
                 },
             ],
+            renames: [],
         },
     ],
 }
