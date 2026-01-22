@@ -53,6 +53,8 @@ pub struct PipelineConfig {
     pub target_lang: Option<String>,
     /// Whether to write debug output files (AST, IR dumps).
     pub debug_output: bool,
+    /// Optional baseline schema path for migration diff generation.
+    pub baseline_path: Option<PathBuf>,
 }
 
 impl PipelineConfig {
@@ -66,6 +68,7 @@ impl PipelineConfig {
             output_dir,
             target_lang: None,
             debug_output: true,
+            baseline_path: None,
         }
     }
 
@@ -80,6 +83,15 @@ impl PipelineConfig {
     /// Enables or disables debug output file generation.
     pub fn with_debug_output(mut self, enabled: bool) -> Self {
         self.debug_output = enabled;
+        self
+    }
+
+    /// Sets a baseline schema path for migration diff generation.
+    ///
+    /// When set, the pipeline will compare the current schema with the baseline
+    /// and generate migration SQL files.
+    pub fn with_baseline(mut self, baseline_path: PathBuf) -> Self {
+        self.baseline_path = Some(baseline_path);
         self
     }
 }
@@ -105,7 +117,8 @@ impl CompilationPipeline {
     /// 2. Parse schema files
     /// 3. Validate ASTs
     /// 4. Build IR
-    /// 5. Generate code
+    /// 5. Generate migration diff (if baseline provided)
+    /// 6. Generate code
     ///
     /// # Errors
     ///
@@ -115,7 +128,58 @@ impl CompilationPipeline {
         let asts = self.parse_schemas()?;
         self.validate_asts(&asts)?;
         let ir_context = self.build_ir(&asts);
+
+        // Generate migration diff if baseline is provided
+        if let Some(ref baseline_path) = self.config.baseline_path {
+            self.generate_migration_diff(baseline_path, &ir_context)?;
+        }
+
         self.generate_code(&ir_context)?;
+        Ok(())
+    }
+
+    /// Generate migration diff by comparing baseline and current schema.
+    fn generate_migration_diff(&self, baseline_path: &Path, current_ir: &SchemaContext) -> Result<()> {
+        use crate::migration::MigrationDiff;
+
+        println!("\n--- 마이그레이션 diff 생성 중 ---");
+        println!("  - 기준 스키마: {}", baseline_path.display());
+        println!("  - 현재 스키마: {}", self.config.schema_path.display());
+
+        // Parse baseline schema
+        let baseline_asts = parse_and_merge_schemas(baseline_path, None)?;
+
+        // Validate baseline
+        let baseline_definitions: Vec<Definition> = baseline_asts
+            .iter()
+            .flat_map(|ast| ast.definitions.clone())
+            .collect();
+        validation::validate_ast(&baseline_definitions)?;
+
+        // Build baseline IR
+        let baseline_ir = ir_builder::build_ir(&baseline_asts);
+
+        // Compare schemas
+        let diff = MigrationDiff::compare(&baseline_ir, current_ir);
+
+        // Report changes
+        if diff.changes.is_empty() {
+            println!("  - 변경사항 없음");
+        } else {
+            println!("  - {} 개의 변경사항 감지됨", diff.changes.len());
+            for warning in &diff.warnings {
+                println!("  ⚠️  {}", warning);
+            }
+        }
+
+        // Generate SQLite migration SQL
+        let sql = diff.to_sqlite_sql();
+        let migration_dir = self.config.output_dir.join("sqlite");
+        fs::create_dir_all(&migration_dir)?;
+        let migration_file = migration_dir.join("migration_diff.sql");
+        fs::write(&migration_file, &sql)?;
+        println!("  - 마이그레이션 SQL 생성: {}", migration_file.display());
+
         Ok(())
     }
 

@@ -79,7 +79,7 @@ output/
   - SQLite/MySQL datasource 필터링
 
 ### ❌ 미완료
-- [ ] 마이그레이션 diff 로직 (이전 스키마와 비교)
+- [x] 마이그레이션 diff 로직 (`--baseline` 옵션으로 스키마 비교)
 - [ ] CLI 명령어 (`polygen migrate`)
 - [x] 언어별 DB accessor 생성 (C#, Rust, C++, TypeScript 완료)
 
@@ -413,8 +413,8 @@ game.sql.poly    -- SQL 전용 확장
 - [x] 언어 코드 생성 시 해당 DB DDL도 함께 출력
 - [x] datasource별 테이블 필터링
 
-### Phase 4: 고급 기능 (일부 완료)
-- [ ] 마이그레이션 diff 로직 (자동 감지)
+### Phase 4: 고급 기능 (대부분 완료)
+- [x] 마이그레이션 diff 로직 (`--baseline` 옵션으로 스키마 비교)
 - [ ] CLI 명령어 (`polygen migrate`)
 - [x] 언어별 DB accessor 코드 생성 (C#, Rust, C++, TypeScript 완료)
 

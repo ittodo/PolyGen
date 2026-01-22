@@ -1,0 +1,15 @@
+// Migration test - baseline schema (v1)
+@datasource("sqlite")
+namespace game.data {
+    table ItemTable {
+        id: u32 primary_key;
+        name: string;
+        price: u32;
+    }
+
+    table SkillTable {
+        id: u32 primary_key;
+        name: string;
+        damage: u32;
+    }
+}
