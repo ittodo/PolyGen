@@ -62,6 +62,7 @@
 ### 남은 고급 기능
 - [ ] 자동 타임스탬프 (`auto_create`, `auto_update`)
 - [ ] 쿼리/뷰 지원 (검토 필요)
+- [ ] 비동기 캐시 전략 (`on_demand_async`) - 언어별 패턴 복잡, 필요시 추가
 
 ### GUI / UX 개선
 - [ ] PolyGen GUI 도구
