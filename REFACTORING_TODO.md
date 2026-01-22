@@ -1,5 +1,7 @@
 # PolyGen 리팩토링 TODO
 
+> ✅ **완료됨** (2026-01-21) - 전체 TODO는 `TODO.md` 참조
+
 ## Phase 1: 즉시 해결 (코드 품질) ✅ 완료
 
 - [x] 1.1 Clippy 경고 수정 - 미사용 import 제거
