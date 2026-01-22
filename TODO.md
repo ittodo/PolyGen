@@ -63,6 +63,14 @@
 - [ ] 자동 타임스탬프 (`auto_create`, `auto_update`)
 - [ ] 쿼리/뷰 지원 (검토 필요)
 
+### GUI / UX 개선
+- [ ] PolyGen GUI 도구
+  - CLI 명령어를 시각적으로 구성
+  - 스키마 파일 선택, 언어/DB 옵션 체크박스
+  - 마이그레이션 diff 시각화
+  - 실시간 출력 미리보기
+  - 후보 기술: Tauri (Rust + Web), egui, iced
+
 ---
 
 ## 아키텍처 결정
