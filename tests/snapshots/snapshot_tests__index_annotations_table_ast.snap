@@ -1,0 +1,215 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas/index_annotations_table.poly",
+        file_imports: [],
+        definitions: [
+            Table(
+                Table {
+                    metadata: [
+                        DocComment(
+                            "Test schema for @index annotation",
+                        ),
+                        Annotation(
+                            Annotation {
+                                name: Some(
+                                    "index",
+                                ),
+                                args: [
+                                    Positional(
+                                        Identifier(
+                                            "name",
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Annotation(
+                            Annotation {
+                                name: Some(
+                                    "index",
+                                ),
+                                args: [
+                                    Positional(
+                                        Identifier(
+                                            "guild_id",
+                                        ),
+                                    ),
+                                    Positional(
+                                        Identifier(
+                                            "level",
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Annotation(
+                            Annotation {
+                                name: Some(
+                                    "index",
+                                ),
+                                args: [
+                                    Positional(
+                                        Identifier(
+                                            "region",
+                                        ),
+                                    ),
+                                    Positional(
+                                        Identifier(
+                                            "guild_id",
+                                        ),
+                                    ),
+                                    Positional(
+                                        Identifier(
+                                            "level",
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Annotation(
+                            Annotation {
+                                name: Some(
+                                    "index",
+                                ),
+                                args: [
+                                    Positional(
+                                        Identifier(
+                                            "email",
+                                        ),
+                                    ),
+                                    Named(
+                                        AnnotationParam {
+                                            key: "unique",
+                                            value: Boolean(
+                                                true,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                    name: Some(
+                        "Player",
+                    ),
+                    members: [
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [
+                                        PrimaryKey,
+                                    ],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "name",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            String,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "email",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            String,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "region",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U8,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "guild_id",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U32,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                        Field(
+                            Regular(
+                                RegularField {
+                                    metadata: [],
+                                    name: Some(
+                                        "level",
+                                    ),
+                                    field_type: TypeWithCardinality {
+                                        base_type: Basic(
+                                            U16,
+                                        ),
+                                        cardinality: None,
+                                    },
+                                    constraints: [],
+                                    field_number: None,
+                                },
+                            ),
+                        ),
+                    ],
+                },
+            ),
+        ],
+    },
+]

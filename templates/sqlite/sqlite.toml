@@ -1,0 +1,10 @@
+# SQLite Language Configuration for PolyGen
+# This file configures the SQLite DDL generation settings.
+
+# File extension for generated SQLite files
+extension = ".sql"
+
+# Template configuration
+[templates]
+# Main template for generating DDL
+main = "sqlite_file.rhai"
