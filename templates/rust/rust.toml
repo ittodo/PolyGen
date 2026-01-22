@@ -20,4 +20,6 @@ extra = [
     "rust_loaders_file.rhai",
     # Level 3: Container System (indexes, relations)
     "rust_container_file.rhai",
+    # Level 4: SQLite Accessor (for @datasource("sqlite") tables)
+    "rust_sqlite_accessor_file.rhai",
 ]
