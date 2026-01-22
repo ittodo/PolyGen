@@ -201,6 +201,7 @@ impl CompilationPipeline {
     /// 2. Copies static files (from config or defaults)
     /// 3. Runs the main template
     /// 4. Runs any extra templates defined in the config
+    /// 5. Generates DDL for any @datasource annotations found
     fn generate_for_language(&self, lang: &str, ir_context: &SchemaContext) -> Result<()> {
         println!("\n--- {} 코드 생성 중 ---", lang.to_uppercase());
 
@@ -222,8 +223,95 @@ impl CompilationPipeline {
         // Generate extra templates from configuration
         generator.generate_extras(ir_context)?;
 
+        // Generate DDL for @datasource annotations (if not already generating for a DB language)
+        if !is_db_language(lang) {
+            self.generate_datasource_ddl(ir_context)?;
+        }
+
         println!("{} 코드 생성이 완료되었습니다.", lang.to_uppercase());
         Ok(())
+    }
+
+    /// Generate DDL for all @datasource annotations found in the schema.
+    ///
+    /// Scans the IR for @datasource annotations and generates corresponding
+    /// DDL files using the appropriate database templates.
+    fn generate_datasource_ddl(&self, ir_context: &SchemaContext) -> Result<()> {
+        let datasources = collect_datasources(ir_context);
+
+        if datasources.is_empty() {
+            return Ok(());
+        }
+
+        println!("\n--- @datasource DDL 생성 중 ---");
+
+        for datasource in datasources {
+            println!("  - {} DDL 생성", datasource);
+
+            let generator = CodeGenerator::new(
+                &datasource,
+                self.config.templates_dir.clone(),
+                self.config.output_dir.clone(),
+            );
+
+            // Check if template exists for this datasource
+            if generator.has_template(&format!("{}_file.rhai", datasource)) {
+                generator.generate(ir_context)?;
+                generator.generate_extras(ir_context)?;
+            } else {
+                println!("    (템플릿 없음: {}_file.rhai)", datasource);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Check if a language is a database language (DDL generator)
+fn is_db_language(lang: &str) -> bool {
+    matches!(lang, "sqlite" | "mysql" | "postgresql" | "redis")
+}
+
+/// Collect all unique @datasource values from the IR
+fn collect_datasources(ir_context: &SchemaContext) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let mut datasources: HashSet<String> = HashSet::new();
+
+    for file in &ir_context.files {
+        for ns in &file.namespaces {
+            collect_datasources_from_namespace(ns, &mut datasources);
+        }
+    }
+
+    let mut result: Vec<String> = datasources.into_iter().collect();
+    result.sort();
+    result
+}
+
+/// Recursively collect datasources from a namespace and its items
+fn collect_datasources_from_namespace(
+    ns: &crate::ir_model::NamespaceDef,
+    datasources: &mut std::collections::HashSet<String>,
+) {
+    // Check namespace-level datasource
+    if let Some(ref ds) = ns.datasource {
+        datasources.insert(ds.clone());
+    }
+
+    // Check items
+    for item in &ns.items {
+        match item {
+            crate::ir_model::NamespaceItem::Struct(s) => {
+                if let Some(ref ds) = s.datasource {
+                    datasources.insert(ds.clone());
+                }
+            }
+            crate::ir_model::NamespaceItem::Namespace(nested_ns) => {
+                collect_datasources_from_namespace(nested_ns, datasources);
+            }
+            _ => {}
+        }
     }
 }
 

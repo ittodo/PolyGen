@@ -1,5 +1,5 @@
-// Render CREATE TABLE for a StructDef s within namespace ns.
 ${
+    // Render CREATE TABLE for a StructDef s within namespace ns.
     import "templates/mysql/rhai_utils/type_mapping" as type_utils;
 
     // Table name (no namespace prefix in this minimal version)

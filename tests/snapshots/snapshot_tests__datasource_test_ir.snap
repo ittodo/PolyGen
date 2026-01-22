@@ -1,0 +1,494 @@
+---
+source: tests/snapshot_tests.rs
+expression: ir_context
+---
+SchemaContext {
+    files: [
+        FileDef {
+            path: "datasource_test.poly",
+            namespaces: [
+                NamespaceDef {
+                    name: "game.data",
+                    datasource: Some(
+                        "sqlite",
+                    ),
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "ItemTable",
+                                fqn: "game.data.ItemTable",
+                                datasource: Some(
+                                    "sqlite",
+                                ),
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                parent_type_path: "",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                            is_primary_key: true,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "price",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                parent_type_path: "",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                ],
+                                indexes: [
+                                    IndexDef {
+                                        name: "ById",
+                                        fields: [
+                                            IndexFieldDef {
+                                                name: "id",
+                                                field_type: TypeRef {
+                                                    original: "u32",
+                                                    fqn: "u32",
+                                                    namespace_fqn: "",
+                                                    type_name: "u32",
+                                                    parent_type_path: "",
+                                                    lang_type: "u32",
+                                                    is_primitive: true,
+                                                    is_struct: false,
+                                                    is_enum: false,
+                                                    is_option: false,
+                                                    is_list: false,
+                                                    inner_type: None,
+                                                },
+                                            },
+                                        ],
+                                        is_unique: true,
+                                        source: "constraint",
+                                    },
+                                ],
+                                relations: [],
+                            },
+                        ),
+                        Struct(
+                            StructDef {
+                                name: "SkillTable",
+                                fqn: "game.data.SkillTable",
+                                datasource: Some(
+                                    "sqlite",
+                                ),
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                parent_type_path: "",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                            is_primary_key: true,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "damage",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                parent_type_path: "",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                ],
+                                indexes: [
+                                    IndexDef {
+                                        name: "ById",
+                                        fields: [
+                                            IndexFieldDef {
+                                                name: "id",
+                                                field_type: TypeRef {
+                                                    original: "u32",
+                                                    fqn: "u32",
+                                                    namespace_fqn: "",
+                                                    type_name: "u32",
+                                                    parent_type_path: "",
+                                                    lang_type: "u32",
+                                                    is_primitive: true,
+                                                    is_struct: false,
+                                                    is_enum: false,
+                                                    is_option: false,
+                                                    is_list: false,
+                                                    inner_type: None,
+                                                },
+                                            },
+                                        ],
+                                        is_unique: true,
+                                        source: "constraint",
+                                    },
+                                ],
+                                relations: [],
+                            },
+                        ),
+                        Enum(
+                            EnumDef {
+                                name: "ItemType",
+                                fqn: "game.data.ItemType",
+                                items: [
+                                    Member(
+                                        EnumMember {
+                                            name: "Weapon",
+                                            value: Some(
+                                                1,
+                                            ),
+                                        },
+                                    ),
+                                    Member(
+                                        EnumMember {
+                                            name: "Armor",
+                                            value: Some(
+                                                2,
+                                            ),
+                                        },
+                                    ),
+                                    Member(
+                                        EnumMember {
+                                            name: "Potion",
+                                            value: Some(
+                                                3,
+                                            ),
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+                NamespaceDef {
+                    name: "game.user",
+                    datasource: Some(
+                        "mysql",
+                    ),
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "Player",
+                                fqn: "game.user.Player",
+                                datasource: Some(
+                                    "mysql",
+                                ),
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "id",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                parent_type_path: "",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                            is_primary_key: true,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "name",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "level",
+                                            field_type: TypeRef {
+                                                original: "u16",
+                                                fqn: "u16",
+                                                namespace_fqn: "",
+                                                type_name: "u16",
+                                                parent_type_path: "",
+                                                lang_type: "u16",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                ],
+                                indexes: [
+                                    IndexDef {
+                                        name: "ById",
+                                        fields: [
+                                            IndexFieldDef {
+                                                name: "id",
+                                                field_type: TypeRef {
+                                                    original: "u32",
+                                                    fqn: "u32",
+                                                    namespace_fqn: "",
+                                                    type_name: "u32",
+                                                    parent_type_path: "",
+                                                    lang_type: "u32",
+                                                    is_primitive: true,
+                                                    is_struct: false,
+                                                    is_enum: false,
+                                                    is_option: false,
+                                                    is_list: false,
+                                                    inner_type: None,
+                                                },
+                                            },
+                                        ],
+                                        is_unique: true,
+                                        source: "constraint",
+                                    },
+                                ],
+                                relations: [],
+                            },
+                        ),
+                    ],
+                },
+                NamespaceDef {
+                    name: "game.common",
+                    datasource: None,
+                    items: [
+                        Struct(
+                            StructDef {
+                                name: "Config",
+                                fqn: "game.common.Config",
+                                datasource: None,
+                                header: [],
+                                items: [
+                                    Field(
+                                        FieldDef {
+                                            name: "key",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [
+                                                "Key",
+                                            ],
+                                            is_primary_key: true,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "value",
+                                            field_type: TypeRef {
+                                                original: "string",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "string",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                ],
+                                indexes: [
+                                    IndexDef {
+                                        name: "ByKey",
+                                        fields: [
+                                            IndexFieldDef {
+                                                name: "key",
+                                                field_type: TypeRef {
+                                                    original: "string",
+                                                    fqn: "string",
+                                                    namespace_fqn: "",
+                                                    type_name: "string",
+                                                    parent_type_path: "",
+                                                    lang_type: "string",
+                                                    is_primitive: true,
+                                                    is_struct: false,
+                                                    is_enum: false,
+                                                    is_option: false,
+                                                    is_list: false,
+                                                    inner_type: None,
+                                                },
+                                            },
+                                        ],
+                                        is_unique: true,
+                                        source: "constraint",
+                                    },
+                                ],
+                                relations: [],
+                            },
+                        ),
+                    ],
+                },
+            ],
+            renames: [],
+        },
+    ],
+}
