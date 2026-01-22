@@ -256,6 +256,7 @@ mod tests {
     /// Helper to create a namespace
     fn make_namespace(path: Vec<&str>, definitions: Vec<Definition>) -> Definition {
         Definition::Namespace(Namespace {
+            metadata: vec![],
             path: path.into_iter().map(String::from).collect(),
             imports: vec![],
             definitions,

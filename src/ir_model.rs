@@ -42,6 +42,9 @@ pub struct FileDef {
 pub struct NamespaceDef {
     /// The fully-qualified namespace name (e.g., "game.character").
     pub name: String,
+    /// Data source for this namespace (inherited by structs unless overridden).
+    /// Set via `@datasource("name")` annotation.
+    pub datasource: Option<String>,
     /// Items within this namespace, in declaration order.
     pub items: Vec<NamespaceItem>,
 }
@@ -71,6 +74,9 @@ pub struct StructDef {
     pub name: String,
     /// Fully qualified name (e.g., "game.common.StatBlock").
     pub fqn: String,
+    /// Data source for this struct. Set via `@datasource("name")` annotation,
+    /// or inherited from the parent namespace.
+    pub datasource: Option<String>,
     /// Header items (struct-level annotations and comments).
     pub header: Vec<StructItem>,
     /// Body items (fields, nested types, inline comments).

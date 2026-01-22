@@ -5,6 +5,7 @@ SchemaContext {
             namespaces: [
                 NamespaceDef {
                     name: "test.csv",
+                    datasource: None,
                     items: [
                         Enum(
                             EnumDef {
@@ -42,6 +43,7 @@ SchemaContext {
                             StructDef {
                                 name: "Point",
                                 fqn: "test.csv.Point",
+                                datasource: None,
                                 header: [],
                                 items: [
                                     Field(
@@ -101,6 +103,7 @@ SchemaContext {
                             StructDef {
                                 name: "TestObject",
                                 fqn: "test.csv.TestObject",
+                                datasource: None,
                                 header: [],
                                 items: [
                                     Field(

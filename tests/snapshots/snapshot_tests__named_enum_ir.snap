@@ -9,6 +9,7 @@ SchemaContext {
             namespaces: [
                 NamespaceDef {
                     name: "",
+                    datasource: None,
                     items: [
                         Enum(
                             EnumDef {

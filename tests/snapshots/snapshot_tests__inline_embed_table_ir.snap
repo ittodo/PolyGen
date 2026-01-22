@@ -9,11 +9,13 @@ SchemaContext {
             namespaces: [
                 NamespaceDef {
                     name: "",
+                    datasource: None,
                     items: [
                         Struct(
                             StructDef {
                                 name: "Character",
                                 fqn: "Character",
+                                datasource: None,
                                 header: [],
                                 items: [
                                     Field(
@@ -109,6 +111,7 @@ SchemaContext {
                                         StructDef {
                                             name: "Inventory",
                                             fqn: "Character.Inventory",
+                                            datasource: None,
                                             header: [],
                                             items: [
                                                 Field(
@@ -202,6 +205,7 @@ SchemaContext {
                                                     StructDef {
                                                         name: "Properties",
                                                         fqn: "Character.Inventory.Properties",
+                                                        datasource: None,
                                                         header: [],
                                                         items: [
                                                             Field(

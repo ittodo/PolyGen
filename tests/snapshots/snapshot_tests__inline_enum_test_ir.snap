@@ -9,11 +9,13 @@ SchemaContext {
             namespaces: [
                 NamespaceDef {
                     name: "MyGame",
+                    datasource: None,
                     items: [
                         Struct(
                             StructDef {
                                 name: "Player",
                                 fqn: "MyGame.Player",
+                                datasource: None,
                                 header: [],
                                 items: [
                                     InlineEnum(
@@ -156,11 +158,13 @@ SchemaContext {
                 },
                 NamespaceDef {
                     name: "MyGame",
+                    datasource: None,
                     items: [
                         Struct(
                             StructDef {
                                 name: "Player",
                                 fqn: "MyGame.Player",
+                                datasource: None,
                                 header: [],
                                 items: [
                                     Field(
