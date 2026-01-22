@@ -81,7 +81,7 @@ output/
 ### ❌ 미완료
 - [ ] 마이그레이션 diff 로직 (이전 스키마와 비교)
 - [ ] CLI 명령어 (`polygen migrate`)
-- [ ] 언어별 DB accessor 생성 (C#, Rust 등)
+- [x] 언어별 DB accessor 생성 (C#, Rust, C++, TypeScript 완료)
 
 ---
 
@@ -416,7 +416,7 @@ game.sql.poly    -- SQL 전용 확장
 ### Phase 4: 고급 기능 (일부 완료)
 - [ ] 마이그레이션 diff 로직 (자동 감지)
 - [ ] CLI 명령어 (`polygen migrate`)
-- [x] 언어별 DB accessor 코드 생성 (C#, Rust 완료)
+- [x] 언어별 DB accessor 코드 생성 (C#, Rust, C++, TypeScript 완료)
 
 ---
 

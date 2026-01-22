@@ -17,4 +17,6 @@ main = "typescript_file.rhai"
 extra = [
     # Zod schema validation
     "typescript_zod_file.rhai",
+    # SQLite Accessor (for @datasource("sqlite") tables)
+    "typescript_sqlite_accessor_file.rhai",
 ]
