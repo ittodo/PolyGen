@@ -1,0 +1,7 @@
+# Test migration renames file
+# Table rename
+Player -> User;
+
+# Field renames
+User.user_name -> name;
+User.hp -> health;

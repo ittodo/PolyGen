@@ -1,0 +1,9 @@
+import "test_migration.renames";
+
+namespace game {
+    table User {
+        id: u32 primary_key;
+        name: string;
+        health: u32;
+    }
+}
