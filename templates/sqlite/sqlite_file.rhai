@@ -28,7 +28,13 @@ for file in schema.files {
     if file.path == () || file.path == "" { continue; }
 
     for ns in file.namespaces {
-        let ns_prefix = if ns.name != "" { ns.name.replace(".", "_") + "_" } else { "" };
+        // Build ns_prefix by splitting on "." and joining with "_"
+        let parts = ns.name.split(".");
+        let ns_prefix = if ns.name != "" {
+            join_with(parts, "_") + "_"
+        } else {
+            ""
+        };
 
         for item in ns.items {
             if item.is_struct() {

@@ -40,6 +40,18 @@ for file in schema.files {
     }
 }
 
+// Helper to build SQLite table name with namespace prefix
+fn build_table_name(path, table_idx) {
+    // path: ["ns1", "ns2", "TableName"] -> "ns1_ns2_TableName"
+    // table_idx: index of the table name in path (last element for table rename, second-to-last for field rename)
+    let parts = [];
+    for i in 0..table_idx {
+        parts.push(path[i]);
+    }
+    let ns_prefix = if parts.len() > 0 { join_with(parts, "_") + "_" } else { "" };
+    ns_prefix + path[table_idx]
+}
+
 if !has_migrations {
     migration_sql += "-- No migrations found.\n";
     migration_sql += "-- Import a .renames file in your schema to generate migrations.\n";
@@ -52,17 +64,22 @@ if !has_migrations {
         migration_sql += "-- ============================================\n\n";
 
         for rename in table_renames {
-            // from_path: ["namespace", "OldTableName"] or ["OldTableName"]
-            let old_table = if rename.from_path.len() >= 2 {
-                rename.from_path[rename.from_path.len() - 1]
-            } else if rename.from_path.len() == 1 {
-                rename.from_path[0]
-            } else {
-                continue;
-            };
+            // from_path: ["namespace", "OldTableName"] -> old_table = "namespace_OldTableName"
+            let path_len = rename.from_path.len();
+            if path_len < 1 { continue; }
+
+            let old_table = build_table_name(rename.from_path, path_len - 1);
+            // new_table keeps same namespace prefix
+            let ns_parts = [];
+            for i in 0..(path_len - 1) {
+                ns_parts.push(rename.from_path[i]);
+            }
+            let ns_prefix = if ns_parts.len() > 0 { join_with(ns_parts, "_") + "_" } else { "" };
+            let new_table = ns_prefix + rename.to_name;
+
             let from_fqn = join_with(rename.from_path, ".");
             migration_sql += "-- Rename table: " + from_fqn + " -> " + rename.to_name + "\n";
-            migration_sql += "ALTER TABLE " + old_table + " RENAME TO " + rename.to_name + ";\n\n";
+            migration_sql += "ALTER TABLE " + old_table + " RENAME TO " + new_table + ";\n\n";
         }
     }
 
@@ -75,15 +92,17 @@ if !has_migrations {
 
         for rename in field_renames {
             // from_path format: ["namespace", "TableName", "old_column_name"]
-            if rename.from_path.len() >= 3 {
-                let table_name = rename.from_path[rename.from_path.len() - 2];
-                let old_column = rename.from_path[rename.from_path.len() - 1];
-                let new_column = rename.to_name;
+            let path_len = rename.from_path.len();
+            if path_len < 3 { continue; }
 
-                let from_fqn = join_with(rename.from_path, ".");
-                migration_sql += "-- Rename column: " + from_fqn + " -> " + new_column + "\n";
-                migration_sql += "ALTER TABLE " + table_name + " RENAME COLUMN " + old_column + " TO " + new_column + ";\n\n";
-            }
+            // table_name with namespace prefix
+            let table_name = build_table_name(rename.from_path, path_len - 2);
+            let old_column = rename.from_path[path_len - 1];
+            let new_column = rename.to_name;
+
+            let from_fqn = join_with(rename.from_path, ".");
+            migration_sql += "-- Rename column: " + from_fqn + " -> " + new_column + "\n";
+            migration_sql += "ALTER TABLE " + table_name + " RENAME COLUMN " + old_column + " TO " + new_column + ";\n\n";
         }
     }
 
