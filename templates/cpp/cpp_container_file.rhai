@@ -34,13 +34,51 @@ fn pluralize(name) {
     }
 }
 
-// Get C++ type for index key
-fn get_index_key_type(index) {
-    let t = index.field_type;
+// Get C++ type for a single field type
+fn get_field_cpp_type(t) {
     if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
         return cpp_types::map_primitive_type(t.type_name);
     } else {
         return t.type_name;
+    }
+}
+
+// Get C++ type for index key (supports composite indexes)
+fn get_index_key_type(index) {
+    if index.is_composite {
+        // Composite index: use std::tuple
+        let types = [];
+        for f in index.fields {
+            types.push(get_field_cpp_type(f.field_type));
+        }
+        let result = "std::tuple<";
+        for i in 0..types.len() {
+            if i > 0 { result += ", "; }
+            result += types[i];
+        }
+        result += ">";
+        return result;
+    } else {
+        // Single field index
+        let t = index.field_type;
+        return get_field_cpp_type(t);
+    }
+}
+
+// Get field accessor expression for index insert
+fn get_index_key_expr(index, row_var) {
+    if index.is_composite {
+        // Composite: std::make_tuple(row.field1, row.field2, ...)
+        let result = "std::make_tuple(";
+        for i in 0..index.fields.len() {
+            if i > 0 { result += ", "; }
+            result += row_var + "." + index.fields[i].name;
+        }
+        result += ")";
+        return result;
+    } else {
+        // Single field
+        return row_var + "." + index.field_name;
     }
 }
 
@@ -62,10 +100,11 @@ fn generate_table_wrapper(s, namespace_fqn) {
     if s.indexes != () {
         for idx in s.indexes {
             let key_type = get_index_key_type(idx);
+            let index_member = idx.name;  // Use index name directly
             if idx.is_unique {
-                result += "    polygen::UniqueIndex<" + key_type + ", " + full_type + "> index_by_" + idx.field_name + ";\n";
+                result += "    polygen::UniqueIndex<" + key_type + ", " + full_type + "> " + index_member + ";\n";
             } else {
-                result += "    polygen::GroupIndex<" + key_type + ", " + full_type + "> index_by_" + idx.field_name + ";\n";
+                result += "    polygen::GroupIndex<" + key_type + ", " + full_type + "> " + index_member + ";\n";
             }
         }
     }
@@ -79,7 +118,8 @@ fn generate_table_wrapper(s, namespace_fqn) {
 
     if s.indexes != () {
         for idx in s.indexes {
-            result += "        index_by_" + idx.field_name + ".insert(added." + idx.field_name + ", &added);\n";
+            let key_expr = get_index_key_expr(idx, "added");
+            result += "        " + idx.name + ".insert(" + key_expr + ", &added);\n";
         }
     }
 
@@ -97,18 +137,23 @@ fn generate_table_wrapper(s, namespace_fqn) {
     if s.indexes != () {
         for idx in s.indexes {
             let key_type = get_index_key_type(idx);
-            let getter_name = "get_by_" + idx.field_name;
+            // For composite indexes, use index name; for single use get_by_fieldname
+            let getter_name = if idx.is_composite {
+                "get_" + idx.name
+            } else {
+                "get_by_" + idx.field_name
+            };
 
             if idx.is_unique {
-                result += "    " + full_type + "* " + getter_name + "(" + key_type + " key) {\n";
-                result += "        return index_by_" + idx.field_name + ".get(key);\n";
+                result += "    " + full_type + "* " + getter_name + "(const " + key_type + "& key) {\n";
+                result += "        return " + idx.name + ".get(key);\n";
                 result += "    }\n\n";
-                result += "    const " + full_type + "* " + getter_name + "(" + key_type + " key) const {\n";
-                result += "        return const_cast<" + table_name + "*>(this)->index_by_" + idx.field_name + ".get(key);\n";
+                result += "    const " + full_type + "* " + getter_name + "(const " + key_type + "& key) const {\n";
+                result += "        return const_cast<" + table_name + "*>(this)->" + idx.name + ".get(key);\n";
                 result += "    }\n\n";
             } else {
-                result += "    const std::vector<" + full_type + "*>& " + getter_name + "(" + key_type + " key) const {\n";
-                result += "        return index_by_" + idx.field_name + ".get(key);\n";
+                result += "    const std::vector<" + full_type + "*>& " + getter_name + "(const " + key_type + "& key) const {\n";
+                result += "        return " + idx.name + ".get(key);\n";
                 result += "    }\n\n";
             }
         }
@@ -125,7 +170,7 @@ fn generate_table_wrapper(s, namespace_fqn) {
     result += "        data.clear();\n";
     if s.indexes != () {
         for idx in s.indexes {
-            result += "        index_by_" + idx.field_name + ".clear();\n";
+            result += "        " + idx.name + ".clear();\n";
         }
     }
     result += "    }\n";
@@ -241,7 +286,8 @@ for file in schema.files {
     // Includes
     result += "#include \"" + base_name + ".hpp\"\n";
     result += "#include \"" + base_name + "_loaders.hpp\"\n";
-    result += "#include \"polygen_support.hpp\"\n\n";
+    result += "#include \"polygen_support.hpp\"\n";
+    result += "#include <tuple>\n\n";
 
     // Open container namespace
     // Rhai's replace() returns (), so copy first

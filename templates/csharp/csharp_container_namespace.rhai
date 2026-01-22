@@ -1,5 +1,6 @@
 ${
     import "templates/rhai_utils/indent" as indent_utils;
+    import "templates/csharp/rhai_utils/type_utils" as type_utils;
     let container_struct = include("templates/csharp/container/csharp_container_datatable.rhai");
     let container_class = include("templates/csharp/container/csharp_container_class.rhai");
 
