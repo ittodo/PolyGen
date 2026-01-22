@@ -1,3 +1,4 @@
+use std::fs;
 use std::process::Command;
 
 fn get_polygen_path() -> String {
@@ -94,4 +95,14 @@ pub fn get_polygen_version() -> Result<String, String> {
     } else {
         Err("Failed to get version".to_string())
     }
+}
+
+#[tauri::command]
+pub fn read_file(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
+pub fn write_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, &content).map_err(|e| format!("Failed to write file: {}", e))
 }

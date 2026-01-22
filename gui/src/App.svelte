@@ -1,9 +1,10 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import PathSelector from "./lib/components/PathSelector.svelte";
   import LanguageSelector from "./lib/components/LanguageSelector.svelte";
   import LogPanel from "./lib/components/LogPanel.svelte";
+  import Editor from "./lib/components/Editor.svelte";
 
   let schemaPath = $state("");
   let outputDir = $state("");
@@ -11,6 +12,8 @@
   let selectedLanguages = $state<string[]>(["csharp"]);
   let logs = $state<string[]>([]);
   let isGenerating = $state(false);
+  let editorContent = $state("");
+  let isModified = $state(false);
 
   async function selectSchemaFile() {
     const selected = await open({
@@ -19,7 +22,59 @@
     });
     if (selected) {
       schemaPath = selected as string;
+      await loadFile(schemaPath);
     }
+  }
+
+  async function loadFile(path: string) {
+    try {
+      const content = await invoke<string>("read_file", { path });
+      editorContent = content;
+      isModified = false;
+      addLog(`Loaded: ${path}`);
+    } catch (error) {
+      addLog(`ERROR: Failed to load file - ${error}`);
+    }
+  }
+
+  async function saveFile() {
+    if (!schemaPath) {
+      await saveFileAs();
+      return;
+    }
+    try {
+      await invoke("write_file", { path: schemaPath, content: editorContent });
+      isModified = false;
+      addLog(`Saved: ${schemaPath}`);
+    } catch (error) {
+      addLog(`ERROR: Failed to save file - ${error}`);
+    }
+  }
+
+  async function saveFileAs() {
+    const selected = await save({
+      filters: [{ name: "Poly Schema", extensions: ["poly"] }],
+    });
+    if (selected) {
+      schemaPath = selected as string;
+      await saveFile();
+    }
+  }
+
+  async function newFile() {
+    if (isModified) {
+      // TODO: Confirm dialog
+    }
+    schemaPath = "";
+    editorContent = `// New PolyGen Schema
+namespace example {
+    table Sample {
+        id: u32 primary_key;
+        name: string max_length(100);
+    }
+}
+`;
+    isModified = false;
   }
 
   async function selectOutputDir() {
@@ -46,7 +101,16 @@
     logs = [...logs, `[${new Date().toLocaleTimeString()}] ${message}`];
   }
 
+  function onEditorChange(value: string) {
+    isModified = true;
+  }
+
   async function generate() {
+    // If editing in editor and no file saved, save to temp first
+    if (!schemaPath && editorContent) {
+      addLog("ERROR: 먼저 스키마 파일을 저장해주세요.");
+      return;
+    }
     if (!schemaPath) {
       addLog("ERROR: 스키마 파일을 선택해주세요.");
       return;
@@ -58,6 +122,11 @@
     if (selectedLanguages.length === 0) {
       addLog("ERROR: 최소 하나의 언어를 선택해주세요.");
       return;
+    }
+
+    // Save before generate if modified
+    if (isModified) {
+      await saveFile();
     }
 
     isGenerating = true;
@@ -88,20 +157,27 @@
 
 <main>
   <header>
-    <h1>PolyGen</h1>
-    <p>Polyglot Code Generator</p>
+    <div class="header-left">
+      <h1>PolyGen</h1>
+    </div>
+    <div class="header-center">
+      <button class="toolbar-btn" onclick={newFile} title="New File">New</button>
+      <button class="toolbar-btn" onclick={selectSchemaFile} title="Open File">Open</button>
+      <button class="toolbar-btn" onclick={saveFile} title="Save File">Save</button>
+      <button class="toolbar-btn" onclick={saveFileAs} title="Save As">Save As</button>
+    </div>
+    <div class="header-right">
+      {#if schemaPath}
+        <span class="filename">{schemaPath.split(/[/\\]/).pop()}{isModified ? " *" : ""}</span>
+      {:else}
+        <span class="filename">Untitled{isModified ? " *" : ""}</span>
+      {/if}
+    </div>
   </header>
 
   <div class="content">
     <section class="settings">
       <h2>Settings</h2>
-
-      <PathSelector
-        label="Schema File (.poly)"
-        value={schemaPath}
-        placeholder="Select schema file..."
-        onSelect={selectSchemaFile}
-      />
 
       <PathSelector
         label="Output Directory"
@@ -111,7 +187,7 @@
       />
 
       <PathSelector
-        label="Templates Directory (optional)"
+        label="Templates (optional)"
         value={templatesDir}
         placeholder="Default templates"
         onSelect={selectTemplatesDir}
@@ -123,6 +199,15 @@
         <button class="primary" onclick={generate} disabled={isGenerating}>
           {isGenerating ? "Generating..." : "Generate"}
         </button>
+      </div>
+    </section>
+
+    <section class="editor-section">
+      <div class="editor-header">
+        <h2>Schema Editor</h2>
+      </div>
+      <div class="editor-wrapper">
+        <Editor bind:value={editorContent} onChange={onEditorChange} />
       </div>
     </section>
 
@@ -141,29 +226,53 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    padding: 1rem;
-    gap: 1rem;
+    padding: 0.5rem;
+    gap: 0.5rem;
   }
 
   header {
-    text-align: center;
-    padding: 1rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
   }
 
-  header h1 {
-    font-size: 1.5rem;
+  .header-left h1 {
+    font-size: 1.25rem;
     color: var(--accent);
+    margin: 0;
   }
 
-  header p {
+  .header-center {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .toolbar-btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .toolbar-btn:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .header-right .filename {
     font-size: 0.875rem;
     color: var(--text-secondary);
   }
 
   .content {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    grid-template-columns: 280px 1fr 300px;
+    gap: 0.5rem;
     flex: 1;
     min-height: 0;
   }
@@ -171,33 +280,57 @@
   section {
     background-color: var(--bg-secondary);
     border-radius: 8px;
-    padding: 1rem;
+    padding: 0.75rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.75rem;
+    min-height: 0;
   }
 
   section h2 {
-    font-size: 1rem;
+    font-size: 0.875rem;
     color: var(--text-primary);
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.5rem;
+    margin: 0;
+  }
+
+  .settings {
+    overflow-y: auto;
   }
 
   .actions {
     margin-top: auto;
-    padding-top: 1rem;
+    padding-top: 0.75rem;
   }
 
   .actions button {
     width: 100%;
-    padding: 0.75rem;
-    font-size: 1rem;
+    padding: 0.625rem;
+    font-size: 0.875rem;
+  }
+
+  .editor-section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .editor-header {
+    flex-shrink: 0;
+  }
+
+  .editor-wrapper {
+    flex: 1;
+    min-height: 0;
+    border-radius: 4px;
+    overflow: hidden;
   }
 
   .output {
     display: flex;
     flex-direction: column;
+    min-height: 0;
   }
 
   .output-header {
@@ -206,6 +339,7 @@
     align-items: center;
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.5rem;
+    flex-shrink: 0;
   }
 
   .output-header h2 {
@@ -213,9 +347,14 @@
     padding: 0;
   }
 
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     .content {
       grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .editor-wrapper {
+      min-height: 300px;
     }
   }
 </style>
