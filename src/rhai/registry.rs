@@ -38,8 +38,8 @@
 
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
-    ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RelationDef, SchemaContext, StructDef,
-    StructItem, TypeRef,
+    ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RelationDef, RenameInfo, RenameKind,
+    SchemaContext, StructDef, StructItem, TypeRef,
 };
 use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
@@ -80,6 +80,12 @@ fn register_types_and_getters(engine: &mut Engine) {
         f.namespaces
             .iter()
             .map(|ns| Dynamic::from(ns.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
+    engine.register_get("renames", |f: &mut FileDef| {
+        f.renames
+            .iter()
+            .map(|r| Dynamic::from(r.clone()))
             .collect::<Vec<Dynamic>>()
     });
 
@@ -450,6 +456,30 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_type_with_name::<AnnotationParam>("AnnotationParam");
     engine.register_get("key", |p: &mut AnnotationParam| p.key.clone());
     engine.register_get("value", |p: &mut AnnotationParam| p.value.clone());
+
+    // Register RenameInfo type and getters
+    engine.register_type_with_name::<RenameInfo>("RenameInfo");
+    engine.register_get("kind", |r: &mut RenameInfo| r.kind.clone());
+    engine.register_get("from_path", |r: &mut RenameInfo| {
+        r.from_path
+            .iter()
+            .map(|s| Dynamic::from(s.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
+    engine.register_get("to_name", |r: &mut RenameInfo| r.to_name.clone());
+
+    // Register RenameKind type and helpers
+    engine.register_type_with_name::<RenameKind>("RenameKind");
+    engine.register_fn("is_table", |k: &mut RenameKind| {
+        matches!(k, RenameKind::Table)
+    });
+    engine.register_fn("is_field", |k: &mut RenameKind| {
+        matches!(k, RenameKind::Field)
+    });
+    engine.register_fn("to_string", |k: &mut RenameKind| match k {
+        RenameKind::Table => "table".to_string(),
+        RenameKind::Field => "field".to_string(),
+    });
 }
 
 fn register_common_helpers(engine: &mut Engine) {

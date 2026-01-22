@@ -1,8 +1,8 @@
 use crate::ast_model::{self, Definition, Metadata, TableMember};
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, FieldDef, FileDef, ForeignKeyDef,
-    IndexDef, NamespaceDef, NamespaceItem, RelationDef, SchemaContext, StructDef, StructItem,
-    TypeRef,
+    IndexDef, NamespaceDef, NamespaceItem, RelationDef, RenameInfo, RenameKind, SchemaContext,
+    StructDef, StructItem, TypeRef,
 };
 use crate::type_registry::{TypeKind, TypeRegistry};
 use heck::ToPascalCase;
@@ -27,6 +27,24 @@ fn extract_datasource(metadata: &[Metadata]) -> Option<String> {
         }
     }
     None
+}
+
+/// Converts an AST RenameRule to an IR RenameInfo.
+fn convert_rename(rename: &ast_model::RenameRule) -> RenameInfo {
+    // Determine the kind based on path length:
+    // - Length 1: Table rename (e.g., Player -> User)
+    // - Length 2+: Field rename (e.g., User.name -> username or game.Player.hp -> health)
+    let kind = if rename.from_path.len() == 1 {
+        RenameKind::Table
+    } else {
+        RenameKind::Field
+    };
+
+    RenameInfo {
+        kind,
+        from_path: rename.from_path.clone(),
+        to_name: rename.to_name.clone(),
+    }
 }
 
 /// Information extracted from field constraints.
@@ -113,9 +131,17 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
             top_level_namespaces.insert(0, global_ns);
         }
 
+        // Convert AST renames to IR renames
+        let renames = ast
+            .renames
+            .iter()
+            .map(|r| convert_rename(r))
+            .collect();
+
         let file_def = FileDef {
             path: file_name,
             namespaces: top_level_namespaces,
+            renames,
         };
         context.files.push(file_def);
     }

@@ -31,6 +31,30 @@ pub struct FileDef {
     pub path: String,
     /// Top-level namespaces defined in this file.
     pub namespaces: Vec<NamespaceDef>,
+    /// Rename rules for migration (imported from .renames files).
+    pub renames: Vec<RenameInfo>,
+}
+
+/// Represents a rename operation for schema migration.
+///
+/// Used to track table and field renames between schema versions.
+#[derive(Serialize, Debug, Clone)]
+pub struct RenameInfo {
+    /// Type of rename operation.
+    pub kind: RenameKind,
+    /// Source path segments (e.g., ["Player"] or ["User", "user_name"]).
+    pub from_path: Vec<String>,
+    /// New name after the rename.
+    pub to_name: String,
+}
+
+/// The type of rename operation.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub enum RenameKind {
+    /// Table/struct rename (e.g., Player -> User).
+    Table,
+    /// Field rename within a table (e.g., User.user_name -> name).
+    Field,
 }
 
 // --- Namespace Definition ---

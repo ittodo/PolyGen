@@ -125,6 +125,31 @@ SchemaContext {
                     ],
                 },
             ],
+            renames: [
+                RenameInfo {
+                    kind: Table,
+                    from_path: [
+                        "Player",
+                    ],
+                    to_name: "User",
+                },
+                RenameInfo {
+                    kind: Field,
+                    from_path: [
+                        "User",
+                        "user_name",
+                    ],
+                    to_name: "name",
+                },
+                RenameInfo {
+                    kind: Field,
+                    from_path: [
+                        "User",
+                        "hp",
+                    ],
+                    to_name: "health",
+                },
+            ],
         },
     ],
 }
