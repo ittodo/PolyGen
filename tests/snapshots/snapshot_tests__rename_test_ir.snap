@@ -129,6 +129,7 @@ SchemaContext {
                 RenameInfo {
                     kind: Table,
                     from_path: [
+                        "game",
                         "Player",
                     ],
                     to_name: "User",
@@ -136,6 +137,7 @@ SchemaContext {
                 RenameInfo {
                     kind: Field,
                     from_path: [
+                        "game",
                         "User",
                         "user_name",
                     ],
@@ -144,6 +146,7 @@ SchemaContext {
                 RenameInfo {
                     kind: Field,
                     from_path: [
+                        "game",
                         "User",
                         "hp",
                     ],
