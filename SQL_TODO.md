@@ -1,6 +1,6 @@
 # SQL 지원 확장 계획
 
-> 상태: Phase 1-3 완료 (2026-01-22)
+> 상태: Phase 1-4 완료 (2026-01-22)
 
 ---
 
@@ -78,10 +78,11 @@ output/
   - C#, C++, Rust, TypeScript 모두 지원
   - SQLite/MySQL datasource 필터링
 
-### ❌ 미완료
+### ✅ 추가 완료
 - [x] 마이그레이션 diff 로직 (`--baseline` 옵션으로 스키마 비교)
-- [ ] CLI 명령어 (`polygen migrate`)
+- [x] CLI 명령어 (`polygen migrate`) - 서브커맨드 구조로 구현
 - [x] 언어별 DB accessor 생성 (C#, Rust, C++, TypeScript 완료)
+- [x] 고급 어노테이션: `@cache`, `@readonly`, `@soft_delete`
 
 ---
 
@@ -275,9 +276,9 @@ ALTER TABLE game_User RENAME COLUMN hp TO health;
 
 ---
 
-## 테이블/필드 어노테이션
+## 테이블/필드 어노테이션 (구현 완료)
 
-### @cache - 캐시 전략
+### @cache - 캐시 전략 ✅
 
 ```poly
 @cache(strategy: full_load)     // 시작시 전체 로드 (정적 데이터)
@@ -295,7 +296,7 @@ table Player { ... }
 | `write_through` | 쓰기시 즉시 DB 반영 | 중요 데이터 |
 | `write_back` | 지연 쓰기 (배치) | 로그, 통계 |
 
-### @readonly - 읽기 전용
+### @readonly - 읽기 전용 ✅
 
 ```poly
 @readonly
@@ -305,7 +306,7 @@ table ItemTable { ... }  // 수정 불가 (정적 데이터)
 - SaveChanges()에서 무시
 - 수정 시도시 예외 발생
 
-### @soft_delete - 논리 삭제
+### @soft_delete - 논리 삭제 ✅
 
 ```poly
 @soft_delete("deleted_at")
@@ -413,10 +414,14 @@ game.sql.poly    -- SQL 전용 확장
 - [x] 언어 코드 생성 시 해당 DB DDL도 함께 출력
 - [x] datasource별 테이블 필터링
 
-### Phase 4: 고급 기능 (대부분 완료)
+### Phase 4: 고급 기능 ✅ 완료
 - [x] 마이그레이션 diff 로직 (`--baseline` 옵션으로 스키마 비교)
-- [ ] CLI 명령어 (`polygen migrate`)
+- [x] CLI 명령어 (`polygen migrate`) - 서브커맨드 구조로 구현
 - [x] 언어별 DB accessor 코드 생성 (C#, Rust, C++, TypeScript 완료)
+- [x] 고급 어노테이션 지원:
+  - `@cache` (full_load, on_demand, write_through)
+  - `@readonly` (읽기 전용 테이블)
+  - `@soft_delete` (소프트 삭제 필드 지정)
 
 ---
 

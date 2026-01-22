@@ -101,6 +101,14 @@ pub struct StructDef {
     /// Data source for this struct. Set via `@datasource("name")` annotation,
     /// or inherited from the parent namespace.
     pub datasource: Option<String>,
+    /// Cache strategy for this struct. Set via `@cache("strategy")` annotation.
+    /// Possible values: "full_load", "on_demand", "write_through", "write_back".
+    pub cache_strategy: Option<String>,
+    /// Whether this struct is read-only. Set via `@readonly` annotation.
+    pub is_readonly: bool,
+    /// Field name for soft delete. Set via `@soft_delete("field_name")` annotation.
+    /// When set, deletes are logical (update field) rather than physical (DELETE).
+    pub soft_delete_field: Option<String>,
     /// Header items (struct-level annotations and comments).
     pub header: Vec<StructItem>,
     /// Body items (fields, nested types, inline comments).
