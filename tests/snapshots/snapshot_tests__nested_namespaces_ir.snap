@@ -9,15 +9,18 @@ SchemaContext {
             namespaces: [
                 NamespaceDef {
                     name: "game",
+                    datasource: None,
                     items: [
                         Namespace(
                             NamespaceDef {
                                 name: "game.character",
+                                datasource: None,
                                 items: [
                                     Struct(
                                         StructDef {
                                             name: "Player",
                                             fqn: "game.character.Player",
+                                            datasource: None,
                                             header: [],
                                             items: [
                                                 Field(
@@ -79,11 +82,13 @@ SchemaContext {
                         Namespace(
                             NamespaceDef {
                                 name: "game.item",
+                                datasource: None,
                                 items: [
                                     Struct(
                                         StructDef {
                                             name: "Item",
                                             fqn: "game.item.Item",
+                                            datasource: None,
                                             header: [],
                                             items: [
                                                 Field(

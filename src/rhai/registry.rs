@@ -85,6 +85,9 @@ fn register_types_and_getters(engine: &mut Engine) {
 
     engine.register_type_with_name::<NamespaceDef>("NamespaceDef");
     engine.register_get("name", |ns: &mut NamespaceDef| ns.name.clone());
+    engine.register_get("datasource", |ns: &mut NamespaceDef| {
+        ns.datasource.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
     engine.register_get("items", |ns: &mut NamespaceDef| {
         ns.items
             .iter()
@@ -182,6 +185,9 @@ fn register_types_and_getters(engine: &mut Engine) {
             .iter()
             .map(|rel| Dynamic::from(rel.clone()))
             .collect::<Vec<Dynamic>>()
+    });
+    engine.register_get("datasource", |s: &mut StructDef| {
+        s.datasource.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
     });
 
     // Register IndexDef type and getters

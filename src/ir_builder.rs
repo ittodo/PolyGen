@@ -7,6 +7,28 @@ use crate::ir_model::{
 use crate::type_registry::{TypeKind, TypeRegistry};
 use heck::ToPascalCase;
 
+/// Extracts the @datasource value from metadata.
+fn extract_datasource(metadata: &[Metadata]) -> Option<String> {
+    for meta in metadata {
+        if let Metadata::Annotation(ann) = meta {
+            if ann.name.as_deref() == Some("datasource") {
+                // Get the first positional or the value parameter
+                if let Some(arg) = ann.args.first() {
+                    match arg {
+                        ast_model::AnnotationArg::Positional(lit) => {
+                            return Some(lit.to_string().trim_matches('"').to_string());
+                        }
+                        ast_model::AnnotationArg::Named(param) => {
+                            return Some(param.value.to_string().trim_matches('"').to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Information extracted from field constraints.
 #[derive(Debug, Default)]
 struct ConstraintInfo {
@@ -66,16 +88,18 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
             // Top-level namespace blocks are handled specially to form the root of the hierarchy.
             if let Definition::Namespace(ns_ast) = def {
                 let ns_name = ns_ast.path.join(".");
+                let ns_datasource = extract_datasource(&ns_ast.metadata);
                 let mut new_ns = NamespaceDef {
                     name: ns_name.clone(),
+                    datasource: ns_datasource.clone(),
                     items: Vec::new(),
                 };
                 // Recurse into this new top-level namespace
-                populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &ns_name);
+                populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &ns_name, ns_datasource.as_deref());
                 top_level_namespaces.push(new_ns);
             } else {
                 // Any other item at the top level belongs to the "global" namespace.
-                add_definition_to_items(&mut global_items, def, "");
+                add_definition_to_items(&mut global_items, def, "", None);
             }
         }
 
@@ -83,6 +107,7 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
         if !global_items.is_empty() {
             let global_ns = NamespaceDef {
                 name: "".to_string(),
+                datasource: None,
                 items: global_items,
             };
             top_level_namespaces.insert(0, global_ns);
@@ -215,15 +240,21 @@ fn populate_items_recursively(
     items: &mut Vec<NamespaceItem>,
     definitions: &[ast_model::Definition],
     current_ns: &str,
+    inherited_datasource: Option<&str>,
 ) {
     for def in definitions {
-        add_definition_to_items(items, def, current_ns);
+        add_definition_to_items(items, def, current_ns, inherited_datasource);
     }
 }
 
 /// Converts a single AST Definition into a NamespaceItem and adds it to a list.
 /// This is the core of the recursive build process.
-fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition, current_ns: &str) {
+fn add_definition_to_items(
+    items: &mut Vec<NamespaceItem>,
+    def: &Definition,
+    current_ns: &str,
+    inherited_datasource: Option<&str>,
+) {
     match def {
         Definition::Namespace(ns_ast) => {
             let this = ns_ast.path.join(".");
@@ -234,15 +265,19 @@ fn add_definition_to_items(items: &mut Vec<NamespaceItem>, def: &Definition, cur
             } else {
                 format!("{}.{}", current_ns, this)
             };
+            // Extract datasource from this namespace, or inherit from parent
+            let ns_datasource = extract_datasource(&ns_ast.metadata)
+                .or_else(|| inherited_datasource.map(String::from));
             let mut new_ns = NamespaceDef {
                 name: next_ns.clone(),
+                datasource: ns_datasource.clone(),
                 items: Vec::new(),
             };
-            populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &next_ns);
+            populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &next_ns, ns_datasource.as_deref());
             items.push(NamespaceItem::Namespace(Box::new(new_ns)));
         }
         Definition::Table(table) => {
-            items.push(NamespaceItem::Struct(convert_table_to_struct(table, current_ns)));
+            items.push(NamespaceItem::Struct(convert_table_to_struct(table, current_ns, inherited_datasource)));
         }
         Definition::Enum(e) => {
             items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e, None, current_ns)));
@@ -373,7 +408,11 @@ fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry) {
     t.is_struct = true;
 }
 
-fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> StructDef {
+fn convert_table_to_struct(
+    table: &ast_model::Table,
+    current_ns: &str,
+    inherited_datasource: Option<&str>,
+) -> StructDef {
     let mut items = Vec::new();
     let mut header_items = Vec::new();
     let name = table.name.clone().unwrap();
@@ -382,6 +421,10 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
     } else {
         format!("{}.{}", current_ns, name)
     };
+
+    // Extract table-level datasource, or inherit from namespace
+    let table_datasource = extract_datasource(&table.metadata)
+        .or_else(|| inherited_datasource.map(String::from));
 
     // Process metadata for the struct header
     for meta in &table.metadata {
@@ -443,6 +486,7 @@ fn convert_table_to_struct(table: &ast_model::Table, current_ns: &str) -> Struct
     StructDef {
         name,
         fqn,
+        datasource: table_datasource,
         items,
         header: header_items,
         indexes,
@@ -597,11 +641,15 @@ fn convert_field_to_ir(
         }
         ast_model::FieldDefinition::InlineEmbed(ief) => {
             let struct_name = ief.name.clone().expect("Inline embed field name must be present").to_pascal_case();
-            let inline_struct = convert_table_to_struct(&ast_model::Table {
-                name: Some(struct_name.clone()),
-                metadata: ief.metadata.clone(),
-                members: ief.members.clone(),
-            }, owner_fqn);
+            let inline_struct = convert_table_to_struct(
+                &ast_model::Table {
+                    name: Some(struct_name.clone()),
+                    metadata: ief.metadata.clone(),
+                    members: ief.members.clone(),
+                },
+                owner_fqn,
+                None, // Inline embeds don't inherit datasource
+            );
 
             let nested_items = vec![inline_struct];
 
@@ -714,11 +762,15 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>, 
 }
 
 fn convert_embed_to_struct(embed: &ast_model::Embed, owner_fqn: &str) -> StructDef {
-    convert_table_to_struct(&ast_model::Table {
-        name: embed.name.clone(),
-        metadata: embed.metadata.clone(),
-        members: embed.members.clone(),
-    }, owner_fqn)
+    convert_table_to_struct(
+        &ast_model::Table {
+            name: embed.name.clone(),
+            metadata: embed.metadata.clone(),
+            members: embed.members.clone(),
+        },
+        owner_fqn,
+        None, // Embeds don't inherit datasource
+    )
 }
 
 // Build TypeRef from an AST type in the given namespace context
@@ -1036,6 +1088,7 @@ mod tests {
     /// Helper to create a namespace
     fn make_namespace(path: Vec<&str>, definitions: Vec<Definition>) -> Definition {
         Definition::Namespace(Namespace {
+            metadata: vec![],
             path: path.into_iter().map(String::from).collect(),
             imports: vec![],
             definitions,

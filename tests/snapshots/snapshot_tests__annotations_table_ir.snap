@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 22
 expression: ir_context
 ---
 SchemaContext {
@@ -9,11 +10,13 @@ SchemaContext {
             namespaces: [
                 NamespaceDef {
                     name: "",
+                    datasource: None,
                     items: [
                         Struct(
                             StructDef {
                                 name: "AnnotatedUser",
                                 fqn: "AnnotatedUser",
+                                datasource: None,
                                 header: [
                                     Annotation(
                                         AnnotationDef {

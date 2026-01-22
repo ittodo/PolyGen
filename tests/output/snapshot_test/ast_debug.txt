@@ -5,6 +5,7 @@
         definitions: [
             Namespace(
                 Namespace {
+                    metadata: [],
                     path: [
                         "test",
                         "csv",

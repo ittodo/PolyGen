@@ -9,6 +9,7 @@ expression: all_asts
         definitions: [
             Namespace(
                 Namespace {
+                    metadata: [],
                     path: [
                         "MyGame",
                     ],
@@ -141,6 +142,7 @@ expression: all_asts
             ),
             Namespace(
                 Namespace {
+                    metadata: [],
                     path: [
                         "MyGame",
                     ],

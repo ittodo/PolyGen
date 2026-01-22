@@ -1,6 +1,6 @@
 use pest::iterators::Pair;
 use crate::ast_model::{
-    Definition, Embed, Enum, EnumVariant, Metadata, Namespace, NamespaceImport, Table, TableMember,
+    Definition, Embed, Enum, EnumVariant, Namespace, NamespaceImport, Table, TableMember,
 };
 use crate::error::AstBuildError;
 use crate::Rule;
@@ -20,15 +20,7 @@ pub fn parse_definition(pair: Pair<Rule>) -> Result<Definition, AstBuildError> {
     let definition = match def_pair.as_rule() {
         Rule::namespace => {
             let mut ns = parse_namespace(def_pair)?;
-            let mut new_defs: Vec<Definition> = metadata
-                .into_iter()
-                .map(|m| match m {
-                    Metadata::DocComment(c) => Definition::Comment(c),
-                    Metadata::Annotation(a) => Definition::Annotation(a),
-                })
-                .collect();
-            new_defs.append(&mut ns.definitions);
-            ns.definitions = new_defs;
+            ns.metadata = metadata;
             Definition::Namespace(ns)
         }
         Rule::table => {
@@ -90,6 +82,7 @@ pub fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, AstBuildError> {
         }
     }
     Ok(Namespace {
+        metadata: Vec::new(), // Will be set by caller (parse_definition)
         path,
         imports,
         definitions,

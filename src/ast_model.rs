@@ -59,6 +59,8 @@ pub enum Definition {
 /// Example: `namespace game.common { ... }`
 #[derive(Debug, PartialEq, Clone)]
 pub struct Namespace {
+    /// Metadata attached to this namespace (doc comments, annotations like @datasource).
+    pub metadata: Vec<Metadata>,
     /// The namespace path segments (e.g., `["game", "common"]`).
     pub path: Vec<String>,
     /// Import statements within the namespace.

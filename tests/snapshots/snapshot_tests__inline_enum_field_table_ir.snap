@@ -9,11 +9,13 @@ SchemaContext {
             namespaces: [
                 NamespaceDef {
                     name: "",
+                    datasource: None,
                     items: [
                         Struct(
                             StructDef {
                                 name: "Product",
                                 fqn: "Product",
+                                datasource: None,
                                 header: [],
                                 items: [
                                     Field(
