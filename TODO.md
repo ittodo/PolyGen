@@ -40,7 +40,7 @@
 ### SQLite/DB 지원 (Phase 4)
 - [ ] 마이그레이션 diff 로직 (자동 감지)
 - [ ] CLI 명령어 (`polygen migrate`)
-- [ ] 언어별 DB accessor 코드 생성
+- [x] 언어별 DB accessor 코드 생성 (C#, Rust 완료)
 
 ### 추가 DB 지원
 - [ ] MySQL/MariaDB 지원 (SQLite 기반 확장)

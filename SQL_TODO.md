@@ -408,15 +408,15 @@ game.sql.poly    -- SQL 전용 확장
 - [x] IR에 rename 정보 포함
 - [x] 마이그레이션 SQL 생성
 
-### Phase 3: @datasource 연동 🚧
-- [ ] @datasource 어노테이션 기반 DDL 자동 생성
-- [ ] 언어 코드 생성 시 해당 DB DDL도 함께 출력
-- [ ] datasource별 테이블 필터링
+### Phase 3: @datasource 연동 ✅
+- [x] @datasource 어노테이션 기반 DDL 자동 생성
+- [x] 언어 코드 생성 시 해당 DB DDL도 함께 출력
+- [x] datasource별 테이블 필터링
 
-### Phase 4: 고급 기능 ❌
+### Phase 4: 고급 기능 (일부 완료)
 - [ ] 마이그레이션 diff 로직 (자동 감지)
 - [ ] CLI 명령어 (`polygen migrate`)
-- [ ] 언어별 DB accessor 코드 생성
+- [x] 언어별 DB accessor 코드 생성 (C#, Rust 완료)
 
 ---
 

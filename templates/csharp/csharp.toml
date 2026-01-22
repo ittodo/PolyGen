@@ -27,4 +27,5 @@ extra = [
     "csharp_csv_columns_file.rhai",
     "csharp_csv_mappers_file.rhai",
     "csharp_container_file.rhai",
+    "csharp_sqlite_accessor_file.rhai",
 ]
