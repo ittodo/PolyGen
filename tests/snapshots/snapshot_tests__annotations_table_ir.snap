@@ -16,6 +16,9 @@ SchemaContext {
                                 name: "AnnotatedUser",
                                 fqn: "AnnotatedUser",
                                 datasource: None,
+                                cache_strategy: None,
+                                is_readonly: false,
+                                soft_delete_field: None,
                                 header: [
                                     Annotation(
                                         AnnotationDef {

@@ -34,10 +34,12 @@ fn test_csv_mappers_snapshot() -> Result<()> {
     let templates_dir = PathBuf::from("templates");
 
     let cli = Cli {
-        schema_path,
+        command: None,
+        schema_path: Some(schema_path),
         templates_dir,
         output_dir: output_dir.clone(),
         lang: Some("csharp".to_string()),
+        baseline: None,
     };
 
     run(cli)?;

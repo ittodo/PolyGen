@@ -44,6 +44,9 @@ SchemaContext {
                                 name: "Point",
                                 fqn: "test.csv.Point",
                                 datasource: None,
+                                cache_strategy: None,
+                                is_readonly: false,
+                                soft_delete_field: None,
                                 header: [],
                                 items: [
                                     Field(
@@ -104,6 +107,9 @@ SchemaContext {
                                 name: "TestObject",
                                 fqn: "test.csv.TestObject",
                                 datasource: None,
+                                cache_strategy: None,
+                                is_readonly: false,
+                                soft_delete_field: None,
                                 header: [],
                                 items: [
                                     Field(

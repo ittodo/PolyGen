@@ -164,7 +164,7 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
         let renames = ast
             .renames
             .iter()
-            .map(|r| convert_rename(r))
+            .map(convert_rename)
             .collect();
 
         let file_def = FileDef {
