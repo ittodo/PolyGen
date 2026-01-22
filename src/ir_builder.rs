@@ -32,9 +32,9 @@ fn extract_datasource(metadata: &[Metadata]) -> Option<String> {
 /// Converts an AST RenameRule to an IR RenameInfo.
 fn convert_rename(rename: &ast_model::RenameRule) -> RenameInfo {
     // Determine the kind based on path length:
-    // - Length 1: Table rename (e.g., Player -> User)
-    // - Length 2+: Field rename (e.g., User.name -> username or game.Player.hp -> health)
-    let kind = if rename.from_path.len() == 1 {
+    // - Length 2: Table rename (e.g., game.Player -> User)
+    // - Length 3+: Field rename (e.g., game.User.hp -> health)
+    let kind = if rename.from_path.len() <= 2 {
         RenameKind::Table
     } else {
         RenameKind::Field

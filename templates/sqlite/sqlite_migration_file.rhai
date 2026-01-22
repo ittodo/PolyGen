@@ -45,32 +45,43 @@ if !has_migrations {
     migration_sql += "-- Import a .renames file in your schema to generate migrations.\n";
 } else {
     // Process table renames first
+    // Format: namespace.OldTable -> NewTable (path length = 2)
     if table_renames.len() > 0 {
         migration_sql += "-- ============================================\n";
         migration_sql += "-- Table Renames\n";
         migration_sql += "-- ============================================\n\n";
 
         for rename in table_renames {
-            let from_name = join_with(rename.from_path, ".");
-            migration_sql += "-- Rename table: " + from_name + " -> " + rename.to_name + "\n";
-            migration_sql += "ALTER TABLE " + from_name + " RENAME TO " + rename.to_name + ";\n\n";
+            // from_path: ["namespace", "OldTableName"] or ["OldTableName"]
+            let old_table = if rename.from_path.len() >= 2 {
+                rename.from_path[rename.from_path.len() - 1]
+            } else if rename.from_path.len() == 1 {
+                rename.from_path[0]
+            } else {
+                continue;
+            };
+            let from_fqn = join_with(rename.from_path, ".");
+            migration_sql += "-- Rename table: " + from_fqn + " -> " + rename.to_name + "\n";
+            migration_sql += "ALTER TABLE " + old_table + " RENAME TO " + rename.to_name + ";\n\n";
         }
     }
 
     // Process field renames (SQLite 3.25.0+ required)
+    // Format: namespace.Table.old_field -> new_field (path length = 3+)
     if field_renames.len() > 0 {
         migration_sql += "-- ============================================\n";
         migration_sql += "-- Column Renames (requires SQLite 3.25.0+)\n";
         migration_sql += "-- ============================================\n\n";
 
         for rename in field_renames {
-            // from_path format: ["TableName", "old_column_name"]
-            if rename.from_path.len() >= 2 {
-                let table_name = rename.from_path[0];
-                let old_column = rename.from_path[1];
+            // from_path format: ["namespace", "TableName", "old_column_name"]
+            if rename.from_path.len() >= 3 {
+                let table_name = rename.from_path[rename.from_path.len() - 2];
+                let old_column = rename.from_path[rename.from_path.len() - 1];
                 let new_column = rename.to_name;
 
-                migration_sql += "-- Rename column: " + table_name + "." + old_column + " -> " + new_column + "\n";
+                let from_fqn = join_with(rename.from_path, ".");
+                migration_sql += "-- Rename column: " + from_fqn + " -> " + new_column + "\n";
                 migration_sql += "ALTER TABLE " + table_name + " RENAME COLUMN " + old_column + " TO " + new_column + ";\n\n";
             }
         }
