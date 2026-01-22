@@ -1,0 +1,260 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas/migration_current.poly",
+        file_imports: [],
+        definitions: [
+            Namespace(
+                Namespace {
+                    metadata: [
+                        DocComment(
+                            "Migration test - current schema (v2)",
+                        ),
+                        DocComment(
+                            "Changes from baseline:",
+                        ),
+                        DocComment(
+                            "- ItemTable: added 'description' column",
+                        ),
+                        DocComment(
+                            "- ItemTable: added 'category' column",
+                        ),
+                        DocComment(
+                            "- SkillTable: removed (to test table removal warning)",
+                        ),
+                        DocComment(
+                            "- BuffTable: added (new table)",
+                        ),
+                        Annotation(
+                            Annotation {
+                                name: Some(
+                                    "datasource",
+                                ),
+                                args: [
+                                    Positional(
+                                        String(
+                                            "sqlite",
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                    path: [
+                        "game",
+                        "data",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Table(
+                            Table {
+                                metadata: [],
+                                name: Some(
+                                    "ItemTable",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "price",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "description",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: Some(
+                                                        Optional,
+                                                    ),
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [
+                                                    DocComment(
+                                                        "NEW: nullable description",
+                                                    ),
+                                                ],
+                                                name: Some(
+                                                    "category",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Comment(
+                                        "NEW: required category",
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "SkillTable removed",
+                                    ),
+                                    DocComment(
+                                        "NEW table",
+                                    ),
+                                ],
+                                name: Some(
+                                    "BuffTable",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "duration",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "effect",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+        renames: [],
+    },
+]

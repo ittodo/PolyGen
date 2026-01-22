@@ -1,0 +1,360 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas/advanced_annotations.poly",
+        file_imports: [],
+        definitions: [
+            Namespace(
+                Namespace {
+                    metadata: [
+                        DocComment(
+                            "Test schema for advanced annotations",
+                        ),
+                        Annotation(
+                            Annotation {
+                                name: Some(
+                                    "datasource",
+                                ),
+                                args: [
+                                    Positional(
+                                        String(
+                                            "sqlite",
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                    path: [
+                        "game",
+                        "data",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "Static data table - full load and read-only",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "full_load",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "readonly",
+                                            ),
+                                            args: [],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "ItemTable",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "price",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "description",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: Some(
+                                                        Optional,
+                                                    ),
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "User data table - on-demand loading with soft delete",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "on_demand",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "soft_delete",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "deleted_at",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "PlayerData",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "level",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "deleted_at",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: Some(
+                                                        Optional,
+                                                    ),
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Comment(
+                                        "null = active, timestamp = deleted",
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "Session data - write-through caching",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "write_through",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "SessionData",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "token",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "user_id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "expires_at",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+        renames: [],
+    },
+]

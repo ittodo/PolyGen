@@ -5,7 +5,7 @@ expression: ir_context
 SchemaContext {
     files: [
         FileDef {
-            path: "datasource_test.poly",
+            path: "advanced_annotations.poly",
             namespaces: [
                 NamespaceDef {
                     name: "game.data",
@@ -20,10 +20,32 @@ SchemaContext {
                                 datasource: Some(
                                     "sqlite",
                                 ),
-                                cache_strategy: None,
-                                is_readonly: false,
+                                cache_strategy: Some(
+                                    "full_load",
+                                ),
+                                is_readonly: true,
                                 soft_delete_field: None,
-                                header: [],
+                                header: [
+                                    Comment(
+                                        "Static data table - full load and read-only",
+                                    ),
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "cache",
+                                            positional_args: [
+                                                "full_load",
+                                            ],
+                                            params: [],
+                                        },
+                                    ),
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "readonly",
+                                            positional_args: [],
+                                            params: [],
+                                        },
+                                    ),
+                                ],
                                 items: [
                                     Field(
                                         FieldDef {
@@ -99,114 +121,37 @@ SchemaContext {
                                             foreign_key: None,
                                         },
                                     ),
-                                ],
-                                indexes: [
-                                    IndexDef {
-                                        name: "ById",
-                                        fields: [
-                                            IndexFieldDef {
-                                                name: "id",
-                                                field_type: TypeRef {
-                                                    original: "u32",
-                                                    fqn: "u32",
-                                                    namespace_fqn: "",
-                                                    type_name: "u32",
-                                                    parent_type_path: "",
-                                                    lang_type: "u32",
-                                                    is_primitive: true,
-                                                    is_struct: false,
-                                                    is_enum: false,
-                                                    is_option: false,
-                                                    is_list: false,
-                                                    inner_type: None,
-                                                },
-                                            },
-                                        ],
-                                        is_unique: true,
-                                        source: "constraint",
-                                    },
-                                ],
-                                relations: [],
-                            },
-                        ),
-                        Struct(
-                            StructDef {
-                                name: "SkillTable",
-                                fqn: "game.data.SkillTable",
-                                datasource: Some(
-                                    "sqlite",
-                                ),
-                                cache_strategy: None,
-                                is_readonly: false,
-                                soft_delete_field: None,
-                                header: [],
-                                items: [
                                     Field(
                                         FieldDef {
-                                            name: "id",
+                                            name: "description",
                                             field_type: TypeRef {
-                                                original: "u32",
-                                                fqn: "u32",
-                                                namespace_fqn: "",
-                                                type_name: "u32",
-                                                parent_type_path: "",
-                                                lang_type: "u32",
-                                                is_primitive: true,
-                                                is_struct: false,
-                                                is_enum: false,
-                                                is_option: false,
-                                                is_list: false,
-                                                inner_type: None,
-                                            },
-                                            attributes: [
-                                                "Key",
-                                            ],
-                                            is_primary_key: true,
-                                            is_unique: false,
-                                            is_index: false,
-                                            foreign_key: None,
-                                        },
-                                    ),
-                                    Field(
-                                        FieldDef {
-                                            name: "name",
-                                            field_type: TypeRef {
-                                                original: "string",
+                                                original: "Option<string>",
                                                 fqn: "string",
                                                 namespace_fqn: "",
                                                 type_name: "string",
                                                 parent_type_path: "",
-                                                lang_type: "string",
-                                                is_primitive: true,
-                                                is_struct: false,
+                                                lang_type: "Option<string>",
+                                                is_primitive: false,
+                                                is_struct: true,
                                                 is_enum: false,
-                                                is_option: false,
+                                                is_option: true,
                                                 is_list: false,
-                                                inner_type: None,
-                                            },
-                                            attributes: [],
-                                            is_primary_key: false,
-                                            is_unique: false,
-                                            is_index: false,
-                                            foreign_key: None,
-                                        },
-                                    ),
-                                    Field(
-                                        FieldDef {
-                                            name: "damage",
-                                            field_type: TypeRef {
-                                                original: "u32",
-                                                fqn: "u32",
-                                                namespace_fqn: "",
-                                                type_name: "u32",
-                                                parent_type_path: "",
-                                                lang_type: "u32",
-                                                is_primitive: true,
-                                                is_struct: false,
-                                                is_enum: false,
-                                                is_option: false,
-                                                is_list: false,
-                                                inner_type: None,
+                                                inner_type: Some(
+                                                    TypeRef {
+                                                        original: "string",
+                                                        fqn: "string",
+                                                        namespace_fqn: "",
+                                                        type_name: "string",
+                                                        parent_type_path: "",
+                                                        lang_type: "string",
+                                                        is_primitive: true,
+                                                        is_struct: false,
+                                                        is_enum: false,
+                                                        is_option: false,
+                                                        is_list: false,
+                                                        inner_type: None,
+                                                    },
+                                                ),
                                             },
                                             attributes: [],
                                             is_primary_key: false,
@@ -245,57 +190,43 @@ SchemaContext {
                                 relations: [],
                             },
                         ),
-                        Enum(
-                            EnumDef {
-                                name: "ItemType",
-                                fqn: "game.data.ItemType",
-                                items: [
-                                    Member(
-                                        EnumMember {
-                                            name: "Weapon",
-                                            value: Some(
-                                                1,
-                                            ),
+                        Struct(
+                            StructDef {
+                                name: "PlayerData",
+                                fqn: "game.data.PlayerData",
+                                datasource: Some(
+                                    "sqlite",
+                                ),
+                                cache_strategy: Some(
+                                    "on_demand",
+                                ),
+                                is_readonly: false,
+                                soft_delete_field: Some(
+                                    "deleted_at",
+                                ),
+                                header: [
+                                    Comment(
+                                        "User data table - on-demand loading with soft delete",
+                                    ),
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "cache",
+                                            positional_args: [
+                                                "on_demand",
+                                            ],
+                                            params: [],
                                         },
                                     ),
-                                    Member(
-                                        EnumMember {
-                                            name: "Armor",
-                                            value: Some(
-                                                2,
-                                            ),
-                                        },
-                                    ),
-                                    Member(
-                                        EnumMember {
-                                            name: "Potion",
-                                            value: Some(
-                                                3,
-                                            ),
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "soft_delete",
+                                            positional_args: [
+                                                "deleted_at",
+                                            ],
+                                            params: [],
                                         },
                                     ),
                                 ],
-                            },
-                        ),
-                    ],
-                },
-                NamespaceDef {
-                    name: "game.user",
-                    datasource: Some(
-                        "mysql",
-                    ),
-                    items: [
-                        Struct(
-                            StructDef {
-                                name: "Player",
-                                fqn: "game.user.Player",
-                                datasource: Some(
-                                    "mysql",
-                                ),
-                                cache_strategy: None,
-                                is_readonly: false,
-                                soft_delete_field: None,
-                                header: [],
                                 items: [
                                     Field(
                                         FieldDef {
@@ -351,12 +282,12 @@ SchemaContext {
                                         FieldDef {
                                             name: "level",
                                             field_type: TypeRef {
-                                                original: "u16",
-                                                fqn: "u16",
+                                                original: "u32",
+                                                fqn: "u32",
                                                 namespace_fqn: "",
-                                                type_name: "u16",
+                                                type_name: "u32",
                                                 parent_type_path: "",
-                                                lang_type: "u16",
+                                                lang_type: "u32",
                                                 is_primitive: true,
                                                 is_struct: false,
                                                 is_enum: false,
@@ -370,6 +301,48 @@ SchemaContext {
                                             is_index: false,
                                             foreign_key: None,
                                         },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "deleted_at",
+                                            field_type: TypeRef {
+                                                original: "Option<string>",
+                                                fqn: "string",
+                                                namespace_fqn: "",
+                                                type_name: "string",
+                                                parent_type_path: "",
+                                                lang_type: "Option<string>",
+                                                is_primitive: false,
+                                                is_struct: true,
+                                                is_enum: false,
+                                                is_option: true,
+                                                is_list: false,
+                                                inner_type: Some(
+                                                    TypeRef {
+                                                        original: "string",
+                                                        fqn: "string",
+                                                        namespace_fqn: "",
+                                                        type_name: "string",
+                                                        parent_type_path: "",
+                                                        lang_type: "string",
+                                                        is_primitive: true,
+                                                        is_struct: false,
+                                                        is_enum: false,
+                                                        is_option: false,
+                                                        is_list: false,
+                                                        inner_type: None,
+                                                    },
+                                                ),
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Comment(
+                                        "null = active, timestamp = deleted",
                                     ),
                                 ],
                                 indexes: [
@@ -401,25 +374,36 @@ SchemaContext {
                                 relations: [],
                             },
                         ),
-                    ],
-                },
-                NamespaceDef {
-                    name: "game.common",
-                    datasource: None,
-                    items: [
                         Struct(
                             StructDef {
-                                name: "Config",
-                                fqn: "game.common.Config",
-                                datasource: None,
-                                cache_strategy: None,
+                                name: "SessionData",
+                                fqn: "game.data.SessionData",
+                                datasource: Some(
+                                    "sqlite",
+                                ),
+                                cache_strategy: Some(
+                                    "write_through",
+                                ),
                                 is_readonly: false,
                                 soft_delete_field: None,
-                                header: [],
+                                header: [
+                                    Comment(
+                                        "Session data - write-through caching",
+                                    ),
+                                    Annotation(
+                                        AnnotationDef {
+                                            name: "cache",
+                                            positional_args: [
+                                                "write_through",
+                                            ],
+                                            params: [],
+                                        },
+                                    ),
+                                ],
                                 items: [
                                     Field(
                                         FieldDef {
-                                            name: "key",
+                                            name: "token",
                                             field_type: TypeRef {
                                                 original: "string",
                                                 fqn: "string",
@@ -445,7 +429,31 @@ SchemaContext {
                                     ),
                                     Field(
                                         FieldDef {
-                                            name: "value",
+                                            name: "user_id",
+                                            field_type: TypeRef {
+                                                original: "u32",
+                                                fqn: "u32",
+                                                namespace_fqn: "",
+                                                type_name: "u32",
+                                                parent_type_path: "",
+                                                lang_type: "u32",
+                                                is_primitive: true,
+                                                is_struct: false,
+                                                is_enum: false,
+                                                is_option: false,
+                                                is_list: false,
+                                                inner_type: None,
+                                            },
+                                            attributes: [],
+                                            is_primary_key: false,
+                                            is_unique: false,
+                                            is_index: false,
+                                            foreign_key: None,
+                                        },
+                                    ),
+                                    Field(
+                                        FieldDef {
+                                            name: "expires_at",
                                             field_type: TypeRef {
                                                 original: "string",
                                                 fqn: "string",
@@ -470,10 +478,10 @@ SchemaContext {
                                 ],
                                 indexes: [
                                     IndexDef {
-                                        name: "ByKey",
+                                        name: "ByToken",
                                         fields: [
                                             IndexFieldDef {
-                                                name: "key",
+                                                name: "token",
                                                 field_type: TypeRef {
                                                     original: "string",
                                                     fqn: "string",

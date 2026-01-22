@@ -16,6 +16,9 @@ SchemaContext {
                                 name: "Player",
                                 fqn: "MyGame.Player",
                                 datasource: None,
+                                cache_strategy: None,
+                                is_readonly: false,
+                                soft_delete_field: None,
                                 header: [],
                                 items: [
                                     InlineEnum(
@@ -165,6 +168,9 @@ SchemaContext {
                                 name: "Player",
                                 fqn: "MyGame.Player",
                                 datasource: None,
+                                cache_strategy: None,
+                                is_readonly: false,
+                                soft_delete_field: None,
                                 header: [],
                                 items: [
                                     Field(

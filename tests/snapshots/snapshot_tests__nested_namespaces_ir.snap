@@ -21,6 +21,9 @@ SchemaContext {
                                             name: "Player",
                                             fqn: "game.character.Player",
                                             datasource: None,
+                                            cache_strategy: None,
+                                            is_readonly: false,
+                                            soft_delete_field: None,
                                             header: [],
                                             items: [
                                                 Field(
@@ -89,6 +92,9 @@ SchemaContext {
                                             name: "Item",
                                             fqn: "game.item.Item",
                                             datasource: None,
+                                            cache_strategy: None,
+                                            is_readonly: false,
+                                            soft_delete_field: None,
                                             header: [],
                                             items: [
                                                 Field(

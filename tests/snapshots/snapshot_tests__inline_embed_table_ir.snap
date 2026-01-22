@@ -16,6 +16,9 @@ SchemaContext {
                                 name: "Character",
                                 fqn: "Character",
                                 datasource: None,
+                                cache_strategy: None,
+                                is_readonly: false,
+                                soft_delete_field: None,
                                 header: [],
                                 items: [
                                     Field(
@@ -112,6 +115,9 @@ SchemaContext {
                                             name: "Inventory",
                                             fqn: "Character.Inventory",
                                             datasource: None,
+                                            cache_strategy: None,
+                                            is_readonly: false,
+                                            soft_delete_field: None,
                                             header: [],
                                             items: [
                                                 Field(
@@ -206,6 +212,9 @@ SchemaContext {
                                                         name: "Properties",
                                                         fqn: "Character.Inventory.Properties",
                                                         datasource: None,
+                                                        cache_strategy: None,
+                                                        is_readonly: false,
+                                                        soft_delete_field: None,
                                                         header: [],
                                                         items: [
                                                             Field(
