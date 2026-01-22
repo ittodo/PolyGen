@@ -1,6 +1,6 @@
 # SQL 지원 확장 계획
 
-> 상태: 검토 중 (2026-01-21)
+> 상태: Phase 1 완료, Phase 2 진행 중 (2026-01-22)
 
 ---
 
@@ -13,9 +13,81 @@
 
 ---
 
+## 아키텍처 결정: @datasource 기반 자동 생성 (B안 채택)
+
+SQL은 별도 `--lang` 타겟이 아닌, **언어별 플러그인**으로 동작:
+
+```bash
+# 실행
+polygen --lang csharp --schema game.poly
+
+# @datasource 어노테이션에 따라 자동 생성
+```
+
+### 스키마 예시
+
+```poly
+@datasource("sqlite")
+namespace game.data {
+    table ItemTable { ... }    // → SQLite DDL 생성
+    table SkillTable { ... }
+}
+
+@datasource("mysql")
+namespace game.user {
+    table Player { ... }       // → MySQL DDL 생성
+}
+```
+
+### 생성 결과
+
+```
+output/
+├── csharp/
+│   ├── Game/Data/ItemTable.cs
+│   ├── Game/User/Player.cs
+│   └── DataSource.cs          # 통합 accessor
+│
+├── sqlite/                     # @datasource("sqlite") 테이블만
+│   └── game_data.sql
+│
+└── mysql/                      # @datasource("mysql") 테이블만
+    └── game_user.sql
+```
+
+### 장점
+- CLI 플래그 없이 스키마가 모든 것을 결정
+- namespace 단위로 다른 DB 지정 가능
+- 언어 코드와 DDL이 항상 동기화
+- 스키마가 "진실의 원천" 역할
+
+---
+
+## 현재 상태
+
+### ✅ 완료
+- [x] `templates/sqlite/` 디렉토리 생성
+- [x] `sqlite.toml` 설정 파일
+- [x] 기본 DDL 생성 (CREATE TABLE)
+- [x] 인덱스 생성 (CREATE INDEX, CREATE UNIQUE INDEX)
+- [x] `.renames` 파일 문법 (polygen.pest)
+- [x] IR에 rename 정보 포함 (`RenameInfo`, `RenameKind`)
+- [x] 마이그레이션 SQL 생성 (ALTER TABLE RENAME)
+- [x] 네임스페이스 접두사 처리 (`game.data` → `game_data_`)
+
+### 🚧 진행 중
+- [ ] @datasource 기반 자동 DDL 생성 연동
+
+### ❌ 미완료
+- [ ] 마이그레이션 diff 로직 (이전 스키마와 비교)
+- [ ] CLI 명령어 (`polygen migrate`)
+- [ ] 언어별 DB accessor 생성 (C#, Rust 등)
+
+---
+
 ## 우선순위
 
-1. **SQLite** (먼저) - 단순, 테스트 쉬움, 임베디드/게임에 적합
+1. **SQLite** (현재) - 단순, 테스트 쉬움, 임베디드/게임에 적합
 2. **MySQL/MariaDB** (나중) - SQLite 기반 확장
 3. **PostgreSQL** (옵션) - 필요시
 4. **Redis** (옵션) - 캐시 전용
@@ -91,15 +163,7 @@ data.SaveChanges();  // 각 DB에 맞게 저장
 
 ---
 
-## 현재 상태
-
-- 기본 MySQL 템플릿 존재 (`templates/mysql/`)
-- CREATE TABLE DDL 생성 가능
-- SQLite 템플릿 없음
-
----
-
-## Phase 1: SQLite 기본 지원
+## Phase 1: SQLite 기본 지원 ✅ 완료
 
 ### 1.1 DDL 생성
 
@@ -157,21 +221,42 @@ ALTER TABLE Player_new RENAME TO Player;
 
 ---
 
-## Phase 2: 이름 변경 지원
+## Phase 2: 이름 변경 지원 ✅ 완료
+
+### 구현 방식: `.renames` 파일
+
+어노테이션 대신 별도 파일로 관리 (버전 관리 용이):
+
+```
+# migrations/v1_to_v2.renames
+game.Player -> User;
+game.User.user_name -> name;
+game.User.hp -> health;
+```
 
 ```poly
-@renamed_from("OldPlayer")
-table Player {
-    @renamed_from("user_name")
-    name: string;
+// schema.poly
+import "migrations/v1_to_v2.renames";
+
+namespace game {
+    table User { ... }  // 이전: Player
 }
 ```
 
-생성 SQL (SQLite 3.25.0+):
+### 생성 SQL (SQLite 3.25.0+)
+
 ```sql
-ALTER TABLE OldPlayer RENAME TO Player;
-ALTER TABLE Player RENAME COLUMN user_name TO name;
+ALTER TABLE game_Player RENAME TO game_User;
+ALTER TABLE game_User RENAME COLUMN user_name TO name;
+ALTER TABLE game_User RENAME COLUMN hp TO health;
 ```
+
+### 경로 형식
+
+| 세그먼트 수 | 의미 | 예시 |
+|------------|------|------|
+| 2개 | 테이블 rename | `namespace.OldTable -> NewTable;` |
+| 3개+ | 필드 rename | `namespace.Table.old_field -> new_field;` |
 
 ---
 
@@ -312,26 +397,41 @@ game.sql.poly    -- SQL 전용 확장
 
 ## 구현 순서
 
-- [ ] `templates/sqlite/` 디렉토리 생성
-- [ ] `sqlite.toml` 설정 파일
-- [ ] 기본 DDL 생성 (CREATE TABLE)
-- [ ] 인덱스 생성
-- [ ] `@renamed_from` 어노테이션 파싱 (polygen.pest)
-- [ ] IR에 rename 정보 포함
-- [ ] 마이그레이션 diff 로직
-- [ ] 마이그레이션 SQL 생성
+### Phase 1: 기본 지원 ✅
+- [x] `templates/sqlite/` 디렉토리 생성
+- [x] `sqlite.toml` 설정 파일
+- [x] 기본 DDL 생성 (CREATE TABLE)
+- [x] 인덱스 생성
+
+### Phase 2: 마이그레이션 ✅
+- [x] `.renames` 파일 문법 (polygen.pest)
+- [x] IR에 rename 정보 포함
+- [x] 마이그레이션 SQL 생성
+
+### Phase 3: @datasource 연동 🚧
+- [ ] @datasource 어노테이션 기반 DDL 자동 생성
+- [ ] 언어 코드 생성 시 해당 DB DDL도 함께 출력
+- [ ] datasource별 테이블 필터링
+
+### Phase 4: 고급 기능 ❌
+- [ ] 마이그레이션 diff 로직 (자동 감지)
 - [ ] CLI 명령어 (`polygen migrate`)
+- [ ] 언어별 DB accessor 코드 생성
 
 ---
+
+## 결정 완료
+
+- [x] ~~SQL 전용 문법 분리 방식~~ → `.renames` 파일 방식 채택
+- [x] ~~아키텍처~~ → B안 (@datasource 기반 자동 생성) 채택
+- [x] SQLite 최소 지원 버전 → 3.25.0 (RENAME COLUMN 지원)
 
 ## 결정 필요 사항
 
-- [ ] SQL 전용 문법 분리 방식 결정
-- [ ] 마이그레이션 CLI 설계
+- [ ] 마이그레이션 diff 자동 감지 vs 수동 `.renames` 파일
 - [ ] 쿼리/뷰 지원 범위
-- [ ] 파괴적 변경 처리 정책
-- [ ] SQLite 최소 지원 버전 (3.25.0? 3.35.0?)
+- [ ] 파괴적 변경 처리 정책 (DROP TABLE 경고 등)
 
 ---
 
-*최종 업데이트: 2026-01-21*
+*최종 업데이트: 2026-01-22*
