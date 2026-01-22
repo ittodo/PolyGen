@@ -1,5 +1,10 @@
 // SQLite Generator Entry Point
 // Generates a combined schema file at output/sqlite/schema.sql
+//
+// Datasource filtering:
+// - If struct has @datasource("sqlite") or no datasource: include
+// - If struct has @datasource("other"): skip
+// - Namespace datasource is inherited by structs
 
 import "templates/sqlite/rhai_utils/type_mapping" as types;
 
@@ -13,6 +18,21 @@ fn join_with(arr, sep) {
         i += 1;
     }
     result
+}
+
+// Check if a struct should be included for SQLite generation
+// Returns true if datasource is "sqlite" or not specified
+fn should_include_for_sqlite(struct_datasource, ns_datasource) {
+    // Struct-level datasource takes precedence
+    if struct_datasource != () && struct_datasource != "" {
+        return struct_datasource == "sqlite";
+    }
+    // Fall back to namespace datasource
+    if ns_datasource != () && ns_datasource != "" {
+        return ns_datasource == "sqlite";
+    }
+    // No datasource specified - include by default
+    return true;
 }
 
 let final_sql = "-- ============================================\n";
@@ -36,9 +56,17 @@ for file in schema.files {
             ""
         };
 
+        // Get namespace datasource for inheritance
+        let ns_datasource = ns.datasource;
+
         for item in ns.items {
             if item.is_struct() {
                 let s = item.as_struct();
+
+                // Check datasource filter
+                if !should_include_for_sqlite(s.datasource, ns_datasource) {
+                    continue;
+                }
                 let table_name = ns_prefix + s.name;
 
                 // Generate CREATE TABLE
@@ -161,7 +189,13 @@ for file in schema.files {
             }
 
             // Handle enums as lookup tables (optional)
+            // Note: Enums don't have individual datasource, use namespace datasource
             if item.is_enum() {
+                // Skip if namespace has non-sqlite datasource
+                if ns_datasource != () && ns_datasource != "" && ns_datasource != "sqlite" {
+                    continue;
+                }
+
                 let e = item.as_enum();
                 let table_name = ns_prefix + e.name;
 

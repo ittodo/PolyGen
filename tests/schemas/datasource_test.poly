@@ -1,0 +1,40 @@
+// Test schema for @datasource annotation
+// This tests the automatic DDL generation when using @datasource
+
+@datasource("sqlite")
+namespace game.data {
+    table ItemTable {
+        id: u32 primary_key;
+        name: string;
+        price: u32;
+    }
+
+    table SkillTable {
+        id: u32 primary_key;
+        name: string;
+        damage: u32;
+    }
+
+    enum ItemType {
+        Weapon = 1;
+        Armor = 2;
+        Potion = 3;
+    }
+}
+
+@datasource("mysql")
+namespace game.user {
+    table Player {
+        id: u32 primary_key;
+        name: string;
+        level: u16;
+    }
+}
+
+// No datasource - should be included in sqlite by default
+namespace game.common {
+    table Config {
+        key: string primary_key;
+        value: string;
+    }
+}
