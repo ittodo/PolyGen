@@ -11,6 +11,8 @@ fn main() {
             commands::run_generate,
             commands::run_migrate,
             commands::get_polygen_version,
+            commands::read_file,
+            commands::write_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
