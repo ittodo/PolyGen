@@ -24,20 +24,14 @@
 - [x] TypeScript - 인터페이스, Enum, Zod 스키마
 - [x] 통합 테스트 프레임워크 (8개 테스트 케이스)
 
-#### SQLite 지원 (Phase 1-2)
+#### SQLite 지원 (Phase 1-3)
 - [x] DDL 생성 (CREATE TABLE, INDEX)
 - [x] `.renames` 파일 문법
 - [x] 마이그레이션 SQL 생성 (ALTER TABLE RENAME)
 - [x] 네임스페이스 접두사 처리
-
----
-
-## 🚧 진행 중
-
-### SQLite/DB 지원 (Phase 3)
-- [ ] @datasource 기반 자동 DDL 생성 연동
-  - 언어 코드 생성 시 해당 DB DDL도 함께 출력
-  - datasource별 테이블 필터링
+- [x] @datasource 기반 자동 DDL 생성 연동
+  - 모든 언어(C#, C++, Rust, TypeScript)에서 자동 DDL 생성
+  - datasource별 테이블 필터링 (sqlite/mysql)
 
 ---
 

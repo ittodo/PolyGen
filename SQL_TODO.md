@@ -1,6 +1,6 @@
 # SQL 지원 확장 계획
 
-> 상태: Phase 1 완료, Phase 2 진행 중 (2026-01-22)
+> 상태: Phase 1-3 완료 (2026-01-22)
 
 ---
 
@@ -74,9 +74,9 @@ output/
 - [x] IR에 rename 정보 포함 (`RenameInfo`, `RenameKind`)
 - [x] 마이그레이션 SQL 생성 (ALTER TABLE RENAME)
 - [x] 네임스페이스 접두사 처리 (`game.data` → `game_data_`)
-
-### 🚧 진행 중
-- [ ] @datasource 기반 자동 DDL 생성 연동
+- [x] @datasource 기반 자동 DDL 생성 연동
+  - C#, C++, Rust, TypeScript 모두 지원
+  - SQLite/MySQL datasource 필터링
 
 ### ❌ 미완료
 - [ ] 마이그레이션 diff 로직 (이전 스키마와 비교)
