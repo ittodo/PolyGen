@@ -1,0 +1,26 @@
+// Migration test - current schema (v2)
+// Changes from baseline:
+// - ItemTable: added 'description' column
+// - ItemTable: added 'category' column
+// - SkillTable: removed (to test table removal warning)
+// - BuffTable: added (new table)
+@datasource("sqlite")
+namespace game.data {
+    table ItemTable {
+        id: u32 primary_key;
+        name: string;
+        price: u32;
+        description: string?;  // NEW: nullable description
+        category: string;      // NEW: required category
+    }
+
+    // SkillTable removed
+
+    // NEW table
+    table BuffTable {
+        id: u32 primary_key;
+        name: string;
+        duration: u32;
+        effect: string;
+    }
+}

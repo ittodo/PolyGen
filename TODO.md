@@ -38,7 +38,7 @@
 ## ❌ 미완료 (우선순위순)
 
 ### SQLite/DB 지원 (Phase 4)
-- [ ] 마이그레이션 diff 로직 (자동 감지)
+- [x] 마이그레이션 diff 로직 (`--baseline` 옵션으로 스키마 비교)
 - [ ] CLI 명령어 (`polygen migrate`)
 - [x] 언어별 DB accessor 코드 생성 (C#, Rust, C++, TypeScript 완료)
 

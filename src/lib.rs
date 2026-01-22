@@ -47,6 +47,7 @@ pub mod error;
 pub mod ir_builder;
 pub mod ir_model;
 pub mod lang_config;
+pub mod migration;
 pub mod pipeline;
 pub mod rhai;
 pub mod rhai_generator;
@@ -81,6 +82,10 @@ pub struct Cli {
     /// Target language for code generation (e.g., csharp). If omitted, runs for all templates under --templates-dir.
     #[arg(short, long)]
     pub lang: Option<String>,
+
+    /// Path to baseline schema file for migration diff. When provided, generates migration SQL by comparing with current schema.
+    #[arg(short, long)]
+    pub baseline: Option<PathBuf>,
 }
 
 /// Run the code generation pipeline with the given CLI arguments
@@ -93,6 +98,10 @@ pub fn run(cli: Cli) -> Result<()> {
 
     if let Some(lang) = cli.lang {
         config = config.with_language(lang);
+    }
+
+    if let Some(baseline) = cli.baseline {
+        config = config.with_baseline(baseline);
     }
 
     let pipeline = CompilationPipeline::new(config);
