@@ -1056,6 +1056,7 @@ mod tests {
             path: PathBuf::from("test.schema"),
             file_imports: vec![],
             definitions,
+            renames: vec![],
         }
     }
 

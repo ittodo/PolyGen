@@ -31,6 +31,21 @@ pub struct AstRoot {
     pub file_imports: Vec<String>,
     /// Top-level definitions in the file.
     pub definitions: Vec<Definition>,
+    /// Rename rules imported from .renames files.
+    pub renames: Vec<RenameRule>,
+}
+
+/// A rename rule from a .renames file.
+///
+/// Represents a migration rename operation:
+/// - Table rename: `Player -> User`
+/// - Field rename: `User.user_name -> name`
+#[derive(Debug, PartialEq, Clone)]
+pub struct RenameRule {
+    /// Source path (e.g., `["Player"]` or `["User", "user_name"]`).
+    pub from_path: Vec<String>,
+    /// Target name (the new name after rename).
+    pub to_name: String,
 }
 
 /// A top-level definition in a schema file.

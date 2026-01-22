@@ -79,6 +79,7 @@ expression: all_asts
                 },
             ),
         ],
+        renames: [],
     },
     AstRoot {
         path: "tests/schemas/imported_schema_a.poly",
@@ -131,6 +132,7 @@ expression: all_asts
                 },
             ),
         ],
+        renames: [],
     },
     AstRoot {
         path: "tests/schemas/imported_schema_b.poly",
@@ -163,5 +165,6 @@ expression: all_asts
                 },
             ),
         ],
+        renames: [],
     },
 ]

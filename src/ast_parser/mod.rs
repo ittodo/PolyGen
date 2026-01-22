@@ -10,12 +10,66 @@ mod types;
 use pest::iterators::Pair;
 use std::path::PathBuf;
 
-use crate::ast_model::{AstRoot, Definition};
+use crate::ast_model::{AstRoot, Definition, RenameRule};
 use crate::error::AstBuildError;
 use crate::Rule;
 
 use definitions::parse_definition;
 use helpers::extract_comment_content;
+
+/// Parse a .renames file and return a list of rename rules.
+///
+/// Renames file format:
+/// ```text
+/// # Comment line
+/// Player -> User;
+/// User.user_name -> name;
+/// ```
+pub fn parse_renames_file(renames_pair: Pair<Rule>) -> Result<Vec<RenameRule>, AstBuildError> {
+    let mut renames = Vec::new();
+
+    for pair in renames_pair.into_inner() {
+        match pair.as_rule() {
+            Rule::rename_rule => {
+                let rename = parse_rename_rule(pair)?;
+                renames.push(rename);
+            }
+            Rule::rename_comment_line | Rule::EOI => (),
+            _ => (),
+        }
+    }
+
+    Ok(renames)
+}
+
+/// Parse a single rename rule: `path -> IDENT;`
+fn parse_rename_rule(pair: Pair<Rule>) -> Result<RenameRule, AstBuildError> {
+    let (line, col) = pair.line_col();
+    let mut inner = pair.into_inner();
+
+    // First is the path (from_path)
+    let path_pair = inner.next().ok_or(AstBuildError::MissingElement {
+        rule: Rule::rename_rule,
+        element: "source path".to_string(),
+        line,
+        col,
+    })?;
+    let from_path: Vec<String> = path_pair
+        .into_inner()
+        .map(|p| p.as_str().to_string())
+        .collect();
+
+    // Second is the IDENT (to_name)
+    let ident_pair = inner.next().ok_or(AstBuildError::MissingElement {
+        rule: Rule::rename_rule,
+        element: "target name".to_string(),
+        line,
+        col,
+    })?;
+    let to_name = ident_pair.as_str().to_string();
+
+    Ok(RenameRule { from_path, to_name })
+}
 
 /// Main function to build the AST from parsed pairs
 pub fn build_ast_from_pairs(
@@ -768,5 +822,40 @@ mod tests {
         } else {
             panic!("Expected Namespace definition");
         }
+    }
+
+    // ========== Renames File Tests ==========
+
+    #[test]
+    fn test_parse_renames_file() {
+        let input = r#"
+# Table rename
+Player -> User;
+
+# Field renames
+User.user_name -> name;
+game.Player.hp -> health;
+"#;
+        let input = input.replace("\r\n", "\n");
+        let renames_pair = Polygen::parse(Rule::renames_file, &input)
+            .expect("Failed to parse renames file")
+            .next()
+            .expect("No renames_file pair");
+
+        let renames = super::parse_renames_file(renames_pair).expect("Failed to build renames");
+
+        assert_eq!(renames.len(), 3);
+
+        // First rename: Player -> User
+        assert_eq!(renames[0].from_path, vec!["Player"]);
+        assert_eq!(renames[0].to_name, "User");
+
+        // Second rename: User.user_name -> name
+        assert_eq!(renames[1].from_path, vec!["User", "user_name"]);
+        assert_eq!(renames[1].to_name, "name");
+
+        // Third rename: game.Player.hp -> health
+        assert_eq!(renames[2].from_path, vec!["game", "Player", "hp"]);
+        assert_eq!(renames[2].to_name, "health");
     }
 }

@@ -281,22 +281,43 @@ pub fn parse_and_merge_schemas(initial_path: &Path, output_dir: Option<&Path>) -
             is_first_file = false;
         }
 
-        let ast_root = ast_parser::build_ast_from_pairs(main_pair, current_path.clone())?;
+        let mut ast_root = ast_parser::build_ast_from_pairs(main_pair, current_path.clone())?;
         let file_imports = ast_root.file_imports.clone();
-        all_asts.push(ast_root);
 
         let base_dir = current_path
             .parent()
             .ok_or_else(|| anyhow::anyhow!("파일의 부모 디렉토리를 찾을 수 없습니다."))?;
 
+        // Process imports - separate .renames from .poly files
         for import_path_str in file_imports {
-            let import_path = base_dir.join(import_path_str);
-            let canonical_import_path = import_path.canonicalize()?;
-            if !processed_files.contains(&canonical_import_path) {
-                processed_files.insert(canonical_import_path);
-                files_to_process.push_back(import_path);
+            let import_path = base_dir.join(&import_path_str);
+
+            // Handle .renames files specially
+            if import_path_str.ends_with(".renames") {
+                let renames_content = fs::read_to_string(&import_path)?.replace("\r\n", "\n");
+                let renames_pair = Polygen::parse(Rule::renames_file, &renames_content)?
+                    .next()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            ".renames 파일에서 renames_file 규칙을 찾을 수 없습니다: {}",
+                            import_path.display()
+                        )
+                    })?;
+                let renames = ast_parser::parse_renames_file(renames_pair)?;
+                let count = renames.len();
+                ast_root.renames.extend(renames);
+                println!("  - Loaded {} rename rules from {}", count, import_path_str);
+            } else {
+                // Regular .poly file - add to processing queue
+                let canonical_import_path = import_path.canonicalize()?;
+                if !processed_files.contains(&canonical_import_path) {
+                    processed_files.insert(canonical_import_path);
+                    files_to_process.push_back(import_path);
+                }
             }
         }
+
+        all_asts.push(ast_root);
     }
 
     Ok(all_asts)

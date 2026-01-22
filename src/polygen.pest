@@ -112,3 +112,26 @@ FLOAT          = @{ "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
 INTEGER        = @{ "-"? ~ ASCII_DIGIT+ }
 STRING_LITERAL = @{ "\"" ~ ("\\" ~ ANY | !("\"") ~ ANY)* ~ "\"" }
 BOOLEAN        = @{ "true" | "false" }
+
+// ============================================================================
+// Renames File Grammar (for .renames files)
+// ============================================================================
+// Renames files define schema migrations:
+//   Player -> User                    (table rename)
+//   User.user_name -> name            (field rename)
+//
+// Entry point for .renames files
+// Note: Uses explicit whitespace handling to avoid silent WHITESPACE rule issues
+renames_file = { SOI ~ renames_content ~ EOI }
+renames_content = _{ (rename_rule | rename_comment_line | renames_ws)* }
+renames_ws = _{ " " | "\t" | "\n" | "\r" }
+
+// Comments in rename files (atomic to prevent whitespace skipping)
+rename_comment_line = @{ "#" ~ (!("\n" | "\r") ~ ANY)* }
+
+// Rename rule: path -> identifier
+// Examples:
+//   Player -> User                    (table rename)
+//   User.user_name -> name            (field rename within same table)
+//   game.Player -> game.User          (with namespace)
+rename_rule = { path ~ "->" ~ IDENT ~ ";" }

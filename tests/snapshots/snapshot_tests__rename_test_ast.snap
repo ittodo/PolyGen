@@ -1,0 +1,113 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas/rename_test.poly",
+        file_imports: [
+            "test_migration.renames",
+        ],
+        definitions: [
+            Namespace(
+                Namespace {
+                    metadata: [],
+                    path: [
+                        "game",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Table(
+                            Table {
+                                metadata: [],
+                                name: Some(
+                                    "User",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "health",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+        renames: [
+            RenameRule {
+                from_path: [
+                    "Player",
+                ],
+                to_name: "User",
+            },
+            RenameRule {
+                from_path: [
+                    "User",
+                    "user_name",
+                ],
+                to_name: "name",
+            },
+            RenameRule {
+                from_path: [
+                    "User",
+                    "hp",
+                ],
+                to_name: "health",
+            },
+        ],
+    },
+]
