@@ -6,9 +6,9 @@ public class ${s.name}Table : DataTableBase<${s.name}>
 ${
     let body = "";
 
-    // Generate indexes
+    // Generate indexes (using type_utils functions)
     for idx in s.indexes {
-        let key_type = cs_map_type(idx.field_type);
+        let key_type = type_utils::get_index_key_type_cs(idx);
         if idx.is_unique {
             body += "    public UniqueIndex<" + key_type + ", " + s.name + "> " + idx.name + " { get; } = new();\n";
         } else {
@@ -34,20 +34,8 @@ ${
     body += "    {\n";
 
     for idx in s.indexes {
-        let field_name = idx.field_name;
-        // Convert snake_case to PascalCase for C# property name
-        let parts = field_name.split("_");
-        let pascal_name = "";
-        for part in parts {
-            if part.len > 0 {
-                let first = part.sub_string(0, 1);
-                first = first.to_upper();
-                let rest = part.sub_string(1);
-                pascal_name += first + rest;
-            }
-        }
-
-        body += "        " + idx.name + ".Add(row." + pascal_name + ", row);\n";
+        let key_expr = type_utils::get_index_key_expr_cs(idx, "row");
+        body += "        " + idx.name + ".Add(" + key_expr + ", row);\n";
     }
 
     body += "    }\n\n";

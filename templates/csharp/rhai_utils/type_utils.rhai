@@ -216,3 +216,55 @@ fn collect_comments(ns) {
     }
     comments
 }
+
+// =============================================================================
+// Index Utilities
+// =============================================================================
+
+/// Convert snake_case to PascalCase for C# property names
+fn to_pascal_case_cs(name) {
+    let parts = name.split("_");
+    let result = "";
+    for part in parts {
+        if part.len > 0 {
+            let first = part.sub_string(0, 1);
+            first = first.to_upper();
+            let rest = part.sub_string(1);
+            result += first + rest;
+        }
+    }
+    result
+}
+
+/// Get key type for index (supports composite indexes)
+/// Returns C# tuple syntax for composite: (Type1, Type2, ...)
+fn get_index_key_type_cs(idx) {
+    if idx.is_composite {
+        // C# tuple syntax: (Type1, Type2, ...)
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 { result += ", "; }
+            result += cs_map_type(idx.fields[i].field_type);
+        }
+        result += ")";
+        return result;
+    } else {
+        return cs_map_type(idx.field_type);
+    }
+}
+
+/// Get key expression for index Add call (supports composite indexes)
+/// Returns C# tuple syntax: (row.Field1, row.Field2, ...)
+fn get_index_key_expr_cs(idx, row_var) {
+    if idx.is_composite {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 { result += ", "; }
+            result += row_var + "." + to_pascal_case_cs(idx.fields[i].name);
+        }
+        result += ")";
+        return result;
+    } else {
+        return row_var + "." + to_pascal_case_cs(idx.field_name);
+    }
+}
