@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 fn get_polygen_path() -> String {
@@ -105,4 +106,39 @@ pub fn read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, &content).map_err(|e| format!("Failed to write file: {}", e))
+}
+
+/// Parse import statements from a .poly file and return absolute paths
+#[tauri::command]
+pub fn parse_imports(file_path: String) -> Result<Vec<String>, String> {
+    let content = fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let base_dir = Path::new(&file_path)
+        .parent()
+        .ok_or("Invalid file path")?;
+
+    let mut imports = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("import ") {
+            // Parse: import "path/to/file.poly";
+            if let Some(start) = trimmed.find('"') {
+                if let Some(end) = trimmed.rfind('"') {
+                    if start < end {
+                        let import_path = &trimmed[start + 1..end];
+                        let absolute_path = base_dir.join(import_path);
+                        if absolute_path.exists() {
+                            if let Some(path_str) = absolute_path.to_str() {
+                                imports.push(path_str.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(imports)
 }
