@@ -6,6 +6,7 @@
   import LogPanel from "./lib/components/LogPanel.svelte";
   import Editor from "./lib/components/Editor.svelte";
   import FileTabs from "./lib/components/FileTabs.svelte";
+  import FileList from "./lib/components/FileList.svelte";
 
   interface OpenFile {
     path: string;
@@ -13,6 +14,11 @@
     content: string;
     isMain: boolean;
     isModified: boolean;
+  }
+
+  interface ImportedFile {
+    path: string;
+    name: string;
   }
 
   let mainFilePath = $state("");
@@ -24,6 +30,7 @@
 
   let openFiles = $state<OpenFile[]>([]);
   let activeFilePath = $state("");
+  let importedFiles = $state<ImportedFile[]>([]); // Always keep track of imports
 
   // Get active file
   let activeFile = $derived(openFiles.find((f) => f.path === activeFilePath));
@@ -37,6 +44,9 @@
       isModified: f.isModified,
     }))
   );
+
+  // Get open paths for FileList
+  let openPaths = $derived(openFiles.map((f) => f.path));
 
   function getFileName(path: string): string {
     return path.split(/[/\\]/).pop() || "Untitled";
@@ -55,6 +65,7 @@
   async function openMainFile(path: string) {
     // Close all files first
     openFiles = [];
+    importedFiles = [];
 
     // Set main file path
     mainFilePath = path;
@@ -65,9 +76,18 @@
     // Parse imports and load them
     try {
       const imports = await invoke<string[]>("parse_imports", { filePath: path });
+
+      // Store all imported files
+      importedFiles = imports.map((p) => ({
+        path: p,
+        name: getFileName(p),
+      }));
+
+      // Load all imported files
       for (const importPath of imports) {
         await loadFile(importPath, false);
       }
+
       if (imports.length > 0) {
         addLog(`Loaded ${imports.length} imported file(s)`);
       }
@@ -100,10 +120,21 @@
       }
 
       activeFilePath = path;
-      addLog(`Loaded: ${path}`);
+      addLog(`Loaded: ${getFileName(path)}`);
     } catch (error) {
       addLog(`ERROR: Failed to load file - ${error}`);
     }
+  }
+
+  async function onImportedFileClick(path: string) {
+    // If already open, just switch to it
+    if (openFiles.some((f) => f.path === path)) {
+      activeFilePath = path;
+      return;
+    }
+
+    // Otherwise, reload it
+    await loadFile(path, false);
   }
 
   async function saveFile() {
@@ -125,7 +156,7 @@
         f.path === activeFile.path ? { ...f, isModified: false } : f
       );
 
-      addLog(`Saved: ${activeFile.path}`);
+      addLog(`Saved: ${activeFile.name}`);
     } catch (error) {
       addLog(`ERROR: Failed to save file - ${error}`);
     }
@@ -136,9 +167,9 @@
       if (file.isModified) {
         try {
           await invoke("write_file", { path: file.path, content: file.content });
-          addLog(`Saved: ${file.path}`);
+          addLog(`Saved: ${file.name}`);
         } catch (error) {
-          addLog(`ERROR: Failed to save ${file.path} - ${error}`);
+          addLog(`ERROR: Failed to save ${file.name} - ${error}`);
         }
       }
     }
@@ -171,6 +202,7 @@
   async function newFile() {
     // Clear all files
     openFiles = [];
+    importedFiles = [];
     mainFilePath = "";
 
     const newFile: OpenFile = {
@@ -296,7 +328,7 @@ namespace example {
       <button class="toolbar-btn" onclick={saveAllFiles} title="Save All">Save All</button>
     </div>
     <div class="header-right">
-      <span class="file-count">{openFiles.length} file(s)</span>
+      <span class="file-count">{openFiles.length} file(s) open</span>
     </div>
   </header>
 
@@ -325,6 +357,15 @@ namespace example {
           {isGenerating ? "Generating..." : "Generate"}
         </button>
       </div>
+
+      {#if importedFiles.length > 0}
+        <FileList
+          files={importedFiles}
+          {openPaths}
+          activePath={activeFilePath}
+          onFileClick={onImportedFileClick}
+        />
+      {/if}
     </section>
 
     <section class="editor-section">
@@ -439,7 +480,6 @@ namespace example {
   }
 
   .actions {
-    margin-top: auto;
     padding-top: 0.75rem;
   }
 
