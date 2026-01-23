@@ -13,6 +13,7 @@ fn main() {
             commands::get_polygen_version,
             commands::read_file,
             commands::write_file,
+            commands::parse_imports,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -5,15 +5,42 @@
   import LanguageSelector from "./lib/components/LanguageSelector.svelte";
   import LogPanel from "./lib/components/LogPanel.svelte";
   import Editor from "./lib/components/Editor.svelte";
+  import FileTabs from "./lib/components/FileTabs.svelte";
 
-  let schemaPath = $state("");
+  interface OpenFile {
+    path: string;
+    name: string;
+    content: string;
+    isMain: boolean;
+    isModified: boolean;
+  }
+
+  let mainFilePath = $state("");
   let outputDir = $state("");
   let templatesDir = $state("");
   let selectedLanguages = $state<string[]>(["csharp"]);
   let logs = $state<string[]>([]);
   let isGenerating = $state(false);
-  let editorContent = $state("");
-  let isModified = $state(false);
+
+  let openFiles = $state<OpenFile[]>([]);
+  let activeFilePath = $state("");
+
+  // Get active file
+  let activeFile = $derived(openFiles.find((f) => f.path === activeFilePath));
+
+  // Get tabs for display
+  let tabs = $derived(
+    openFiles.map((f) => ({
+      path: f.path,
+      name: f.name,
+      isMain: f.isMain,
+      isModified: f.isModified,
+    }))
+  );
+
+  function getFileName(path: string): string {
+    return path.split(/[/\\]/).pop() || "Untitled";
+  }
 
   async function selectSchemaFile() {
     const selected = await open({
@@ -21,16 +48,58 @@
       filters: [{ name: "Poly Schema", extensions: ["poly"] }],
     });
     if (selected) {
-      schemaPath = selected as string;
-      await loadFile(schemaPath);
+      await openMainFile(selected as string);
     }
   }
 
-  async function loadFile(path: string) {
+  async function openMainFile(path: string) {
+    // Close all files first
+    openFiles = [];
+
+    // Set main file path
+    mainFilePath = path;
+
+    // Load main file
+    await loadFile(path, true);
+
+    // Parse imports and load them
+    try {
+      const imports = await invoke<string[]>("parse_imports", { filePath: path });
+      for (const importPath of imports) {
+        await loadFile(importPath, false);
+      }
+      if (imports.length > 0) {
+        addLog(`Loaded ${imports.length} imported file(s)`);
+      }
+    } catch (error) {
+      addLog(`Warning: Could not parse imports - ${error}`);
+    }
+  }
+
+  async function loadFile(path: string, isMain: boolean) {
+    // Check if already open
+    if (openFiles.some((f) => f.path === path)) {
+      activeFilePath = path;
+      return;
+    }
+
     try {
       const content = await invoke<string>("read_file", { path });
-      editorContent = content;
-      isModified = false;
+      const newFile: OpenFile = {
+        path,
+        name: getFileName(path),
+        content,
+        isMain,
+        isModified: false,
+      };
+
+      if (isMain) {
+        openFiles = [newFile, ...openFiles];
+      } else {
+        openFiles = [...openFiles, newFile];
+      }
+
+      activeFilePath = path;
       addLog(`Loaded: ${path}`);
     } catch (error) {
       addLog(`ERROR: Failed to load file - ${error}`);
@@ -38,43 +107,111 @@
   }
 
   async function saveFile() {
-    if (!schemaPath) {
+    if (!activeFile) return;
+
+    if (!activeFile.path) {
       await saveFileAs();
       return;
     }
+
     try {
-      await invoke("write_file", { path: schemaPath, content: editorContent });
-      isModified = false;
-      addLog(`Saved: ${schemaPath}`);
+      await invoke("write_file", {
+        path: activeFile.path,
+        content: activeFile.content,
+      });
+
+      // Update modified status
+      openFiles = openFiles.map((f) =>
+        f.path === activeFile.path ? { ...f, isModified: false } : f
+      );
+
+      addLog(`Saved: ${activeFile.path}`);
     } catch (error) {
       addLog(`ERROR: Failed to save file - ${error}`);
     }
+  }
+
+  async function saveAllFiles() {
+    for (const file of openFiles) {
+      if (file.isModified) {
+        try {
+          await invoke("write_file", { path: file.path, content: file.content });
+          addLog(`Saved: ${file.path}`);
+        } catch (error) {
+          addLog(`ERROR: Failed to save ${file.path} - ${error}`);
+        }
+      }
+    }
+    openFiles = openFiles.map((f) => ({ ...f, isModified: false }));
   }
 
   async function saveFileAs() {
     const selected = await save({
       filters: [{ name: "Poly Schema", extensions: ["poly"] }],
     });
-    if (selected) {
-      schemaPath = selected as string;
+    if (selected && activeFile) {
+      const newPath = selected as string;
+
+      // Update the file path
+      openFiles = openFiles.map((f) =>
+        f.path === activeFilePath
+          ? { ...f, path: newPath, name: getFileName(newPath) }
+          : f
+      );
+
+      if (activeFile.isMain) {
+        mainFilePath = newPath;
+      }
+
+      activeFilePath = newPath;
       await saveFile();
     }
   }
 
   async function newFile() {
-    if (isModified) {
-      // TODO: Confirm dialog
-    }
-    schemaPath = "";
-    editorContent = `// New PolyGen Schema
+    // Clear all files
+    openFiles = [];
+    mainFilePath = "";
+
+    const newFile: OpenFile = {
+      path: "",
+      name: "Untitled",
+      content: `// New PolyGen Schema
 namespace example {
     table Sample {
         id: u32 primary_key;
         name: string max_length(100);
     }
 }
-`;
-    isModified = false;
+`,
+      isMain: true,
+      isModified: false,
+    };
+
+    openFiles = [newFile];
+    activeFilePath = "";
+  }
+
+  function onSelectTab(path: string) {
+    activeFilePath = path;
+  }
+
+  function onCloseTab(path: string) {
+    const file = openFiles.find((f) => f.path === path);
+    if (!file || file.isMain) return; // Can't close main file
+
+    openFiles = openFiles.filter((f) => f.path !== path);
+
+    // If closing active tab, switch to main file
+    if (activeFilePath === path) {
+      activeFilePath = mainFilePath;
+    }
+  }
+
+  function onEditorChange(value: string) {
+    openFiles = openFiles.map((f) =>
+      f.path === activeFilePath ? { ...f, content: value, isModified: true } : f
+    );
   }
 
   async function selectOutputDir() {
@@ -101,18 +238,9 @@ namespace example {
     logs = [...logs, `[${new Date().toLocaleTimeString()}] ${message}`];
   }
 
-  function onEditorChange(value: string) {
-    isModified = true;
-  }
-
   async function generate() {
-    // If editing in editor and no file saved, save to temp first
-    if (!schemaPath && editorContent) {
+    if (!mainFilePath) {
       addLog("ERROR: 먼저 스키마 파일을 저장해주세요.");
-      return;
-    }
-    if (!schemaPath) {
-      addLog("ERROR: 스키마 파일을 선택해주세요.");
       return;
     }
     if (!outputDir) {
@@ -124,9 +252,10 @@ namespace example {
       return;
     }
 
-    // Save before generate if modified
-    if (isModified) {
-      await saveFile();
+    // Save all modified files before generate
+    const hasModified = openFiles.some((f) => f.isModified);
+    if (hasModified) {
+      await saveAllFiles();
     }
 
     isGenerating = true;
@@ -135,7 +264,7 @@ namespace example {
       addLog(`Generating ${lang}...`);
       try {
         const result = await invoke<string>("run_generate", {
-          schemaPath,
+          schemaPath: mainFilePath,
           lang,
           outputDir,
           templatesDir: templatesDir || null,
@@ -164,14 +293,10 @@ namespace example {
       <button class="toolbar-btn" onclick={newFile} title="New File">New</button>
       <button class="toolbar-btn" onclick={selectSchemaFile} title="Open File">Open</button>
       <button class="toolbar-btn" onclick={saveFile} title="Save File">Save</button>
-      <button class="toolbar-btn" onclick={saveFileAs} title="Save As">Save As</button>
+      <button class="toolbar-btn" onclick={saveAllFiles} title="Save All">Save All</button>
     </div>
     <div class="header-right">
-      {#if schemaPath}
-        <span class="filename">{schemaPath.split(/[/\\]/).pop()}{isModified ? " *" : ""}</span>
-      {:else}
-        <span class="filename">Untitled{isModified ? " *" : ""}</span>
-      {/if}
+      <span class="file-count">{openFiles.length} file(s)</span>
     </div>
   </header>
 
@@ -203,12 +328,26 @@ namespace example {
     </section>
 
     <section class="editor-section">
-      <div class="editor-header">
-        <h2>Schema Editor</h2>
-      </div>
-      <div class="editor-wrapper">
-        <Editor bind:value={editorContent} onChange={onEditorChange} />
-      </div>
+      {#if openFiles.length > 0}
+        <FileTabs
+          {tabs}
+          activeTab={activeFilePath}
+          {onSelectTab}
+          {onCloseTab}
+        />
+        <div class="editor-wrapper">
+          {#if activeFile}
+            {#key activeFilePath}
+              <Editor value={activeFile.content} onChange={onEditorChange} />
+            {/key}
+          {/if}
+        </div>
+      {:else}
+        <div class="empty-editor">
+          <p>No file open</p>
+          <button class="secondary" onclick={selectSchemaFile}>Open Schema File</button>
+        </div>
+      {/if}
     </section>
 
     <section class="output">
@@ -264,7 +403,7 @@ namespace example {
     background-color: var(--bg-hover);
   }
 
-  .header-right .filename {
+  .header-right .file-count {
     font-size: 0.875rem;
     color: var(--text-secondary);
   }
@@ -314,17 +453,24 @@ namespace example {
     display: flex;
     flex-direction: column;
     min-height: 0;
-  }
-
-  .editor-header {
-    flex-shrink: 0;
+    padding: 0;
+    gap: 0;
   }
 
   .editor-wrapper {
     flex: 1;
     min-height: 0;
-    border-radius: 4px;
     overflow: hidden;
+  }
+
+  .empty-editor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    color: var(--text-secondary);
   }
 
   .output {
