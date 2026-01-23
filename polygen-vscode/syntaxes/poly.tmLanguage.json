@@ -1,0 +1,276 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PolyGen Schema",
+  "scopeName": "source.poly",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#import" },
+    { "include": "#annotation" },
+    { "include": "#namespace" },
+    { "include": "#table" },
+    { "include": "#enum" },
+    { "include": "#embed" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.poly",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.poly",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "import": {
+      "patterns": [
+        {
+          "match": "\\b(import)\\s+(\"[^\"]+\")",
+          "captures": {
+            "1": { "name": "keyword.control.import.poly" },
+            "2": { "name": "string.quoted.double.poly" }
+          }
+        }
+      ]
+    },
+    "annotation": {
+      "patterns": [
+        {
+          "begin": "(@)(\\w+)\\s*(\\()",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.annotation.poly" },
+            "2": { "name": "entity.name.function.annotation.poly" },
+            "3": { "name": "punctuation.brackets.round.poly" }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": { "name": "punctuation.brackets.round.poly" }
+          },
+          "patterns": [
+            { "include": "#annotation-args" }
+          ]
+        },
+        {
+          "match": "(@)(\\w+)",
+          "captures": {
+            "1": { "name": "punctuation.definition.annotation.poly" },
+            "2": { "name": "entity.name.function.annotation.poly" }
+          }
+        }
+      ]
+    },
+    "annotation-args": {
+      "patterns": [
+        { "include": "#strings" },
+        { "include": "#numbers" },
+        { "include": "#booleans" },
+        {
+          "match": "(\\w+)\\s*(:)",
+          "captures": {
+            "1": { "name": "variable.parameter.poly" },
+            "2": { "name": "punctuation.separator.colon.poly" }
+          }
+        },
+        {
+          "match": "\\w+",
+          "name": "variable.other.poly"
+        }
+      ]
+    },
+    "namespace": {
+      "begin": "\\b(namespace)\\s+([\\w.]+)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.namespace.poly" },
+        "2": { "name": "entity.name.namespace.poly" },
+        "3": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#annotation" },
+        { "include": "#namespace" },
+        { "include": "#table" },
+        { "include": "#enum" },
+        { "include": "#embed" }
+      ]
+    },
+    "table": {
+      "begin": "\\b(table)\\s+(\\w+)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.table.poly" },
+        "2": { "name": "entity.name.class.poly" },
+        "3": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#annotation" },
+        { "include": "#field" },
+        { "include": "#inline-enum" },
+        { "include": "#inline-embed" }
+      ]
+    },
+    "enum": {
+      "begin": "\\b(enum)\\s+(\\w+)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.enum.poly" },
+        "2": { "name": "entity.name.type.enum.poly" },
+        "3": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#enum-variant" }
+      ]
+    },
+    "enum-variant": {
+      "patterns": [
+        {
+          "match": "(\\w+)\\s*(=)\\s*(\\d+)",
+          "captures": {
+            "1": { "name": "variable.other.enummember.poly" },
+            "2": { "name": "keyword.operator.assignment.poly" },
+            "3": { "name": "constant.numeric.poly" }
+          }
+        },
+        {
+          "match": "\\b(\\w+)\\b",
+          "name": "variable.other.enummember.poly"
+        }
+      ]
+    },
+    "embed": {
+      "begin": "\\b(embed)\\s+(\\w+)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.embed.poly" },
+        "2": { "name": "entity.name.type.embed.poly" },
+        "3": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#annotation" },
+        { "include": "#field" }
+      ]
+    },
+    "field": {
+      "patterns": [
+        {
+          "match": "(\\w+)\\s*(:)\\s*([\\w.]+)(\\?|\\[\\])?\\s*((?:primary_key|unique|max_length|default|range|regex|foreign_key|\\([^)]*\\)|\\s)*)\\s*(=\\s*\\d+)?\\s*(;)",
+          "captures": {
+            "1": { "name": "variable.other.field.poly" },
+            "2": { "name": "punctuation.separator.colon.poly" },
+            "3": { "name": "support.type.poly" },
+            "4": { "name": "keyword.operator.cardinality.poly" },
+            "5": { "name": "storage.modifier.constraint.poly" },
+            "6": { "name": "constant.numeric.field-number.poly" },
+            "7": { "name": "punctuation.terminator.poly" }
+          }
+        }
+      ]
+    },
+    "inline-enum": {
+      "begin": "(\\w+)\\s*(:)\\s*(enum)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "variable.other.field.poly" },
+        "2": { "name": "punctuation.separator.colon.poly" },
+        "3": { "name": "keyword.other.enum.poly" },
+        "4": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "end": "\\}\\s*(;)",
+      "endCaptures": {
+        "0": { "name": "punctuation.brackets.curly.poly" },
+        "1": { "name": "punctuation.terminator.poly" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#enum-variant" }
+      ]
+    },
+    "inline-embed": {
+      "begin": "(\\w+)\\s*(:)\\s*(embed)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "variable.other.field.poly" },
+        "2": { "name": "punctuation.separator.colon.poly" },
+        "3": { "name": "keyword.other.embed.poly" },
+        "4": { "name": "punctuation.brackets.curly.poly" }
+      },
+      "end": "\\}\\s*(;)",
+      "endCaptures": {
+        "0": { "name": "punctuation.brackets.curly.poly" },
+        "1": { "name": "punctuation.terminator.poly" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#annotation" },
+        { "include": "#field" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.poly",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.poly",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.poly",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.poly",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.poly",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.poly",
+          "match": "\\b(string|bool|bytes|u8|u16|u32|u64|i8|i16|i32|i64|f32|f64)\\b"
+        }
+      ]
+    },
+    "constraints": {
+      "patterns": [
+        {
+          "name": "storage.modifier.constraint.poly",
+          "match": "\\b(primary_key|unique|max_length|default|range|regex|foreign_key)\\b"
+        }
+      ]
+    }
+  }
+}
