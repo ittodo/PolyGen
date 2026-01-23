@@ -1,12 +1,22 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import * as monaco from "monaco-editor";
+  import { invoke } from "@tauri-apps/api/core";
   import {
     registerPolyLanguage,
     POLY_LANGUAGE_ID,
   } from "../monaco/poly-language";
 
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+
+  interface SchemaError {
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    message: string;
+    severity: string;
+  }
 
   interface Props {
     value?: string;
@@ -19,6 +29,55 @@
   let editorContainer: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor | undefined;
   let isUpdating = false;
+  let validateTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Debounced validation function
+  function scheduleValidation() {
+    if (validateTimeout) {
+      clearTimeout(validateTimeout);
+    }
+    validateTimeout = setTimeout(() => {
+      validateContent();
+    }, 500); // 500ms debounce
+  }
+
+  async function validateContent() {
+    if (!editor) return;
+
+    const content = editor.getValue();
+    if (!content.trim()) {
+      // Clear markers for empty content
+      const model = editor.getModel();
+      if (model) {
+        monaco.editor.setModelMarkers(model, "polygen", []);
+      }
+      return;
+    }
+
+    try {
+      const errors = await invoke<SchemaError[]>("validate_schema", { content });
+      const model = editor.getModel();
+      if (!model) return;
+
+      const markers: monaco.editor.IMarkerData[] = errors.map((err) => ({
+        startLineNumber: err.start_line,
+        startColumn: err.start_column,
+        endLineNumber: err.end_line,
+        endColumn: err.end_column,
+        message: err.message,
+        severity:
+          err.severity === "error"
+            ? monaco.MarkerSeverity.Error
+            : err.severity === "warning"
+              ? monaco.MarkerSeverity.Warning
+              : monaco.MarkerSeverity.Info,
+      }));
+
+      monaco.editor.setModelMarkers(model, "polygen", markers);
+    } catch (e) {
+      console.error("Validation failed:", e);
+    }
+  }
 
   onMount(() => {
     // Set up Monaco environment
@@ -55,11 +114,18 @@
         const newValue = editor?.getValue() ?? "";
         value = newValue;
         onChange?.(newValue);
+        scheduleValidation();
       }
     });
+
+    // Initial validation
+    scheduleValidation();
   });
 
   onDestroy(() => {
+    if (validateTimeout) {
+      clearTimeout(validateTimeout);
+    }
     editor?.dispose();
   });
 
@@ -69,6 +135,7 @@
       isUpdating = true;
       editor.setValue(value);
       isUpdating = false;
+      scheduleValidation();
     }
   });
 
