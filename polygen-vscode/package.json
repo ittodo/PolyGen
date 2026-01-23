@@ -1,0 +1,71 @@
+{
+  "name": "polygen-vscode",
+  "displayName": "PolyGen Schema Language",
+  "description": "Language support for PolyGen schema files (.poly)",
+  "version": "0.1.0",
+  "publisher": "polygen",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:poly"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "poly",
+        "aliases": [
+          "PolyGen Schema",
+          "poly"
+        ],
+        "extensions": [
+          ".poly"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "poly",
+        "scopeName": "source.poly",
+        "path": "./syntaxes/poly.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "PolyGen",
+      "properties": {
+        "polygen.lsp.path": {
+          "type": "string",
+          "default": "polygen-lsp",
+          "description": "Path to polygen-lsp executable"
+        },
+        "polygen.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Language Server Protocol features"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
