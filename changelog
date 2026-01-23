@@ -1,10 +1,0 @@
-* IR 모델 리팩토링: `StructDef`의 자식 요소를 `StructItem` 열거형으로 통합하여 모델의 일관성과 확장성을 개선했습니다.
-* `is_embed` 플래그 제거: IR 모델의 컨텍스트를 통해 임베드 여부를 파악할 수 있게 되어 불필요한 `is_embed` 플래그를 제거했습니다.
-* Rhai 생성기 개선: `render_items` 함수가 재귀적으로 템플릿을 렌더링할 때, 컨텍스트 변수 이름을 지정할 수 있도록 기능을 확장하여 템플릿의 재사용성을 높였습니다.
-* C# 템플릿 수정: 변경된 IR 모델과 `render_items` 함수에 맞춰 C# 코드 생성 템플릿을 수정하여, `EmbeddedStruct`와 `InlineEnum` 타입이 올바르게 생성되도록 수정했습니다.* C# CSV Mapper 생성 로직 리팩토링: Rhai n-in-eval 제약을 해결하기 위해 Rust 헬퍼 함수(csharp.rs) 도입 및 템플릿 수정.
-* 출력 디렉토리 처리 개선: 템플릿의 하드코딩된 경로를 제거하고 CLI --output-dir 인자를 사용하도록 
-hai_generator 및 템플릿 수정.
-* 테스트 강화: CSV 매퍼 생성에 대한 스냅샷 테스트(snapshot_tests.rs) 추가.
-* 예제 추가: JSON 데이터를 CSV로 변환하는 JsonToCsvDemo.cs 예제 유틸리티 추가.
-* [2025-11-23] 중첩 Embed 타입 FQN 수정: IR 빌더에서 convert_field_to_ir 호출 시 owner FQN을 전달하여 중첩 embed 타입(Monster.DropItems.Enchantment)의 타입 참조가 올바르게 생성되도록 수정. BinaryWriters 템플릿에 embedded struct 감지 로직 추가하여 메서드 호출 경로 수정. TypeRef에 parent_type_path 필드 추가.
-
