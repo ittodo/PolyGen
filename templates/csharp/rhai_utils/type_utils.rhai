@@ -254,17 +254,17 @@ fn get_index_key_type_cs(idx) {
 }
 
 /// Get key expression for index Add call (supports composite indexes)
-/// Returns C# tuple syntax: (row.Field1, row.Field2, ...)
+/// Returns C# tuple syntax: (row.field1, row.field2, ...)
 fn get_index_key_expr_cs(idx, row_var) {
     if idx.is_composite {
         let result = "(";
         for i in 0..idx.fields.len() {
             if i > 0 { result += ", "; }
-            result += row_var + "." + to_pascal_case_cs(idx.fields[i].name);
+            result += row_var + "." + idx.fields[i].name;
         }
         result += ")";
         return result;
     } else {
-        return row_var + "." + to_pascal_case_cs(idx.field_name);
+        return row_var + "." + idx.field_name;
     }
 }

@@ -77,7 +77,7 @@ class Program
         {
             id = 1,
             name = "John Doe",
-            details = new test.embed.Details
+            details = new test.embed.Person.Details
             {
                 birth_date = "1990-01-15",
                 nationality = "Korean"

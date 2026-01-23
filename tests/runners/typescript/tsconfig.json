@@ -13,6 +13,6 @@
     "sourceMap": true,
     "outDir": "./dist"
   },
-  "include": ["src/**/*", "generated/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*", "tests/**/*", "generated/**/typescript/schema.ts"],
+  "exclude": ["node_modules", "dist", "generated/**/typescript/schema.schema.ts"]
 }

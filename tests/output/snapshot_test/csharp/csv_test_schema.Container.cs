@@ -45,7 +45,7 @@ namespace test.csv.Container
 
 	    protected override void OnRowAdded(TestObject row)
 	    {
-	        ById.Add(row.Id, row);
+	        ById.Add(row.id, row);
 	    }
 
 	    protected override void OnCleared()
@@ -90,7 +90,7 @@ namespace CsvTestSchema.Container
 	/// </summary>
 	public interface IHasPointTable
 	{
-	    PointTable Points { get; }
+	    global::test.csv.Container.PointTable Points { get; }
 	}
 
 	/// <summary>
@@ -98,7 +98,7 @@ namespace CsvTestSchema.Container
 	/// </summary>
 	public interface IHasTestObjectTable
 	{
-	    TestObjectTable TestObjects { get; }
+	    global::test.csv.Container.TestObjectTable TestObjects { get; }
 	}
 
 
@@ -108,8 +108,8 @@ namespace CsvTestSchema.Container
 	/// </summary>
 	public class CsvTestSchemaDataContainer : IDataContainer, IHasPointTable, IHasTestObjectTable
 	{
-	    public PointTable Points { get; } = new();
-	    public TestObjectTable TestObjects { get; } = new();
+	    public global::test.csv.Container.PointTable Points { get; } = new();
+	    public global::test.csv.Container.TestObjectTable TestObjects { get; } = new();
 
 	    public CsvTestSchemaDataContainer()
 	    {

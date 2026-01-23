@@ -50,8 +50,8 @@ SchemaContext {
                                             name: "ref_a",
                                             field_type: TypeRef {
                                                 original: "ImportedA",
-                                                fqn: "MainTable.ImportedA",
-                                                namespace_fqn: "MainTable",
+                                                fqn: "ImportedA",
+                                                namespace_fqn: "",
                                                 type_name: "ImportedA",
                                                 parent_type_path: "",
                                                 lang_type: "ImportedA",

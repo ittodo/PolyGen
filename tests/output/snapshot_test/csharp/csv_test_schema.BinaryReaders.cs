@@ -32,9 +32,9 @@ namespace test.csv
 		            obj.tags = BinaryUtils.ReadList<string>(br, BinaryUtils.ReadUtf8String);
 		        }
 		        obj.color = BinaryUtils.ReadEnumInt32<test.csv.Color>(br);
-		        obj.location = test.csv.TestObject.BinaryReaders.ReadPoint(br);
+		        obj.location = test.csv.BinaryReaders.ReadPoint(br);
 		        {
-		            obj.history = BinaryUtils.ReadList<global::test.csv.TestObject.Point>(br, test.csv.TestObject.BinaryReaders.ReadPoint);
+		            obj.history = BinaryUtils.ReadList<global::test.csv.Point>(br, test.csv.BinaryReaders.ReadPoint);
 		        }
 
 		    

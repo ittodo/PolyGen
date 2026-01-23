@@ -11,9 +11,9 @@ namespace test.csv
 
 	public enum Color
 	{
-	    RED,
-	    GREEN,
-	    BLUE,
+	    RED = 0,
+	    GREEN = 1,
+	    BLUE = 2,
 
 	}
 

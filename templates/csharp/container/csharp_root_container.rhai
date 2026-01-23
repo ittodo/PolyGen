@@ -81,7 +81,18 @@ ${
     // Generate table properties
     for entry in all_structs {
         let s = entry.struct;
-        body += "    public " + s.name + "Table " + s.name + "s { get; } = new();\n";
+        // Get the namespace part from fqn (fqn = namespace.StructName)
+        let ns_fqn = s.fqn;
+        let ns_path = "";
+        if ns_fqn.contains(".") {
+            let parts = ns_fqn.split(".");
+            for i in 0..(parts.len() - 1) {
+                if i > 0 { ns_path += "."; }
+                ns_path += parts[i];
+            }
+        }
+        let table_fqn = if ns_path != "" { "global::" + ns_path + ".Container." + s.name + "Table" } else { s.name + "Table" };
+        body += "    public " + table_fqn + " " + s.name + "s { get; } = new();\n";
     }
 
     if all_structs.len() > 0 {

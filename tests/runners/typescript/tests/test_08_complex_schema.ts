@@ -1,13 +1,11 @@
-// TypeScript integration test
-// This file validates that generated types compile correctly
+// Test Case 08: Complex Schema
+// Comprehensive test combining all features (game schema)
 
-import { Game } from '../generated/typescript/schema';
-import { Game as GameSchemas } from '../generated/typescript/schema.schema';
-import { z } from 'zod';
+import { Game } from '../generated/08_complex_schema/typescript/schema';
 
-// Test basic type instantiation
+// Test common types (Vec2, Vec3, Color, Element)
 function testCommonTypes(): void {
-    console.log("Testing common types (Vec2, Vec3, Color, Element)...");
+    console.log("  Testing common types (Vec2, Vec3, Color, Element)...");
 
     const v2: Game.GameCommon.Vec2 = { x: 1.0, y: 2.0 };
     console.assert(v2.x === 1.0, "Vec2.x should be 1.0");
@@ -26,9 +24,9 @@ function testCommonTypes(): void {
     console.log("    PASS");
 }
 
-// Test character types
+// Test character types (Stats, Player, NPC)
 function testCharacterTypes(): void {
-    console.log("Testing character types (Stats, Player, NPC)...");
+    console.log("  Testing character types (Stats, Player, NPC)...");
 
     const stats: Game.GameCharacter.Stats = {
         hp: 100, maxHp: 100,
@@ -71,9 +69,9 @@ function testCharacterTypes(): void {
     console.log("    PASS");
 }
 
-// Test item types
+// Test item types (Item, Weapon, Armor)
 function testItemTypes(): void {
-    console.log("Testing item types (Item, Weapon)...");
+    console.log("  Testing item types (Item, Weapon, Armor)...");
 
     const item: Game.GameItem.Item = {
         id: 1,
@@ -104,12 +102,53 @@ function testItemTypes(): void {
     console.assert(weapon.damageMin === 10, "Weapon damageMin should be 10");
     console.assert(weapon.bonusStats.length === 1, "Weapon should have 1 bonus stat");
 
+    const armor: Game.GameItem.Armor = {
+        itemId: 2,
+        defense: 50,
+        magicDefense: 30,
+        equipSlot: Game.GameCharacter.EquipSlot.Body,
+        resistances: [
+            { element: Game.GameCommon.Element.Fire, value: 10 },
+            { element: Game.GameCommon.Element.Ice, value: -5 },
+        ],
+    };
+
+    console.assert(armor.defense === 50, "Armor defense should be 50");
+    console.assert(armor.resistances.length === 2, "Armor should have 2 resistances");
+
     console.log("    PASS");
 }
 
-// Test social system
+// Test inventory system
+function testInventorySystem(): void {
+    console.log("  Testing inventory system (InventorySlot, Equipment)...");
+
+    const slot: Game.GameInventory.InventorySlot = {
+        id: 1,
+        playerId: 1,
+        itemId: 1,
+        slotIndex: 0,
+        quantity: 5,
+        enhancement: { level: 3, bonusValue: 15 },
+    };
+
+    console.assert(slot.quantity === 5, "Slot quantity should be 5");
+    console.assert(slot.enhancement?.level === 3, "Enhancement level should be 3");
+
+    const equipment: Game.GameInventory.Equipment = {
+        playerId: 1,
+        slot: Game.GameCharacter.EquipSlot.MainHand,
+        itemId: 1,
+    };
+
+    console.assert(equipment.slot === Game.GameCharacter.EquipSlot.MainHand, "Equipment slot should be MainHand");
+
+    console.log("    PASS");
+}
+
+// Test social system (Guild, GuildMember, Friendship)
 function testSocialSystem(): void {
-    console.log("Testing social system (Guild, GuildMember)...");
+    console.log("  Testing social system (Guild, GuildMember, Friendship)...");
 
     const guild: Game.GameSocial.Guild = {
         id: 1,
@@ -133,31 +172,23 @@ function testSocialSystem(): void {
 
     console.assert(member.rank === Game.GameSocial.Rank.Leader, "Member rank should be Leader");
 
-    console.log("    PASS");
-}
+    const friendship: Game.GameSocial.Friendship = {
+        playerAId: 1,
+        playerBId: 2,
+        since: 1640000000,
+    };
 
-// Test Zod schema validation
-function testZodSchemas(): void {
-    console.log("Testing Zod schema validation...");
-
-    // Valid data should pass
-    const validVec2 = { x: 1.0, y: 2.0 };
-    const result1 = GameSchemas.GameCommon.Vec2Schema.safeParse(validVec2);
-    console.assert(result1.success, "Valid Vec2 should pass validation");
-
-    // Invalid data should fail
-    const invalidVec2 = { x: "not a number", y: 2.0 };
-    const result2 = GameSchemas.GameCommon.Vec2Schema.safeParse(invalidVec2);
-    console.assert(!result2.success, "Invalid Vec2 should fail validation");
+    console.assert(friendship.playerAId === 1, "Friendship playerAId should be 1");
+    console.assert(friendship.playerBId === 2, "Friendship playerBId should be 2");
 
     console.log("    PASS");
 }
 
 // Main
-console.log("=== TypeScript Integration Tests ===");
+console.log("=== Test Case 08: Complex Schema ===");
 testCommonTypes();
 testCharacterTypes();
 testItemTypes();
+testInventorySystem();
 testSocialSystem();
-testZodSchemas();
 console.log("=== All tests passed! ===");

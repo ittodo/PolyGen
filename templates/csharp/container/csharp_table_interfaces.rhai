@@ -21,12 +21,26 @@ ${
 
     // Generate interface for each table
     for s in all_structs {
+        // Get the namespace part from fqn (fqn = namespace.StructName)
+        let ns_fqn = s.fqn;
+        let last_dot = ns_fqn.index_of(".");
+        let ns_path = "";
+        if last_dot != () {
+            // Find the last dot to separate namespace from struct name
+            let parts = ns_fqn.split(".");
+            for i in 0..(parts.len() - 1) {
+                if i > 0 { ns_path += "."; }
+                ns_path += parts[i];
+            }
+        }
+        let table_fqn = if ns_path != "" { "global::" + ns_path + ".Container." + s.name + "Table" } else { s.name + "Table" };
+
         content += "/// <summary>\n";
         content += "/// Interface for containers that have a " + s.name + " table.\n";
         content += "/// </summary>\n";
         content += "public interface IHas" + s.name + "Table\n";
         content += "{\n";
-        content += "    " + s.name + "Table " + s.name + "s { get; }\n";
+        content += "    " + table_fqn + " " + s.name + "s { get; }\n";
         content += "}\n\n";
     }
 

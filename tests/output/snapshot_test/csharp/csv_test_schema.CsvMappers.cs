@@ -149,7 +149,7 @@ namespace Csv.test.csv
 	            }
 	            return obj;
 	        }
-	        public static System.Collections.Generic.IEnumerable<global::test.csv.Point> ReadCsvFast(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)
+	        public static System.Collections.Generic.IEnumerable<global::test.csv.Point> ReadRowsWithHeader(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)
 	        {
 	            var lines = File.ReadAllLines(path);
 	            if (lines.Length == 0)
@@ -175,6 +175,8 @@ namespace Csv.test.csv
 	                yield return FromRowWithHeader(h, row, gap);
 	            }
 	        }
+	        public static System.Collections.Generic.IEnumerable<global::test.csv.Point> ReadCsvFast(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)
+	            => ReadRowsWithHeader(path, sep, gap);
 
 	}
 
@@ -269,7 +271,7 @@ namespace Csv.test.csv
 	              {
 	                  if (obj.location != null)
 	                  {
-	                      global::Csv.test.csv.TestObject.Point.AppendRowWithHeader(__h, obj.location, cols, gap);
+	                      global::Csv.test.csv.Point.AppendRowWithHeader(__h, obj.location, cols, gap);
 	                  }
 	                  else
 	                  {
@@ -306,7 +308,7 @@ namespace Csv.test.csv
 	                  if (obj.history != null && j < obj.history.Count && obj.history[j] != null)
 	                  {
 	                      var sub = obj.history[j];
-	                      global::Csv.test.csv.TestObject.Point.AppendRowWithHeader(subH, sub, cols, gap);
+	                      global::Csv.test.csv.Point.AppendRowWithHeader(subH, sub, cols, gap);
 	                  }
 	                  else
 	                  {
@@ -350,9 +352,9 @@ namespace Csv.test.csv
 	              {
 	                  if (__it.location != null)
 	                  {
-	                      var _single = new System.Collections.Generic.List<global::test.csv.TestObject.Point>();
+	                      var _single = new System.Collections.Generic.List<global::test.csv.Point>();
 	                      _single.Add(__it.location);
-	                      var cand = global::Csv.test.csv.TestObject.Point.BuildWriteHeaderFromItems(_single);
+	                      var cand = global::Csv.test.csv.Point.BuildWriteHeaderFromItems(_single);
 	                      int cols = HeaderColumnCount(cand);
 	                      if (cols > bestCols)
 	                      {
@@ -377,7 +379,7 @@ namespace Csv.test.csv
 	              }
 	              for (int i=0;i<__max;i++)
 	              {
-	                var coll = new System.Collections.Generic.List<global::test.csv.TestObject.Point>(); 
+	                var coll = new System.Collections.Generic.List<global::test.csv.Point>(); 
 	                foreach (var __it in items)
 	                {
 	                    var __lst = __it.history;
@@ -390,7 +392,7 @@ namespace Csv.test.csv
 	                        }
 	                    }
 	                } 
-	                ch.IndexList.Add(coll.Count > 0 ? global::Csv.test.csv.TestObject.Point.BuildWriteHeaderFromItems(coll) : new Polygen.Common.CsvIndexHeader());
+	                ch.IndexList.Add(coll.Count > 0 ? global::Csv.test.csv.Point.BuildWriteHeaderFromItems(coll) : new Polygen.Common.CsvIndexHeader());
 	              }
 	              __lists.Add(ch);
 	            }
@@ -431,7 +433,7 @@ namespace Csv.test.csv
 	                var __h = (h != null && h.IndexList != null && __idx < h.IndexList.Count) ? h.IndexList[__idx++] : null;
 	              if (__h != null)
 	              {
-	                  global::Csv.test.csv.TestObject.Point.CollectWriteHeaderNames(__h, 
+	                  global::Csv.test.csv.Point.CollectWriteHeaderNames(__h, 
 	                  (prefix==string.Empty? "location." : prefix + "location."), names);
 	              }
 	            }
@@ -449,7 +451,7 @@ namespace Csv.test.csv
 	              for (int j=0;j<count;j++)
 	              {
 	                  var subH = __h.IndexList[j]; 
-	                  global::Csv.test.csv.TestObject.Point.CollectWriteHeaderNames(subH, 
+	                  global::Csv.test.csv.Point.CollectWriteHeaderNames(subH, 
 	                  (prefix==string.Empty? "history[" + j + "]." : prefix + "history[" + j + "]."), names);
 	              }
 	            }
@@ -546,7 +548,7 @@ namespace Csv.test.csv
 	                }
 	            }
 	            {
-	                var sub = global::Csv.test.csv.TestObject.Point.BuildHeader(header, prefix + "location.");
+	                var sub = global::Csv.test.csv.Point.BuildHeader(header, prefix + "location.");
 	                if (sub.HasAny()) root.IndexList.Add(sub);
 	            }
 	            {
@@ -555,7 +557,7 @@ namespace Csv.test.csv
 	                ch.IndexList = new System.Collections.Generic.List<Polygen.Common.CsvIndexHeader>();
 	                for (int i=0;;i++)
 	                {
-	                    var sub = global::Csv.test.csv.TestObject.Point.BuildHeader(header, prefix + "history["+i+"].");
+	                    var sub = global::Csv.test.csv.Point.BuildHeader(header, prefix + "history["+i+"].");
 	                    if (!sub.HasAny()) break;
 	                    ch.IndexList.Add(sub);
 	                }
@@ -643,13 +645,13 @@ namespace Csv.test.csv
 	            }
 	            else
 	            {
-	                obj.location = global::Csv.test.csv.TestObject.Point.FromRowWithHeader(__h, row, gap);
+	                obj.location = global::Csv.test.csv.Point.FromRowWithHeader(__h, row, gap);
 	            }
 	            }
 	            {
 	                var __h = (h != null && h.IndexList != null && __i < h.IndexList.Count) ? h.IndexList[__i++] : null;
 	                {
-	                    var list = new System.Collections.Generic.List<global::test.csv.TestObject.Point>();
+	                    var list = new System.Collections.Generic.List<global::test.csv.Point>();
 	                    if (__h != null && __h.IndexList != null)
 	                    {
 	                        for (int i = 0; i < __h.IndexList.Count; i++)
@@ -666,7 +668,7 @@ namespace Csv.test.csv
 	                                    continue;
 	                                }
 	                            }
-	                            var sub = global::Csv.test.csv.TestObject.Point.FromRowWithHeader(subH, row, gap);
+	                            var sub = global::Csv.test.csv.Point.FromRowWithHeader(subH, row, gap);
 	                            list.Add(sub);
 	                        }
 	                    }
@@ -675,7 +677,7 @@ namespace Csv.test.csv
 	            }
 	            return obj;
 	        }
-	        public static System.Collections.Generic.IEnumerable<global::test.csv.TestObject> ReadCsvFast(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)
+	        public static System.Collections.Generic.IEnumerable<global::test.csv.TestObject> ReadRowsWithHeader(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)
 	        {
 	            var lines = File.ReadAllLines(path);
 	            if (lines.Length == 0)
@@ -701,6 +703,8 @@ namespace Csv.test.csv
 	                yield return FromRowWithHeader(h, row, gap);
 	            }
 	        }
+	        public static System.Collections.Generic.IEnumerable<global::test.csv.TestObject> ReadCsvFast(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)
+	            => ReadRowsWithHeader(path, sep, gap);
 
 	}
 

@@ -2626,6 +2626,7 @@ dependencies = [
 name = "polygen-gui"
 version = "0.1.0"
 dependencies = [
+ "pest",
  "polygen",
  "serde",
  "serde_json",

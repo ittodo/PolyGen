@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas/file_imports.poly",
+        path: "tests/schemas\\file_imports.poly",
         file_imports: [
             "imported_schema_a.poly",
             "imported_schema_b.poly",
@@ -82,7 +82,7 @@ expression: all_asts
         renames: [],
     },
     AstRoot {
-        path: "tests/schemas/imported_schema_a.poly",
+        path: "tests/schemas\\imported_schema_a.poly",
         file_imports: [],
         definitions: [
             Table(
@@ -135,7 +135,7 @@ expression: all_asts
         renames: [],
     },
     AstRoot {
-        path: "tests/schemas/imported_schema_b.poly",
+        path: "tests/schemas\\imported_schema_b.poly",
         file_imports: [],
         definitions: [
             Enum(

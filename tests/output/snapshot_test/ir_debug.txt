@@ -278,8 +278,8 @@ SchemaContext {
                                             name: "location",
                                             field_type: TypeRef {
                                                 original: "Point",
-                                                fqn: "test.csv.TestObject.Point",
-                                                namespace_fqn: "test.csv.TestObject",
+                                                fqn: "test.csv.Point",
+                                                namespace_fqn: "test.csv",
                                                 type_name: "Point",
                                                 parent_type_path: "",
                                                 lang_type: "Point",
@@ -302,8 +302,8 @@ SchemaContext {
                                             name: "history",
                                             field_type: TypeRef {
                                                 original: "List<Point>",
-                                                fqn: "test.csv.TestObject.Point",
-                                                namespace_fqn: "test.csv.TestObject",
+                                                fqn: "test.csv.Point",
+                                                namespace_fqn: "test.csv",
                                                 type_name: "Point",
                                                 parent_type_path: "",
                                                 lang_type: "List<Point>",
@@ -315,8 +315,8 @@ SchemaContext {
                                                 inner_type: Some(
                                                     TypeRef {
                                                         original: "Point",
-                                                        fqn: "test.csv.TestObject.Point",
-                                                        namespace_fqn: "test.csv.TestObject",
+                                                        fqn: "test.csv.Point",
+                                                        namespace_fqn: "test.csv",
                                                         type_name: "Point",
                                                         parent_type_path: "",
                                                         lang_type: "Point",

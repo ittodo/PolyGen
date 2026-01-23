@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas/advanced_annotations.poly",
+        path: "tests/schemas\\advanced_annotations.poly",
         file_imports: [],
         definitions: [
             Namespace(

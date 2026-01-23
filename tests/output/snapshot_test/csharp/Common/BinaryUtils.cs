@@ -55,6 +55,14 @@ namespace Polygen.Common
             return reader(br);
         }
 
+        // Reads a byte array prefixed by a little-endian u32 length.
+        public static byte[] ReadBytes(BinaryReader br)
+        {
+            uint len = br.ReadUInt32();
+            if (len == 0) return Array.Empty<byte>();
+            return br.ReadBytes(checked((int)len));
+        }
+
         // Writes a UTF-8 string prefixed by a little-endian u32 length (in bytes).
         public static void WriteUtf8String(BinaryWriter bw, string value)
         {
@@ -70,6 +78,14 @@ namespace Polygen.Common
             if (list == null) { bw.Write((uint)0); return; }
             bw.Write((uint)list.Count);
             for (int i = 0; i < list.Count; i++) writer(bw, list[i]);
+        }
+
+        // Writes a byte array prefixed by a little-endian u32 length.
+        public static void WriteBytes(BinaryWriter bw, byte[] value)
+        {
+            if (value == null) { bw.Write((uint)0); return; }
+            bw.Write((uint)value.Length);
+            if (value.Length > 0) bw.Write(value);
         }
 
         // Writes an enum with i32 underlying value.

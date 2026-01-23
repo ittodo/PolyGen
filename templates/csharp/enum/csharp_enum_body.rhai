@@ -4,10 +4,14 @@ ${
         let c = item.as_comment();
         // Add indentation for the comment
         content += "    //  " + c + "\n";
-    } else if item.is_member() {        
+    } else if item.is_member() {
         let m = item.as_member();
         // Add indentation for the member
         content += "    " + m.name;
+        // Add explicit value if present
+        if m.value != () {
+            content += " = " + m.value;
+        }
         content += ",\n";
     }
     content

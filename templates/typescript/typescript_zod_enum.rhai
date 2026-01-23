@@ -1,19 +1,17 @@
 ${
     // Zod enum schema generator template
     // Expects 'e' to be an EnumDef object
-    // Expects 'current_ns' to be the current namespace FQN
+    // Expects 'current_ts_path' to be the current TypeScript namespace path (e.g., "TestEnums" or "App.AppData.AppDataEnums")
 
-    import "templates/typescript/rhai_utils/type_mapping" as ts_types;
-
-    // Compute the Types namespace path
-    let ns_path = if current_ns != () && current_ns != "" {
-        ts_types::ns_to_ts_path(current_ns)
+    // Build the Types reference using the actual TypeScript namespace path
+    let ts_path = if current_ts_path != () && current_ts_path != "" {
+        current_ts_path
     } else {
         ""
     };
 
-    let types_ref = if ns_path != "" {
-        "Types." + ns_path + "." + e.name
+    let types_ref = if ts_path != "" {
+        "Types." + ts_path + "." + e.name
     } else {
         "Types." + e.name
     };

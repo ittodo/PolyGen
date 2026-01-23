@@ -405,7 +405,10 @@ fn collect_types_from_struct(s: &StructDef, registry: &mut TypeRegistry) {
 fn adjust_namespace_items_typerefs(items: &mut [NamespaceItem], registry: &TypeRegistry) {
     for item in items {
         match item {
-            NamespaceItem::Struct(ref mut s) => adjust_struct_typerefs(s, registry),
+            NamespaceItem::Struct(ref mut s) => {
+                let struct_fqn = s.fqn.clone();
+                adjust_struct_typerefs(s, registry, &struct_fqn);
+            }
             NamespaceItem::Namespace(ref mut inner) => {
                 adjust_namespace_items_typerefs(&mut inner.items, registry)
             }
@@ -415,23 +418,28 @@ fn adjust_namespace_items_typerefs(items: &mut [NamespaceItem], registry: &TypeR
 }
 
 /// Recursively adjusts TypeRef flags in a struct's fields.
-fn adjust_struct_typerefs(s: &mut StructDef, registry: &TypeRegistry) {
+/// `parent_fqn` is the FQN of the containing struct (for resolving inline embedded types).
+fn adjust_struct_typerefs(s: &mut StructDef, registry: &TypeRegistry, parent_fqn: &str) {
     for item in &mut s.items {
         match item {
             StructItem::Field(ref mut f) => {
-                adjust_typeref(&mut f.field_type, registry);
+                adjust_typeref(&mut f.field_type, registry, parent_fqn);
             }
-            StructItem::EmbeddedStruct(ref mut sub) => adjust_struct_typerefs(sub, registry),
+            StructItem::EmbeddedStruct(ref mut sub) => {
+                let sub_fqn = sub.fqn.clone();
+                adjust_struct_typerefs(sub, registry, &sub_fqn);
+            }
             StructItem::InlineEnum(_) | StructItem::Annotation(_) | StructItem::Comment(_) => {}
         }
     }
 }
 
 /// Adjusts a single TypeRef's is_enum/is_struct flags using the registry.
-fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry) {
+/// `parent_fqn` is the FQN of the containing struct (for resolving inline embedded types).
+fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry, parent_fqn: &str) {
     // First, recursively process inner types (for Option<T> or List<T>)
     if let Some(inner) = &mut t.inner_type {
-        adjust_typeref(inner.as_mut(), registry);
+        adjust_typeref(inner.as_mut(), registry, parent_fqn);
     }
 
     // Skip primitives - they don't need resolution
@@ -447,7 +455,20 @@ fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry) {
         return;
     }
 
-    // Strategy 2: Resolve using namespace context
+    // Strategy 2: Check if this is an inline embedded struct within the parent struct
+    // Try parent_fqn.TypeName (e.g., "test.embed.Person.Details")
+    if !parent_fqn.is_empty() {
+        let embedded_fqn = format!("{}.{}", parent_fqn, t.type_name);
+        if registry.is_embed(&embedded_fqn) {
+            t.fqn = embedded_fqn.clone();
+            t.namespace_fqn = parent_fqn.to_string();
+            t.is_enum = false;
+            t.is_struct = true;
+            return;
+        }
+    }
+
+    // Strategy 3: Resolve using namespace context
     if let Some(resolved_fqn) = registry.resolve(&t.type_name, &t.namespace_fqn) {
         if registry.is_enum(resolved_fqn) {
             t.fqn = resolved_fqn.to_string();
@@ -519,8 +540,9 @@ fn convert_table_to_struct(
                 }
 
                 // Then handle the field itself
+                // Pass current_ns (namespace FQN) for type resolution, and fqn (struct FQN) for inline types
                 let (field_def, new_nested_structs, new_nested_enums) =
-                    convert_field_to_ir(field, &fqn, &fqn);
+                    convert_field_to_ir(field, current_ns, &fqn);
                 items.push(StructItem::Field(field_def));
                 // Add the new nested types to the items list
                 items.extend(new_nested_structs.into_iter().map(StructItem::EmbeddedStruct));

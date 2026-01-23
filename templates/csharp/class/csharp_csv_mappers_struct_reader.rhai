@@ -112,8 +112,8 @@ ${
     code += `            return obj;`+"\n";
     code += `        }`+"\n";
 
-    // ReadCsvFast
-    code += `        public static System.Collections.Generic.IEnumerable<${full_t}> ReadCsvFast(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)`+"\n";
+    // ReadRowsWithHeader (used by data loader)
+    code += `        public static System.Collections.Generic.IEnumerable<${full_t}> ReadRowsWithHeader(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)`+"\n";
     code += `        {`+"\n";
     code += `            var lines = File.ReadAllLines(path);`+"\n";
     code += `            if (lines.Length == 0)`+"\n";
@@ -139,6 +139,10 @@ ${
     code += `                yield return FromRowWithHeader(h, row, gap);`+"\n";
     code += `            }`+"\n";
     code += `        }`+"\n";
+
+    // ReadCsvFast (alias for backward compatibility)
+    code += `        public static System.Collections.Generic.IEnumerable<${full_t}> ReadCsvFast(string path, char sep = ',', Polygen.Common.CsvUtils.GapMode gap = Polygen.Common.CsvUtils.GapMode.Break)`+"\n";
+    code += `            => ReadRowsWithHeader(path, sep, gap);`+"\n";
 
     code
 }

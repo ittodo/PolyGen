@@ -76,10 +76,10 @@ class Program
             stats = stats,
             spawn_position = new game.common.Vec3 { x = 50.0f, y = 50.0f, z = 0.0f },
             ai_type = game.character.NPC.AIType.Friendly,
-            dialog_options = new List<game.character.DialogOption>
+            dialog_options = new List<game.character.NPC.DialogOption>
             {
-                new game.character.DialogOption { text = "Hello!", next_dialog_id = 2 },
-                new game.character.DialogOption { text = "Goodbye!", next_dialog_id = null }
+                new game.character.NPC.DialogOption { text = "Hello!", next_dialog_id = 2 },
+                new game.character.NPC.DialogOption { text = "Goodbye!", next_dialog_id = null }
             }
         };
 
@@ -117,9 +117,9 @@ class Program
             attack_speed = 1.2f,
             element = game.common.Element.Physical,
             equip_slot = game.character.EquipSlot.MainHand,
-            bonus_stats = new List<game.item.BonusStat>
+            bonus_stats = new List<game.item.Weapon.BonusStat>
             {
-                new game.item.BonusStat { stat_name = "Strength", value = 5 }
+                new game.item.Weapon.BonusStat { stat_name = "Strength", value = 5 }
             }
         };
 

@@ -24,18 +24,21 @@ ${
         }
     }
 
+    // Get current TypeScript path for enum references
+    let ts_path = if current_ts_path != () && current_ts_path != "" { current_ts_path } else { "" };
+
     // Generate embedded schemas
     let embedded = "";
     for item in s.items {
         if item.is_embedded_struct() {
             let es = item.as_embedded_struct();
             let schema_tmpl = include("templates/typescript/typescript_zod_interface.rhai");
-            let res = eval("let s = es; let current_ns = \"" + ns_fqn + "\";\n`" + schema_tmpl + "`");
+            let res = eval("let s = es; let current_ns = \"" + ns_fqn + "\"; let current_ts_path = \"" + ts_path + "\";\n`" + schema_tmpl + "`");
             embedded += res + "\n";
         } else if item.is_inline_enum() {
             let ie = item.as_inline_enum();
             let enum_tmpl = include("templates/typescript/typescript_zod_enum.rhai");
-            let res = eval("let e = ie;\n`" + enum_tmpl + "`");
+            let res = eval("let e = ie; let current_ts_path = \"" + ts_path + "\";\n`" + enum_tmpl + "`");
             embedded += res + "\n";
         }
     }

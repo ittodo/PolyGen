@@ -34,9 +34,9 @@ for file in schema.files {
     file_content += "import * as Types from './" + types_file + "';\n";
     file_content += "\n";
 
-    // Process each namespace
+    // Process each namespace (parent_ns_path is empty for top-level namespaces)
     for ns in file.namespaces {
-        file_content += eval("`" + ns_template + "`");
+        file_content += eval("let parent_ns_path = \"\";\n`" + ns_template + "`");
         file_content += "\n";
     }
 

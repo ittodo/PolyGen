@@ -41,37 +41,44 @@ fn ns_to_ts_path(ns_fqn) {
     result
 }
 
-/// Extract the actual namespace from an FQN that might include struct name
+/// Extract the actual namespace from an FQN that might include struct/embed names
 /// "game.character" -> "game.character"
-/// "game.character.Player" -> "game.character" (Player is a struct, not a namespace)
+/// "game.character.Player" -> "game.character" (Player is a struct)
+/// "test.embed.Product.Dimensions" -> "test.embed" (Product and Dimensions are structs/embeds)
 fn get_actual_namespace(fqn) {
-    // Inline types have FQN like "namespace.StructName"
-    // We need to check if the last segment is a struct name (starts with uppercase)
-    // In TypeScript, inline types are generated at the parent namespace level
+    // Inline types have FQN like "namespace.StructName.EmbedName..."
+    // We need to remove all struct/embed names (which start with uppercase)
+    // to get the actual poly namespace
 
     let parts = fqn.split(".");
     if parts.len <= 1 {
         return fqn;
     }
 
-    // Check if the last part starts with uppercase (likely a struct/table name)
-    let last_part = parts[parts.len - 1];
-    if last_part.len > 0 {
-        let first_char = last_part.sub_string(0, 1);
-        // If it starts with uppercase, it's likely a struct name
-        if first_char == first_char.to_upper() {
-            // Remove the last segment
-            let result = "";
-            for i in 0..(parts.len - 1) {
-                if i > 0 {
-                    result += ".";
-                }
-                result += parts[i];
+    // Find the first part that starts with uppercase (struct/embed name)
+    // Everything before that is the actual namespace
+    let result = "";
+    for i in 0..parts.len {
+        let part = parts[i];
+        if part.len > 0 {
+            let first_char = part.sub_string(0, 1);
+            // If it starts with uppercase, this is a struct/embed name - stop here
+            if first_char == first_char.to_upper() {
+                break;
             }
-            return result;
+            // Add to namespace
+            if result != "" {
+                result += ".";
+            }
+            result += part;
         }
     }
-    fqn
+
+    // If no namespace found (all parts are uppercase), return empty
+    if result == "" {
+        return "";
+    }
+    result
 }
 
 /// Compute relative namespace path from current_ns to ref_ns

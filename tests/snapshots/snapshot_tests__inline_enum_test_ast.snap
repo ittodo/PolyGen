@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas/inline_enum_test.poly",
+        path: "tests/schemas\\inline_enum_test.poly",
         file_imports: [],
         definitions: [
             Namespace(

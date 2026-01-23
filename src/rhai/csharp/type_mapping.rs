@@ -55,6 +55,7 @@ pub fn is_primitive_like(t: &str) -> bool {
             | "f64"
             | "bool"
             | "string"
+            | "bytes"
     )
 }
 
@@ -86,6 +87,7 @@ pub fn map_cs_primitive(t: &str) -> Option<&'static str> {
         "f64" => Some("double"),
         "bool" => Some("bool"),
         "string" => Some("string"),
+        "bytes" => Some("byte[]"),
         _ => None,
     }
 }

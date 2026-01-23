@@ -32,7 +32,6 @@
     "resources": ["../../target/release/polygen*"]
   },
   "plugins": {
-    "dialog": {},
     "shell": {
       "open": true
     }

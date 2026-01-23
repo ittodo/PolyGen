@@ -27,8 +27,8 @@ namespace test.csv
 		        bw.Write(obj.score);
 		        BinaryUtils.WriteList<string>(bw, obj.tags, BinaryUtils.WriteUtf8String);
 		        BinaryUtils.WriteEnumInt32<test.csv.Color>(bw, obj.color);
-		        BinaryUtils.WriteOptionRef<global::test.csv.TestObject.Point>(bw, obj.location, test.csv.TestObject.BinaryWriters.WritePoint);
-		        BinaryUtils.WriteList<global::test.csv.TestObject.Point>(bw, obj.history, test.csv.TestObject.BinaryWriters.WritePoint);
+		        test.csv.BinaryWriters.WritePoint(bw, obj.location);
+		        BinaryUtils.WriteList<global::test.csv.Point>(bw, obj.history, test.csv.BinaryWriters.WritePoint);
 
 
 		}

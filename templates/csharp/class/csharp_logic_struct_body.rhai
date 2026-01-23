@@ -59,8 +59,28 @@ ${
             let f = item.as_field();
             if f.foreign_key != () {
                 let fk = f.foreign_key;
+                // Get target table FQN for type reference
+                let target_fqn = fk.target_table_fqn;
+
+                // If target_fqn doesn't contain a dot, it's a relative reference
+                // Use the current struct's parent namespace
+                if !target_fqn.contains(".") {
+                    // Get the parent namespace from s.fqn
+                    let struct_fqn = s.fqn;
+                    if struct_fqn.contains(".") {
+                        let last_dot = struct_fqn.index_of(".");
+                        let ns = "";
+                        let parts = struct_fqn.split(".");
+                        for i in 0..parts.len()-1 {
+                            if ns != "" { ns += "."; }
+                            ns += parts[i];
+                        }
+                        target_fqn = ns + "." + target_fqn;
+                    }
+                }
+
                 // Get target table name (last part of FQN)
-                let fqn_parts = fk.target_table_fqn.split(".");
+                let fqn_parts = target_fqn.split(".");
                 let target_table_name = "";
                 for part in fqn_parts {
                     target_table_name = part;
@@ -70,16 +90,18 @@ ${
                 let nav_name = target_table_name;
                 if f.name.ends_with("Id") {
                     nav_name = f.name.sub_string(0, f.name.len() - 2);
+                } else if f.name.ends_with("_id") {
+                    nav_name = f.name.sub_string(0, f.name.len() - 3);
                 }
 
                 body += "\n    /// <summary>\n";
                 body += "    /// Navigation property to " + target_table_name + ".\n";
                 body += "    /// </summary>\n";
-                body += "    public " + target_table_name + "? " + nav_name + "\n";
+                body += "    public global::" + target_fqn + "? " + nav_name + "\n";
                 body += "    {\n";
                 body += "        get\n";
                 body += "        {\n";
-                body += "            if (_container is IHas" + target_table_name + "Table c)\n";
+                body += "            if (_container is Schema.Container.IHas" + target_table_name + "Table c)\n";
                 body += "                return c." + target_table_name + "s.ById[" + f.name + "];\n";
                 body += "            return null;\n";
                 body += "        }\n";
@@ -109,7 +131,7 @@ ${
         body += "    {\n";
         body += "        get\n";
         body += "        {\n";
-        body += "            if (_container is IHas" + rel.source_table_name + "Table c)\n";
+        body += "            if (_container is Schema.Container.IHas" + rel.source_table_name + "Table c)\n";
         body += "                return c." + rel.source_table_name + "s.By" + pascal_field + "[Id];\n";
         body += "            return Array.Empty<" + rel.source_table_name + ">();\n";
         body += "        }\n";

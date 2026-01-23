@@ -70,6 +70,10 @@ ${
             if base.lang_type == "string" {
                 body += "        BinaryUtils.WriteUtf8String(bw, obj." + f.name + ");\n";
             }
+            // bytes
+            else if base.lang_type == "bytes" {
+                body += "        BinaryUtils.WriteBytes(bw, obj." + f.name + ");\n";
+            }
             // enum (inline or same-namespace)
             else if base.is_enum || current_struct_inline_enums.contains(base.type_name) {
                 let enum_type = base.fqn;
@@ -79,12 +83,11 @@ ${
             else if base.is_primitive {
                 body += "        bw.Write(obj." + f.name + ");\n";
             }
-            // custom class
+            // custom class (non-optional)
             else {
                 let es_nl = type_utils::find_embedded_struct(s, base.type_name);
                 let call_ns = if es_nl != () { current_ns_name } else { if base.namespace_fqn == "" { current_ns_name } else { base.namespace_fqn } };
-                body += "        BinaryUtils.WriteOptionRef<global::" + base.fqn + ">(bw, obj." + f.name + ", " + call_ns + ".BinaryWriters.Write" + base.type_name + ");\n";
-                
+                body += "        " + call_ns + ".BinaryWriters.Write" + base.type_name + "(bw, obj." + f.name + ");\n";
             }
         }
     }

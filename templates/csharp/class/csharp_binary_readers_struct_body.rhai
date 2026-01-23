@@ -60,6 +60,10 @@ ${
             if base.lang_type == "string" {
                 body += "        obj." + f.name + " = BinaryUtils.ReadUtf8String(br);\n";
             }
+            // bytes
+            else if base.lang_type == "bytes" {
+                body += "        obj." + f.name + " = BinaryUtils.ReadBytes(br);\n";
+            }
             // enum (inline or same-namespace)
             else if base.is_enum || current_struct_inline_enums.contains(base.type_name) {
                 let enum_type = base.fqn;

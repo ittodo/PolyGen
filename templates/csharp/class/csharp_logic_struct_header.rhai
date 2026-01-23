@@ -1,4 +1,6 @@
 ${    let header = "";
+    // Annotations that should NOT be output as C# attributes (PolyGen-internal)
+    let skip_annotations = ["load", "index", "cache", "readonly", "soft_delete", "link_rows"];
     for header_item in s.header
     {
         if header_item.is_comment()
@@ -9,6 +11,10 @@ ${    let header = "";
         if header_item.is_annotation()
         {
             let a = header_item.as_annotation();
+            // Skip PolyGen-internal annotations
+            if skip_annotations.contains(a.name) {
+                continue;
+            }
             if(a.params.len()!= 0)
             {
                 let params_str = "";
