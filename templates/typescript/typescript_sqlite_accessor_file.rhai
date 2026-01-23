@@ -27,14 +27,13 @@ fn is_sqlite_table(struct_datasource, ns_datasource) {
     return false;
 }
 
-// Map poly types to TypeScript types
+// Map poly types to TypeScript types (matching main TypeScript generator)
 fn ts_type(type_name) {
     switch type_name {
         "string" => "string",
         "bool" => "boolean",
         "bytes" => "Buffer",
-        "u8" | "u16" | "u32" | "i8" | "i16" | "i32" | "f32" | "f64" => "number",
-        "u64" | "i64" => "bigint",
+        "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" => "number",
         _ => type_name
     }
 }
@@ -155,11 +154,10 @@ for tbl in sqlite_tables {
     let ns_parts = tbl.ns_name.split(".");
     let table_name = join_with(ns_parts, "_") + "_" + tbl.name;
 
-    // Determine type path
+    // Determine type path - use flat namespace (e.g., TestSqlite, not Test.Sqlite)
     let ns_type_path = "";
     for part in ns_parts {
         let pascal_part = part.sub_string(0, 1).to_upper() + part.sub_string(1, part.len() - 1);
-        if ns_type_path != "" { ns_type_path += "."; }
         ns_type_path += pascal_part;
     }
     let full_type = "Types." + ns_type_path + "." + tbl.name;
@@ -207,18 +205,18 @@ for tbl in sqlite_tables {
             let f = item.as_field();
             let type_name = f.field_type.type_name;
             let ts_t = ts_type(type_name);
+            let camel_name = to_camel_case(f.name);
 
+            // Database columns use snake_case, TypeScript properties use camelCase
             let accessor = "row['" + f.name + "']";
-            if ts_t == "bigint" {
-                accessor = "BigInt(" + accessor + " as number)";
-            } else if ts_t == "boolean" {
+            if ts_t == "boolean" {
                 accessor = "Boolean(" + accessor + ")";
             } else {
                 accessor = accessor + " as " + ts_t;
             }
 
             if field_idx > 0 { code += ",\n"; }
-            code += "      " + f.name + ": " + accessor;
+            code += "      " + camel_name + ": " + accessor;
             field_idx += 1;
         }
     }
@@ -284,7 +282,7 @@ for file in schema.files {
     }
 }
 
-let out_path = "output/typescript/" + out_filename;
+let out_path = output_dir + "/typescript/" + out_filename;
 print("Generating file: " + out_path);
 write_file(out_path, code);
 

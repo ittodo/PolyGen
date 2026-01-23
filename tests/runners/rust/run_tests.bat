@@ -33,7 +33,7 @@ if not exist "%POLYGEN%" (
 )
 
 REM Test cases
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite
 
 REM Create generated directory
 if not exist "%GENERATED_DIR%" mkdir "%GENERATED_DIR%"
@@ -74,29 +74,54 @@ for %%T in (%TEST_CASES%) do (
             set TEST_PROJECT_DIR=!OUTPUT_DIR!\rust
             mkdir "!TEST_PROJECT_DIR!\src" 2>nul
 
-            REM Create Cargo.toml
-            (
-                echo [package]
-                echo name = "polygen_test"
-                echo version = "0.1.0"
-                echo edition = "2021"
-                echo.
-                echo [dependencies]
-                echo serde = { version = "1.0", features = ["derive"] }
-                echo serde_json = "1.0"
-                echo byteorder = "1.5"
-            ) > "!TEST_PROJECT_DIR!\Cargo.toml"
+            REM Create Cargo.toml - check if SQLite test case
+            if "%%T"=="09_sqlite" (
+                (
+                    echo [package]
+                    echo name = "polygen_test"
+                    echo version = "0.1.0"
+                    echo edition = "2021"
+                    echo.
+                    echo [dependencies]
+                    echo serde = { version = "1.0", features = ["derive"] }
+                    echo serde_json = "1.0"
+                    echo byteorder = "1.5"
+                    echo rusqlite = { version = "0.31", features = ["bundled"] }
+                ) > "!TEST_PROJECT_DIR!\Cargo.toml"
+            ) else (
+                (
+                    echo [package]
+                    echo name = "polygen_test"
+                    echo version = "0.1.0"
+                    echo edition = "2021"
+                    echo.
+                    echo [dependencies]
+                    echo serde = { version = "1.0", features = ["derive"] }
+                    echo serde_json = "1.0"
+                    echo byteorder = "1.5"
+                ) > "!TEST_PROJECT_DIR!\Cargo.toml"
+            )
 
             REM Copy generated files to src/
             copy "!OUTPUT_DIR!\rust\*.rs" "!TEST_PROJECT_DIR!\src\" >nul 2>&1
 
-            REM Create lib.rs
-            (
-                echo pub mod polygen_support;
-                echo pub mod schema;
-                echo pub mod schema_loaders;
-                echo pub mod schema_container;
-            ) > "!TEST_PROJECT_DIR!\src\lib.rs"
+            REM Create lib.rs - check if SQLite test case
+            if "%%T"=="09_sqlite" (
+                (
+                    echo pub mod polygen_support;
+                    echo pub mod schema;
+                    echo pub mod schema_loaders;
+                    echo pub mod schema_container;
+                    echo pub mod schema_sqlite_accessor;
+                ) > "!TEST_PROJECT_DIR!\src\lib.rs"
+            ) else (
+                (
+                    echo pub mod polygen_support;
+                    echo pub mod schema;
+                    echo pub mod schema_loaders;
+                    echo pub mod schema_container;
+                ) > "!TEST_PROJECT_DIR!\src\lib.rs"
+            )
 
             REM Copy test file as main.rs
             copy "!TEST_FILE!" "!TEST_PROJECT_DIR!\src\main.rs" >nul

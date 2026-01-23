@@ -8,7 +8,7 @@ for file in schema.files {
     let filename = parts[parts.len - 1];
     let output_filename = filename;
     output_filename.replace(".poly", ".JsonMappers.cs");
-    let final_path = "output/csharp/" + output_filename;
+    let final_path = output_dir + "/csharp/" + output_filename;
 
     let file_content = "";
     let indent = 0;

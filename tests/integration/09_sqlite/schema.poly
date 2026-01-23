@@ -1,0 +1,32 @@
+// SQLite Integration Test Schema
+// Tests both DDL generation and per-language accessor generation
+
+@datasource("sqlite")
+namespace test.sqlite {
+    table User {
+        id: u32 primary_key;
+        name: string max_length(100);
+        email: string? unique;
+        created_at: i64;
+    }
+
+    table Post {
+        id: u32 primary_key;
+        user_id: u32 foreign_key(User.id);
+        title: string max_length(200);
+        content: string?;
+    }
+
+    table Comment {
+        id: u32 primary_key;
+        post_id: u32 foreign_key(Post.id);
+        user_id: u32 foreign_key(User.id);
+        content: string;
+    }
+
+    enum PostStatus {
+        Draft = 0;
+        Published = 1;
+        Archived = 2;
+    }
+}

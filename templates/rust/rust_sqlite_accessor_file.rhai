@@ -127,7 +127,7 @@ code += "// Import generated types\n";
 let imported_mods = #{};
 for tbl in sqlite_tables {
     if !(tbl.mod_path in imported_mods) {
-        code += "use super::" + tbl.mod_path + ";\n";
+        code += "use crate::schema::" + tbl.mod_path + ";\n";
         imported_mods[tbl.mod_path] = true;
     }
 }
@@ -307,7 +307,7 @@ for file in schema.files {
     }
 }
 
-let out_path = "output/rust/" + out_filename;
+let out_path = output_dir + "/rust/" + out_filename;
 print("Generating file: " + out_path);
 write_file(out_path, code);
 

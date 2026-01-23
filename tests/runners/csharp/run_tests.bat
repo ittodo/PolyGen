@@ -33,7 +33,7 @@ if not exist "%POLYGEN%" (
 )
 
 REM Test cases
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite
 
 REM Create generated directory
 if not exist "%GENERATED_DIR%" mkdir "%GENERATED_DIR%"
@@ -74,18 +74,35 @@ for %%T in (%TEST_CASES%) do (
             set TEST_PROJECT_DIR=!OUTPUT_DIR!\TestProject
             mkdir "!TEST_PROJECT_DIR!"
 
-            REM Create csproj
-            (
-                echo ^<Project Sdk="Microsoft.NET.Sdk"^>
-                echo   ^<PropertyGroup^>
-                echo     ^<OutputType^>Exe^</OutputType^>
-                echo     ^<TargetFramework^>net8.0^</TargetFramework^>
-                echo     ^<ImplicitUsings^>enable^</ImplicitUsings^>
-                echo     ^<Nullable^>enable^</Nullable^>
-                echo     ^<TreatWarningsAsErrors^>false^</TreatWarningsAsErrors^>
-                echo   ^</PropertyGroup^>
-                echo ^</Project^>
-            ) > "!TEST_PROJECT_DIR!\TestProject.csproj"
+            REM Create csproj - check if SQLite test case
+            if "%%T"=="09_sqlite" (
+                (
+                    echo ^<Project Sdk="Microsoft.NET.Sdk"^>
+                    echo   ^<PropertyGroup^>
+                    echo     ^<OutputType^>Exe^</OutputType^>
+                    echo     ^<TargetFramework^>net8.0^</TargetFramework^>
+                    echo     ^<ImplicitUsings^>enable^</ImplicitUsings^>
+                    echo     ^<Nullable^>enable^</Nullable^>
+                    echo     ^<TreatWarningsAsErrors^>false^</TreatWarningsAsErrors^>
+                    echo   ^</PropertyGroup^>
+                    echo   ^<ItemGroup^>
+                    echo     ^<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" /^>
+                    echo   ^</ItemGroup^>
+                    echo ^</Project^>
+                ) > "!TEST_PROJECT_DIR!\TestProject.csproj"
+            ) else (
+                (
+                    echo ^<Project Sdk="Microsoft.NET.Sdk"^>
+                    echo   ^<PropertyGroup^>
+                    echo     ^<OutputType^>Exe^</OutputType^>
+                    echo     ^<TargetFramework^>net8.0^</TargetFramework^>
+                    echo     ^<ImplicitUsings^>enable^</ImplicitUsings^>
+                    echo     ^<Nullable^>enable^</Nullable^>
+                    echo     ^<TreatWarningsAsErrors^>false^</TreatWarningsAsErrors^>
+                    echo   ^</PropertyGroup^>
+                    echo ^</Project^>
+                ) > "!TEST_PROJECT_DIR!\TestProject.csproj"
+            )
 
             REM Copy all generated files including Container.cs
             for %%F in ("!OUTPUT_DIR!\csharp\*.cs") do (

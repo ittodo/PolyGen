@@ -265,7 +265,7 @@ for file in schema.files {
     }
 }
 
-let out_path = "output/csharp/" + out_filename;
+let out_path = output_dir + "/csharp/" + out_filename;
 print("Generating file: " + out_path);
 write_file(out_path, code);
 

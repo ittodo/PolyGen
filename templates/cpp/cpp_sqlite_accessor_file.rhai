@@ -315,7 +315,7 @@ for file in schema.files {
     }
 }
 
-let out_path = "output/cpp/" + out_filename;
+let out_path = output_dir + "/cpp/" + out_filename;
 print("Generating file: " + out_path);
 write_file(out_path, code);
 

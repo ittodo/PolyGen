@@ -11,6 +11,8 @@
     "generate:all": "cd ../../.. && for dir in tests/integration/*/; do cargo run --release -- --schema-path \"${dir}schema.poly\" --lang typescript --output-dir tests/runners/typescript/generated 2>/dev/null; done"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "better-sqlite3": "^11.0.0",
     "typescript": "^5.3.0",
     "zod": "^3.22.0"
   }
