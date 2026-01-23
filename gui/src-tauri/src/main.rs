@@ -14,6 +14,7 @@ fn main() {
             commands::read_file,
             commands::write_file,
             commands::parse_imports,
+            commands::validate_schema,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

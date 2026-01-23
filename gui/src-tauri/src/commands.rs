@@ -1,6 +1,9 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use pest::Parser;
+use polygen::{Polygen, ast_parser, validation};
+use serde::Serialize;
 
 fn get_polygen_path() -> String {
     // In bundled app, the binary is in the resources folder
@@ -141,4 +144,97 @@ pub fn parse_imports(file_path: String) -> Result<Vec<String>, String> {
     }
 
     Ok(imports)
+}
+
+/// Schema validation error with position info for Monaco
+#[derive(Serialize)]
+pub struct SchemaError {
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+    pub message: String,
+    pub severity: String, // "error", "warning", "info"
+}
+
+/// Validate schema content and return errors
+#[tauri::command]
+pub fn validate_schema(content: String) -> Result<Vec<SchemaError>, String> {
+    use polygen::Rule;
+
+    let mut errors = Vec::new();
+    let content = content.replace("\r\n", "\n");
+
+    // Step 1: Parse with Pest
+    let parse_result = Polygen::parse(Rule::main, &content);
+
+    match parse_result {
+        Ok(mut pairs) => {
+            // Step 2: Build AST
+            let main_pair = match pairs.next() {
+                Some(p) => p,
+                None => {
+                    errors.push(SchemaError {
+                        start_line: 1,
+                        start_column: 1,
+                        end_line: 1,
+                        end_column: 1,
+                        message: "Empty schema".to_string(),
+                        severity: "warning".to_string(),
+                    });
+                    return Ok(errors);
+                }
+            };
+
+            match ast_parser::build_ast_from_pairs(main_pair, PathBuf::from("editor.poly")) {
+                Ok(ast) => {
+                    // Step 3: Validate AST
+                    if let Err(e) = validation::validate_ast(&ast.definitions) {
+                        // Validation errors don't have line info, show at start
+                        errors.push(SchemaError {
+                            start_line: 1,
+                            start_column: 1,
+                            end_line: 1,
+                            end_column: 100,
+                            message: e.to_string(),
+                            severity: "error".to_string(),
+                        });
+                    }
+                }
+                Err(e) => {
+                    // AST build errors have line/col info
+                    let (line, col, msg) = match &e {
+                        polygen::error::AstBuildError::InvalidValue { line, col, .. } => (*line, *col, e.to_string()),
+                        polygen::error::AstBuildError::UnexpectedRule { line, col, .. } => (*line, *col, e.to_string()),
+                        polygen::error::AstBuildError::MissingElement { line, col, .. } => (*line, *col, e.to_string()),
+                    };
+                    errors.push(SchemaError {
+                        start_line: line,
+                        start_column: col,
+                        end_line: line,
+                        end_column: col + 10,
+                        message: msg,
+                        severity: "error".to_string(),
+                    });
+                }
+            }
+        }
+        Err(e) => {
+            // Parse errors from pest
+            let (line, col) = match e.line_col {
+                pest::error::LineColLocation::Pos((l, c)) => (l, c),
+                pest::error::LineColLocation::Span((l, c), _) => (l, c),
+            };
+            errors.push(SchemaError {
+                start_line: line,
+                start_column: col,
+                end_line: line,
+                end_column: col + 10,
+                message: format!("Syntax error: {}", e),
+                severity: "error".to_string(),
+            });
+        }
+    }
+
+    Ok(errors)
 }
