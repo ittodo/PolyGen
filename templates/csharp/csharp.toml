@@ -14,6 +14,7 @@ extension = ".cs"
 "Common/JsonUtils.cs" = "static/csharp/JsonUtils.cs"
 "Common/PolygenAttributes.cs" = "static/csharp/PolygenAttributes.cs"
 "Common/DataContainer.cs" = "static/csharp/DataContainer.cs"
+"Common/PatternLoader.cs" = "static/csharp/PatternLoader.cs"
 
 # Template configuration
 [templates]

@@ -23,6 +23,10 @@ namespace Polygen.Common
     /// </summary>
     public interface IDataContainer
     {
+        /// <summary>
+        /// Gets or sets the root directory for resolving relative file paths.
+        /// </summary>
+        string RootDirectory { get; set; }
     }
 
     /// <summary>

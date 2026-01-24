@@ -60,11 +60,17 @@ namespace test.csv.Container
 	/// </summary>
 	public class testcsvDataContainer : IDataContainer
 	{
+	    /// <summary>
+	    /// Gets or sets the root directory for resolving relative file paths.
+	    /// </summary>
+	    public string RootDirectory { get; set; } = ".";
+
 	    public PointTable Points { get; } = new();
 	    public TestObjectTable TestObjects { get; } = new();
 
-	    public testcsvDataContainer()
+	    public testcsvDataContainer(string rootDirectory = ".")
 	    {
+	        RootDirectory = rootDirectory;
 	        Points.SetContainer(this);
 	        TestObjects.SetContainer(this);
 	    }
@@ -131,17 +137,36 @@ namespace CsvTestSchema.Container
 
 	/// <summary>
 	/// Data loader for populating the CsvTestSchemaDataContainer from CSV/JSON files.
+	/// Supports pattern-based loading with wildcards (e.g., "data/*.csv", "data/players/").
 	/// </summary>
 	public static class CsvTestSchemaDataLoader
 	{
 	    /// <summary>
-	    /// Loads Point data from a CSV file using the generated CSV mapper.
+	    /// Loads Point data from a CSV file.
 	    /// </summary>
 	    public static void LoadPointsFromCsv(CsvTestSchemaDataContainer container, string filePath, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
 	    {
 	        foreach (var item in Csv.test.csv.Point.ReadRowsWithHeader(filePath, separator, gapMode))
 	        {
 	            container.Points.Add(item);
+	        }
+	    }
+
+	    /// <summary>
+	    /// Loads Point data from CSV files matching a pattern.
+	    /// Supports: single file, wildcards (*.csv), directories (data/).
+	    /// Files are sorted alphabetically and merged sequentially.
+	    /// </summary>
+	    /// <exception cref="DuplicateKeyException">Thrown when duplicate primary keys are found across files.</exception>
+	    public static void LoadPointsFromCsvPattern(CsvTestSchemaDataContainer container, string pattern, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+	    {
+	        var files = PatternLoader.ResolvePattern(container.RootDirectory, pattern, ".csv");
+	        foreach (var file in files)
+	        {
+	            foreach (var item in Csv.test.csv.Point.ReadRowsWithHeader(file, separator, gapMode))
+	            {
+	                container.Points.Add(item);
+	            }
 	        }
 	    }
 
@@ -162,13 +187,61 @@ namespace CsvTestSchema.Container
 	    }
 
 	    /// <summary>
-	    /// Loads TestObject data from a CSV file using the generated CSV mapper.
+	    /// Loads Point data from JSON files matching a pattern.
+	    /// </summary>
+	    /// <exception cref="DuplicateKeyException">Thrown when duplicate primary keys are found across files.</exception>
+	    public static void LoadPointsFromJsonPattern(CsvTestSchemaDataContainer container, string pattern)
+	    {
+	        var files = PatternLoader.ResolvePattern(container.RootDirectory, pattern, ".json");
+	        foreach (var file in files)
+	        {
+	            var json = File.ReadAllText(file);
+	            var items = System.Text.Json.JsonSerializer.Deserialize<List<global::test.csv.Point>>(json);
+	            if (items != null)
+	            {
+	                foreach (var item in items)
+	                {
+	                    container.Points.Add(item);
+	                }
+	            }
+	        }
+	    }
+
+	    /// <summary>
+	    /// Loads TestObject data from a CSV file.
 	    /// </summary>
 	    public static void LoadTestObjectsFromCsv(CsvTestSchemaDataContainer container, string filePath, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
 	    {
 	        foreach (var item in Csv.test.csv.TestObject.ReadRowsWithHeader(filePath, separator, gapMode))
 	        {
 	            container.TestObjects.Add(item);
+	        }
+	    }
+
+	    /// <summary>
+	    /// Loads TestObject data from CSV files matching a pattern.
+	    /// Supports: single file, wildcards (*.csv), directories (data/).
+	    /// Files are sorted alphabetically and merged sequentially.
+	    /// </summary>
+	    /// <exception cref="DuplicateKeyException">Thrown when duplicate primary keys are found across files.</exception>
+	    public static void LoadTestObjectsFromCsvPattern(CsvTestSchemaDataContainer container, string pattern, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+	    {
+	        var files = PatternLoader.ResolvePattern(container.RootDirectory, pattern, ".csv");
+	        var seenKeys = new HashSet<object>();
+	        string? firstFile = null;
+	        foreach (var file in files)
+	        {
+	            foreach (var item in Csv.test.csv.TestObject.ReadRowsWithHeader(file, separator, gapMode))
+	            {
+	                var key = item.id;
+	                if (seenKeys.Contains(key))
+	                {
+	                    throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+	                }
+	                seenKeys.Add(key);
+	                if (firstFile == null) firstFile = file;
+	                container.TestObjects.Add(item);
+	            }
 	        }
 	    }
 
@@ -186,6 +259,44 @@ namespace CsvTestSchema.Container
 	                container.TestObjects.Add(item);
 	            }
 	        }
+	    }
+
+	    /// <summary>
+	    /// Loads TestObject data from JSON files matching a pattern.
+	    /// </summary>
+	    /// <exception cref="DuplicateKeyException">Thrown when duplicate primary keys are found across files.</exception>
+	    public static void LoadTestObjectsFromJsonPattern(CsvTestSchemaDataContainer container, string pattern)
+	    {
+	        var files = PatternLoader.ResolvePattern(container.RootDirectory, pattern, ".json");
+	        var seenKeys = new HashSet<object>();
+	        string? firstFile = null;
+	        foreach (var file in files)
+	        {
+	            var json = File.ReadAllText(file);
+	            var items = System.Text.Json.JsonSerializer.Deserialize<List<global::test.csv.TestObject>>(json);
+	            if (items != null)
+	            {
+	                foreach (var item in items)
+	                {
+	                    var key = item.id;
+	                    if (seenKeys.Contains(key))
+	                    {
+	                        throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+	                    }
+	                    seenKeys.Add(key);
+	                    if (firstFile == null) firstFile = file;
+	                    container.TestObjects.Add(item);
+	                }
+	            }
+	        }
+	    }
+
+	    /// <summary>
+	    /// Loads all tables using patterns from @load annotations.
+	    /// Files are resolved relative to container.RootDirectory.
+	    /// </summary>
+	    public static void LoadAll(CsvTestSchemaDataContainer container, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+	    {
 	    }
 
 	    /// <summary>

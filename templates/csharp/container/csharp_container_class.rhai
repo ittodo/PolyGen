@@ -14,6 +14,12 @@ ${
 ${
     let body = "";
 
+    // RootDirectory property for pattern-based loading
+    body += "    /// <summary>\n";
+    body += "    /// Gets or sets the root directory for resolving relative file paths.\n";
+    body += "    /// </summary>\n";
+    body += "    public string RootDirectory { get; set; } = \".\";\n\n";
+
     // Generate table properties
     for s in structs {
         body += "    public " + s.name + "Table " + s.name + "s { get; } = new();\n";
@@ -29,8 +35,9 @@ ${
     for part in parts {
         container_name += part;
     }
-    body += "    public " + container_name + "DataContainer()\n";
+    body += "    public " + container_name + "DataContainer(string rootDirectory = \".\")\n";
     body += "    {\n";
+    body += "        RootDirectory = rootDirectory;\n";
     for s in structs {
         body += "        " + s.name + "s.SetContainer(this);\n";
     }
