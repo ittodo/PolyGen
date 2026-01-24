@@ -2,8 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use pest::Parser;
-use polygen::{Polygen, ast_parser, validation};
-use serde::Serialize;
+use polygen::{Polygen, ast_parser, validation, ir_builder, visualize};
+use polygen::pipeline::parse_and_merge_schemas;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 fn get_polygen_path() -> String {
     // In bundled app, the binary is in the resources folder
@@ -1088,4 +1090,143 @@ pub fn rename_symbol(
     }
 
     edits
+}
+
+/// Get schema visualization data for GUI
+#[tauri::command]
+pub fn get_schema_visualization(
+    schema_path: String,
+) -> Result<visualize::SchemaVisualization, String> {
+    // Parse schema
+    let asts = parse_and_merge_schemas(Path::new(&schema_path), None)
+        .map_err(|e| format!("Failed to parse schema: {}", e))?;
+
+    // Validate
+    let defs: Vec<_> = asts
+        .iter()
+        .flat_map(|ast| ast.definitions.clone())
+        .collect();
+    validation::validate_ast(&defs)
+        .map_err(|e| format!("Validation error: {}", e))?;
+
+    // Build IR
+    let ir = ir_builder::build_ir(&asts);
+
+    // Build visualization
+    Ok(visualize::build_visualization(&ir))
+}
+
+// ============================================================================
+// Recent Projects Management
+// ============================================================================
+
+const MAX_RECENT_PROJECTS: usize = 10;
+const RECENT_PROJECTS_FILE: &str = "recent_projects.json";
+
+/// Recent project entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentProject {
+    pub path: String,
+    pub name: String,
+    pub timestamp: u64,
+    pub output_dir: Option<String>,
+    pub languages: Option<Vec<String>>,
+}
+
+/// Get the path to the recent projects file
+fn get_recent_projects_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Create directory if it doesn't exist
+    if !app_data_dir.exists() {
+        fs::create_dir_all(&app_data_dir)
+            .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+    }
+
+    Ok(app_data_dir.join(RECENT_PROJECTS_FILE))
+}
+
+/// Load recent projects from file
+fn load_recent_projects(app: &AppHandle) -> Result<Vec<RecentProject>, String> {
+    let path = get_recent_projects_path(app)?;
+
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read recent projects file: {}", e))?;
+
+    let projects: Vec<RecentProject> = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse recent projects: {}", e))?;
+
+    Ok(projects)
+}
+
+/// Save recent projects to file
+fn save_recent_projects(app: &AppHandle, projects: &[RecentProject]) -> Result<(), String> {
+    let path = get_recent_projects_path(app)?;
+
+    let content = serde_json::to_string_pretty(projects)
+        .map_err(|e| format!("Failed to serialize recent projects: {}", e))?;
+
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write recent projects file: {}", e))?;
+
+    Ok(())
+}
+
+/// Get list of recent projects
+#[tauri::command]
+pub fn get_recent_projects(app: AppHandle) -> Result<Vec<RecentProject>, String> {
+    let mut projects = load_recent_projects(&app)?;
+
+    // Filter out projects whose files no longer exist
+    projects.retain(|p| Path::new(&p.path).exists());
+
+    // Sort by timestamp (most recent first)
+    projects.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    Ok(projects)
+}
+
+/// Add or update a recent project
+#[tauri::command]
+pub fn add_recent_project(app: AppHandle, project: RecentProject) -> Result<(), String> {
+    let mut projects = load_recent_projects(&app)?;
+
+    // Remove existing entry with same path (if any)
+    projects.retain(|p| p.path != project.path);
+
+    // Add new project at the beginning
+    projects.insert(0, project);
+
+    // Keep only MAX_RECENT_PROJECTS
+    projects.truncate(MAX_RECENT_PROJECTS);
+
+    save_recent_projects(&app, &projects)?;
+
+    Ok(())
+}
+
+/// Remove a recent project by path
+#[tauri::command]
+pub fn remove_recent_project(app: AppHandle, path: String) -> Result<(), String> {
+    let mut projects = load_recent_projects(&app)?;
+
+    projects.retain(|p| p.path != path);
+
+    save_recent_projects(&app, &projects)?;
+
+    Ok(())
+}
+
+/// Clear all recent projects
+#[tauri::command]
+pub fn clear_recent_projects(app: AppHandle) -> Result<(), String> {
+    save_recent_projects(&app, &[])?;
+    Ok(())
 }

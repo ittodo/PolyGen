@@ -8,6 +8,7 @@
   import type { GoToFileEvent } from "./lib/monaco/poly-language";
   import FileTabs from "./lib/components/FileTabs.svelte";
   import FileList from "./lib/components/FileList.svelte";
+  import SchemaVisualization from "./lib/components/SchemaVisualization.svelte";
 
   interface OpenFile {
     path: string;
@@ -22,6 +23,14 @@
     name: string;
   }
 
+  interface RecentProject {
+    path: string;
+    name: string;
+    timestamp: number;
+    output_dir?: string;
+    languages?: string[];
+  }
+
   let mainFilePath = $state("");
   let outputDir = $state("");
   let templatesDir = $state("");
@@ -32,6 +41,52 @@
   let openFiles = $state<OpenFile[]>([]);
   let activeFilePath = $state("");
   let importedFiles = $state<ImportedFile[]>([]); // Always keep track of imports
+  let recentProjects = $state<RecentProject[]>([]);
+
+  // View mode: "editor" or "visualize"
+  let viewMode = $state<"editor" | "visualize">("editor");
+
+  // Load recent projects on initialization
+  $effect(() => {
+    loadRecentProjects();
+  });
+
+  async function loadRecentProjects() {
+    try {
+      recentProjects = await invoke<RecentProject[]>("get_recent_projects");
+    } catch (error) {
+      console.error("Failed to load recent projects:", error);
+    }
+  }
+
+  async function addToRecentProjects(path: string) {
+    try {
+      const project: RecentProject = {
+        path,
+        name: getFileName(path),
+        timestamp: Date.now(),
+        output_dir: outputDir || undefined,
+        languages: selectedLanguages.length > 0 ? [...selectedLanguages] : undefined,
+      };
+      await invoke("add_recent_project", { project });
+      await loadRecentProjects();
+    } catch (error) {
+      console.error("Failed to add recent project:", error);
+    }
+  }
+
+  async function onRecentProjectSelect(project: RecentProject) {
+    // Restore settings from the project if available
+    if (project.output_dir) {
+      outputDir = project.output_dir;
+    }
+    if (project.languages && project.languages.length > 0) {
+      selectedLanguages = [...project.languages];
+    }
+
+    // Open the project
+    await openMainFile(project.path);
+  }
 
   // Get active file
   let activeFile = $derived(openFiles.find((f) => f.path === activeFilePath));
@@ -95,6 +150,9 @@
     } catch (error) {
       addLog(`Warning: Could not parse imports - ${error}`);
     }
+
+    // Add to recent projects
+    await addToRecentProjects(path);
   }
 
   async function loadFile(path: string, isMain: boolean) {
@@ -351,6 +409,19 @@ namespace example {
       <button class="toolbar-btn" onclick={selectSchemaFile} title="Open File">Open</button>
       <button class="toolbar-btn" onclick={saveFile} title="Save File">Save</button>
       <button class="toolbar-btn" onclick={saveAllFiles} title="Save All">Save All</button>
+      <span class="toolbar-separator"></span>
+      <button
+        class="toolbar-btn"
+        class:active={viewMode === "editor"}
+        onclick={() => (viewMode = "editor")}
+        title="Editor View"
+      >Editor</button>
+      <button
+        class="toolbar-btn"
+        class:active={viewMode === "visualize"}
+        onclick={() => (viewMode = "visualize")}
+        title="Schema Visualization"
+      >Visualize</button>
     </div>
     <div class="header-right">
       <span class="file-count">{openFiles.length} file(s) open</span>
@@ -360,6 +431,15 @@ namespace example {
   <div class="content">
     <section class="settings">
       <h2>Settings</h2>
+
+      <PathSelector
+        label="Schema Path"
+        value={mainFilePath}
+        placeholder="Open a schema file..."
+        onSelect={selectSchemaFile}
+        {recentProjects}
+        onRecentSelect={onRecentProjectSelect}
+      />
 
       <PathSelector
         label="Output Directory"
@@ -394,30 +474,44 @@ namespace example {
     </section>
 
     <section class="editor-section">
-      {#if openFiles.length > 0}
-        <FileTabs
-          {tabs}
-          activeTab={activeFilePath}
-          {onSelectTab}
-          {onCloseTab}
-        />
-        <div class="editor-wrapper">
-          {#if activeFile}
-            {#key activeFilePath}
-              <Editor
-                value={activeFile.content}
-                onChange={onEditorChange}
-                filePath={activeFile.path}
-                {onGoToFile}
-                initialPosition={pendingNavigation}
-              />
-            {/key}
-          {/if}
-        </div>
+      {#if viewMode === "editor"}
+        {#if openFiles.length > 0}
+          <FileTabs
+            {tabs}
+            activeTab={activeFilePath}
+            {onSelectTab}
+            {onCloseTab}
+          />
+          <div class="editor-wrapper">
+            {#if activeFile}
+              {#key activeFilePath}
+                <Editor
+                  value={activeFile.content}
+                  onChange={onEditorChange}
+                  filePath={activeFile.path}
+                  {onGoToFile}
+                  initialPosition={pendingNavigation}
+                />
+              {/key}
+            {/if}
+          </div>
+        {:else}
+          <div class="empty-editor">
+            <p>No file open</p>
+            <button class="secondary" onclick={selectSchemaFile}>Open Schema File</button>
+          </div>
+        {/if}
       {:else}
-        <div class="empty-editor">
-          <p>No file open</p>
-          <button class="secondary" onclick={selectSchemaFile}>Open Schema File</button>
+        <!-- Visualization View -->
+        <div class="visualization-wrapper">
+          {#if mainFilePath}
+            <SchemaVisualization schemaPath={mainFilePath} />
+          {:else}
+            <div class="empty-editor">
+              <p>Open a schema file to visualize</p>
+              <button class="secondary" onclick={selectSchemaFile}>Open Schema File</button>
+            </div>
+          {/if}
         </div>
       {/if}
     </section>
@@ -473,6 +567,19 @@ namespace example {
 
   .toolbar-btn:hover {
     background-color: var(--bg-hover);
+  }
+
+  .toolbar-btn.active {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .toolbar-separator {
+    width: 1px;
+    height: 1.5rem;
+    background-color: var(--border);
+    margin: 0 0.25rem;
   }
 
   .header-right .file-count {
@@ -532,6 +639,14 @@ namespace example {
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+
+  .visualization-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background-color: var(--bg-primary);
+    border-radius: 0 0 8px 8px;
   }
 
   .empty-editor {

@@ -22,6 +22,11 @@ fn main() {
             commands::get_document_symbols,
             commands::prepare_rename,
             commands::rename_symbol,
+            commands::get_schema_visualization,
+            commands::get_recent_projects,
+            commands::add_recent_project,
+            commands::remove_recent_project,
+            commands::clear_recent_projects,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
