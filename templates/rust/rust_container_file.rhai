@@ -71,7 +71,8 @@ for file in schema.files {
     c += "pub mod container {\n";
     c += "    //! Data Container with indexes and relations\n\n";
     c += "    use std::collections::HashMap;\n";
-    c += "    use crate::polygen_support::{UniqueIndex, GroupIndex, LoadError, LoadResult};\n\n";
+    c += "    use crate::polygen_support::{UniqueIndex, GroupIndex, LoadError, LoadResult};\n";
+    c += "    use crate::polygen_support::{ValidationResult, ValidationException, validation};\n\n";
 
     // Generate DataTable for each struct
     for table in all_tables {
@@ -156,6 +157,92 @@ for file in schema.files {
             let idx_field = "by_" + to_snake_case(idx.field_name);
             c += "            self." + idx_field + ".clear();\n";
         }
+        c += "        }\n\n";
+
+        // Generate validate method
+        c += "        /// Validates all rows against field constraints.\n";
+        c += "        pub fn validate(&self) -> ValidationResult {\n";
+        c += "            let mut result = ValidationResult::new();\n";
+
+        // Find primary key field for error messages
+        let pk_field = "id";
+        for idx in struct_def.indexes {
+            if idx.name == "ById" || idx.field_name == "id" {
+                pk_field = to_snake_case(idx.field_name);
+                break;
+            }
+        }
+
+        c += "            for row in &self.rows {\n";
+        c += "                let row_key = row." + pk_field + ".to_string();\n";
+
+        // Generate validation for each field
+        for item in struct_def.items {
+            if item.is_field() {
+                let field = item.as_field();
+                let field_name = to_snake_case(field.name);
+                let is_option = field.field_type.is_option;
+                let type_name = field.field_type.type_name;
+
+                // MaxLength validation
+                if field.max_length != () {
+                    let max_len = field.max_length;
+                    if is_option {
+                        c += "                if let Some(ref v) = row." + field_name + " {\n";
+                        c += "                    if v.len() > " + max_len + " {\n";
+                        c += "                        result.add_error(validation::max_length_error(\n";
+                        c += "                            \"" + table.name + "\", \"" + field_name + "\", &row_key, " + max_len + ", v.len()));\n";
+                        c += "                    }\n";
+                        c += "                }\n";
+                    } else if type_name == "string" {
+                        c += "                if row." + field_name + ".len() > " + max_len + " {\n";
+                        c += "                    result.add_error(validation::max_length_error(\n";
+                        c += "                        \"" + table.name + "\", \"" + field_name + "\", &row_key, " + max_len + ", row." + field_name + ".len()));\n";
+                        c += "                }\n";
+                    }
+                }
+
+                // Range validation
+                if field.range != () {
+                    let min_val = field.range.min;
+                    let max_val = field.range.max;
+                    if is_option {
+                        c += "                if let Some(v) = row." + field_name + " {\n";
+                        c += "                    if !validation::validate_range(v, " + min_val + ", " + max_val + ") {\n";
+                        c += "                        result.add_error(validation::range_error(\n";
+                        c += "                            \"" + table.name + "\", \"" + field_name + "\", &row_key, " + min_val + ", " + max_val + ", v));\n";
+                        c += "                    }\n";
+                        c += "                }\n";
+                    } else {
+                        c += "                if !validation::validate_range(row." + field_name + ", " + min_val + ", " + max_val + ") {\n";
+                        c += "                    result.add_error(validation::range_error(\n";
+                        c += "                        \"" + table.name + "\", \"" + field_name + "\", &row_key, " + min_val + ", " + max_val + ", row." + field_name + "));\n";
+                        c += "                }\n";
+                    }
+                }
+
+                // Regex validation
+                if field.regex_pattern != () {
+                    let pattern = field.regex_pattern;
+                    if is_option {
+                        c += "                if let Some(ref v) = row." + field_name + " {\n";
+                        c += "                    if !validation::validate_regex(v, r\"" + pattern + "\") {\n";
+                        c += "                        result.add_error(validation::regex_error(\n";
+                        c += "                            \"" + table.name + "\", \"" + field_name + "\", &row_key, r\"" + pattern + "\", v));\n";
+                        c += "                    }\n";
+                        c += "                }\n";
+                    } else if type_name == "string" {
+                        c += "                if !validation::validate_regex(&row." + field_name + ", r\"" + pattern + "\") {\n";
+                        c += "                    result.add_error(validation::regex_error(\n";
+                        c += "                        \"" + table.name + "\", \"" + field_name + "\", &row_key, r\"" + pattern + "\", &row." + field_name + "));\n";
+                        c += "                }\n";
+                    }
+                }
+            }
+        }
+
+        c += "            }\n";
+        c += "            result\n";
         c += "        }\n";
         c += "    }\n\n";
     }
@@ -178,6 +265,26 @@ for file in schema.files {
     for table in all_tables {
         c += "            self." + table.table_name + ".clear();\n";
     }
+    c += "        }\n\n";
+
+    // validate_all method
+    c += "        /// Validates all tables and returns combined results.\n";
+    c += "        pub fn validate_all(&self) -> ValidationResult {\n";
+    c += "            let mut result = ValidationResult::new();\n";
+    for table in all_tables {
+        c += "            result.merge(self." + table.table_name + ".validate());\n";
+    }
+    c += "            result\n";
+    c += "        }\n\n";
+
+    // validate_or_throw method
+    c += "        /// Validates all tables and returns error if any validation fails.\n";
+    c += "        pub fn validate_or_throw(&self) -> Result<(), ValidationException> {\n";
+    c += "            let result = self.validate_all();\n";
+    c += "            if !result.is_valid() {\n";
+    c += "                return Err(ValidationException::new(result));\n";
+    c += "            }\n";
+    c += "            Ok(())\n";
     c += "        }\n";
     c += "    }\n";
     c += "}\n";

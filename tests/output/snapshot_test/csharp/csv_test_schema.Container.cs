@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Polygen.Common;
 
@@ -24,6 +25,31 @@ namespace test.csv.Container
 
 	    protected override void OnCleared()
 	    {
+	    }
+
+	    /// <summary>
+	    /// Validates all rows against field constraints (MaxLength, Range, Regex).
+	    /// </summary>
+	    public ValidationResult Validate()
+	    {
+	        var result = new ValidationResult();
+	        foreach (var row in _rows)
+	        {
+	            // No field constraints to validate
+	            _ = row; // Suppress unused variable warning
+	        }
+	        return result;
+	    }
+
+	    /// <summary>
+	    /// Validates foreign key references exist in related tables.
+	    /// </summary>
+	    public ValidationResult ValidateForeignKeys(IDataContainer container)
+	    {
+	        var result = new ValidationResult();
+	        // No foreign key constraints to validate
+	        _ = container; // Suppress unused variable warning
+	        return result;
 	    }
 
 	}
@@ -51,6 +77,31 @@ namespace test.csv.Container
 	    protected override void OnCleared()
 	    {
 	        ById.Clear();
+	    }
+
+	    /// <summary>
+	    /// Validates all rows against field constraints (MaxLength, Range, Regex).
+	    /// </summary>
+	    public ValidationResult Validate()
+	    {
+	        var result = new ValidationResult();
+	        foreach (var row in _rows)
+	        {
+	            // No field constraints to validate
+	            _ = row; // Suppress unused variable warning
+	        }
+	        return result;
+	    }
+
+	    /// <summary>
+	    /// Validates foreign key references exist in related tables.
+	    /// </summary>
+	    public ValidationResult ValidateForeignKeys(IDataContainer container)
+	    {
+	        var result = new ValidationResult();
+	        // No foreign key constraints to validate
+	        _ = container; // Suppress unused variable warning
+	        return result;
 	    }
 
 	}
@@ -82,6 +133,36 @@ namespace test.csv.Container
 	    {
 	        Points.Clear();
 	        TestObjects.Clear();
+	    }
+
+	    /// <summary>
+	    /// Validates all tables against field and foreign key constraints.
+	    /// </summary>
+	    /// <returns>A ValidationResult containing any validation errors.</returns>
+	    public ValidationResult ValidateAll()
+	    {
+	        var result = new ValidationResult();
+
+	        // Validate field constraints (MaxLength, Range, Regex)
+	        result.Merge(Points.Validate());
+	        result.Merge(TestObjects.Validate());
+
+	        // Validate foreign key references
+	        result.Merge(Points.ValidateForeignKeys(this));
+	        result.Merge(TestObjects.ValidateForeignKeys(this));
+
+	        return result;
+	    }
+
+	    /// <summary>
+	    /// Validates all tables and throws an exception if any errors are found.
+	    /// </summary>
+	    /// <exception cref="ValidationException">Thrown when validation fails.</exception>
+	    public void ValidateOrThrow()
+	    {
+	        var result = ValidateAll();
+	        if (!result.IsValid)
+	            throw new ValidationException(result);
 	    }
 
 	}
@@ -130,6 +211,36 @@ namespace CsvTestSchema.Container
 	    {
 	        Points.Clear();
 	        TestObjects.Clear();
+	    }
+
+	    /// <summary>
+	    /// Validates all tables against field and foreign key constraints.
+	    /// </summary>
+	    /// <returns>A ValidationResult containing any validation errors.</returns>
+	    public ValidationResult ValidateAll()
+	    {
+	        var result = new ValidationResult();
+
+	        // Validate field constraints (MaxLength, Range, Regex)
+	        result.Merge(Points.Validate());
+	        result.Merge(TestObjects.Validate());
+
+	        // Validate foreign key references
+	        result.Merge(Points.ValidateForeignKeys(this));
+	        result.Merge(TestObjects.ValidateForeignKeys(this));
+
+	        return result;
+	    }
+
+	    /// <summary>
+	    /// Validates all tables and throws an exception if any errors are found.
+	    /// </summary>
+	    /// <exception cref="ValidationException">Thrown when validation fails.</exception>
+	    public void ValidateOrThrow()
+	    {
+	        var result = ValidateAll();
+	        if (!result.IsValid)
+	            throw new ValidationException(result);
 	    }
 
 	}
@@ -297,6 +408,30 @@ namespace CsvTestSchema.Container
 	    /// </summary>
 	    public static void LoadAll(CsvTestSchemaDataContainer container, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
 	    {
+	    }
+
+	    /// <summary>
+	    /// Loads all tables using patterns from @load annotations and optionally validates.
+	    /// </summary>
+	    /// <param name="container">The container to load data into.</param>
+	    /// <param name="validate">If true, validates data after loading.</param>
+	    /// <param name="separator">CSV field separator character.</param>
+	    /// <param name="gapMode">How to handle gaps in CSV data.</param>
+	    /// <returns>A ValidationResult containing any validation errors (empty if validate=false).</returns>
+	    public static ValidationResult LoadAll(CsvTestSchemaDataContainer container, bool validate, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+	    {
+	        LoadAll(container, separator, gapMode);
+	        return validate ? container.ValidateAll() : new ValidationResult();
+	    }
+
+	    /// <summary>
+	    /// Loads all tables and validates data. Throws exception if validation fails.
+	    /// </summary>
+	    /// <exception cref="ValidationException">Thrown when validation fails after loading.</exception>
+	    public static void LoadAllAndValidate(CsvTestSchemaDataContainer container, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+	    {
+	        LoadAll(container, separator, gapMode);
+	        container.ValidateOrThrow();
 	    }
 
 	    /// <summary>

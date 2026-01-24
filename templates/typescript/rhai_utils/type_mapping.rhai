@@ -212,3 +212,93 @@ fn map_type_to_zod_with_ns(type_ref, current_ns) {
 fn map_type_to_zod(type_ref) {
     map_type_to_zod_with_ns(type_ref, "")
 }
+
+/// Map a field to Zod schema with all constraints
+fn map_field_to_zod_with_constraints(field, current_ns) {
+    let type_ref = field.field_type;
+    let base_schema = "";
+
+    // Primitive types with constraint support
+    switch type_ref.type_name {
+        "u8" => { base_schema = "z.number().int().min(0).max(255)"; }
+        "u16" => { base_schema = "z.number().int().min(0).max(65535)"; }
+        "u32" => { base_schema = "z.number().int().min(0)"; }
+        "u64" => { base_schema = "z.number().int().min(0)"; }
+        "i8" => { base_schema = "z.number().int().min(-128).max(127)"; }
+        "i16" => { base_schema = "z.number().int().min(-32768).max(32767)"; }
+        "i32" => { base_schema = "z.number().int()"; }
+        "i64" => { base_schema = "z.number().int()"; }
+        "f32" => { base_schema = "z.number()"; }
+        "f64" => { base_schema = "z.number()"; }
+        "bool" => { base_schema = "z.boolean()"; }
+        "string" => { base_schema = "z.string()"; }
+        "bytes" => { base_schema = "z.instanceof(Uint8Array)"; }
+        _ => {
+            // Custom type - reference its schema with namespace prefix
+            let ref_ns = "";
+            if type_ref.namespace_fqn != () && type_ref.namespace_fqn != "" {
+                ref_ns = type_ref.namespace_fqn;
+            }
+
+            let prefix = compute_ns_prefix(current_ns, ref_ns);
+            base_schema = prefix + type_ref.type_name + "Schema";
+        }
+    }
+
+    // Add field-level constraints for string type
+    if type_ref.type_name == "string" {
+        // MaxLength constraint
+        if field.max_length != () {
+            base_schema += ".max(" + field.max_length + ")";
+        }
+
+        // Regex constraint
+        if field.regex_pattern != () {
+            // Escape backslashes for JavaScript regex
+            let pattern = field.regex_pattern;
+            base_schema += ".regex(/" + pattern + "/)";
+        }
+    }
+
+    // Add field-level Range constraint for numeric types
+    if field.range != () {
+        let is_numeric = type_ref.type_name == "u8" || type_ref.type_name == "u16" ||
+                         type_ref.type_name == "u32" || type_ref.type_name == "u64" ||
+                         type_ref.type_name == "i8" || type_ref.type_name == "i16" ||
+                         type_ref.type_name == "i32" || type_ref.type_name == "i64" ||
+                         type_ref.type_name == "f32" || type_ref.type_name == "f64";
+        if is_numeric {
+            base_schema += ".min(" + field.range.min + ").max(" + field.range.max + ")";
+        }
+    }
+
+    // Add default value if specified
+    if field.default_value != () {
+        let default_val = field.default_value;
+        let type_name = type_ref.type_name;
+
+        // Format for JavaScript
+        if type_name == "bool" {
+            default_val = default_val.to_lower();
+        } else if type_name == "string" {
+            if !default_val.starts_with("\"") && !default_val.starts_with("'") {
+                default_val = "'" + default_val + "'";
+            }
+        }
+
+        base_schema += ".default(" + default_val + ")";
+    }
+
+    // Handle cardinality
+    if type_ref.is_list {
+        if type_ref.is_option {
+            return "z.array(" + base_schema + ").nullable()";
+        } else {
+            return "z.array(" + base_schema + ")";
+        }
+    } else if type_ref.is_option {
+        return base_schema + ".nullable()";
+    }
+
+    base_schema
+}

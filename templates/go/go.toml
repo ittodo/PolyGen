@@ -6,7 +6,7 @@ extension = ".go"
 
 # Static files to copy to the output directory
 [static_files]
-# No static files needed
+"polygen_support.go" = "static/go/polygen_support.go"
 
 # Template configuration
 [templates]
@@ -14,4 +14,4 @@ extension = ".go"
 main = "go_file.rhai"
 
 # Extra templates to run after the main template
-extra = []
+extra = ["go_container_file.rhai"]

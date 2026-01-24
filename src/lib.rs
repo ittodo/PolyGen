@@ -55,6 +55,7 @@ pub mod rhai_generator;
 pub mod symbol_table;
 pub mod type_registry;
 pub mod validation;
+pub mod visualize;
 
 // Re-exports for convenience
 pub use crate::ast_model::AstRoot;
@@ -136,6 +137,21 @@ pub enum Commands {
         #[arg(short = 'd', long)]
         database: Option<String>,
     },
+
+    /// Visualize schema structure with references
+    Visualize {
+        /// Path to the schema file
+        #[arg(short, long)]
+        schema_path: PathBuf,
+
+        /// Output format: json (for GUI) or mermaid (for documentation)
+        #[arg(short, long, default_value = "json")]
+        format: String,
+
+        /// Output file path (optional, prints to stdout if not specified)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 /// Run the code generation pipeline with the given CLI arguments
@@ -155,6 +171,12 @@ pub fn run(cli: Cli) -> Result<()> {
             output_dir,
             database,
         }) => run_migrate(baseline, schema_path, output_dir, database),
+
+        Some(Commands::Visualize {
+            schema_path,
+            format,
+            output,
+        }) => run_visualize(schema_path, format, output),
 
         None => {
             // Default behavior: generate if schema_path is provided
@@ -308,6 +330,57 @@ fn run_migrate(
         fs::write(&migration_file, &sql)?;
         println!("\n{} 마이그레이션 SQL 생성: {}", db.to_uppercase(), migration_file.display());
     }
+
+    Ok(())
+}
+
+/// Run the visualize command
+fn run_visualize(
+    schema_path: PathBuf,
+    format: String,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    println!("--- 스키마 시각화 ---");
+    println!("  스키마: {}", schema_path.display());
+    println!("  포맷: {}", format);
+
+    // Parse schema
+    let asts = parse_and_merge_schemas(&schema_path, None)?;
+
+    // Validate
+    let defs: Vec<_> = asts
+        .iter()
+        .flat_map(|ast| ast.definitions.clone())
+        .collect();
+    validation::validate_ast(&defs)?;
+
+    // Build IR
+    let ir = ir_builder::build_ir(&asts);
+
+    // Build visualization
+    let viz = visualize::build_visualization(&ir);
+
+    // Generate output
+    let output_str = match format.to_lowercase().as_str() {
+        "json" => serde_json::to_string_pretty(&viz)?,
+        "mermaid" => visualize::to_mermaid(&viz),
+        _ => anyhow::bail!("지원하지 않는 포맷: {}. 'json' 또는 'mermaid'를 사용하세요.", format),
+    };
+
+    // Write or print output
+    if let Some(output_path) = output {
+        fs::write(&output_path, &output_str)?;
+        println!("\n시각화 출력: {}", output_path.display());
+    } else {
+        println!("\n{}", output_str);
+    }
+
+    // Print stats
+    println!("\n--- 통계 ---");
+    println!("  테이블: {} 개", viz.stats.table_count);
+    println!("  필드: {} 개", viz.stats.field_count);
+    println!("  관계: {} 개", viz.stats.relation_count);
+    println!("  네임스페이스: {} 개", viz.stats.namespace_count);
 
     Ok(())
 }

@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <map>
 #include <deque>
+#include <regex>
 
 namespace polygen {
 
@@ -729,5 +730,249 @@ inline void write_binary_file(const std::string& path, const std::vector<uint8_t
     }
     file.write(reinterpret_cast<const char*>(data.data()), data.size());
 }
+
+// ============================================================================
+// Validation System
+// ============================================================================
+
+/// Severity level for validation errors.
+enum class ValidationSeverity {
+    Error,   // Critical error that should prevent data usage
+    Warning  // Warning that may indicate potential issues
+};
+
+/// Represents a single validation error found during data validation.
+struct ValidationError {
+    std::string table_name;
+    std::string field_name;
+    std::string row_key;
+    std::string message;
+    std::string constraint_type;
+    ValidationSeverity severity;
+    std::string actual_value;
+
+    ValidationError(
+        const std::string& table_name,
+        const std::string& field_name,
+        const std::string& row_key,
+        const std::string& message,
+        const std::string& constraint_type,
+        ValidationSeverity severity = ValidationSeverity::Error,
+        const std::string& actual_value = "")
+        : table_name(table_name)
+        , field_name(field_name)
+        , row_key(row_key)
+        , message(message)
+        , constraint_type(constraint_type)
+        , severity(severity)
+        , actual_value(actual_value) {}
+
+    std::string to_string() const {
+        std::string location = row_key.empty()
+            ? table_name + "." + field_name
+            : table_name + "[" + row_key + "]." + field_name;
+        std::string sev = severity == ValidationSeverity::Error ? "Error" : "Warning";
+        return "[" + sev + "] " + location + ": " + message;
+    }
+};
+
+/// Aggregates validation errors from data validation operations.
+class ValidationResult {
+public:
+    /// Returns all validation errors.
+    const std::vector<ValidationError>& errors() const { return errors_; }
+
+    /// Returns whether the validation passed (no errors).
+    bool is_valid() const { return errors_.empty(); }
+
+    /// Returns the total number of errors.
+    size_t error_count() const { return errors_.size(); }
+
+    /// Adds a validation error to the result.
+    void add_error(const ValidationError& error) {
+        errors_.push_back(error);
+    }
+
+    /// Adds a validation error to the result.
+    void add_error(
+        const std::string& table_name,
+        const std::string& field_name,
+        const std::string& row_key,
+        const std::string& message,
+        const std::string& constraint_type,
+        ValidationSeverity severity = ValidationSeverity::Error,
+        const std::string& actual_value = "") {
+        errors_.emplace_back(table_name, field_name, row_key, message, constraint_type, severity, actual_value);
+    }
+
+    /// Merges another validation result into this one.
+    void merge(const ValidationResult& other) {
+        errors_.insert(errors_.end(), other.errors_.begin(), other.errors_.end());
+    }
+
+    /// Clears all errors.
+    void clear() { errors_.clear(); }
+
+    std::string to_string() const {
+        if (is_valid()) {
+            return "Validation passed: no errors.";
+        }
+        std::string result = "Validation failed with " + std::to_string(errors_.size()) + " error(s):\n";
+        for (const auto& error : errors_) {
+            result += error.to_string() + "\n";
+        }
+        return result;
+    }
+
+private:
+    std::vector<ValidationError> errors_;
+};
+
+/// Exception thrown when validation fails.
+class ValidationException : public std::exception {
+public:
+    explicit ValidationException(const ValidationResult& result)
+        : result_(result)
+        , message_("Data validation failed with " + std::to_string(result.error_count()) + " error(s).") {}
+
+    ValidationException(const ValidationResult& result, const std::string& message)
+        : result_(result), message_(message) {}
+
+    const char* what() const noexcept override { return message_.c_str(); }
+
+    const ValidationResult& result() const { return result_; }
+
+private:
+    ValidationResult result_;
+    std::string message_;
+};
+
+/// Helper functions for validation.
+namespace validation {
+
+/// Validates that a string does not exceed the maximum length.
+inline bool validate_max_length(const std::string& value, size_t max_length) {
+    return value.length() <= max_length;
+}
+
+inline bool validate_max_length(const std::optional<std::string>& value, size_t max_length) {
+    if (!value.has_value()) return true;
+    return value->length() <= max_length;
+}
+
+/// Validates that a value falls within the specified range (inclusive).
+template<typename T>
+bool validate_range(T value, T min, T max) {
+    return value >= min && value <= max;
+}
+
+template<typename T>
+bool validate_range(const std::optional<T>& value, T min, T max) {
+    if (!value.has_value()) return true;
+    return *value >= min && *value <= max;
+}
+
+/// Validates that a string matches the specified regex pattern.
+inline bool validate_regex(const std::string& value, const std::string& pattern) {
+    try {
+        std::regex re(pattern);
+        return std::regex_match(value, re);
+    } catch (...) {
+        return false;
+    }
+}
+
+inline bool validate_regex(const std::optional<std::string>& value, const std::string& pattern) {
+    if (!value.has_value()) return true;
+    return validate_regex(*value, pattern);
+}
+
+/// Creates a MaxLength validation error.
+inline ValidationError max_length_error(
+    const std::string& table_name,
+    const std::string& field_name,
+    const std::string& row_key,
+    size_t max_length,
+    size_t actual_length) {
+    return ValidationError(
+        table_name, field_name, row_key,
+        "Value length (" + std::to_string(actual_length) + ") exceeds maximum (" + std::to_string(max_length) + ")",
+        "MaxLength", ValidationSeverity::Error, std::to_string(actual_length));
+}
+
+/// Creates a Range validation error.
+template<typename T>
+ValidationError range_error(
+    const std::string& table_name,
+    const std::string& field_name,
+    const std::string& row_key,
+    T min, T max, T actual_value) {
+    std::ostringstream oss;
+    oss << "Value (" << actual_value << ") is outside valid range [" << min << ", " << max << "]";
+    std::ostringstream actual_oss;
+    actual_oss << actual_value;
+    return ValidationError(
+        table_name, field_name, row_key,
+        oss.str(), "Range", ValidationSeverity::Error, actual_oss.str());
+}
+
+/// Creates a Regex validation error.
+inline ValidationError regex_error(
+    const std::string& table_name,
+    const std::string& field_name,
+    const std::string& row_key,
+    const std::string& pattern,
+    const std::string& actual_value) {
+    return ValidationError(
+        table_name, field_name, row_key,
+        "Value does not match pattern: " + pattern,
+        "Regex", ValidationSeverity::Error, actual_value);
+}
+
+/// Creates a ForeignKey validation error.
+template<typename T>
+ValidationError foreign_key_error(
+    const std::string& table_name,
+    const std::string& field_name,
+    const std::string& row_key,
+    const std::string& target_table,
+    T foreign_key_value) {
+    std::ostringstream oss;
+    oss << "Referenced record not found in " << target_table << " (key: " << foreign_key_value << ")";
+    std::ostringstream fk_oss;
+    fk_oss << foreign_key_value;
+    return ValidationError(
+        table_name, field_name, row_key,
+        oss.str(), "ForeignKey", ValidationSeverity::Error, fk_oss.str());
+}
+
+/// Creates a Required field validation error.
+inline ValidationError required_error(
+    const std::string& table_name,
+    const std::string& field_name,
+    const std::string& row_key) {
+    return ValidationError(
+        table_name, field_name, row_key,
+        "Required field has null/empty value",
+        "Required", ValidationSeverity::Error, "");
+}
+
+/// Creates a Unique constraint validation error.
+template<typename T>
+ValidationError unique_error(
+    const std::string& table_name,
+    const std::string& field_name,
+    const std::string& row_key,
+    T duplicate_value) {
+    std::ostringstream oss;
+    oss << "Duplicate value found: " << duplicate_value;
+    std::ostringstream val_oss;
+    val_oss << duplicate_value;
+    return ValidationError(
+        table_name, field_name, row_key,
+        oss.str(), "Unique", ValidationSeverity::Error, val_oss.str());
+}
+
+} // namespace validation
 
 } // namespace polygen

@@ -173,6 +173,82 @@ fn generate_table_wrapper(s, namespace_fqn) {
             result += "        " + idx.name + ".clear();\n";
         }
     }
+    result += "    }\n\n";
+
+    // Validate method
+    result += "    /// Validates all rows against field constraints.\n";
+    result += "    polygen::ValidationResult validate() const {\n";
+    result += "        polygen::ValidationResult result;\n";
+    result += "        for (const auto& row : data) {\n";
+
+    // Get primary key expression for error messages
+    let pk_expr = "\"\"";
+    if s.indexes != () {
+        for idx in s.indexes {
+            if idx.name == "by_id" || idx.field_name == "id" {
+                pk_expr = "std::to_string(row.id)";
+                break;
+            }
+        }
+    }
+
+    // Validate each field with constraints
+    for item in s.items {
+        if item.is_field() {
+            let field = item.as_field();
+            let field_name = field.name;
+            let is_option = field.field_type.is_option;
+            let type_name = field.field_type.type_name;
+
+            // MaxLength validation
+            if field.max_length != () {
+                let max_len = field.max_length;
+                if is_option {
+                    result += "            if (row." + field_name + ".has_value() && row." + field_name + "->length() > " + max_len + ") {\n";
+                    result += "                result.add_error(polygen::validation::max_length_error(\n";
+                    result += "                    \"" + s.name + "\", \"" + field_name + "\", " + pk_expr + ", " + max_len + ", row." + field_name + "->length()));\n";
+                    result += "            }\n";
+                } else if type_name == "string" {
+                    result += "            if (row." + field_name + ".length() > " + max_len + ") {\n";
+                    result += "                result.add_error(polygen::validation::max_length_error(\n";
+                    result += "                    \"" + s.name + "\", \"" + field_name + "\", " + pk_expr + ", " + max_len + ", row." + field_name + ".length()));\n";
+                    result += "            }\n";
+                }
+            }
+
+            // Range validation
+            if field.range != () {
+                let min_val = field.range.min;
+                let max_val = field.range.max;
+                result += "            if (!polygen::validation::validate_range(row." + field_name + ", " + min_val + ", " + max_val + ")) {\n";
+                result += "                result.add_error(polygen::validation::range_error(\n";
+                result += "                    \"" + s.name + "\", \"" + field_name + "\", " + pk_expr + ", " + min_val + ", " + max_val + ", row." + field_name + "));\n";
+                result += "            }\n";
+            }
+
+            // Regex validation
+            if field.regex_pattern != () {
+                let pattern = field.regex_pattern;
+                // Escape backslashes for C++ string
+                let escaped_pattern = pattern;
+                escaped_pattern.replace("\\", "\\\\");
+                if is_option {
+                    result += "            if (row." + field_name + ".has_value() && !polygen::validation::validate_regex(*row." + field_name + ", R\"(" + pattern + ")\")) {\n";
+                    result += "                result.add_error(polygen::validation::regex_error(\n";
+                    result += "                    \"" + s.name + "\", \"" + field_name + "\", " + pk_expr + ", R\"(" + pattern + ")\", *row." + field_name + "));\n";
+                    result += "            }\n";
+                } else if type_name == "string" {
+                    result += "            if (!polygen::validation::validate_regex(row." + field_name + ", R\"(" + pattern + ")\")) {\n";
+                    result += "                result.add_error(polygen::validation::regex_error(\n";
+                    result += "                    \"" + s.name + "\", \"" + field_name + "\", " + pk_expr + ", R\"(" + pattern + ")\", row." + field_name + "));\n";
+                    result += "            }\n";
+                }
+            }
+        }
+    }
+
+    result += "        }\n";
+    result += "        return result;\n";
     result += "    }\n";
 
     result += "};\n\n";
@@ -225,6 +301,27 @@ fn generate_container(base_name, tables) {
         let member_name = cpp_types::to_snake_case(pluralize(s.name));
         result += "        " + member_name + ".clear();\n";
     }
+    result += "    }\n\n";
+
+    // ValidateAll method
+    result += "    /// Validates all tables and returns combined results.\n";
+    result += "    polygen::ValidationResult validate_all() const {\n";
+    result += "        polygen::ValidationResult result;\n";
+    for entry in tables {
+        let s = entry.struct_def;
+        let member_name = cpp_types::to_snake_case(pluralize(s.name));
+        result += "        result.merge(" + member_name + ".validate());\n";
+    }
+    result += "        return result;\n";
+    result += "    }\n\n";
+
+    // ValidateOrThrow method
+    result += "    /// Validates all tables and throws if any errors found.\n";
+    result += "    void validate_or_throw() const {\n";
+    result += "        auto result = validate_all();\n";
+    result += "        if (!result.is_valid()) {\n";
+    result += "            throw polygen::ValidationException(result);\n";
+    result += "        }\n";
     result += "    }\n";
 
     result += "};\n\n";

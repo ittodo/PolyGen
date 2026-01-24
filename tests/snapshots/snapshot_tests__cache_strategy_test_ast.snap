@@ -1,0 +1,543 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\cache_strategy_test.poly",
+        file_imports: [],
+        definitions: [
+            Namespace(
+                Namespace {
+                    metadata: [
+                        DocComment(
+                            "Test schema for cache strategy validation",
+                        ),
+                        DocComment(
+                            "Tests different cache strategies with FK relationships",
+                        ),
+                        Annotation(
+                            Annotation {
+                                name: Some(
+                                    "datasource",
+                                ),
+                                args: [
+                                    Positional(
+                                        String(
+                                            "sqlite",
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                    path: [
+                        "game",
+                        "data",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "Full load - validate after LoadAll()",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "full_load",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "Item",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    MaxLength(
+                                                        50,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "price",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    Range(
+                                                        Integer(
+                                                            0,
+                                                        ),
+                                                        Integer(
+                                                            999999,
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "Full load - validate after LoadAll()",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "full_load",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "Player",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    MaxLength(
+                                                        30,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "level",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U16,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    Range(
+                                                        Integer(
+                                                            1,
+                                                        ),
+                                                        Integer(
+                                                            100,
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "On demand - validate after loading with dependencies",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "on_demand",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "Inventory",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "player_id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    ForeignKey(
+                                                        [
+                                                            "Player",
+                                                            "id",
+                                                        ],
+                                                        None,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "item_id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    ForeignKey(
+                                                        [
+                                                            "Item",
+                                                            "id",
+                                                        ],
+                                                        None,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "quantity",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    Range(
+                                                        Integer(
+                                                            1,
+                                                        ),
+                                                        Integer(
+                                                            9999,
+                                                        ),
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "Write through - no validation",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "write_through",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "AuditLog",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "message",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "timestamp",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U64,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [
+                                    DocComment(
+                                        "Write back - no validation",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "cache",
+                                            ),
+                                            args: [
+                                                Positional(
+                                                    String(
+                                                        "write_back",
+                                                    ),
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "SessionCache",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "session_id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "player_id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    ForeignKey(
+                                                        [
+                                                            "Player",
+                                                            "id",
+                                                        ],
+                                                        None,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "data",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+        renames: [],
+    },
+]

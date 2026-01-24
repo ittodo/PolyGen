@@ -521,3 +521,333 @@ impl From<std::io::Error> for LoadError {
 }
 
 pub type LoadResult<T> = Result<T, LoadError>;
+
+// ============================================================================
+// Validation System
+// ============================================================================
+
+/// Severity level for validation errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValidationSeverity {
+    /// Critical error that should prevent data usage.
+    Error,
+    /// Warning that may indicate potential issues.
+    Warning,
+}
+
+impl std::fmt::Display for ValidationSeverity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationSeverity::Error => write!(f, "Error"),
+            ValidationSeverity::Warning => write!(f, "Warning"),
+        }
+    }
+}
+
+/// Represents a single validation error found during data validation.
+#[derive(Debug, Clone)]
+pub struct ValidationError {
+    /// The name of the table where the error occurred.
+    pub table_name: String,
+    /// The name of the field that failed validation.
+    pub field_name: String,
+    /// The row key (primary key value) of the record with the error.
+    pub row_key: String,
+    /// A human-readable description of the validation error.
+    pub message: String,
+    /// The type of constraint that was violated.
+    pub constraint_type: String,
+    /// The severity level of this error.
+    pub severity: ValidationSeverity,
+    /// The actual value that failed validation (if available).
+    pub actual_value: String,
+}
+
+impl ValidationError {
+    /// Creates a new validation error.
+    pub fn new(
+        table_name: impl Into<String>,
+        field_name: impl Into<String>,
+        row_key: impl Into<String>,
+        message: impl Into<String>,
+        constraint_type: impl Into<String>,
+        severity: ValidationSeverity,
+        actual_value: impl Into<String>,
+    ) -> Self {
+        Self {
+            table_name: table_name.into(),
+            field_name: field_name.into(),
+            row_key: row_key.into(),
+            message: message.into(),
+            constraint_type: constraint_type.into(),
+            severity,
+            actual_value: actual_value.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let location = if self.row_key.is_empty() {
+            format!("{}.{}", self.table_name, self.field_name)
+        } else {
+            format!("{}[{}].{}", self.table_name, self.row_key, self.field_name)
+        };
+        write!(f, "[{}] {}: {}", self.severity, location, self.message)
+    }
+}
+
+/// Aggregates validation errors from data validation operations.
+#[derive(Debug, Clone, Default)]
+pub struct ValidationResult {
+    errors: Vec<ValidationError>,
+}
+
+impl ValidationResult {
+    /// Creates a new empty validation result.
+    pub fn new() -> Self {
+        Self { errors: Vec::new() }
+    }
+
+    /// Returns all validation errors.
+    pub fn errors(&self) -> &[ValidationError] {
+        &self.errors
+    }
+
+    /// Returns whether the validation passed (no errors).
+    pub fn is_valid(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    /// Returns the total number of errors.
+    pub fn error_count(&self) -> usize {
+        self.errors.len()
+    }
+
+    /// Adds a validation error to the result.
+    pub fn add_error(&mut self, error: ValidationError) {
+        self.errors.push(error);
+    }
+
+    /// Merges another validation result into this one.
+    pub fn merge(&mut self, other: ValidationResult) {
+        self.errors.extend(other.errors);
+    }
+
+    /// Clears all errors.
+    pub fn clear(&mut self) {
+        self.errors.clear();
+    }
+
+    /// Gets errors filtered by severity.
+    pub fn errors_by_severity(&self, severity: ValidationSeverity) -> impl Iterator<Item = &ValidationError> {
+        self.errors.iter().filter(move |e| e.severity == severity)
+    }
+
+    /// Gets errors filtered by table name.
+    pub fn errors_for_table<'a>(&'a self, table_name: &'a str) -> impl Iterator<Item = &ValidationError> + 'a {
+        self.errors.iter().filter(move |e| e.table_name == table_name)
+    }
+}
+
+impl std::fmt::Display for ValidationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_valid() {
+            write!(f, "Validation passed: no errors.")
+        } else {
+            writeln!(f, "Validation failed with {} error(s):", self.errors.len())?;
+            for error in &self.errors {
+                writeln!(f, "  {}", error)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Error type for validation failures.
+#[derive(Debug)]
+pub struct ValidationException {
+    pub result: ValidationResult,
+    pub message: String,
+}
+
+impl ValidationException {
+    /// Creates a new validation exception.
+    pub fn new(result: ValidationResult) -> Self {
+        let message = format!("Data validation failed with {} error(s).", result.error_count());
+        Self { result, message }
+    }
+
+    /// Creates a new validation exception with a custom message.
+    pub fn with_message(result: ValidationResult, message: impl Into<String>) -> Self {
+        Self { result, message: message.into() }
+    }
+}
+
+impl std::fmt::Display for ValidationException {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}\n{}", self.message, self.result)
+    }
+}
+
+impl std::error::Error for ValidationException {}
+
+/// Helper functions for validation.
+pub mod validation {
+    use super::*;
+    use regex::Regex;
+
+    /// Validates that a string does not exceed the maximum length.
+    pub fn validate_max_length(value: &str, max_length: usize) -> bool {
+        value.len() <= max_length
+    }
+
+    /// Validates that an optional string does not exceed the maximum length.
+    pub fn validate_max_length_opt(value: Option<&str>, max_length: usize) -> bool {
+        match value {
+            Some(v) => v.len() <= max_length,
+            None => true,
+        }
+    }
+
+    /// Validates that a value falls within the specified range (inclusive).
+    pub fn validate_range<T: PartialOrd>(value: T, min: T, max: T) -> bool {
+        value >= min && value <= max
+    }
+
+    /// Validates that an optional value falls within the specified range.
+    pub fn validate_range_opt<T: PartialOrd>(value: Option<T>, min: T, max: T) -> bool {
+        match value {
+            Some(v) => v >= min && v <= max,
+            None => true,
+        }
+    }
+
+    /// Validates that a string matches the specified regex pattern.
+    pub fn validate_regex(value: &str, pattern: &str) -> bool {
+        match Regex::new(pattern) {
+            Ok(re) => re.is_match(value),
+            Err(_) => false,
+        }
+    }
+
+    /// Validates that an optional string matches the specified regex pattern.
+    pub fn validate_regex_opt(value: Option<&str>, pattern: &str) -> bool {
+        match value {
+            Some(v) => validate_regex(v, pattern),
+            None => true,
+        }
+    }
+
+    /// Creates a MaxLength validation error.
+    pub fn max_length_error(
+        table_name: &str,
+        field_name: &str,
+        row_key: &str,
+        max_length: usize,
+        actual_length: usize,
+    ) -> ValidationError {
+        ValidationError::new(
+            table_name,
+            field_name,
+            row_key,
+            format!("Value length ({}) exceeds maximum ({})", actual_length, max_length),
+            "MaxLength",
+            ValidationSeverity::Error,
+            actual_length.to_string(),
+        )
+    }
+
+    /// Creates a Range validation error.
+    pub fn range_error<T: std::fmt::Display>(
+        table_name: &str,
+        field_name: &str,
+        row_key: &str,
+        min: T,
+        max: T,
+        actual_value: T,
+    ) -> ValidationError {
+        ValidationError::new(
+            table_name,
+            field_name,
+            row_key,
+            format!("Value ({}) is outside valid range [{}, {}]", actual_value, min, max),
+            "Range",
+            ValidationSeverity::Error,
+            actual_value.to_string(),
+        )
+    }
+
+    /// Creates a Regex validation error.
+    pub fn regex_error(
+        table_name: &str,
+        field_name: &str,
+        row_key: &str,
+        pattern: &str,
+        actual_value: &str,
+    ) -> ValidationError {
+        ValidationError::new(
+            table_name,
+            field_name,
+            row_key,
+            format!("Value does not match pattern: {}", pattern),
+            "Regex",
+            ValidationSeverity::Error,
+            actual_value,
+        )
+    }
+
+    /// Creates a ForeignKey validation error.
+    pub fn foreign_key_error<T: std::fmt::Display>(
+        table_name: &str,
+        field_name: &str,
+        row_key: &str,
+        target_table: &str,
+        foreign_key_value: T,
+    ) -> ValidationError {
+        ValidationError::new(
+            table_name,
+            field_name,
+            row_key,
+            format!("Referenced record not found in {} (key: {})", target_table, foreign_key_value),
+            "ForeignKey",
+            ValidationSeverity::Error,
+            foreign_key_value.to_string(),
+        )
+    }
+
+    /// Creates a Required field validation error.
+    pub fn required_error(
+        table_name: &str,
+        field_name: &str,
+        row_key: &str,
+    ) -> ValidationError {
+        ValidationError::new(
+            table_name,
+            field_name,
+            row_key,
+            "Required field has null/empty value",
+            "Required",
+            ValidationSeverity::Error,
+            "",
+        )
+    }
+
+    /// Creates a Unique constraint validation error.
+    pub fn unique_error<T: std::fmt::Display>(
+        table_name: &str,
+        field_name: &str,
+        row_key: &str,
+        duplicate_value: T,
+    ) -> ValidationError {
+        ValidationError::new(
+            table_name,
+            field_name,
+            row_key,
+            format!("Duplicate value found: {}", duplicate_value),
+            "Unique",
+            ValidationSeverity::Error,
+            duplicate_value.to_string(),
+        )
+    }
+}

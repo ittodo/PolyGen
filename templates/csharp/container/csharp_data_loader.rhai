@@ -201,6 +201,32 @@ ${
 
     body += "    }\n\n";
 
+    // Generate LoadAll with validation option
+    body += "    /// <summary>\n";
+    body += "    /// Loads all tables using patterns from @load annotations and optionally validates.\n";
+    body += "    /// </summary>\n";
+    body += "    /// <param name=\"container\">The container to load data into.</param>\n";
+    body += "    /// <param name=\"validate\">If true, validates data after loading.</param>\n";
+    body += "    /// <param name=\"separator\">CSV field separator character.</param>\n";
+    body += "    /// <param name=\"gapMode\">How to handle gaps in CSV data.</param>\n";
+    body += "    /// <returns>A ValidationResult containing any validation errors (empty if validate=false).</returns>\n";
+    body += "    public static ValidationResult LoadAll(" + container_name + "DataContainer container, bool validate, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)\n";
+    body += "    {\n";
+    body += "        LoadAll(container, separator, gapMode);\n";
+    body += "        return validate ? container.ValidateAll() : new ValidationResult();\n";
+    body += "    }\n\n";
+
+    // Generate LoadAllAndValidate method
+    body += "    /// <summary>\n";
+    body += "    /// Loads all tables and validates data. Throws exception if validation fails.\n";
+    body += "    /// </summary>\n";
+    body += "    /// <exception cref=\"ValidationException\">Thrown when validation fails after loading.</exception>\n";
+    body += "    public static void LoadAllAndValidate(" + container_name + "DataContainer container, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)\n";
+    body += "    {\n";
+    body += "        LoadAll(container, separator, gapMode);\n";
+    body += "        container.ValidateOrThrow();\n";
+    body += "    }\n\n";
+
     // Generate a convenience method to load all tables from a directory (legacy support)
     body += "    /// <summary>\n";
     body += "    /// Loads all tables from CSV files in a directory.\n";

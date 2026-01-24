@@ -1,0 +1,47 @@
+// Test schema for cache strategy validation
+// Tests different cache strategies with FK relationships
+
+@datasource("sqlite")
+namespace game.data {
+
+    // Full load - validate after LoadAll()
+    @cache("full_load")
+    table Item {
+        id: u32 primary_key;
+        name: string max_length(50);
+        price: u32 range(0, 999999);
+    }
+
+    // Full load - validate after LoadAll()
+    @cache("full_load")
+    table Player {
+        id: u32 primary_key;
+        name: string max_length(30);
+        level: u16 range(1, 100);
+    }
+
+    // On demand - validate after loading with dependencies
+    @cache("on_demand")
+    table Inventory {
+        id: u32 primary_key;
+        player_id: u32 foreign_key(Player.id);
+        item_id: u32 foreign_key(Item.id);
+        quantity: u32 range(1, 9999);
+    }
+
+    // Write through - no validation
+    @cache("write_through")
+    table AuditLog {
+        id: u32 primary_key;
+        message: string;
+        timestamp: u64;
+    }
+
+    // Write back - no validation
+    @cache("write_back")
+    table SessionCache {
+        session_id: string primary_key;
+        player_id: u32 foreign_key(Player.id);
+        data: string;
+    }
+}

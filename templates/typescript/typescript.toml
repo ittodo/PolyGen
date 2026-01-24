@@ -6,7 +6,8 @@ extension = ".ts"
 
 # Static files to copy to the output directory
 [static_files]
-# No static files needed - TypeScript uses npm packages
+# Validation support
+"validation.ts" = "static/typescript/validation.ts"
 
 # Template configuration
 [templates]

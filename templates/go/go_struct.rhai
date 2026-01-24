@@ -52,11 +52,54 @@ ${
         }
     }
 
+    // Check if any field has a default value
+    let has_defaults = false;
+    let default_assignments = "";
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.default_value != () {
+                has_defaults = true;
+                let field_name = to_pascal_case(f.name);
+                let go_type = go_types::map_type_with_ns(f.field_type, ns_fqn);
+                let default_val = f.default_value;
+
+                // Format default value for Go
+                if f.field_type.type_name == "string" {
+                    default_val = "\"" + default_val + "\"";
+                } else if f.field_type.type_name == "bool" {
+                    default_val = if default_val == "true" { "true" } else { "false" };
+                }
+                // For numeric types, Go handles them directly
+
+                if f.field_type.is_option {
+                    // For optional fields, we need to create a pointer
+                    let tmp_var = to_snake_case(f.name) + "Default";
+                    default_assignments += "\t" + tmp_var + " := " + default_val + "\n";
+                    default_assignments += "\tr." + field_name + " = &" + tmp_var + "\n";
+                } else {
+                    default_assignments += "\tr." + field_name + " = " + default_val + "\n";
+                }
+            }
+        }
+    }
+
     let result = "";
     result += doc_comments;
     result += "type " + s.name + " struct {\n";
     result += fields;
     result += "}\n";
+
+    // Generate constructor with defaults if needed
+    if has_defaults {
+        result += "\n// New" + s.name + " creates a new " + s.name + " with default values.\n";
+        result += "func New" + s.name + "() *" + s.name + " {\n";
+        result += "\tr := &" + s.name + "{}\n";
+        result += default_assignments;
+        result += "\treturn r\n";
+        result += "}\n";
+    }
+
     result += embedded;
 
     result
