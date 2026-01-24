@@ -15,10 +15,12 @@ SchemaContext {
                             StructDef {
                                 name: "ImportedA",
                                 fqn: "ImportedA",
+                                is_embed: false,
                                 datasource: None,
                                 cache_strategy: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
+                                pack_separator: None,
                                 header: [],
                                 items: [
                                     Field(
@@ -43,6 +45,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -67,6 +73,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                 ],

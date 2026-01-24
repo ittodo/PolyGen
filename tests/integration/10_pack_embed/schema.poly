@@ -1,0 +1,90 @@
+// Test Case 10: Pack Embed
+// Tests @pack annotation on embed types for serializing multiple fields to a single string
+
+namespace test.pack {
+    /// 2D position with default separator (;)
+    @pack
+    embed Position {
+        x: f32;
+        y: f32;
+    }
+
+    /// 3D position with default separator
+    @pack
+    embed Position3D {
+        x: f32;
+        y: f32;
+        z: f32;
+    }
+
+    /// RGB color with custom separator (,)
+    @pack(separator: ",")
+    embed Color {
+        r: u8;
+        g: u8;
+        b: u8;
+    }
+
+    /// RGBA color with custom separator (|)
+    @pack(separator: "|")
+    embed ColorAlpha {
+        r: u8;
+        g: u8;
+        b: u8;
+        a: u8;
+    }
+
+    /// Size with integer dimensions
+    @pack
+    embed Size {
+        width: u32;
+        height: u32;
+    }
+
+    /// Range with signed integers
+    @pack(separator: "~")
+    embed Range {
+        min: i32;
+        max: i32;
+    }
+
+    /// Normal embed without @pack (for comparison)
+    embed Stats {
+        hp: u32;
+        mp: u32;
+        attack: u32;
+        defense: u32;
+    }
+
+    /// Game object using various packed embeds
+    table GameObject {
+        id: u32 primary_key;
+        name: string max_length(100);
+
+        // Packed embeds - stored as single string in CSV/DB
+        position: Position;      // "100.5;200.3"
+        position3d: Position3D;  // "10;20;30"
+        color: Color;            // "255,128,64"
+        size: Size;              // "800;600"
+
+        // Normal embed - stored as separate fields
+        stats: Stats;
+    }
+
+    /// UI element with position and color
+    table UIElement {
+        id: u32 primary_key;
+        element_type: string;
+        position: Position;
+        color: ColorAlpha;       // "255|255|255|128"
+        size: Size;
+    }
+
+    /// Level boundary definition
+    table LevelBounds {
+        id: u32 primary_key;
+        level_name: string;
+        x_range: Range;          // "-100~100"
+        y_range: Range;          // "0~500"
+    }
+}

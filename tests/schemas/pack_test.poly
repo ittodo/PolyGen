@@ -1,0 +1,32 @@
+// Test schema for @pack annotation on embed types
+
+namespace game {
+    // Default separator: ;
+    @pack
+    embed Position {
+        x: f32;
+        y: f32;
+    }
+
+    // Custom separator: ,
+    @pack(separator: ",")
+    embed Color {
+        r: u8;
+        g: u8;
+        b: u8;
+    }
+
+    // Normal embed without @pack (for comparison)
+    embed Stats {
+        hp: u32;
+        mp: u32;
+    }
+
+    table Player {
+        id: u32 primary_key;
+        name: string max_length(100);
+        position: Position;   // Will be packed as "100;200"
+        color: Color;         // Will be packed as "255,128,64"
+        stats: Stats;         // Not packed, normal embed
+    }
+}

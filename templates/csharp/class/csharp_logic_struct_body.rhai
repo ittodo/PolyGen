@@ -26,7 +26,43 @@ ${
                 body += "    [" + attributes + "]\n";
             }
 
-            body += "    public " + cs_map_type(f.field_type) + " " + f.name + ";\n";
+            // Generate field with optional default value
+            let field_decl = "    public " + cs_map_type(f.field_type) + " " + f.name;
+            if f.default_value != () {
+                // Format default value for C#
+                let default_val = f.default_value;
+                let type_name = f.field_type.type_name;
+
+                // Add type suffix for numeric literals
+                if type_name == "f32" {
+                    // Ensure float has 'f' suffix
+                    if !default_val.ends_with("f") && !default_val.ends_with("F") {
+                        default_val += "f";
+                    }
+                } else if type_name == "f64" {
+                    // Ensure double has 'd' suffix or no suffix
+                    if default_val.ends_with("f") || default_val.ends_with("F") {
+                        default_val = default_val.sub_string(0, default_val.len() - 1);
+                    }
+                } else if type_name == "u64" || type_name == "i64" {
+                    // Long types need 'L' suffix
+                    if !default_val.ends_with("L") && !default_val.ends_with("l") {
+                        default_val += "L";
+                    }
+                } else if type_name == "string" {
+                    // Strings need quotes
+                    if !default_val.starts_with("\"") {
+                        default_val = "\"" + default_val + "\"";
+                    }
+                } else if type_name == "bool" {
+                    // Ensure boolean is lowercase
+                    default_val = default_val.to_lower();
+                }
+
+                field_decl += " = " + default_val;
+            }
+            field_decl += ";\n";
+            body += field_decl;
         }
         else if item.is_embedded_struct()
         {
@@ -136,6 +172,115 @@ ${
         body += "            return Array.Empty<" + rel.source_table_name + ">();\n";
         body += "        }\n";
         body += "    }\n";
+    }
+
+    // Add Pack/Unpack methods for embeds with @pack annotation
+    if s.is_embed && s.pack_separator != () {
+        let sep = s.pack_separator;
+        let fields = [];
+
+        // Collect field info
+        for item in s.items {
+            if item.is_field() {
+                let f = item.as_field();
+                fields.push(f);
+            }
+        }
+
+        if fields.len() > 0 {
+            // Pack method - serialize fields to string
+            body += "\n    /// <summary>\n";
+            body += "    /// Packs all fields into a single string using '" + sep + "' as separator.\n";
+            body += "    /// </summary>\n";
+            body += "    public string Pack()\n";
+            body += "    {\n";
+            body += "        return ";
+            for i in 0..fields.len() {
+                let f = fields[i];
+                if i > 0 {
+                    body += " + \"" + sep + "\" + ";
+                }
+                body += f.name + ".ToString()";
+            }
+            body += ";\n";
+            body += "    }\n";
+
+            // Unpack method - deserialize from string
+            body += "\n    /// <summary>\n";
+            body += "    /// Unpacks a string into fields using '" + sep + "' as separator.\n";
+            body += "    /// </summary>\n";
+            body += "    /// <param name=\"value\">The packed string value.</param>\n";
+            body += "    /// <returns>A new instance with parsed values.</returns>\n";
+            body += "    /// <exception cref=\"FormatException\">Thrown when parsing fails.</exception>\n";
+            body += "    public static " + s.name + " Unpack(string value)\n";
+            body += "    {\n";
+            body += "        if (string.IsNullOrEmpty(value))\n";
+            body += "            throw new FormatException(\"Cannot unpack null or empty string to " + s.name + "\");\n";
+            body += "\n";
+            body += "        var parts = value.Split('" + sep + "');\n";
+            body += "        if (parts.Length != " + fields.len() + ")\n";
+            body += "            throw new FormatException($\"Expected " + fields.len() + " parts but got {parts.Length} when unpacking " + s.name + "\");\n";
+            body += "\n";
+            body += "        try\n";
+            body += "        {\n";
+            body += "            return new " + s.name + "\n";
+            body += "            {\n";
+
+            for i in 0..fields.len() {
+                let f = fields[i];
+                let type_name = f.field_type.type_name;
+                let cs_type = cs_map_type(f.field_type);
+                let parse_expr = "";
+
+                // Generate parse expression based on type
+                if type_name == "string" {
+                    parse_expr = "parts[" + i + "]";
+                } else if type_name == "bool" {
+                    parse_expr = "bool.Parse(parts[" + i + "])";
+                } else if type_name == "u8" || type_name == "i8" || type_name == "u16" || type_name == "i16" || type_name == "u32" || type_name == "i32" || type_name == "u64" || type_name == "i64" {
+                    parse_expr = cs_type + ".Parse(parts[" + i + "])";
+                } else if type_name == "f32" {
+                    parse_expr = "float.Parse(parts[" + i + "], System.Globalization.CultureInfo.InvariantCulture)";
+                } else if type_name == "f64" {
+                    parse_expr = "double.Parse(parts[" + i + "], System.Globalization.CultureInfo.InvariantCulture)";
+                } else {
+                    // For other types, try generic Parse
+                    parse_expr = cs_type + ".Parse(parts[" + i + "])";
+                }
+
+                body += "                " + f.name + " = " + parse_expr;
+                if i < fields.len() - 1 {
+                    body += ",";
+                }
+                body += "\n";
+            }
+
+            body += "            };\n";
+            body += "        }\n";
+            body += "        catch (Exception ex)\n";
+            body += "        {\n";
+            body += "            throw new FormatException($\"Failed to unpack '" + s.name + "' from '{value}': {ex.Message}\", ex);\n";
+            body += "        }\n";
+            body += "    }\n";
+
+            // TryUnpack method - safe parsing
+            body += "\n    /// <summary>\n";
+            body += "    /// Tries to unpack a string into fields. Returns false on failure.\n";
+            body += "    /// </summary>\n";
+            body += "    public static bool TryUnpack(string value, out " + s.name + " result)\n";
+            body += "    {\n";
+            body += "        result = new " + s.name + "();\n";
+            body += "        try\n";
+            body += "        {\n";
+            body += "            result = Unpack(value);\n";
+            body += "            return true;\n";
+            body += "        }\n";
+            body += "        catch\n";
+            body += "        {\n";
+            body += "            return false;\n";
+            body += "        }\n";
+            body += "    }\n";
+        }
     }
 
     body

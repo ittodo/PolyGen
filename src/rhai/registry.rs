@@ -38,8 +38,8 @@
 
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
-    ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RelationDef, RenameInfo, RenameKind,
-    SchemaContext, StructDef, StructItem, TypeRef,
+    ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RangeDef, RelationDef, RenameInfo,
+    RenameKind, SchemaContext, StructDef, StructItem, TypeRef,
 };
 use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
@@ -201,6 +201,10 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("is_readonly", |s: &mut StructDef| s.is_readonly);
     engine.register_get("soft_delete_field", |s: &mut StructDef| {
         s.soft_delete_field.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("is_embed", |s: &mut StructDef| s.is_embed);
+    engine.register_get("pack_separator", |s: &mut StructDef| {
+        s.pack_separator.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
     });
 
     // Register IndexDef type and getters
@@ -374,6 +378,39 @@ fn register_types_and_getters(engine: &mut Engine) {
             .map(Dynamic::from)
             .unwrap_or(Dynamic::UNIT)
     });
+    engine.register_get("max_length", |f: &mut FieldDef| {
+        f.max_length.map(|v| Dynamic::from(v as i64)).unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("default_value", |f: &mut FieldDef| {
+        f.default_value
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("range", |f: &mut FieldDef| {
+        f.range
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("regex_pattern", |f: &mut FieldDef| {
+        f.regex_pattern
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    // Convenience methods for checking if constraints are set
+    engine.register_get("has_max_length", |f: &mut FieldDef| f.max_length.is_some());
+    engine.register_get("has_default_value", |f: &mut FieldDef| f.default_value.is_some());
+    engine.register_get("has_range", |f: &mut FieldDef| f.range.is_some());
+    engine.register_get("has_regex_pattern", |f: &mut FieldDef| f.regex_pattern.is_some());
+    engine.register_get("has_foreign_key", |f: &mut FieldDef| f.foreign_key.is_some());
+
+    // Register RangeDef type and getters
+    engine.register_type_with_name::<RangeDef>("RangeDef");
+    engine.register_get("min", |r: &mut RangeDef| r.min.clone());
+    engine.register_get("max", |r: &mut RangeDef| r.max.clone());
+    engine.register_get("literal_type", |r: &mut RangeDef| r.literal_type.clone());
 
     // TypeRef: expose type info to templates
     engine.register_type_with_name::<TypeRef>("TypeRef");

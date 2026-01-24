@@ -17,6 +17,7 @@ SchemaContext {
                             StructDef {
                                 name: "ItemTable",
                                 fqn: "game.data.ItemTable",
+                                is_embed: false,
                                 datasource: Some(
                                     "sqlite",
                                 ),
@@ -25,6 +26,7 @@ SchemaContext {
                                 ),
                                 is_readonly: true,
                                 soft_delete_field: None,
+                                pack_separator: None,
                                 header: [
                                     Comment(
                                         "Static data table - full load and read-only",
@@ -71,6 +73,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -95,6 +101,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -119,6 +129,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -158,6 +172,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                 ],
@@ -194,6 +212,7 @@ SchemaContext {
                             StructDef {
                                 name: "PlayerData",
                                 fqn: "game.data.PlayerData",
+                                is_embed: false,
                                 datasource: Some(
                                     "sqlite",
                                 ),
@@ -204,6 +223,7 @@ SchemaContext {
                                 soft_delete_field: Some(
                                     "deleted_at",
                                 ),
+                                pack_separator: None,
                                 header: [
                                     Comment(
                                         "User data table - on-demand loading with soft delete",
@@ -252,6 +272,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -276,6 +300,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -300,6 +328,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -339,6 +371,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Comment(
@@ -378,6 +414,7 @@ SchemaContext {
                             StructDef {
                                 name: "SessionData",
                                 fqn: "game.data.SessionData",
+                                is_embed: false,
                                 datasource: Some(
                                     "sqlite",
                                 ),
@@ -386,6 +423,7 @@ SchemaContext {
                                 ),
                                 is_readonly: false,
                                 soft_delete_field: None,
+                                pack_separator: None,
                                 header: [
                                     Comment(
                                         "Session data - write-through caching",
@@ -425,6 +463,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -449,6 +491,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -473,6 +519,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                 ],

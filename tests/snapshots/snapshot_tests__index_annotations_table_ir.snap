@@ -15,10 +15,12 @@ SchemaContext {
                             StructDef {
                                 name: "Player",
                                 fqn: "Player",
+                                is_embed: false,
                                 datasource: None,
                                 cache_strategy: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
+                                pack_separator: None,
                                 header: [
                                     Comment(
                                         "Test schema for @index annotation",
@@ -93,6 +95,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -117,6 +123,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -141,6 +151,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -165,6 +179,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -189,6 +207,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -213,6 +235,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                 ],

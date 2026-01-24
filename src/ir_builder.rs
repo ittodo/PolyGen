@@ -34,6 +34,31 @@ fn is_readonly(metadata: &[Metadata]) -> bool {
     false
 }
 
+/// Extracts the @pack separator from metadata.
+/// Returns Some(separator) if @pack is present:
+/// - `@pack` → Some(";") (default separator)
+/// - `@pack(separator: ",")` → Some(",")
+/// Returns None if @pack is not present.
+fn extract_pack_separator(metadata: &[Metadata]) -> Option<String> {
+    for meta in metadata {
+        if let Metadata::Annotation(ann) = meta {
+            if ann.name.as_deref() == Some("pack") {
+                // Check for separator argument
+                for arg in &ann.args {
+                    if let ast_model::AnnotationArg::Named(param) = arg {
+                        if param.key == "separator" {
+                            return Some(param.value.to_string().trim_matches('"').to_string());
+                        }
+                    }
+                }
+                // Default separator is ";"
+                return Some(";".to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Helper to extract a string value from an annotation.
 fn extract_annotation_string(metadata: &[Metadata], annotation_name: &str) -> Option<String> {
     for meta in metadata {
@@ -83,6 +108,10 @@ struct ConstraintInfo {
     is_unique: bool,
     is_index: bool,
     foreign_key: Option<ForeignKeyDef>,
+    max_length: Option<u32>,
+    default_value: Option<String>,
+    range: Option<ir_model::RangeDef>,
+    regex_pattern: Option<String>,
 }
 
 /// Extracts structured constraint information from AST constraints.
@@ -109,11 +138,40 @@ fn extract_constraint_info(constraints: &[ast_model::Constraint]) -> ConstraintI
                 }
             }
             ast_model::Constraint::Index => info.is_index = true,
-            _ => {}
+            ast_model::Constraint::MaxLength(len) => info.max_length = Some(*len),
+            ast_model::Constraint::Default(lit) => {
+                info.default_value = Some(literal_to_string(lit));
+            }
+            ast_model::Constraint::Range(min, max) => {
+                let literal_type = match min {
+                    ast_model::Literal::Integer(_) => "integer",
+                    ast_model::Literal::Float(_) => "float",
+                    _ => "integer", // Default to integer for other types
+                };
+                info.range = Some(ir_model::RangeDef {
+                    min: literal_to_string(min),
+                    max: literal_to_string(max),
+                    literal_type: literal_type.to_string(),
+                });
+            }
+            ast_model::Constraint::Regex(pattern) => {
+                info.regex_pattern = Some(pattern.clone());
+            }
         }
     }
 
     info
+}
+
+/// Converts an AST Literal to a string representation.
+fn literal_to_string(lit: &ast_model::Literal) -> String {
+    match lit {
+        ast_model::Literal::String(s) => format!("\"{}\"", s),
+        ast_model::Literal::Integer(i) => i.to_string(),
+        ast_model::Literal::Float(f) => f.to_string(),
+        ast_model::Literal::Boolean(b) => b.to_string(),
+        ast_model::Literal::Identifier(id) => id.clone(),
+    }
 }
 
 /// Builds the template-friendly Intermediate Representation (IR) from the AST definitions.
@@ -568,10 +626,12 @@ fn convert_table_to_struct(
     StructDef {
         name,
         fqn,
+        is_embed: false,
         datasource: table_datasource,
         cache_strategy,
         is_readonly: readonly,
         soft_delete_field,
+        pack_separator: None, // Tables don't support @pack
         items,
         header: header_items,
         indexes,
@@ -719,6 +779,10 @@ fn convert_field_to_ir(
                     is_unique: constraint_info.is_unique,
                     is_index: constraint_info.is_index,
                     foreign_key: constraint_info.foreign_key,
+                    max_length: constraint_info.max_length,
+                    default_value: constraint_info.default_value,
+                    range: constraint_info.range,
+                    regex_pattern: constraint_info.regex_pattern,
                 },
                 Vec::new(),
                 inline_enums,
@@ -751,6 +815,10 @@ fn convert_field_to_ir(
                 is_unique: false,
                 is_index: false,
                 foreign_key: None,
+                max_length: None,
+                default_value: None,
+                range: None,
+                regex_pattern: None,
             };
             (field_def, nested_items, Vec::new())
         }
@@ -779,6 +847,10 @@ fn convert_field_to_ir(
                 is_unique: false,
                 is_index: false,
                 foreign_key: None,
+                max_length: None,
+                default_value: None,
+                range: None,
+                regex_pattern: None,
             };
             (field_def, Vec::new(), vec![enum_def])
         }
@@ -847,7 +919,7 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>, 
 }
 
 fn convert_embed_to_struct(embed: &ast_model::Embed, owner_fqn: &str) -> StructDef {
-    convert_table_to_struct(
+    let mut s = convert_table_to_struct(
         &ast_model::Table {
             name: embed.name.clone(),
             metadata: embed.metadata.clone(),
@@ -855,7 +927,11 @@ fn convert_embed_to_struct(embed: &ast_model::Embed, owner_fqn: &str) -> StructD
         },
         owner_fqn,
         None, // Embeds don't inherit datasource
-    )
+    );
+    s.is_embed = true;
+    // Extract @pack annotation for embeds
+    s.pack_separator = extract_pack_separator(&embed.metadata);
+    s
 }
 
 // Build TypeRef from an AST type in the given namespace context

@@ -282,6 +282,50 @@ table Player {
 }
 ```
 
+| 어노테이션 | 적용 대상 | 설명 | 예시 |
+|-----------|----------|------|------|
+| `@load` | table | CSV/JSON 데이터 로드 경로 | `@load(csv: "data.csv")` |
+| `@taggable` | table | 행 태깅 활성화 | `@taggable` |
+| `@link_rows` | table | 다른 테이블과 행 연결 | `@link_rows(Character)` |
+| `@readonly` | table | 읽기 전용 테이블 | `@readonly` |
+| `@cache` | table | 캐시 전략 설정 | `@cache("full_load")` |
+| `@datasource` | namespace/table | 데이터 소스 지정 | `@datasource("sqlite")` |
+| `@soft_delete` | table | 소프트 삭제 필드 지정 | `@soft_delete("deleted_at")` |
+| `@pack` | embed | 필드를 단일 문자열로 직렬화 | `@pack` 또는 `@pack(separator: ",")` |
+
+### @pack 어노테이션
+
+`embed` 타입에 `@pack`을 붙이면 모든 필드를 단일 문자열로 직렬화/역직렬화하는 메서드가 생성됩니다.
+
+```poly
+// 기본 구분자: ;
+@pack
+embed Position {
+    x: f32;
+    y: f32;
+}
+
+// 커스텀 구분자: ,
+@pack(separator: ",")
+embed Color {
+    r: u8;
+    g: u8;
+    b: u8;
+}
+
+table Player {
+    id: u32 primary_key;
+    position: Position;  // CSV에서 "100;200" 형태로 저장
+    color: Color;        // CSV에서 "255,128,64" 형태로 저장
+}
+```
+
+**생성되는 메서드:**
+- C#: `Pack()`, `Unpack(string)`, `TryUnpack(string, out T)`
+- C++: `pack()`, `unpack(string)`, `try_unpack(string, T&)`
+- Rust: `pack()`, `unpack(&str) -> Result<Self, String>`
+- TypeScript: `packX()`, `unpackX()`, `tryUnpackX()`
+
 ---
 
 ## 주요 데이터 구조

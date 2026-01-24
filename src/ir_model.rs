@@ -98,6 +98,8 @@ pub struct StructDef {
     pub name: String,
     /// Fully qualified name (e.g., "game.common.StatBlock").
     pub fqn: String,
+    /// Whether this struct is an embed (reusable field group) rather than a table.
+    pub is_embed: bool,
     /// Data source for this struct. Set via `@datasource("name")` annotation,
     /// or inherited from the parent namespace.
     pub datasource: Option<String>,
@@ -109,6 +111,11 @@ pub struct StructDef {
     /// Field name for soft delete. Set via `@soft_delete("field_name")` annotation.
     /// When set, deletes are logical (update field) rather than physical (DELETE).
     pub soft_delete_field: Option<String>,
+    /// Pack separator for embed types. Set via `@pack` or `@pack(separator: ",")` annotation.
+    /// When set, the embed's fields are serialized to/from a single string using this separator.
+    /// Default separator is ";" if `@pack` is used without arguments.
+    /// Only applicable when `is_embed` is true.
+    pub pack_separator: Option<String>,
     /// Header items (struct-level annotations and comments).
     pub header: Vec<StructItem>,
     /// Body items (fields, nested types, inline comments).
@@ -211,6 +218,25 @@ pub struct FieldDef {
     pub is_index: bool,
     /// Foreign key reference information, if this field references another table.
     pub foreign_key: Option<ForeignKeyDef>,
+    /// Maximum length constraint for string/bytes fields.
+    pub max_length: Option<u32>,
+    /// Default value as a string representation.
+    pub default_value: Option<String>,
+    /// Range constraint (min, max) for numeric fields.
+    pub range: Option<RangeDef>,
+    /// Regex pattern constraint for string fields.
+    pub regex_pattern: Option<String>,
+}
+
+/// Range constraint definition for numeric fields.
+#[derive(Serialize, Debug, Clone)]
+pub struct RangeDef {
+    /// Minimum value as string representation.
+    pub min: String,
+    /// Maximum value as string representation.
+    pub max: String,
+    /// Type of the literal: "integer" or "float".
+    pub literal_type: String,
 }
 
 /// Foreign key reference definition.

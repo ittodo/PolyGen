@@ -1,0 +1,344 @@
+---
+source: tests/snapshot_tests.rs
+expression: all_asts
+---
+[
+    AstRoot {
+        path: "tests/schemas\\pack_test.poly",
+        file_imports: [],
+        definitions: [
+            Namespace(
+                Namespace {
+                    metadata: [
+                        DocComment(
+                            "Test schema for @pack annotation on embed types",
+                        ),
+                    ],
+                    path: [
+                        "game",
+                    ],
+                    imports: [],
+                    definitions: [
+                        Embed(
+                            Embed {
+                                metadata: [
+                                    DocComment(
+                                        "Default separator: ;",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "pack",
+                                            ),
+                                            args: [],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "Position",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "x",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        F32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "y",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        F32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Embed(
+                            Embed {
+                                metadata: [
+                                    DocComment(
+                                        "Custom separator: ,",
+                                    ),
+                                    Annotation(
+                                        Annotation {
+                                            name: Some(
+                                                "pack",
+                                            ),
+                                            args: [
+                                                Named(
+                                                    AnnotationParam {
+                                                        key: "separator",
+                                                        value: String(
+                                                            ",",
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        },
+                                    ),
+                                ],
+                                name: Some(
+                                    "Color",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "r",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U8,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "g",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U8,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "b",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U8,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Embed(
+                            Embed {
+                                metadata: [
+                                    DocComment(
+                                        "Normal embed without @pack (for comparison)",
+                                    ),
+                                ],
+                                name: Some(
+                                    "Stats",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "hp",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "mp",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                ],
+                            },
+                        ),
+                        Table(
+                            Table {
+                                metadata: [],
+                                name: Some(
+                                    "Player",
+                                ),
+                                members: [
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "id",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        U32,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    PrimaryKey,
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "name",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Basic(
+                                                        String,
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [
+                                                    MaxLength(
+                                                        100,
+                                                    ),
+                                                ],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [],
+                                                name: Some(
+                                                    "position",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "Position",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [
+                                                    DocComment(
+                                                        "Will be packed as \"100;200\"",
+                                                    ),
+                                                ],
+                                                name: Some(
+                                                    "color",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "Color",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Field(
+                                        Regular(
+                                            RegularField {
+                                                metadata: [
+                                                    DocComment(
+                                                        "Will be packed as \"255,128,64\"",
+                                                    ),
+                                                ],
+                                                name: Some(
+                                                    "stats",
+                                                ),
+                                                field_type: TypeWithCardinality {
+                                                    base_type: Path(
+                                                        [
+                                                            "Stats",
+                                                        ],
+                                                    ),
+                                                    cardinality: None,
+                                                },
+                                                constraints: [],
+                                                field_number: None,
+                                            },
+                                        ),
+                                    ),
+                                    Comment(
+                                        "Not packed, normal embed",
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                },
+            ),
+        ],
+        renames: [],
+    },
+]

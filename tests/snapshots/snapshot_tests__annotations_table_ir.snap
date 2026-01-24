@@ -15,10 +15,12 @@ SchemaContext {
                             StructDef {
                                 name: "AnnotatedUser",
                                 fqn: "AnnotatedUser",
+                                is_embed: false,
                                 datasource: None,
                                 cache_strategy: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
+                                pack_separator: None,
                                 header: [
                                     Annotation(
                                         AnnotationDef {
@@ -69,6 +71,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                     Field(
@@ -93,6 +99,10 @@ SchemaContext {
                                             is_unique: false,
                                             is_index: false,
                                             foreign_key: None,
+                                            max_length: None,
+                                            default_value: None,
+                                            range: None,
+                                            regex_pattern: None,
                                         },
                                     ),
                                 ],
