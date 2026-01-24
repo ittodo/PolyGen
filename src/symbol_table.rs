@@ -140,6 +140,59 @@ impl SymbolTable {
 
         None
     }
+
+    /// Get all user-defined type names (for autocompletion)
+    /// Returns tuples of (simple_name, fqn, kind)
+    pub fn get_all_type_names(&self) -> Vec<(&str, &str, &DefinitionKind)> {
+        self.definitions
+            .values()
+            .filter(|d| matches!(d.kind, DefinitionKind::Table | DefinitionKind::Enum | DefinitionKind::Embed))
+            .map(|d| (d.name.as_str(), d.fqn.as_str(), &d.kind))
+            .collect()
+    }
+
+    /// Get all definitions (for document symbols)
+    pub fn get_all_definitions(&self) -> Vec<&DefinitionInfo> {
+        self.definitions.values().collect()
+    }
+
+    /// Get definitions by kind
+    pub fn get_definitions_by_kind(&self, kind: DefinitionKind) -> Vec<&DefinitionInfo> {
+        self.definitions
+            .values()
+            .filter(|d| d.kind == kind)
+            .collect()
+    }
+
+    /// Get symbol at position (either definition or resolved reference)
+    pub fn symbol_at(&self, line: usize, col: usize) -> Option<&DefinitionInfo> {
+        // First check if we're on a definition
+        if let Some(def) = self.definition_at(line, col) {
+            return Some(def);
+        }
+
+        // Then check if we're on a reference and resolve it
+        if let Some(reference) = self.reference_at(line, col) {
+            if let Some(fqn) = &reference.resolved_fqn {
+                return self.get_definition(fqn);
+            }
+        }
+
+        None
+    }
+
+    /// Get fields of a table/embed (for field completion)
+    pub fn get_fields_of(&self, parent_fqn: &str) -> Vec<&DefinitionInfo> {
+        let prefix = format!("{}.", parent_fqn);
+        self.definitions
+            .values()
+            .filter(|d| {
+                d.kind == DefinitionKind::Field
+                    && d.fqn.starts_with(&prefix)
+                    && d.fqn[prefix.len()..].chars().all(|c| c != '.')
+            })
+            .collect()
+    }
 }
 
 /// Build a symbol table from source content
@@ -965,5 +1018,76 @@ namespace game.junction {
         let field_ref = table.references.iter().find(|r| r.path == "game.character.Player.id");
         assert!(field_ref.is_some(), "Should have field reference");
         assert_eq!(field_ref.unwrap().resolved_fqn, Some("game.character.Player.id".to_string()));
+    }
+
+    #[test]
+    fn test_get_all_type_names() {
+        let content = r#"
+namespace game {
+    table Player {
+        id: u32;
+    }
+    enum Status {
+        Active = 1;
+    }
+    embed Stats {
+        hp: u32;
+    }
+}
+"#;
+        let table = build_symbol_table(content).unwrap();
+        let types = table.get_all_type_names();
+
+        assert_eq!(types.len(), 3);
+        assert!(types.iter().any(|(name, _, kind)| *name == "Player" && *kind == &DefinitionKind::Table));
+        assert!(types.iter().any(|(name, _, kind)| *name == "Status" && *kind == &DefinitionKind::Enum));
+        assert!(types.iter().any(|(name, _, kind)| *name == "Stats" && *kind == &DefinitionKind::Embed));
+    }
+
+    #[test]
+    fn test_get_fields_of() {
+        let content = r#"
+namespace game {
+    table Player {
+        id: u32 primary_key;
+        name: string;
+        level: u16;
+    }
+}
+"#;
+        let table = build_symbol_table(content).unwrap();
+        let fields = table.get_fields_of("game.Player");
+
+        assert_eq!(fields.len(), 3);
+        let field_names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+        assert!(field_names.contains(&"id"));
+        assert!(field_names.contains(&"name"));
+        assert!(field_names.contains(&"level"));
+    }
+
+    #[test]
+    fn test_symbol_at() {
+        let content = r#"
+namespace game {
+    enum Status {
+        Active = 1;
+    }
+    table Player {
+        id: u32;
+        status: Status;
+    }
+}
+"#;
+        let table = build_symbol_table(content).unwrap();
+
+        // On definition
+        let def = table.symbol_at(3, 10); // "Status" in enum definition
+        assert!(def.is_some());
+        assert_eq!(def.unwrap().name, "Status");
+
+        // On reference
+        let ref_def = table.symbol_at(8, 17); // "Status" in field type
+        assert!(ref_def.is_some());
+        assert_eq!(ref_def.unwrap().fqn, "game.Status");
     }
 }

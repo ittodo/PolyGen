@@ -17,6 +17,11 @@ fn main() {
             commands::validate_schema,
             commands::goto_definition,
             commands::find_references,
+            commands::get_hover_info,
+            commands::get_completions,
+            commands::get_document_symbols,
+            commands::prepare_rename,
+            commands::rename_symbol,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
