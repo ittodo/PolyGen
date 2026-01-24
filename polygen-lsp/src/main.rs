@@ -1,3 +1,6 @@
+mod symbol_table;
+
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -8,28 +11,49 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 use pest::Parser;
 use polygen::{ast_parser, validation, Polygen, Rule};
 
+use symbol_table::SymbolTable;
+
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    documents: Arc<RwLock<std::collections::HashMap<Url, String>>>,
+    documents: Arc<RwLock<HashMap<Url, String>>>,
+    symbol_tables: Arc<RwLock<HashMap<Url, SymbolTable>>>,
 }
 
 impl Backend {
     fn new(client: Client) -> Self {
         Self {
             client,
-            documents: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            documents: Arc::new(RwLock::new(HashMap::new())),
+            symbol_tables: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     async fn validate_document(&self, uri: &Url, content: &str) {
-        let diagnostics = self.get_diagnostics(content);
+        // Get file path from URI for import resolution
+        let file_path = uri.to_file_path().ok();
+
+        let diagnostics = self.get_diagnostics(content, file_path.as_deref());
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, None)
             .await;
+
+        // Build symbol table for Go to Definition support (with imports)
+        let symbol_table_result = if let Some(ref path) = file_path {
+            symbol_table::build_symbol_table_with_imports(content, Some(path))
+        } else {
+            symbol_table::build_symbol_table(content)
+        };
+
+        if let Ok(symbol_table) = symbol_table_result {
+            self.symbol_tables
+                .write()
+                .await
+                .insert(uri.clone(), symbol_table);
+        }
     }
 
-    fn get_diagnostics(&self, content: &str) -> Vec<Diagnostic> {
+    fn get_diagnostics(&self, content: &str, file_path: Option<&std::path::Path>) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let content = content.replace("\r\n", "\n");
 
@@ -41,24 +65,58 @@ impl Backend {
                     match ast_parser::build_ast_from_pairs(main_pair, PathBuf::from("editor.poly"))
                     {
                         Ok(ast) => {
-                            // Step 3: Validate AST
+                            // Step 3: Validate AST (skip TypeNotFound when we have file_path for import support)
                             if let Err(e) = validation::validate_ast(&ast.definitions) {
-                                diagnostics.push(Diagnostic {
-                                    range: Range {
-                                        start: Position {
-                                            line: 0,
-                                            character: 0,
+                                // Skip TypeNotFound errors when file_path is provided,
+                                // as the symbol table validation handles imports properly
+                                let is_type_not_found = matches!(&e, polygen::error::ValidationError::TypeNotFound(_));
+                                if !is_type_not_found || file_path.is_none() {
+                                    diagnostics.push(Diagnostic {
+                                        range: Range {
+                                            start: Position {
+                                                line: 0,
+                                                character: 0,
+                                            },
+                                            end: Position {
+                                                line: 0,
+                                                character: 100,
+                                            },
                                         },
-                                        end: Position {
-                                            line: 0,
-                                            character: 100,
-                                        },
-                                    },
-                                    severity: Some(DiagnosticSeverity::ERROR),
-                                    message: e.to_string(),
-                                    source: Some("polygen".to_string()),
-                                    ..Default::default()
-                                });
+                                        severity: Some(DiagnosticSeverity::ERROR),
+                                        message: e.to_string(),
+                                        source: Some("polygen".to_string()),
+                                        ..Default::default()
+                                    });
+                                }
+                            }
+
+                            // Step 4: Check for unresolved type references (with imports)
+                            let symbol_table_result = if let Some(path) = file_path {
+                                symbol_table::build_symbol_table_with_imports(&content, Some(path))
+                            } else {
+                                symbol_table::build_symbol_table(&content)
+                            };
+                            if let Ok(symbol_table) = symbol_table_result {
+                                for reference in &symbol_table.references {
+                                    if reference.resolved_fqn.is_none() {
+                                        diagnostics.push(Diagnostic {
+                                            range: Range {
+                                                start: Position {
+                                                    line: (reference.span.start_line - 1) as u32,
+                                                    character: (reference.span.start_col - 1) as u32,
+                                                },
+                                                end: Position {
+                                                    line: (reference.span.end_line - 1) as u32,
+                                                    character: (reference.span.end_col - 1) as u32,
+                                                },
+                                            },
+                                            severity: Some(DiagnosticSeverity::ERROR),
+                                            message: format!("Unresolved reference: '{}'", reference.path),
+                                            source: Some("polygen".to_string()),
+                                            ..Default::default()
+                                        });
+                                    }
+                                }
                             }
                         }
                         Err(e) => {
@@ -222,6 +280,8 @@ impl LanguageServer for Backend {
                     ..Default::default()
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -265,10 +325,9 @@ impl LanguageServer for Backend {
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.documents
-            .write()
-            .await
-            .remove(&params.text_document.uri);
+        let uri = &params.text_document.uri;
+        self.documents.write().await.remove(uri);
+        self.symbol_tables.write().await.remove(uri);
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -352,6 +411,198 @@ impl LanguageServer for Backend {
         }
 
         Ok(None)
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        // LSP position is 0-indexed, but our spans are 1-indexed
+        let line = position.line as usize + 1;
+        let col = position.character as usize + 1;
+
+        let symbol_tables = self.symbol_tables.read().await;
+        let Some(symbol_table) = symbol_tables.get(uri) else {
+            return Ok(None);
+        };
+
+        // First, check if we're clicking on a type reference
+        if let Some(reference) = symbol_table.reference_at(line, col) {
+            if let Some(fqn) = &reference.resolved_fqn {
+                if let Some(definition) = symbol_table.get_definition(fqn) {
+                    let target_range = Range {
+                        start: Position {
+                            line: (definition.name_span.start_line - 1) as u32,
+                            character: (definition.name_span.start_col - 1) as u32,
+                        },
+                        end: Position {
+                            line: (definition.name_span.end_line - 1) as u32,
+                            character: (definition.name_span.end_col - 1) as u32,
+                        },
+                    };
+
+                    return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                        uri: uri.clone(),
+                        range: target_range,
+                    })));
+                }
+            }
+        }
+
+        // Also check if we're clicking on a definition itself (to support F12 on definitions)
+        if let Some(definition) = symbol_table.definition_at(line, col) {
+            let target_range = Range {
+                start: Position {
+                    line: (definition.name_span.start_line - 1) as u32,
+                    character: (definition.name_span.start_col - 1) as u32,
+                },
+                end: Position {
+                    line: (definition.name_span.end_line - 1) as u32,
+                    character: (definition.name_span.end_col - 1) as u32,
+                },
+            };
+
+            return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                uri: uri.clone(),
+                range: target_range,
+            })));
+        }
+
+        Ok(None)
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        // LSP position is 0-indexed, but our spans are 1-indexed
+        let line = position.line as usize + 1;
+        let col = position.character as usize + 1;
+
+        let symbol_tables = self.symbol_tables.read().await;
+        let Some(symbol_table) = symbol_tables.get(uri) else {
+            return Ok(None);
+        };
+
+        // Find what we're looking for (definition or reference at position)
+        let target_fqn = if let Some(def) = symbol_table.definition_at(line, col) {
+            def.fqn.clone()
+        } else if let Some(reference) = symbol_table.reference_at(line, col) {
+            match &reference.resolved_fqn {
+                Some(fqn) => fqn.clone(),
+                None => return Ok(None),
+            }
+        } else {
+            return Ok(None);
+        };
+
+        let mut locations: Vec<Location> = Vec::new();
+
+        // Include the definition itself if include_declaration is true
+        if params.context.include_declaration {
+            if let Some(def) = symbol_table.get_definition(&target_fqn) {
+                let def_uri = if let Some(ref file_path) = def.file_path {
+                    Url::from_file_path(file_path).unwrap_or_else(|_| uri.clone())
+                } else {
+                    uri.clone()
+                };
+                locations.push(Location {
+                    uri: def_uri,
+                    range: Range {
+                        start: Position {
+                            line: (def.name_span.start_line - 1) as u32,
+                            character: (def.name_span.start_col - 1) as u32,
+                        },
+                        end: Position {
+                            line: (def.name_span.end_line - 1) as u32,
+                            character: (def.name_span.end_col - 1) as u32,
+                        },
+                    },
+                });
+            }
+        }
+
+        // Include references from current file
+        for reference in symbol_table.find_references(&target_fqn) {
+            locations.push(Location {
+                uri: uri.clone(),
+                range: Range {
+                    start: Position {
+                        line: (reference.span.start_line - 1) as u32,
+                        character: (reference.span.start_col - 1) as u32,
+                    },
+                    end: Position {
+                        line: (reference.span.end_line - 1) as u32,
+                        character: (reference.span.end_col - 1) as u32,
+                    },
+                },
+            });
+        }
+
+        // Search in files that might import the current file
+        if let Ok(current_path) = uri.to_file_path() {
+            if let Some(dir) = current_path.parent() {
+                let current_filename = current_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let entry_path = entry.path();
+                        if entry_path.extension().and_then(|e| e.to_str()) == Some("poly") {
+                            // Skip the current file
+                            if entry_path == current_path {
+                                continue;
+                            }
+
+                            // Read and check if this file imports our file
+                            if let Ok(other_content) = std::fs::read_to_string(&entry_path) {
+                                let imports_current = other_content.lines().any(|line| {
+                                    let trimmed = line.trim();
+                                    trimmed.starts_with("import ") && trimmed.contains(current_filename)
+                                });
+
+                                if imports_current {
+                                    // Build symbol table for this file (with imports)
+                                    if let Ok(other_table) = symbol_table::build_symbol_table_with_imports(
+                                        &other_content,
+                                        Some(&entry_path),
+                                    ) {
+                                        // Find references to our target FQN
+                                        for reference in other_table.find_references(&target_fqn) {
+                                            if let Ok(ref_uri) = Url::from_file_path(&entry_path) {
+                                                locations.push(Location {
+                                                    uri: ref_uri,
+                                                    range: Range {
+                                                        start: Position {
+                                                            line: (reference.span.start_line - 1) as u32,
+                                                            character: (reference.span.start_col - 1) as u32,
+                                                        },
+                                                        end: Position {
+                                                            line: (reference.span.end_line - 1) as u32,
+                                                            character: (reference.span.end_col - 1) as u32,
+                                                        },
+                                                    },
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if locations.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(locations))
+        }
     }
 }
 

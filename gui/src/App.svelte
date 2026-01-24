@@ -5,6 +5,7 @@
   import LanguageSelector from "./lib/components/LanguageSelector.svelte";
   import LogPanel from "./lib/components/LogPanel.svelte";
   import Editor from "./lib/components/Editor.svelte";
+  import type { GoToFileEvent } from "./lib/monaco/poly-language";
   import FileTabs from "./lib/components/FileTabs.svelte";
   import FileList from "./lib/components/FileList.svelte";
 
@@ -246,6 +247,30 @@ namespace example {
     );
   }
 
+  // Store pending navigation for after file load
+  let pendingNavigation = $state<{ line: number; column: number } | null>(null);
+
+  async function onGoToFile(event: GoToFileEvent) {
+    // Check if file is already open
+    const existingFile = openFiles.find((f) => f.path === event.filePath);
+
+    // Set pending navigation - this will be passed to the Editor component
+    pendingNavigation = { line: event.line, column: event.column };
+
+    if (existingFile) {
+      // File is open, just switch to it
+      activeFilePath = event.filePath;
+    } else {
+      // File is not open, load it first
+      await loadFile(event.filePath, false);
+    }
+
+    // Clear pending navigation after a short delay
+    setTimeout(() => {
+      pendingNavigation = null;
+    }, 200);
+  }
+
   async function selectOutputDir() {
     const selected = await open({
       directory: true,
@@ -379,7 +404,13 @@ namespace example {
         <div class="editor-wrapper">
           {#if activeFile}
             {#key activeFilePath}
-              <Editor value={activeFile.content} onChange={onEditorChange} />
+              <Editor
+                value={activeFile.content}
+                onChange={onEditorChange}
+                filePath={activeFile.path}
+                {onGoToFile}
+                initialPosition={pendingNavigation}
+              />
             {/key}
           {/if}
         </div>

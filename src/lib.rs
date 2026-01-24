@@ -52,6 +52,7 @@ pub mod migration;
 pub mod pipeline;
 pub mod rhai;
 pub mod rhai_generator;
+pub mod symbol_table;
 pub mod type_registry;
 pub mod validation;
 

@@ -5,7 +5,11 @@
   import {
     registerPolyLanguage,
     POLY_LANGUAGE_ID,
+    setGoToFileHandler,
+    clearGoToFileHandler,
+    type GoToFileEvent,
   } from "../monaco/poly-language";
+  import { setFilePath, clearFilePath } from "../monaco/file-path-store";
 
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 
@@ -22,9 +26,12 @@
     value?: string;
     onChange?: (value: string) => void;
     readonly?: boolean;
+    filePath?: string;
+    onGoToFile?: (event: GoToFileEvent) => void;
+    initialPosition?: { line: number; column: number } | null;
   }
 
-  let { value = $bindable(""), onChange, readonly = false }: Props = $props();
+  let { value = $bindable(""), onChange, readonly = false, filePath = "", onGoToFile, initialPosition = null }: Props = $props();
 
   let editorContainer: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor | undefined;
@@ -55,7 +62,10 @@
     }
 
     try {
-      const errors = await invoke<SchemaError[]>("validate_schema", { content });
+      const errors = await invoke<SchemaError[]>("validate_schema", {
+        content,
+        filePath: filePath || null,
+      });
       const model = editor.getModel();
       if (!model) return;
 
@@ -118,6 +128,27 @@
       }
     });
 
+    // Set file path for model (for goto definition and find references)
+    const model = editor.getModel();
+    if (model && filePath) {
+      setFilePath(model.uri.toString(), filePath);
+    }
+
+    // Set up cross-file navigation handler
+    if (onGoToFile) {
+      setGoToFileHandler(onGoToFile);
+    }
+
+    // Navigate to initial position if provided
+    if (initialPosition && editor) {
+      editor.setPosition({
+        lineNumber: initialPosition.line,
+        column: initialPosition.column,
+      });
+      editor.revealLineInCenter(initialPosition.line);
+      editor.focus();
+    }
+
     // Initial validation
     scheduleValidation();
   });
@@ -126,6 +157,13 @@
     if (validateTimeout) {
       clearTimeout(validateTimeout);
     }
+    // Clean up file path mapping
+    const model = editor?.getModel();
+    if (model) {
+      clearFilePath(model.uri.toString());
+    }
+    // Clean up cross-file navigation handler
+    clearGoToFileHandler();
     editor?.dispose();
   });
 
