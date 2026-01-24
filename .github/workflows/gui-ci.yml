@@ -2,19 +2,19 @@ name: GUI CI (Tauri)
 
 on:
   push:
-    branches: [main, master]
     paths:
       - 'gui/**'
       - 'src/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.github/workflows/gui-ci.yml'
   pull_request:
-    branches: [main, master]
     paths:
       - 'gui/**'
       - 'src/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.github/workflows/gui-ci.yml'
 
 env:
   CARGO_TERM_COLOR: always
