@@ -54,4 +54,3 @@ tests/runners/cpp/generated/
 # Tauri generated files
 gui/src-tauri/gen/
 gui/src-tauri/capabilities/
-gui/src-tauri/icons/
