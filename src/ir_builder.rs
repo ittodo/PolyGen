@@ -112,6 +112,8 @@ struct ConstraintInfo {
     default_value: Option<String>,
     range: Option<ir_model::RangeDef>,
     regex_pattern: Option<String>,
+    auto_create: Option<ir_model::TimezoneRef>,
+    auto_update: Option<ir_model::TimezoneRef>,
 }
 
 /// Extracts structured constraint information from AST constraints.
@@ -157,10 +159,52 @@ fn extract_constraint_info(constraints: &[ast_model::Constraint]) -> ConstraintI
             ast_model::Constraint::Regex(pattern) => {
                 info.regex_pattern = Some(pattern.clone());
             }
+            ast_model::Constraint::AutoCreate(tz) => {
+                info.auto_create = Some(timezone_to_ref(tz.as_ref()));
+            }
+            ast_model::Constraint::AutoUpdate(tz) => {
+                info.auto_update = Some(timezone_to_ref(tz.as_ref()));
+            }
         }
     }
 
     info
+}
+
+/// Converts an AST Timezone to an IR TimezoneRef.
+fn timezone_to_ref(tz: Option<&ast_model::Timezone>) -> ir_model::TimezoneRef {
+    match tz {
+        None => ir_model::TimezoneRef {
+            kind: "utc".to_string(), // Default to UTC when not specified
+            offset_hours: None,
+            offset_minutes: None,
+            name: None,
+        },
+        Some(ast_model::Timezone::Utc) => ir_model::TimezoneRef {
+            kind: "utc".to_string(),
+            offset_hours: None,
+            offset_minutes: None,
+            name: None,
+        },
+        Some(ast_model::Timezone::Local) => ir_model::TimezoneRef {
+            kind: "local".to_string(),
+            offset_hours: None,
+            offset_minutes: None,
+            name: None,
+        },
+        Some(ast_model::Timezone::Offset { hours, minutes }) => ir_model::TimezoneRef {
+            kind: "offset".to_string(),
+            offset_hours: Some(*hours),
+            offset_minutes: Some(*minutes),
+            name: None,
+        },
+        Some(ast_model::Timezone::Named(name)) => ir_model::TimezoneRef {
+            kind: "named".to_string(),
+            offset_hours: None,
+            offset_minutes: None,
+            name: Some(name.clone()),
+        },
+    }
 }
 
 /// Converts an AST Literal to a string representation.
@@ -783,6 +827,8 @@ fn convert_field_to_ir(
                     default_value: constraint_info.default_value,
                     range: constraint_info.range,
                     regex_pattern: constraint_info.regex_pattern,
+                    auto_create: constraint_info.auto_create,
+                    auto_update: constraint_info.auto_update,
                 },
                 Vec::new(),
                 inline_enums,
@@ -819,6 +865,8 @@ fn convert_field_to_ir(
                 default_value: None,
                 range: None,
                 regex_pattern: None,
+                auto_create: None,
+                auto_update: None,
             };
             (field_def, nested_items, Vec::new())
         }
@@ -851,6 +899,8 @@ fn convert_field_to_ir(
                 default_value: None,
                 range: None,
                 regex_pattern: None,
+                auto_create: None,
+                auto_update: None,
             };
             (field_def, Vec::new(), vec![enum_def])
         }
@@ -1176,6 +1226,7 @@ fn basic_name(b: &ast_model::BasicType) -> &'static str {
         F64 => "f64",
         Bool => "bool",
         Bytes => "bytes",
+        Timestamp => "timestamp",
     }
 }
 

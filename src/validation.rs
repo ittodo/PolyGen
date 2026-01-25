@@ -1,4 +1,4 @@
-use crate::ast_model::{Definition, FieldDefinition, TableMember, TypeName};
+use crate::ast_model::{BasicType, Constraint, Definition, FieldDefinition, TableMember, TypeName};
 use crate::error::ValidationError;
 use crate::type_registry::{TypeKind, TypeRegistry};
 
@@ -167,6 +167,8 @@ fn validate_table_members(
                     if let TypeName::Path(type_path) = &rf.field_type.base_type {
                         check_type_path(type_path, path, registry)?;
                     }
+                    // Validate auto_create/auto_update constraints are only on timestamp fields
+                    validate_timestamp_constraints(rf)?;
                 }
                 FieldDefinition::InlineEmbed(ief) => {
                     path.push(ief.name.clone().expect("Inline embed must have a name"));
@@ -182,6 +184,39 @@ fn validate_table_members(
             }
             TableMember::Enum(_) => {}
             TableMember::Comment(_) => {}
+        }
+    }
+    Ok(())
+}
+
+/// Validates that auto_create and auto_update constraints are only used with timestamp type.
+fn validate_timestamp_constraints(
+    rf: &crate::ast_model::RegularField,
+) -> Result<(), ValidationError> {
+    let is_timestamp = matches!(rf.field_type.base_type, TypeName::Basic(BasicType::Timestamp));
+    let field_name = rf.name.clone().unwrap_or_else(|| "<unknown>".to_string());
+
+    for constraint in &rf.constraints {
+        match constraint {
+            Constraint::AutoCreate(_) => {
+                if !is_timestamp {
+                    return Err(ValidationError::InvalidConstraint {
+                        field: field_name,
+                        constraint: "auto_create".to_string(),
+                        message: "auto_create can only be used with timestamp type".to_string(),
+                    });
+                }
+            }
+            Constraint::AutoUpdate(_) => {
+                if !is_timestamp {
+                    return Err(ValidationError::InvalidConstraint {
+                        field: field_name,
+                        constraint: "auto_update".to_string(),
+                        message: "auto_update can only be used with timestamp type".to_string(),
+                    });
+                }
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -287,6 +322,24 @@ mod tests {
                 cardinality: None,
             },
             constraints: vec![],
+            field_number: None,
+        }))
+    }
+
+    /// Helper to create a regular field with a basic type and constraints
+    fn make_field_with_constraints(
+        name: &str,
+        basic_type: BasicType,
+        constraints: Vec<Constraint>,
+    ) -> TableMember {
+        TableMember::Field(FieldDefinition::Regular(RegularField {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            field_type: TypeWithCardinality {
+                base_type: TypeName::Basic(basic_type),
+                cardinality: None,
+            },
+            constraints,
             field_number: None,
         }))
     }
@@ -586,5 +639,75 @@ mod tests {
             make_table("User", vec![]),
         ];
         assert!(validate_ast(&definitions).is_ok());
+    }
+
+    // ========== Timestamp Constraint Validation Tests ==========
+
+    #[test]
+    fn test_auto_create_on_timestamp_is_valid() {
+        let definitions = vec![make_table(
+            "Event",
+            vec![make_field_with_constraints(
+                "created_at",
+                BasicType::Timestamp,
+                vec![Constraint::AutoCreate(None)],
+            )],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_auto_update_on_timestamp_is_valid() {
+        let definitions = vec![make_table(
+            "Event",
+            vec![make_field_with_constraints(
+                "updated_at",
+                BasicType::Timestamp,
+                vec![Constraint::AutoUpdate(Some(Timezone::Utc))],
+            )],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_auto_create_on_non_timestamp_fails() {
+        let definitions = vec![make_table(
+            "Event",
+            vec![make_field_with_constraints(
+                "name",
+                BasicType::String,
+                vec![Constraint::AutoCreate(None)],
+            )],
+        )];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::InvalidConstraint {
+                field: "name".to_string(),
+                constraint: "auto_create".to_string(),
+                message: "auto_create can only be used with timestamp type".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_auto_update_on_non_timestamp_fails() {
+        let definitions = vec![make_table(
+            "Event",
+            vec![make_field_with_constraints(
+                "count",
+                BasicType::I32,
+                vec![Constraint::AutoUpdate(Some(Timezone::Local))],
+            )],
+        )];
+        let result = validate_ast(&definitions);
+        assert_eq!(
+            result,
+            Err(ValidationError::InvalidConstraint {
+                field: "count".to_string(),
+                constraint: "auto_update".to_string(),
+                message: "auto_update can only be used with timestamp type".to_string(),
+            })
+        );
     }
 }

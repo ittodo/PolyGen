@@ -81,6 +81,7 @@ pub fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, AstBuildError> {
                 "f64" => BasicType::F64,
                 "bool" => BasicType::Bool,
                 "bytes" => BasicType::Bytes,
+                "timestamp" => BasicType::Timestamp,
                 _ => {
                     return Err(AstBuildError::InvalidValue {
                         element: "basic_type".to_string(),

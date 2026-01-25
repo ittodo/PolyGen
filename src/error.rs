@@ -32,6 +32,13 @@ pub enum ValidationError {
 
     #[error("Duplicate definition for type: '{0}'")]
     DuplicateDefinition(String),
+
+    #[error("Invalid constraint '{constraint}' on field '{field}': {message}")]
+    InvalidConstraint {
+        field: String,
+        constraint: String,
+        message: String,
+    },
 }
 
 #[derive(Error, Debug)]

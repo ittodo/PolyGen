@@ -235,6 +235,26 @@ pub enum BasicType {
     F64,
     Bool,
     Bytes,
+    Timestamp,
+}
+
+/// Timezone specification for auto-timestamp fields.
+///
+/// Supports multiple formats:
+/// - `utc`: UTC timezone
+/// - `local`: System local timezone
+/// - Offset: UTC offset like `+9`, `-5`, `+5:30`
+/// - Named: Windows TimeZone ID like `"Korea Standard Time"`
+#[derive(Debug, PartialEq, Clone)]
+pub enum Timezone {
+    /// UTC timezone.
+    Utc,
+    /// System local timezone.
+    Local,
+    /// UTC offset (hours, minutes). Example: (+9, 0) for UTC+9, (+5, 30) for UTC+5:30.
+    Offset { hours: i8, minutes: u8 },
+    /// Named timezone (Windows TimeZone ID). Example: "Korea Standard Time".
+    Named(String),
 }
 
 /// A constraint on a field.
@@ -256,6 +276,10 @@ pub enum Constraint {
     Regex(String),
     /// Foreign key reference (path to target, optional alias).
     ForeignKey(Vec<String>, Option<String>),
+    /// Auto-create timestamp (set on INSERT). None means use global default.
+    AutoCreate(Option<Timezone>),
+    /// Auto-update timestamp (set on UPDATE). None means use global default.
+    AutoUpdate(Option<Timezone>),
 }
 
 /// An inline embed field (anonymous nested struct).
