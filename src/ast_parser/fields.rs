@@ -1,7 +1,7 @@
 use pest::iterators::Pair;
 use crate::ast_model::{
     Cardinality, Constraint, EnumVariant, FieldDefinition, InlineEmbedField, InlineEnumField,
-    RegularField, TableMember,
+    RegularField, TableMember, Timezone,
 };
 use crate::error::AstBuildError;
 use crate::Rule;
@@ -141,9 +141,76 @@ pub fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
             let alias = inner.next().map(|ident_pair| ident_pair.as_str().to_string());
             Constraint::ForeignKey(path, alias)
         }
+        Rule::auto_create => {
+            let tz = inner_pair.into_inner().next().map(parse_timezone).transpose()?;
+            Constraint::AutoCreate(tz)
+        }
+        Rule::auto_update => {
+            let tz = inner_pair.into_inner().next().map(parse_timezone).transpose()?;
+            Constraint::AutoUpdate(tz)
+        }
         found => unexpected_rule!(found, "a constraint type", inner_line, inner_col),
     };
     Ok(constraint)
+}
+
+/// Parse a timezone specification.
+///
+/// Supports:
+/// - `utc`: UTC timezone
+/// - `local`: System local timezone
+/// - `+9`, `-5`, `+5:30`: UTC offset
+/// - `"Korea Standard Time"`: Windows TimeZone ID
+fn parse_timezone(pair: Pair<Rule>) -> Result<Timezone, AstBuildError> {
+    let (line, col) = pair.line_col();
+    let inner_pair = require_next!(pair.into_inner(), Rule::timezone, "timezone specification", line, col)?;
+
+    let (inner_line, inner_col) = inner_pair.line_col();
+    let tz = match inner_pair.as_rule() {
+        Rule::tz_utc => Timezone::Utc,
+        Rule::tz_local => Timezone::Local,
+        Rule::tz_offset => {
+            let text = inner_pair.as_str();
+            parse_tz_offset(text).map_err(|_| AstBuildError::InvalidValue {
+                element: "timezone offset".to_string(),
+                value: text.to_string(),
+                line: inner_line,
+                col: inner_col,
+            })?
+        }
+        Rule::STRING_LITERAL => {
+            let s = inner_pair.as_str();
+            // Remove quotes
+            Timezone::Named(s[1..s.len() - 1].to_string())
+        }
+        found => unexpected_rule!(found, "timezone (utc, local, offset, or string)", inner_line, inner_col),
+    };
+    Ok(tz)
+}
+
+/// Parse UTC offset string like "+9", "-5", "+5:30" into Timezone::Offset
+fn parse_tz_offset(s: &str) -> Result<Timezone, ()> {
+    let (sign, rest) = if s.starts_with('+') {
+        (1i8, &s[1..])
+    } else if s.starts_with('-') {
+        (-1i8, &s[1..])
+    } else {
+        return Err(());
+    };
+
+    let (hours, minutes) = if let Some(colon_pos) = rest.find(':') {
+        let hours: i8 = rest[..colon_pos].parse().map_err(|_| ())?;
+        let minutes: u8 = rest[colon_pos + 1..].parse().map_err(|_| ())?;
+        (hours, minutes)
+    } else {
+        let hours: i8 = rest.parse().map_err(|_| ())?;
+        (hours, 0u8)
+    };
+
+    Ok(Timezone::Offset {
+        hours: sign * hours,
+        minutes,
+    })
 }
 
 pub fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, AstBuildError> {

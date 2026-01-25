@@ -858,4 +858,178 @@ game.Player.hp -> health;
         assert_eq!(renames[2].from_path, vec!["game", "Player", "hp"]);
         assert_eq!(renames[2].to_name, "health");
     }
+
+    // ========== Timestamp and Auto-Timestamp Tests ==========
+
+    #[test]
+    fn test_parse_timestamp_type() {
+        let ast = parse_schema(
+            r#"
+            table Event {
+                created_at: timestamp;
+            }
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
+                assert_eq!(rf.field_type.base_type, TypeName::Basic(BasicType::Timestamp));
+            } else {
+                panic!("Expected Regular field");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_auto_create_default() {
+        let ast = parse_schema(
+            r#"
+            table Event {
+                created_at: timestamp auto_create;
+            }
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
+                assert_eq!(rf.constraints.len(), 1);
+                assert!(matches!(rf.constraints[0], Constraint::AutoCreate(None)));
+            } else {
+                panic!("Expected Regular field");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_auto_update_utc() {
+        let ast = parse_schema(
+            r#"
+            table Event {
+                updated_at: timestamp auto_update(utc);
+            }
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
+                assert_eq!(rf.constraints.len(), 1);
+                if let Constraint::AutoUpdate(Some(tz)) = &rf.constraints[0] {
+                    assert_eq!(*tz, Timezone::Utc);
+                } else {
+                    panic!("Expected AutoUpdate with UTC timezone");
+                }
+            } else {
+                panic!("Expected Regular field");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_auto_create_offset() {
+        let ast = parse_schema(
+            r#"
+            table Event {
+                korea_time: timestamp auto_create(+9);
+                india_time: timestamp auto_create(+5:30);
+                ny_time: timestamp auto_create(-5);
+            }
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            // Korea time: +9
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
+                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) = &rf.constraints[0] {
+                    assert_eq!(*hours, 9);
+                    assert_eq!(*minutes, 0);
+                } else {
+                    panic!("Expected AutoCreate with +9 offset");
+                }
+            }
+
+            // India time: +5:30
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[1] {
+                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) = &rf.constraints[0] {
+                    assert_eq!(*hours, 5);
+                    assert_eq!(*minutes, 30);
+                } else {
+                    panic!("Expected AutoCreate with +5:30 offset");
+                }
+            }
+
+            // NY time: -5
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[2] {
+                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) = &rf.constraints[0] {
+                    assert_eq!(*hours, -5);
+                    assert_eq!(*minutes, 0);
+                } else {
+                    panic!("Expected AutoCreate with -5 offset");
+                }
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_auto_create_named_timezone() {
+        let ast = parse_schema(
+            r#"
+            table Event {
+                korea_time: timestamp auto_create("Korea Standard Time");
+            }
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
+                if let Constraint::AutoCreate(Some(Timezone::Named(name))) = &rf.constraints[0] {
+                    assert_eq!(name, "Korea Standard Time");
+                } else {
+                    panic!("Expected AutoCreate with named timezone");
+                }
+            } else {
+                panic!("Expected Regular field");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_auto_update_local() {
+        let ast = parse_schema(
+            r#"
+            table Event {
+                local_time: timestamp auto_update(local);
+            }
+            "#,
+        )
+        .unwrap();
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
+                if let Constraint::AutoUpdate(Some(tz)) = &rf.constraints[0] {
+                    assert_eq!(*tz, Timezone::Local);
+                } else {
+                    panic!("Expected AutoUpdate with local timezone");
+                }
+            } else {
+                panic!("Expected Regular field");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
 }

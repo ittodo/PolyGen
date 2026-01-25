@@ -73,11 +73,11 @@ inline_comment     = @{ "//" ~ (!NEWLINE ~ ANY)* }
 type_with_cardinality = { type_name ~ cardinality? }
 cardinality           = { "[]" | "?" }
 type_name             = { basic_type | path | anonymous_enum_def }
-basic_type            = { "string" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "bytes" }
+basic_type            = { "string" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "bytes" | "timestamp" }
 
 // Constraints
 // ===========
-constraint      = { primary_key | unique | index | max_length | default_val | range_val | regex_val | foreign_key_val }
+constraint      = { primary_key | unique | index | max_length | default_val | range_val | regex_val | foreign_key_val | auto_create | auto_update }
 primary_key     = { "primary_key" }
 unique          = { "unique" }
 index           = { "index" }
@@ -86,6 +86,18 @@ default_val     = { "default" ~ "(" ~ literal ~ ")" }
 range_val       = { "range" ~ "(" ~ literal ~ "," ~ literal ~ ")" }
 regex_val       = { "regex" ~ "(" ~ STRING_LITERAL ~ ")" }
 foreign_key_val = { "foreign_key" ~ "(" ~ path ~ ")" ~ ("as" ~ IDENT)? }
+
+// Auto-timestamp constraints
+// Timezone can be:
+//   - utc, local (reserved keywords)
+//   - +9, -5, +5:30 (UTC offset)
+//   - "Korea Standard Time" (Windows TimeZone ID)
+auto_create     = { "auto_create" ~ ("(" ~ timezone ~ ")")? }
+auto_update     = { "auto_update" ~ ("(" ~ timezone ~ ")")? }
+timezone        = { tz_utc | tz_local | tz_offset | STRING_LITERAL }
+tz_utc          = { "utc" }
+tz_local        = { "local" }
+tz_offset       = @{ ("+" | "-") ~ ASCII_DIGIT+ ~ (":" ~ ASCII_DIGIT{2})? }
 
 // Annotations
 // ===========

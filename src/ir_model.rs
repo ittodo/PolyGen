@@ -226,6 +226,12 @@ pub struct FieldDef {
     pub range: Option<RangeDef>,
     /// Regex pattern constraint for string fields.
     pub regex_pattern: Option<String>,
+    /// Auto-create timestamp configuration (set on INSERT).
+    /// If present, this field's value is automatically set to the current time on insert.
+    pub auto_create: Option<TimezoneRef>,
+    /// Auto-update timestamp configuration (set on UPDATE).
+    /// If present, this field's value is automatically updated to the current time on update.
+    pub auto_update: Option<TimezoneRef>,
 }
 
 /// Range constraint definition for numeric fields.
@@ -237,6 +243,25 @@ pub struct RangeDef {
     pub max: String,
     /// Type of the literal: "integer" or "float".
     pub literal_type: String,
+}
+
+/// Timezone reference for auto-timestamp fields.
+///
+/// Represents a timezone specification that can be:
+/// - `utc`: UTC timezone
+/// - `local`: System local timezone
+/// - Offset: UTC offset like `+9`, `-5`, `+5:30`
+/// - Named: Windows TimeZone ID like `"Korea Standard Time"`
+#[derive(Serialize, Debug, Clone)]
+pub struct TimezoneRef {
+    /// The timezone kind: "utc", "local", "offset", or "named".
+    pub kind: String,
+    /// For offset: hours component (e.g., 9 for UTC+9, -5 for UTC-5).
+    pub offset_hours: Option<i8>,
+    /// For offset: minutes component (e.g., 30 for UTC+5:30).
+    pub offset_minutes: Option<u8>,
+    /// For named: the Windows TimeZone ID (e.g., "Korea Standard Time").
+    pub name: Option<String>,
 }
 
 /// Foreign key reference definition.
