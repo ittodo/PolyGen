@@ -186,6 +186,41 @@ ${
         }
     }
 
+    // Generate on_update_{field_name}() methods for auto_update fields
+    let auto_update_fields = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.auto_update != () {
+                auto_update_fields.push(f);
+            }
+        }
+    }
+
+    if auto_update_fields.len() > 0 {
+        result += "\n    // Auto-update timestamp methods\n";
+
+        for f in auto_update_fields {
+            let datetime_expr = cpp_types::get_datetime_expr_for_timezone(f.auto_update);
+
+            result += "\n    /// Updates " + f.name + " to the current timestamp.\n";
+            result += "    void on_update_" + cpp_types::to_snake_case(f.name) + "() {\n";
+            result += "        " + f.name + " = " + datetime_expr + ";\n";
+            result += "    }\n";
+        }
+
+        // Generate on_update_all() if there are multiple auto_update fields
+        if auto_update_fields.len() > 1 {
+            result += "\n    /// Updates all auto-update timestamp fields.\n";
+            result += "    void on_update_all() {\n";
+            for f in auto_update_fields {
+                let datetime_expr = cpp_types::get_datetime_expr_for_timezone(f.auto_update);
+                result += "        " + f.name + " = " + datetime_expr + ";\n";
+            }
+            result += "    }\n";
+        }
+    }
+
     result += "};\n";
 
     result

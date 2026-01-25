@@ -17,6 +17,7 @@ fn map_primitive(type_name) {
         "i64" => "i64",
         "f32" => "f32",
         "f64" => "f64",
+        "timestamp" => "chrono::DateTime<chrono::Utc>",
         _ => type_name
     }
 }
@@ -24,7 +25,7 @@ fn map_primitive(type_name) {
 /// Check if a type name is a primitive
 fn is_primitive_name(type_name) {
     switch type_name {
-        "string" | "bool" | "bytes" |
+        "string" | "bool" | "bytes" | "timestamp" |
         "u8" | "u16" | "u32" | "u64" |
         "i8" | "i16" | "i32" | "i64" |
         "f32" | "f64" => true,
@@ -200,4 +201,36 @@ fn map_type(type_ref) {
     }
 
     base_type
+}
+
+// =============================================================================
+// Timestamp Utilities
+// =============================================================================
+
+/// Gets the Rust expression for current time based on timezone specification.
+/// Used for auto_create and auto_update timestamp fields.
+fn get_datetime_expr_for_timezone(tz) {
+    if tz == () {
+        return "chrono::Utc::now()";
+    }
+
+    let kind = tz.kind;
+
+    if kind == "utc" {
+        return "chrono::Utc::now()";
+    } else if kind == "local" {
+        return "chrono::Local::now().with_timezone(&chrono::Utc)";
+    } else if kind == "offset" {
+        let hours = tz.offset_hours;
+        let minutes = tz.offset_minutes;
+        if hours == () { hours = 0; }
+        if minutes == () { minutes = 0; }
+        let total_secs = hours * 3600 + minutes * 60;
+        return "chrono::Utc::now()";
+    } else if kind == "named" {
+        // Named timezones would require chrono-tz crate
+        return "chrono::Utc::now()";
+    }
+
+    return "chrono::Utc::now()";
 }
