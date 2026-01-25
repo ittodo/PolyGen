@@ -36,6 +36,8 @@ ${
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
                     let enum_type = inner.fqn;
                     body += "        BinaryUtils.WriteOptionStruct<" + enum_type + ">(bw, obj." + f.name + ", BinaryUtils.WriteEnumInt32<" + enum_type + ">);\n";
+                } else if inner.lang_type == "timestamp" {
+                    body += "        BinaryUtils.WriteOptionStruct<DateTime>(bw, obj." + f.name + ", (bw2,v)=>bw2.Write(v.Ticks));\n";
                 } else if inner.is_primitive {
                     let mapped = cs_map_type(inner);
                     body += "        BinaryUtils.WriteOptionStruct<" + mapped + ">(bw, obj." + f.name + ", (bw2,v)=>bw2.Write(v));\n";
@@ -55,6 +57,8 @@ ${
                 } else if inner.is_enum || current_struct_inline_enums.contains(inner.type_name) {
                     let enum_type = inner.fqn;
                     body += "        BinaryUtils.WriteList<" + enum_type + ">(bw, obj." + f.name + ", BinaryUtils.WriteEnumInt32<" + enum_type + ">);\n";
+                } else if inner.lang_type == "timestamp" {
+                    body += "        BinaryUtils.WriteList<DateTime>(bw, obj." + f.name + ", (bw2,v)=>bw2.Write(v.Ticks));\n";
                 } else if inner.is_primitive {
                     let mapped = cs_map_type(inner);
                     body += "        BinaryUtils.WriteList<" + mapped + ">(bw, obj." + f.name + ", (bw2,v)=>bw2.Write(v));\n";
@@ -73,6 +77,10 @@ ${
             // bytes
             else if base.lang_type == "bytes" {
                 body += "        BinaryUtils.WriteBytes(bw, obj." + f.name + ");\n";
+            }
+            // timestamp
+            else if base.lang_type == "timestamp" {
+                body += "        bw.Write(obj." + f.name + ".Ticks);\n";
             }
             // enum (inline or same-namespace)
             else if base.is_enum || current_struct_inline_enums.contains(base.type_name) {

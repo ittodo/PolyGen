@@ -64,6 +64,10 @@ ${
             else if base.lang_type == "bytes" {
                 body += "        obj." + f.name + " = BinaryUtils.ReadBytes(br);\n";
             }
+            // timestamp
+            else if base.lang_type == "timestamp" {
+                body += "        obj." + f.name + " = new DateTime(br.ReadInt64(), DateTimeKind.Utc);\n";
+            }
             // enum (inline or same-namespace)
             else if base.is_enum || current_struct_inline_enums.contains(base.type_name) {
                 let enum_type = base.fqn;

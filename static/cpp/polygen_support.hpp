@@ -19,6 +19,7 @@
 #include <map>
 #include <deque>
 #include <regex>
+#include <chrono>
 
 namespace polygen {
 
@@ -139,6 +140,20 @@ public:
     E read_enum() {
         static_assert(std::is_enum_v<E>, "Type must be an enum");
         return static_cast<E>(read_i32());
+    }
+
+    // Timestamp: i64 value (100-nanosecond ticks since .NET epoch, compatible with C# DateTime.Ticks)
+    std::chrono::system_clock::time_point read_timestamp() {
+        int64_t ticks = read_i64();
+        // Convert .NET ticks to Unix epoch
+        // .NET epoch: January 1, 0001
+        // Unix epoch: January 1, 1970
+        // Difference: 621355968000000000 ticks (100-nanosecond intervals)
+        constexpr int64_t TICKS_PER_SECOND = 10000000LL;
+        constexpr int64_t UNIX_EPOCH_TICKS = 621355968000000000LL;
+        int64_t unix_ticks = ticks - UNIX_EPOCH_TICKS;
+        auto duration = std::chrono::duration<int64_t, std::ratio<1, TICKS_PER_SECOND>>(unix_ticks);
+        return std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(duration));
     }
 
 private:
@@ -268,6 +283,20 @@ public:
     void write_enum(E value) {
         static_assert(std::is_enum_v<E>, "Type must be an enum");
         write_i32(static_cast<int32_t>(value));
+    }
+
+    // Timestamp: i64 value (100-nanosecond ticks since .NET epoch, compatible with C# DateTime.Ticks)
+    void write_timestamp(const std::chrono::system_clock::time_point& value) {
+        // Convert Unix epoch to .NET ticks
+        // .NET epoch: January 1, 0001
+        // Unix epoch: January 1, 1970
+        // Difference: 621355968000000000 ticks (100-nanosecond intervals)
+        constexpr int64_t TICKS_PER_SECOND = 10000000LL;
+        constexpr int64_t UNIX_EPOCH_TICKS = 621355968000000000LL;
+        auto duration = value.time_since_epoch();
+        auto ticks_since_unix = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, TICKS_PER_SECOND>>>(duration).count();
+        int64_t ticks = ticks_since_unix + UNIX_EPOCH_TICKS;
+        write_i64(ticks);
     }
 
 private:
