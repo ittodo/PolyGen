@@ -20,12 +20,33 @@ ${
         body += "\n";
     }
 
+    // Check for auto_create fields
+    let auto_create_field = ();
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.auto_create != () {
+                auto_create_field = f;
+            }
+        }
+    }
+
     // Generate Add method
     body += "    /// <summary>\n";
     body += "    /// Adds a row to the table.\n";
+    if auto_create_field != () {
+        body += "    /// Sets the auto_create timestamp field automatically.\n";
+    }
     body += "    /// </summary>\n";
     body += "    public void Add(" + s.name + " row)\n";
     body += "    {\n";
+
+    // Set auto_create field if present
+    if auto_create_field != () {
+        let datetime_expr = type_utils::get_datetime_expr_for_timezone(auto_create_field.auto_create);
+        body += "        row." + auto_create_field.name + " = " + datetime_expr + ";\n";
+    }
+
     body += "        AddRowInternal(row);\n";
     body += "    }\n\n";
 

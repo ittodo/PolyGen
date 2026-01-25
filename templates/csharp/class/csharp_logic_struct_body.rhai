@@ -1,5 +1,6 @@
 ${
     import "templates/rhai_utils/indent" as indent_utils;
+    import "templates/csharp/rhai_utils/type_utils" as type_utils;
     let body = "";
 
     // Container reference for navigation properties
@@ -279,6 +280,61 @@ ${
             body += "        {\n";
             body += "            return false;\n";
             body += "        }\n";
+            body += "    }\n";
+        }
+    }
+
+    // Generate OnUpdate{FieldName}() methods for auto_update fields
+    let auto_update_fields = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.auto_update != () {
+                auto_update_fields.push(f);
+            }
+        }
+    }
+
+    if auto_update_fields.len() > 0 {
+        body += "\n    // Auto-update timestamp methods\n";
+
+        for f in auto_update_fields {
+            let tz = f.auto_update;
+            let datetime_expr = type_utils::get_datetime_expr_for_timezone(tz);
+
+            // Convert field name to PascalCase for method name
+            let field_parts = f.name.split("_");
+            let pascal_name = "";
+            for part in field_parts {
+                if part.len() > 0 {
+                    let first = part.sub_string(0, 1);
+                    first = first.to_upper();
+                    let rest = part.sub_string(1);
+                    pascal_name += first + rest;
+                }
+            }
+
+            body += "\n    /// <summary>\n";
+            body += "    /// Updates " + f.name + " to the current timestamp.\n";
+            body += "    /// </summary>\n";
+            body += "    public void OnUpdate" + pascal_name + "()\n";
+            body += "    {\n";
+            body += "        " + f.name + " = " + datetime_expr + ";\n";
+            body += "    }\n";
+        }
+
+        // Generate OnUpdateAll() if there are multiple auto_update fields
+        if auto_update_fields.len() > 1 {
+            body += "\n    /// <summary>\n";
+            body += "    /// Updates all auto-update timestamp fields.\n";
+            body += "    /// </summary>\n";
+            body += "    public void OnUpdateAll()\n";
+            body += "    {\n";
+            for f in auto_update_fields {
+                let tz = f.auto_update;
+                let datetime_expr = type_utils::get_datetime_expr_for_timezone(tz);
+                body += "        " + f.name + " = " + datetime_expr + ";\n";
+            }
             body += "    }\n";
         }
     }

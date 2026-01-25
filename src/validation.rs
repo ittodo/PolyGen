@@ -160,6 +160,9 @@ fn validate_table_members(
     path: &mut Vec<String>,
     registry: &TypeRegistry,
 ) -> Result<(), ValidationError> {
+    // Check for multiple auto_create fields (only one allowed per table)
+    validate_single_auto_create(members, path)?;
+
     for member in members {
         match member {
             TableMember::Field(field) => match field {
@@ -185,6 +188,40 @@ fn validate_table_members(
             TableMember::Enum(_) => {}
             TableMember::Comment(_) => {}
         }
+    }
+    Ok(())
+}
+
+/// Validates that only one auto_create field exists per table.
+fn validate_single_auto_create(
+    members: &[TableMember],
+    path: &[String],
+) -> Result<(), ValidationError> {
+    let auto_create_fields: Vec<String> = members
+        .iter()
+        .filter_map(|member| {
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = member {
+                let has_auto_create = rf.constraints.iter().any(|c| matches!(c, Constraint::AutoCreate(_)));
+                if has_auto_create {
+                    return rf.name.clone();
+                }
+            }
+            None
+        })
+        .collect();
+
+    if auto_create_fields.len() > 1 {
+        let table_name = path.last().map(|s| s.as_str()).unwrap_or("<unknown>");
+        return Err(ValidationError::InvalidConstraint {
+            field: auto_create_fields.join(", "),
+            constraint: "auto_create".to_string(),
+            message: format!(
+                "only one auto_create field is allowed per table '{}', but found {} fields: [{}]",
+                table_name,
+                auto_create_fields.len(),
+                auto_create_fields.join(", ")
+            ),
+        });
     }
     Ok(())
 }
@@ -709,5 +746,53 @@ mod tests {
                 message: "auto_update can only be used with timestamp type".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn test_multiple_auto_create_fails() {
+        let definitions = vec![make_table(
+            "Event",
+            vec![
+                make_field_with_constraints(
+                    "created_at",
+                    BasicType::Timestamp,
+                    vec![Constraint::AutoCreate(None)],
+                ),
+                make_field_with_constraints(
+                    "inserted_at",
+                    BasicType::Timestamp,
+                    vec![Constraint::AutoCreate(Some(Timezone::Utc))],
+                ),
+            ],
+        )];
+        let result = validate_ast(&definitions);
+        assert!(result.is_err());
+        if let Err(ValidationError::InvalidConstraint { constraint, message, .. }) = result {
+            assert_eq!(constraint, "auto_create");
+            assert!(message.contains("only one auto_create field is allowed"));
+        } else {
+            panic!("Expected InvalidConstraint error");
+        }
+    }
+
+    #[test]
+    fn test_multiple_auto_update_is_valid() {
+        // Multiple auto_update fields should be allowed
+        let definitions = vec![make_table(
+            "Event",
+            vec![
+                make_field_with_constraints(
+                    "updated_at",
+                    BasicType::Timestamp,
+                    vec![Constraint::AutoUpdate(None)],
+                ),
+                make_field_with_constraints(
+                    "modified_at",
+                    BasicType::Timestamp,
+                    vec![Constraint::AutoUpdate(Some(Timezone::Local))],
+                ),
+            ],
+        )];
+        assert!(validate_ast(&definitions).is_ok());
     }
 }

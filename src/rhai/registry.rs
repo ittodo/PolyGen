@@ -39,7 +39,7 @@
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
     ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RangeDef, RelationDef, RenameInfo,
-    RenameKind, SchemaContext, StructDef, StructItem, TypeRef,
+    RenameKind, SchemaContext, StructDef, StructItem, TimezoneRef, TypeRef,
 };
 use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
@@ -405,6 +405,38 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("has_range", |f: &mut FieldDef| f.range.is_some());
     engine.register_get("has_regex_pattern", |f: &mut FieldDef| f.regex_pattern.is_some());
     engine.register_get("has_foreign_key", |f: &mut FieldDef| f.foreign_key.is_some());
+    // Auto-timestamp getters
+    engine.register_get("auto_create", |f: &mut FieldDef| {
+        f.auto_create
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("auto_update", |f: &mut FieldDef| {
+        f.auto_update
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("has_auto_create", |f: &mut FieldDef| f.auto_create.is_some());
+    engine.register_get("has_auto_update", |f: &mut FieldDef| f.auto_update.is_some());
+
+    // Register TimezoneRef type and getters
+    engine.register_type_with_name::<TimezoneRef>("TimezoneRef");
+    engine.register_get("kind", |tz: &mut TimezoneRef| tz.kind.clone());
+    engine.register_get("offset_hours", |tz: &mut TimezoneRef| {
+        tz.offset_hours
+            .map(|v| Dynamic::from(v as i64))
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("offset_minutes", |tz: &mut TimezoneRef| {
+        tz.offset_minutes
+            .map(|v| Dynamic::from(v as i64))
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("name", |tz: &mut TimezoneRef| {
+        tz.name.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
 
     // Register RangeDef type and getters
     engine.register_type_with_name::<RangeDef>("RangeDef");
