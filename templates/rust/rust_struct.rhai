@@ -144,6 +144,52 @@ ${
         }
     }
 
+    // Generate on_update_{field_name}() methods for auto_update fields
+    let auto_update_fields = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.auto_update != () {
+                auto_update_fields.push(f);
+            }
+        }
+    }
+
+    if auto_update_fields.len() > 0 {
+        // Check if we already have an impl block from @pack
+        let need_impl = !(s.is_embed && s.pack_separator != ());
+
+        if need_impl {
+            result += "\nimpl " + s.name + " {\n";
+        }
+
+        for f in auto_update_fields {
+            let field_name = to_snake_case(f.name);
+            let datetime_expr = rust_types::get_datetime_expr_for_timezone(f.auto_update);
+
+            result += "    /// Updates " + field_name + " to the current timestamp.\n";
+            result += "    pub fn on_update_" + field_name + "(&mut self) {\n";
+            result += "        self." + field_name + " = " + datetime_expr + ";\n";
+            result += "    }\n\n";
+        }
+
+        // Generate on_update_all() if there are multiple auto_update fields
+        if auto_update_fields.len() > 1 {
+            result += "    /// Updates all auto-update timestamp fields.\n";
+            result += "    pub fn on_update_all(&mut self) {\n";
+            for f in auto_update_fields {
+                let field_name = to_snake_case(f.name);
+                let datetime_expr = rust_types::get_datetime_expr_for_timezone(f.auto_update);
+                result += "        self." + field_name + " = " + datetime_expr + ";\n";
+            }
+            result += "    }\n";
+        }
+
+        if need_impl {
+            result += "}\n";
+        }
+    }
+
     result += embedded;
 
     result

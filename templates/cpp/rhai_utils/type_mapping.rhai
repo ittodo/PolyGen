@@ -17,6 +17,7 @@ fn map_primitive_type(type_name) {
         "f32" => "float",
         "f64" => "double",
         "bytes" => "std::vector<uint8_t>",
+        "timestamp" => "std::chrono::system_clock::time_point",
         _ => type_name
     }
 }
@@ -24,7 +25,7 @@ fn map_primitive_type(type_name) {
 // Check if a type name is a primitive
 fn is_primitive_name(type_name) {
     switch type_name {
-        "string" | "bool" | "bytes" |
+        "string" | "bool" | "bytes" | "timestamp" |
         "u8" | "u16" | "u32" | "u64" |
         "i8" | "i16" | "i32" | "i64" |
         "f32" | "f64" => true,
@@ -129,4 +130,33 @@ fn get_first_member(e) {
         }
     }
     return "Unknown";
+}
+
+// =============================================================================
+// Timestamp Utilities
+// =============================================================================
+
+/// Gets the C++ expression for current time based on timezone specification.
+/// Used for auto_create and auto_update timestamp fields.
+fn get_datetime_expr_for_timezone(tz) {
+    if tz == () {
+        return "std::chrono::system_clock::now()";
+    }
+
+    let kind = tz.kind;
+
+    if kind == "utc" {
+        return "std::chrono::system_clock::now()";
+    } else if kind == "local" {
+        // C++ chrono uses UTC by default, local time requires conversion
+        return "std::chrono::system_clock::now()";
+    } else if kind == "offset" {
+        // With offset, we still use UTC but the value represents a different timezone
+        return "std::chrono::system_clock::now()";
+    } else if kind == "named" {
+        // Named timezones would require external library support
+        return "std::chrono::system_clock::now()";
+    }
+
+    return "std::chrono::system_clock::now()";
 }

@@ -23,7 +23,9 @@ ${
 
             let base_type = type_utils::base_mysql_type(f.field_type);
             let is_null = type_utils::is_nullable(f.field_type);
-            let line = if base_type == "VARCHAR" {
+            let line = "";
+
+            if base_type == "VARCHAR" {
                 // derive MaxLength
                 let ml_str = "255";
                 for a in f.attributes {
@@ -32,10 +34,22 @@ ${
                         ml_str = a.sub_string(start, a.len() - start - 1);
                     }
                 }
-                col_name + " " + base_type + "(" + ml_str + ")" + (if is_null { " NULL" } else { " NOT NULL" })
+                line = col_name + " " + base_type + "(" + ml_str + ")" + (if is_null { " NULL" } else { " NOT NULL" });
+            } else if base_type == "DATETIME" {
+                // Handle timestamp with auto_create and auto_update
+                line = col_name + " " + base_type;
+                if !is_null {
+                    line += " NOT NULL";
+                }
+                if type_utils::has_auto_create(f) {
+                    line += " " + type_utils::get_auto_create_default();
+                }
+                if type_utils::has_auto_update(f) {
+                    line += " " + type_utils::get_auto_update_clause();
+                }
             } else {
-                col_name + " " + base_type + (if is_null { " NULL" } else { " NOT NULL" })
-            };
+                line = col_name + " " + base_type + (if is_null { " NULL" } else { " NOT NULL" });
+            }
 
             if !first { ddl += ",\n"; } else { first = false; }
             ddl += "  " + line;

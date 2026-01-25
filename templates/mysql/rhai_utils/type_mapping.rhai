@@ -49,6 +49,31 @@ fn base_mysql_type(type_string) {
         "string" => "VARCHAR",
         "bool" => "TINYINT(1)",
         "bytes" => "BLOB",
+        "timestamp" => "DATETIME",
         _ => "INT" // enums/customs → integer by default
     }
+}
+
+// =============================================================================
+// Timestamp Utilities
+// =============================================================================
+
+/// Check if a field has auto_create constraint
+fn has_auto_create(field) {
+    field.auto_create != ()
+}
+
+/// Check if a field has auto_update constraint
+fn has_auto_update(field) {
+    field.auto_update != ()
+}
+
+/// Get the MySQL DEFAULT clause for auto_create timestamp
+fn get_auto_create_default() {
+    "DEFAULT CURRENT_TIMESTAMP"
+}
+
+/// Get the MySQL ON UPDATE clause for auto_update timestamp
+fn get_auto_update_clause() {
+    "ON UPDATE CURRENT_TIMESTAMP"
 }

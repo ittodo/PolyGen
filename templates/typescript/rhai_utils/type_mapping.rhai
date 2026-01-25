@@ -16,6 +16,7 @@ fn map_primitive(type_name) {
         "bool" => "boolean",
         "string" => "string",
         "bytes" => "Uint8Array",
+        "timestamp" => "Date",
         _ => ()
     }
 }
@@ -182,6 +183,7 @@ fn map_type_to_zod_with_ns(type_ref, current_ns) {
         "bool" => { base_schema = "z.boolean()"; }
         "string" => { base_schema = "z.string()"; }
         "bytes" => { base_schema = "z.instanceof(Uint8Array)"; }
+        "timestamp" => { base_schema = "z.date()"; }
         _ => {
             // Custom type - reference its schema with namespace prefix
             let ref_ns = "";
@@ -233,6 +235,7 @@ fn map_field_to_zod_with_constraints(field, current_ns) {
         "bool" => { base_schema = "z.boolean()"; }
         "string" => { base_schema = "z.string()"; }
         "bytes" => { base_schema = "z.instanceof(Uint8Array)"; }
+        "timestamp" => { base_schema = "z.date()"; }
         _ => {
             // Custom type - reference its schema with namespace prefix
             let ref_ns = "";
@@ -301,4 +304,32 @@ fn map_field_to_zod_with_constraints(field, current_ns) {
     }
 
     base_schema
+}
+
+// =============================================================================
+// Timestamp Utilities
+// =============================================================================
+
+/// Gets the TypeScript/JavaScript expression for current time based on timezone specification.
+/// Used for auto_create and auto_update timestamp fields.
+fn get_datetime_expr_for_timezone(tz) {
+    if tz == () {
+        return "new Date()";
+    }
+
+    let kind = tz.kind;
+
+    if kind == "utc" {
+        return "new Date()";
+    } else if kind == "local" {
+        return "new Date()";
+    } else if kind == "offset" {
+        // JavaScript Date always uses UTC internally
+        return "new Date()";
+    } else if kind == "named" {
+        // Named timezones would require Intl or a library
+        return "new Date()";
+    }
+
+    return "new Date()";
 }
