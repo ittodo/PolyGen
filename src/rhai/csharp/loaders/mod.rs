@@ -11,10 +11,6 @@
 //!   - Row writing/appending
 //!   - Dynamic methods for variable-length lists
 //!
-//! ## Planned Loaders
-//!
-//! - `json`: JSON file loader (TODO)
-//! - `binary`: Binary reader/writer (TODO)
 //!
 //! ## Architecture
 //!

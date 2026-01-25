@@ -249,6 +249,73 @@ fn generate_table_wrapper(s, namespace_fqn) {
 
     result += "        }\n";
     result += "        return result;\n";
+    result += "    }\n\n";
+
+    // ValidateForeignKeys method - template version for cross-table FK validation
+    result += "    /// Validates foreign key references exist in related tables.\n";
+    result += "    template<typename Container>\n";
+    result += "    polygen::ValidationResult validate_foreign_keys(const Container& container) const {\n";
+    result += "        polygen::ValidationResult result;\n";
+
+    // Check if any FK fields exist
+    let has_fk = false;
+    for item in s.items {
+        if item.is_field() {
+            let field = item.as_field();
+            if field.foreign_key != () {
+                has_fk = true;
+            }
+        }
+    }
+
+    if !has_fk {
+        result += "        // No foreign key constraints to validate\n";
+        result += "        (void)container; // Suppress unused variable warning\n";
+    } else {
+        result += "        for (const auto& row : data) {\n";
+
+        for item in s.items {
+            if item.is_field() {
+                let field = item.as_field();
+                if field.foreign_key != () {
+                    let fk = field.foreign_key;
+                    // Get target table name from FQN
+                    let target_parts = fk.target_table_fqn.split(".");
+                    let target_table = "";
+                    for part in target_parts {
+                        target_table = part;
+                    }
+                    let target_member = cpp_types::to_snake_case(pluralize(target_table));
+
+                    if field.field_type.is_option {
+                        result += "            if (row." + field.name + ".has_value()) {\n";
+                        result += "                // Check FK reference to " + target_table + "\n";
+                        result += "                if constexpr (requires { container." + target_member + "; }) {\n";
+                        result += "                    if (container." + target_member + ".get_by_" + fk.target_field + "(row." + field.name + ".value()) == nullptr) {\n";
+                        result += "                        result.add_error(polygen::validation::foreign_key_error(\n";
+                        result += "                            \"" + s.name + "\", \"" + field.name + "\", " + pk_expr + ",\n";
+                        result += "                            \"" + target_table + "\", std::to_string(row." + field.name + ".value())));\n";
+                        result += "                    }\n";
+                        result += "                }\n";
+                        result += "            }\n";
+                    } else {
+                        result += "            // Check FK reference to " + target_table + "\n";
+                        result += "            if constexpr (requires { container." + target_member + "; }) {\n";
+                        result += "                if (container." + target_member + ".get_by_" + fk.target_field + "(row." + field.name + ") == nullptr) {\n";
+                        result += "                    result.add_error(polygen::validation::foreign_key_error(\n";
+                        result += "                        \"" + s.name + "\", \"" + field.name + "\", " + pk_expr + ",\n";
+                        result += "                        \"" + target_table + "\", std::to_string(row." + field.name + ")));\n";
+                        result += "                }\n";
+                        result += "            }\n";
+                    }
+                }
+            }
+        }
+
+        result += "        }\n";
+    }
+
+    result += "        return result;\n";
     result += "    }\n";
 
     result += "};\n\n";
@@ -307,10 +374,17 @@ fn generate_container(base_name, tables) {
     result += "    /// Validates all tables and returns combined results.\n";
     result += "    polygen::ValidationResult validate_all() const {\n";
     result += "        polygen::ValidationResult result;\n";
+    result += "        // Field constraint validation\n";
     for entry in tables {
         let s = entry.struct_def;
         let member_name = cpp_types::to_snake_case(pluralize(s.name));
         result += "        result.merge(" + member_name + ".validate());\n";
+    }
+    result += "        // Foreign key validation\n";
+    for entry in tables {
+        let s = entry.struct_def;
+        let member_name = cpp_types::to_snake_case(pluralize(s.name));
+        result += "        result.merge(" + member_name + ".validate_foreign_keys(*this));\n";
     }
     result += "        return result;\n";
     result += "    }\n\n";

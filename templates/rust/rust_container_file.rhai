@@ -243,6 +243,68 @@ for file in schema.files {
 
         c += "            }\n";
         c += "            result\n";
+        c += "        }\n\n";
+
+        // Generate validate_foreign_keys method
+        c += "        /// Validates foreign key references exist in related tables.\n";
+        c += "        pub fn validate_foreign_keys(&self, container: &" + container_name + ") -> ValidationResult {\n";
+        c += "            let mut result = ValidationResult::new();\n";
+
+        // Check if any FK fields exist
+        let has_fk = false;
+        for item in struct_def.items {
+            if item.is_field() {
+                let field = item.as_field();
+                if field.foreign_key != () {
+                    has_fk = true;
+                }
+            }
+        }
+
+        if !has_fk {
+            c += "            let _ = container; // Suppress unused variable warning\n";
+        } else {
+            c += "            for row in &self.rows {\n";
+            c += "                let row_key = row." + pk_field + ".to_string();\n";
+
+            for item in struct_def.items {
+                if item.is_field() {
+                    let field = item.as_field();
+                    if field.foreign_key != () {
+                        let fk = field.foreign_key;
+                        let field_name = to_snake_case(field.name);
+                        // Get target table name from FQN
+                        let target_parts = fk.target_table_fqn.split(".");
+                        let target_table = "";
+                        for part in target_parts {
+                            target_table = part;
+                        }
+                        let target_member = to_snake_case(target_table) + "s";
+                        let target_getter = "get_by_" + to_snake_case(fk.target_field);
+
+                        if field.field_type.is_option {
+                            c += "                if let Some(fk_value) = row." + field_name + " {\n";
+                            c += "                    if container." + target_member + "." + target_getter + "(fk_value).is_none() {\n";
+                            c += "                        result.add_error(validation::foreign_key_error(\n";
+                            c += "                            \"" + table.name + "\", \"" + field_name + "\", &row_key,\n";
+                            c += "                            \"" + target_table + "\", &fk_value.to_string()));\n";
+                            c += "                    }\n";
+                            c += "                }\n";
+                        } else {
+                            c += "                if container." + target_member + "." + target_getter + "(row." + field_name + ").is_none() {\n";
+                            c += "                    result.add_error(validation::foreign_key_error(\n";
+                            c += "                        \"" + table.name + "\", \"" + field_name + "\", &row_key,\n";
+                            c += "                        \"" + target_table + "\", &row." + field_name + ".to_string()));\n";
+                            c += "                }\n";
+                        }
+                    }
+                }
+            }
+
+            c += "            }\n";
+        }
+
+        c += "            result\n";
         c += "        }\n";
         c += "    }\n\n";
     }
@@ -271,8 +333,13 @@ for file in schema.files {
     c += "        /// Validates all tables and returns combined results.\n";
     c += "        pub fn validate_all(&self) -> ValidationResult {\n";
     c += "            let mut result = ValidationResult::new();\n";
+    c += "            // Field constraint validation\n";
     for table in all_tables {
         c += "            result.merge(self." + table.table_name + ".validate());\n";
+    }
+    c += "            // Foreign key validation\n";
+    for table in all_tables {
+        c += "            result.merge(self." + table.table_name + ".validate_foreign_keys(self));\n";
     }
     c += "            result\n";
     c += "        }\n\n";

@@ -249,6 +249,64 @@ for file in schema.files {
         c += "\t}\n";
         c += "\treturn result\n";
         c += "}\n\n";
+
+        // Generate ValidateForeignKeys method
+        c += "// ValidateForeignKeys validates foreign key references exist in related tables.\n";
+        c += "func (t *" + table_type + ") ValidateForeignKeys(container *" + container_name + ") *ValidationResult {\n";
+        c += "\tresult := NewValidationResult()\n";
+
+        // Check if any FK fields exist
+        let has_fk = false;
+        for item in struct_def.items {
+            if item.is_field() {
+                let field = item.as_field();
+                if field.foreign_key != () {
+                    has_fk = true;
+                }
+            }
+        }
+
+        if !has_fk {
+            c += "\t_ = container // Suppress unused variable warning\n";
+        } else {
+            c += "\tfor _, row := range t.rows {\n";
+            c += "\t\trowKey := fmt.Sprintf(\"%v\", row." + pk_field + ")\n";
+
+            for item in struct_def.items {
+                if item.is_field() {
+                    let field = item.as_field();
+                    if field.foreign_key != () {
+                        let fk = field.foreign_key;
+                        let field_name = to_pascal_case(field.name);
+                        // Get target table name from FQN
+                        let target_parts = fk.target_table_fqn.split(".");
+                        let target_table = "";
+                        for part in target_parts {
+                            target_table = part;
+                        }
+                        let target_member = to_pascal_case(target_table) + "s";
+                        let target_getter = "GetBy" + to_pascal_case(fk.target_field);
+
+                        if field.field_type.is_option {
+                            c += "\t\tif row." + field_name + " != nil {\n";
+                            c += "\t\t\tif container." + target_member + "." + target_getter + "(*row." + field_name + ") == nil {\n";
+                            c += "\t\t\t\tresult.AddError(ForeignKeyError(\"" + table.name + "\", \"" + field_name + "\", rowKey, \"" + target_table + "\", fmt.Sprintf(\"%v\", *row." + field_name + ")))\n";
+                            c += "\t\t\t}\n";
+                            c += "\t\t}\n";
+                        } else {
+                            c += "\t\tif container." + target_member + "." + target_getter + "(row." + field_name + ") == nil {\n";
+                            c += "\t\t\tresult.AddError(ForeignKeyError(\"" + table.name + "\", \"" + field_name + "\", rowKey, \"" + target_table + "\", fmt.Sprintf(\"%v\", row." + field_name + ")))\n";
+                            c += "\t\t}\n";
+                        }
+                    }
+                }
+            }
+
+            c += "\t}\n";
+        }
+
+        c += "\treturn result\n";
+        c += "}\n\n";
     }
 
     // Generate root Container struct
@@ -283,8 +341,13 @@ for file in schema.files {
     c += "// ValidateAll validates all tables and returns combined results.\n";
     c += "func (c *" + container_name + ") ValidateAll() *ValidationResult {\n";
     c += "\tresult := NewValidationResult()\n";
+    c += "\t// Field constraint validation\n";
     for table in all_tables {
         c += "\tresult.Merge(c." + table.field_name + ".Validate())\n";
+    }
+    c += "\t// Foreign key validation\n";
+    for table in all_tables {
+        c += "\tresult.Merge(c." + table.field_name + ".ValidateForeignKeys(c))\n";
     }
     c += "\treturn result\n";
     c += "}\n\n";
