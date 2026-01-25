@@ -38,9 +38,9 @@ use crate::rhai::common::unwrap_option;
 
 /// Checks if a type string represents a primitive-like type.
 ///
-/// English: Returns true for numeric types, bool, and string.
+/// English: Returns true for numeric types, bool, string, and timestamp.
 ///
-/// 한국어: 숫자 타입, bool, string에 대해 true를 반환합니다.
+/// 한국어: 숫자 타입, bool, string, timestamp에 대해 true를 반환합니다.
 pub fn is_primitive_like(t: &str) -> bool {
     matches!(
         t,
@@ -56,6 +56,7 @@ pub fn is_primitive_like(t: &str) -> bool {
             | "bool"
             | "string"
             | "bytes"
+            | "timestamp"
     )
 }
 
@@ -88,6 +89,7 @@ pub fn map_cs_primitive(t: &str) -> Option<&'static str> {
         "bool" => Some("bool"),
         "string" => Some("string"),
         "bytes" => Some("byte[]"),
+        "timestamp" => Some("DateTime"),
         _ => None,
     }
 }

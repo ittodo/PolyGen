@@ -268,3 +268,36 @@ fn get_index_key_expr_cs(idx, row_var) {
         return row_var + "." + idx.field_name;
     }
 }
+
+// =============================================================================
+// Timestamp Utilities
+// =============================================================================
+
+/// Gets the DateTime expression for a given timezone specification.
+/// Used for auto_create and auto_update timestamp fields.
+fn get_datetime_expr_for_timezone(tz) {
+    if tz == () {
+        return "DateTime.UtcNow";
+    }
+
+    let kind = tz.kind;
+
+    if kind == "utc" {
+        return "DateTime.UtcNow";
+    } else if kind == "local" {
+        return "DateTime.Now";
+    } else if kind == "offset" {
+        let hours = tz.offset_hours;
+        let minutes = tz.offset_minutes;
+        if hours == () { hours = 0; }
+        if minutes == () { minutes = 0; }
+        // Use DateTimeOffset to handle timezone offset
+        return "DateTimeOffset.UtcNow.ToOffset(new TimeSpan(" + hours + ", " + minutes + ", 0)).DateTime";
+    } else if kind == "named" {
+        let tz_name = tz.name;
+        if tz_name == () { tz_name = "UTC"; }
+        return "TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(\"" + tz_name + "\"))";
+    }
+
+    return "DateTime.UtcNow";
+}
