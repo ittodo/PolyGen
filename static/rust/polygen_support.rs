@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::{Read, Write, Result as IoResult};
+use chrono::{DateTime, Utc, TimeZone};
 
 // ============================================================================
 // Data Container Traits
@@ -223,6 +224,22 @@ pub trait BinaryReadExt: Read {
         Ok(buf)
     }
 
+    /// Reads a timestamp as i64 ticks (100-nanosecond intervals since .NET epoch).
+    /// Compatible with C# DateTime.Ticks binary format.
+    fn read_timestamp(&mut self) -> IoResult<DateTime<Utc>> {
+        let ticks = self.read_i64()?;
+        // Convert .NET ticks to Unix timestamp
+        // .NET epoch: January 1, 0001
+        // Unix epoch: January 1, 1970
+        // Difference: 621355968000000000 ticks (100-nanosecond intervals)
+        const TICKS_PER_SECOND: i64 = 10_000_000;
+        const UNIX_EPOCH_TICKS: i64 = 621_355_968_000_000_000;
+        let unix_ticks = ticks - UNIX_EPOCH_TICKS;
+        let secs = unix_ticks / TICKS_PER_SECOND;
+        let nanos = ((unix_ticks % TICKS_PER_SECOND) * 100) as u32;
+        Ok(Utc.timestamp_opt(secs, nanos).single().unwrap_or_else(|| Utc::now()))
+    }
+
     fn read_optional<T, F>(&mut self, read_fn: F) -> IoResult<Option<T>>
     where
         F: FnOnce(&mut Self) -> IoResult<T>,
@@ -304,6 +321,22 @@ pub trait BinaryWriteExt: Write {
     fn write_bytes(&mut self, value: &[u8]) -> IoResult<()> {
         self.write_u32(value.len() as u32)?;
         self.write_all(value)
+    }
+
+    /// Writes a timestamp as i64 ticks (100-nanosecond intervals since .NET epoch).
+    /// Compatible with C# DateTime.Ticks binary format.
+    fn write_timestamp(&mut self, value: &DateTime<Utc>) -> IoResult<()> {
+        // Convert Unix timestamp to .NET ticks
+        // .NET epoch: January 1, 0001
+        // Unix epoch: January 1, 1970
+        // Difference: 621355968000000000 ticks (100-nanosecond intervals)
+        const TICKS_PER_SECOND: i64 = 10_000_000;
+        const UNIX_EPOCH_TICKS: i64 = 621_355_968_000_000_000;
+        let secs = value.timestamp();
+        let nanos = value.timestamp_subsec_nanos() as i64;
+        let unix_ticks = secs * TICKS_PER_SECOND + nanos / 100;
+        let ticks = unix_ticks + UNIX_EPOCH_TICKS;
+        self.write_i64(ticks)
     }
 
     fn write_optional<T, F>(&mut self, value: &Option<T>, write_fn: F) -> IoResult<()>
@@ -413,6 +446,19 @@ impl CsvRow {
             "true" | "1" | "yes" => Some(true),
             "false" | "0" | "no" => Some(false),
             _ => None,
+        })
+    }
+
+    /// Parses a timestamp from various formats (ISO 8601, RFC 3339, etc.)
+    pub fn get_timestamp(&self, field: &str) -> Option<DateTime<Utc>> {
+        self.get(field).and_then(|s| {
+            // Try parsing as RFC 3339 / ISO 8601
+            s.parse::<DateTime<Utc>>().ok()
+                .or_else(|| {
+                    // Try parsing as Unix timestamp (seconds)
+                    s.parse::<i64>().ok()
+                        .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
+                })
         })
     }
 

@@ -78,6 +78,7 @@ fn bin_read_expr(type_ref) {
     if n == "f32" { return "reader.read_f32()"; }
     if n == "f64" { return "reader.read_f64()"; }
     if n == "bytes" { return "reader.read_bytes()"; }
+    if n == "timestamp" { return "reader.read_timestamp()"; }
 
     // For enums and custom types, use fully qualified names
     let full_type = get_type_fqn(type_ref);
@@ -103,6 +104,7 @@ fn bin_write_expr(type_ref, value_expr) {
     if n == "f32" { return "writer.write_f32(" + value_expr + ")"; }
     if n == "f64" { return "writer.write_f64(" + value_expr + ")"; }
     if n == "bytes" { return "writer.write_bytes(" + value_expr + ")"; }
+    if n == "timestamp" { return "writer.write_timestamp(" + value_expr + ")"; }
 
     if type_ref.is_enum {
         return "writer.write_enum(" + value_expr + ")";
@@ -125,6 +127,7 @@ fn get_primitive_reader(type_name) {
         "f32" => "read_f32",
         "f64" => "read_f64",
         "bytes" => "read_bytes",
+        "timestamp" => "read_timestamp",
         _ => "read_i32"
     }
 }
@@ -144,6 +147,7 @@ fn get_primitive_writer(type_name) {
         "f32" => "write_f32",
         "f64" => "write_f64",
         "bytes" => "write_bytes",
+        "timestamp" => "write_timestamp",
         _ => "write_i32"
     }
 }

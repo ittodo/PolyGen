@@ -31,6 +31,7 @@ fn csv_getter(f) {
     if t.type_name == "f32" { return "row.get_f32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "f64" { return "row.get_f64(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "bool" { return "row.get_bool(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.type_name == "timestamp" { return "row.get_timestamp(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.is_enum { return "row.get_i32(\"" + n + "\").map(|v| unsafe { std::mem::transmute(v) }).ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     return "Default::default()";
 }
@@ -67,6 +68,7 @@ fn bin_read_closure(t) {
     if n == "f32" { return "r.read_f32()"; }
     if n == "f64" { return "r.read_f64()"; }
     if n == "bytes" { return "r.read_bytes()"; }
+    if n == "timestamp" { return "r.read_timestamp()"; }
     if t.is_enum { return "r.read_i32().map(|v| unsafe { std::mem::transmute(v) })"; }
     return n + "::read_binary(r)";
 }
@@ -87,6 +89,7 @@ fn bin_read_direct(t) {
     if n == "f32" { return "reader.read_f32()"; }
     if n == "f64" { return "reader.read_f64()"; }
     if n == "bytes" { return "reader.read_bytes()"; }
+    if n == "timestamp" { return "reader.read_timestamp()"; }
     if t.is_enum { return "reader.read_i32().map(|v| unsafe { std::mem::transmute(v) })"; }
     return n + "::read_binary(reader)";
 }
@@ -120,6 +123,7 @@ fn bin_write_inner(t) {
     if n == "f32" { return "w.write_f32(*v)"; }
     if n == "f64" { return "w.write_f64(*v)"; }
     if n == "bytes" { return "w.write_bytes(v)"; }
+    if n == "timestamp" { return "w.write_timestamp(v)"; }
     if t.is_enum { return "w.write_i32(*v as i32)"; }
     return "v.write_binary(w)";
 }
@@ -139,6 +143,7 @@ fn bin_write_direct(t, expr) {
     if n == "f32" { return "writer.write_f32(" + expr + ")"; }
     if n == "f64" { return "writer.write_f64(" + expr + ")"; }
     if n == "bytes" { return "writer.write_bytes(&" + expr + ")"; }
+    if n == "timestamp" { return "writer.write_timestamp(&" + expr + ")"; }
     if t.is_enum { return "writer.write_i32(" + expr + " as i32)"; }
     return expr + ".write_binary(writer)";
 }
