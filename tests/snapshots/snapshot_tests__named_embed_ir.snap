@@ -49,6 +49,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -77,6 +79,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -105,6 +109,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                 ],
