@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 22
 expression: ir_context
 ---
 SchemaContext {
@@ -77,6 +78,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -105,6 +108,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -133,6 +138,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -176,6 +183,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                 ],
@@ -276,6 +285,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -304,6 +315,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -332,6 +345,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -375,6 +390,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Comment(
@@ -467,6 +484,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -495,6 +514,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -523,6 +544,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                 ],

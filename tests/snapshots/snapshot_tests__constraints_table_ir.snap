@@ -51,6 +51,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -86,6 +88,8 @@ SchemaContext {
                                             regex_pattern: Some(
                                                 "^[A-Z0-9]{5,10}$",
                                             ),
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -122,6 +126,8 @@ SchemaContext {
                                                 },
                                             ),
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                     Field(
@@ -156,6 +162,8 @@ SchemaContext {
                                             default_value: None,
                                             range: None,
                                             regex_pattern: None,
+                                            auto_create: None,
+                                            auto_update: None,
                                         },
                                     ),
                                 ],

@@ -1,10 +1,11 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 18
 expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas\\advanced_annotations.poly",
+        path: "tests/schemas/advanced_annotations.poly",
         file_imports: [],
         definitions: [
             Namespace(
