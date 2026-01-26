@@ -423,6 +423,73 @@ game.sql.poly    -- SQL 전용 확장
   - `@readonly` (읽기 전용 테이블)
   - `@soft_delete` (소프트 삭제 필드 지정)
 
+### Phase 5: DB 기반 마이그레이션 ✅ 완료 (2026-01-26)
+- [x] SQLite DB introspection 모듈 (`src/db_introspection.rs`)
+- [x] DB-to-Schema 비교 로직 (`MigrationDiff::compare_db`)
+- [x] CLI `--db` 옵션 추가 (SQLite 파일 경로 지정)
+- [x] 통합 테스트 작성 (`tests/db_migration_tests.rs`)
+
+---
+
+## DB 기반 마이그레이션 (Phase 5)
+
+### 개요
+
+기존 스키마-투-스키마 비교 방식 대신, **실제 DB에 연결하여 현재 상태를 읽어오는 방식** 지원.
+
+### 사용법
+
+```bash
+# 기존 방식: 스키마 파일 비교
+polygen migrate --baseline old.poly --schema-path new.poly
+
+# 새 방식: DB 파일에서 직접 스키마 읽기
+polygen migrate --db game.db --schema-path schema.poly
+```
+
+### 장점
+
+| 기존 (--baseline) | 새 방식 (--db) |
+|-------------------|----------------|
+| baseline.poly 파일 관리 필요 | 실제 DB 상태 반영 |
+| 수동 변경 감지 불가 | 모든 변경 감지 |
+| 파일 동기화 필요 | 항상 최신 상태 |
+
+### 지원 기능
+
+| 변경 유형 | 감지 | 생성 SQL |
+|----------|------|----------|
+| 테이블 추가 | ✅ | `CREATE TABLE` |
+| 테이블 삭제 | ✅ | `DROP TABLE` (경고) |
+| 컬럼 추가 | ✅ | `ALTER TABLE ADD COLUMN` |
+| 컬럼 삭제 | ✅ | `DROP COLUMN` (경고) |
+| 타입 변경 | ✅ | 테이블 재생성 (경고) |
+
+### 모듈 구조
+
+```
+src/
+├── db_introspection.rs   # DB 스키마 읽기
+│   ├── SqliteIntrospector  # SQLite 연결 및 introspection
+│   ├── DbSchema            # DB 스키마 구조체
+│   ├── DbTable             # 테이블 정보
+│   └── DbColumn            # 컬럼 정보
+│
+└── migration.rs          # 마이그레이션 diff
+    ├── MigrationDiff::compare()     # 스키마-투-스키마
+    └── MigrationDiff::compare_db()  # DB-투-스키마 (NEW)
+```
+
+### 테스트
+
+```bash
+# DB 마이그레이션 테스트 실행
+cargo test --test db_migration_tests
+
+# 모듈 단위 테스트
+cargo test db_introspection
+```
+
 ---
 
 ## 결정 완료
@@ -430,13 +497,14 @@ game.sql.poly    -- SQL 전용 확장
 - [x] ~~SQL 전용 문법 분리 방식~~ → `.renames` 파일 방식 채택
 - [x] ~~아키텍처~~ → B안 (@datasource 기반 자동 생성) 채택
 - [x] SQLite 최소 지원 버전 → 3.25.0 (RENAME COLUMN 지원)
+- [x] ~~마이그레이션 diff 자동 감지~~ → DB introspection 방식 채택
 
 ## 결정 필요 사항
 
-- [ ] 마이그레이션 diff 자동 감지 vs 수동 `.renames` 파일
 - [ ] 쿼리/뷰 지원 범위
 - [ ] 파괴적 변경 처리 정책 (DROP TABLE 경고 등)
+- [ ] MySQL DB introspection 지원
 
 ---
 
-*최종 업데이트: 2026-01-22*
+*최종 업데이트: 2026-01-26*

@@ -61,6 +61,8 @@ PolyGen/
 │   ├── pipeline.rs           # 컴파일 파이프라인
 │   ├── codegen.rs            # 코드 생성 유틸리티
 │   ├── rhai_generator.rs     # Rhai 템플릿 엔진
+│   ├── migration.rs          # 마이그레이션 diff 생성
+│   ├── db_introspection.rs   # DB 스키마 introspection (SQLite)
 │   ├── error.rs              # 에러 타입 정의
 │   └── rhai/                 # Rhai 함수 모듈
 │       ├── registry.rs       # 함수 등록
@@ -140,6 +142,7 @@ PolyGen/
 | 타입 해석/IR 구조 | `src/ir_builder.rs` → `src/ir_model.rs` |
 | 생성 코드 변경 | `templates/<lang>/` (Rhai 템플릿) |
 | 런타임 유틸리티 | `static/<lang>/` |
+| DB 마이그레이션 | `src/migration.rs` → `src/db_introspection.rs` |
 | 회귀 테스트 | `tests/` |
 
 ---
@@ -163,6 +166,19 @@ cargo run -- \
   --output-dir <OUTPUT_DIR>
 ```
 
+### 마이그레이션
+
+```bash
+# 스키마 비교 방식 (baseline .poly 파일 사용)
+cargo run -- migrate --baseline old.poly --schema-path new.poly
+
+# DB 비교 방식 (SQLite 파일에서 직접 스키마 읽기)
+cargo run -- migrate --db game.db --schema-path schema.poly
+
+# 출력 디렉토리 지정
+cargo run -- migrate --db game.db --schema-path schema.poly --output-dir migrations/
+```
+
 ### 테스트
 
 ```bash
@@ -174,6 +190,9 @@ cargo insta review
 
 # 특정 테스트 실행
 cargo test test_name
+
+# DB 마이그레이션 테스트
+cargo test --test db_migration_tests
 ```
 
 ### 코드 품질
@@ -512,8 +531,9 @@ cd tests/runners/typescript && ./run_tests.sh
 | thiserror | 1.0 | 에러 타입 정의 |
 | heck | 0.5 | 케이스 변환 |
 | clap | 4.5 | CLI 인자 파싱 |
+| rusqlite | 0.31 | SQLite DB introspection |
 | insta | 1.34 | 스냅샷 테스트 (dev) |
 
 ---
 
-*최종 업데이트: 2026-01-21*
+*최종 업데이트: 2026-01-26*
