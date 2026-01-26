@@ -1,7 +1,11 @@
 //! Schema migration diff module.
 //!
 //! Compares two schema versions and generates migration SQL.
+//! Supports two comparison modes:
+//! 1. Schema-to-Schema: Compare two .poly schemas (baseline vs current)
+//! 2. DB-to-Schema: Compare actual database state with .poly schema
 
+use crate::db_introspection::{DbSchema, DbTable};
 use crate::ir_model::{NamespaceDef, NamespaceItem, SchemaContext, StructDef};
 use std::collections::{HashMap, HashSet};
 
@@ -296,6 +300,148 @@ impl MigrationDiff {
         }
 
         sql
+    }
+
+    /// Compare a database schema with a poly schema context.
+    ///
+    /// This is the DB-to-Schema comparison mode:
+    /// - `db_schema`: Current state read from actual database
+    /// - `poly_schema`: Target state defined in .poly files
+    ///
+    /// Returns changes needed to migrate DB to match .poly schema.
+    pub fn compare_db(db_schema: &DbSchema, poly_schema: &SchemaContext) -> Self {
+        let mut diff = MigrationDiff::default();
+
+        // Extract target tables from poly schema
+        let poly_tables = extract_tables(poly_schema);
+
+        // Convert DB tables to comparable format
+        let db_table_names: HashSet<_> = db_schema.tables.keys().cloned().collect();
+        let poly_table_names: HashSet<_> = poly_tables.keys().cloned().collect();
+
+        // Find tables in poly but not in DB (need to CREATE)
+        for name in poly_table_names.difference(&db_table_names) {
+            if let Some(table) = poly_tables.get(name) {
+                diff.changes.push(SchemaChange::TableAdded {
+                    table_name: table.name.clone(),
+                    namespace: table.namespace.clone(),
+                    struct_def: table.struct_def.clone(),
+                });
+            }
+        }
+
+        // Find tables in DB but not in poly (may need to DROP)
+        for name in db_table_names.difference(&poly_table_names) {
+            // Try to extract namespace and table name from full name
+            let (namespace, table_name) = parse_full_table_name(name);
+            diff.changes.push(SchemaChange::TableRemoved {
+                table_name,
+                namespace,
+            });
+            diff.warnings.push(format!(
+                "Table '{}' exists in DB but not in schema. Consider dropping it.",
+                name
+            ));
+        }
+
+        // Find column changes in tables that exist in both
+        for name in db_table_names.intersection(&poly_table_names) {
+            let db_table = db_schema.tables.get(name).unwrap();
+            let poly_table = poly_tables.get(name).unwrap();
+
+            compare_db_columns(&mut diff, db_table, poly_table);
+        }
+
+        diff
+    }
+}
+
+/// Parse a full table name (namespace_TableName) back into parts.
+fn parse_full_table_name(full_name: &str) -> (String, String) {
+    // Try to find the last underscore followed by a capital letter
+    // e.g., "game_data_ItemTable" -> ("game.data", "ItemTable")
+    let mut last_ns_end = 0;
+    let chars: Vec<char> = full_name.chars().collect();
+
+    for i in 0..chars.len() {
+        if chars[i] == '_' && i + 1 < chars.len() && chars[i + 1].is_uppercase() {
+            last_ns_end = i;
+        }
+    }
+
+    if last_ns_end > 0 {
+        let namespace = full_name[..last_ns_end].replace('_', ".");
+        let table_name = full_name[last_ns_end + 1..].to_string();
+        (namespace, table_name)
+    } else {
+        // No namespace prefix
+        (String::new(), full_name.to_string())
+    }
+}
+
+/// Compare columns between a DB table and a poly table.
+fn compare_db_columns(diff: &mut MigrationDiff, db_table: &DbTable, poly_table: &TableInfo) {
+    let db_col_names: HashSet<_> = db_table.columns.keys().cloned().collect();
+    let poly_col_names: HashSet<_> = poly_table.columns.keys().cloned().collect();
+
+    // Columns in poly but not in DB (need to ADD)
+    for name in poly_col_names.difference(&db_col_names) {
+        if let Some(col) = poly_table.columns.get(name) {
+            diff.changes.push(SchemaChange::ColumnAdded {
+                table_name: poly_table.name.clone(),
+                namespace: poly_table.namespace.clone(),
+                column_name: col.name.clone(),
+                column_type: map_to_sqlite_type(&col.type_name),
+                is_nullable: col.is_nullable,
+            });
+        }
+    }
+
+    // Columns in DB but not in poly (may need to DROP)
+    for name in db_col_names.difference(&poly_col_names) {
+        diff.changes.push(SchemaChange::ColumnRemoved {
+            table_name: poly_table.name.clone(),
+            namespace: poly_table.namespace.clone(),
+            column_name: name.clone(),
+        });
+        diff.warnings.push(format!(
+            "Column '{}' in table '{}' exists in DB but not in schema.",
+            name, poly_table.full_name
+        ));
+    }
+
+    // Check for type changes in columns that exist in both
+    for name in db_col_names.intersection(&poly_col_names) {
+        let db_col = db_table.columns.get(name).unwrap();
+        let poly_col = poly_table.columns.get(name).unwrap();
+
+        let db_type_normalized = normalize_sqlite_type(&db_col.db_type);
+        let poly_type_sqlite = map_to_sqlite_type(&poly_col.type_name);
+
+        if db_type_normalized != poly_type_sqlite {
+            diff.changes.push(SchemaChange::ColumnTypeChanged {
+                table_name: poly_table.name.clone(),
+                namespace: poly_table.namespace.clone(),
+                column_name: name.clone(),
+                old_type: db_col.db_type.clone(),
+                new_type: poly_type_sqlite,
+            });
+            diff.warnings.push(format!(
+                "Column '{}' type mismatch in '{}': DB has '{}', schema wants '{}'",
+                name, poly_table.full_name, db_col.db_type, poly_col.type_name
+            ));
+        }
+    }
+}
+
+/// Normalize SQLite type names for comparison.
+fn normalize_sqlite_type(db_type: &str) -> String {
+    match db_type.to_uppercase().as_str() {
+        "INT" | "INTEGER" | "BIGINT" | "SMALLINT" | "TINYINT" => "INTEGER".to_string(),
+        "REAL" | "FLOAT" | "DOUBLE" => "REAL".to_string(),
+        "TEXT" | "VARCHAR" | "CHAR" | "CLOB" => "TEXT".to_string(),
+        "BLOB" => "BLOB".to_string(),
+        other => other.to_uppercase(),
     }
 }
 

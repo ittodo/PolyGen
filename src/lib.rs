@@ -44,6 +44,7 @@ use std::path::PathBuf;
 pub mod ast_model;
 pub mod ast_parser;
 pub mod codegen;
+pub mod db_introspection;
 pub mod error;
 pub mod ir_builder;
 pub mod ir_model;
@@ -119,11 +120,16 @@ pub enum Commands {
         baseline: Option<PathBuf>,
     },
 
-    /// Generate migration SQL by comparing two schema versions
+    /// Generate migration SQL by comparing schema versions or DB state
     Migrate {
-        /// Path to the baseline (old) schema file
-        #[arg(short, long)]
-        baseline: PathBuf,
+        /// Path to the baseline (old) schema file (for schema-to-schema comparison)
+        #[arg(short, long, conflicts_with = "db")]
+        baseline: Option<PathBuf>,
+
+        /// Path to SQLite database file (for DB-to-schema comparison)
+        /// Example: --db ./game.db
+        #[arg(long, conflicts_with = "baseline")]
+        db: Option<PathBuf>,
 
         /// Path to the current (new) schema file
         #[arg(short, long)]
@@ -133,9 +139,9 @@ pub enum Commands {
         #[arg(short, long, default_value = "output")]
         output_dir: PathBuf,
 
-        /// Target database (sqlite, mysql). Defaults to all detected @datasource values.
-        #[arg(short = 'd', long)]
-        database: Option<String>,
+        /// Target database type (sqlite, mysql). Defaults to sqlite for DB mode.
+        #[arg(short = 't', long)]
+        target: Option<String>,
     },
 
     /// Visualize schema structure with references
@@ -167,10 +173,11 @@ pub fn run(cli: Cli) -> Result<()> {
 
         Some(Commands::Migrate {
             baseline,
+            db,
             schema_path,
             output_dir,
-            database,
-        }) => run_migrate(baseline, schema_path, output_dir, database),
+            target,
+        }) => run_migrate(baseline, db, schema_path, output_dir, target),
 
         Some(Commands::Visualize {
             schema_path,
@@ -218,45 +225,70 @@ fn run_generate(
 }
 
 /// Run the migrate command (migration-only mode)
+///
+/// Supports two modes:
+/// 1. Schema-to-Schema: --baseline old.poly --schema-path new.poly
+/// 2. DB-to-Schema: --db game.db --schema-path schema.poly
 fn run_migrate(
-    baseline_path: PathBuf,
+    baseline_path: Option<PathBuf>,
+    db_path: Option<PathBuf>,
     schema_path: PathBuf,
     output_dir: PathBuf,
-    database: Option<String>,
+    target: Option<String>,
 ) -> Result<()> {
+    use crate::db_introspection::SqliteIntrospector;
     use crate::migration::MigrationDiff;
 
-    println!("--- 마이그레이션 생성 모드 ---");
-    println!("  기준 스키마: {}", baseline_path.display());
-    println!("  현재 스키마: {}", schema_path.display());
-
-    // Parse both schemas
-    let baseline_asts = parse_and_merge_schemas(&baseline_path, None)?;
+    // Parse current schema
     let current_asts = parse_and_merge_schemas(&schema_path, None)?;
-
-    // Validate both
-    let baseline_defs: Vec<_> = baseline_asts
-        .iter()
-        .flat_map(|ast| ast.definitions.clone())
-        .collect();
     let current_defs: Vec<_> = current_asts
         .iter()
         .flat_map(|ast| ast.definitions.clone())
         .collect();
-
-    validation::validate_ast(&baseline_defs)?;
     validation::validate_ast(&current_defs)?;
-
-    // Build IR
-    let baseline_ir = ir_builder::build_ir(&baseline_asts);
     let current_ir = ir_builder::build_ir(&current_asts);
 
-    // Compare schemas
-    let diff = MigrationDiff::compare(&baseline_ir, &current_ir);
+    let diff = if let Some(db_file) = db_path {
+        // DB-to-Schema mode
+        println!("--- DB 기반 마이그레이션 생성 모드 ---");
+        println!("  데이터베이스: {}", db_file.display());
+        println!("  목표 스키마: {}", schema_path.display());
+
+        // Read schema from SQLite database
+        let introspector = SqliteIntrospector::open(&db_file)?;
+        let db_schema = introspector.read_schema()?;
+
+        println!("\n  DB 현재 상태:");
+        println!("    - 테이블: {} 개", db_schema.table_count());
+        println!("    - 컬럼: {} 개", db_schema.column_count());
+
+        // Compare DB with poly schema
+        MigrationDiff::compare_db(&db_schema, &current_ir)
+    } else if let Some(baseline) = baseline_path {
+        // Schema-to-Schema mode
+        println!("--- 스키마 비교 마이그레이션 생성 모드 ---");
+        println!("  기준 스키마: {}", baseline.display());
+        println!("  현재 스키마: {}", schema_path.display());
+
+        let baseline_asts = parse_and_merge_schemas(&baseline, None)?;
+        let baseline_defs: Vec<_> = baseline_asts
+            .iter()
+            .flat_map(|ast| ast.definitions.clone())
+            .collect();
+        validation::validate_ast(&baseline_defs)?;
+        let baseline_ir = ir_builder::build_ir(&baseline_asts);
+
+        MigrationDiff::compare(&baseline_ir, &current_ir)
+    } else {
+        anyhow::bail!(
+            "마이그레이션 소스가 필요합니다.\n\
+             --baseline <스키마파일> 또는 --db <SQLite파일> 중 하나를 지정하세요."
+        );
+    };
 
     // Report changes
     if diff.changes.is_empty() {
-        println!("\n변경사항 없음.");
+        println!("\n변경사항 없음. 스키마가 동기화되어 있습니다.");
         return Ok(());
     }
 
@@ -292,44 +324,36 @@ fn run_migrate(
     // Generate migration SQL
     fs::create_dir_all(&output_dir)?;
 
-    // Determine which databases to generate for
-    let databases = if let Some(db) = database {
-        vec![db]
-    } else {
-        // Detect from @datasource annotations
-        let mut dbs = vec![];
+    // Determine target database type
+    let target_db = target.unwrap_or_else(|| {
+        // Detect from @datasource annotations or default to sqlite
         for file in &current_ir.files {
             for ns in &file.namespaces {
                 if let Some(ref ds) = ns.datasource {
-                    if !dbs.contains(ds) {
-                        dbs.push(ds.clone());
-                    }
+                    return ds.clone();
                 }
             }
         }
-        if dbs.is_empty() {
-            vec!["sqlite".to_string()] // Default to SQLite
-        } else {
-            dbs
+        "sqlite".to_string()
+    });
+
+    let sql = match target_db.as_str() {
+        "sqlite" => diff.to_sqlite_sql(),
+        "mysql" => diff.to_mysql_sql(),
+        _ => {
+            anyhow::bail!("지원하지 않는 DB 타입: {}", target_db);
         }
     };
 
-    for db in &databases {
-        let sql = match db.as_str() {
-            "sqlite" => diff.to_sqlite_sql(),
-            "mysql" => diff.to_mysql_sql(),
-            _ => {
-                println!("  (지원하지 않는 DB: {})", db);
-                continue;
-            }
-        };
-
-        let db_dir = output_dir.join(db);
-        fs::create_dir_all(&db_dir)?;
-        let migration_file = db_dir.join("migration.sql");
-        fs::write(&migration_file, &sql)?;
-        println!("\n{} 마이그레이션 SQL 생성: {}", db.to_uppercase(), migration_file.display());
-    }
+    let db_dir = output_dir.join(&target_db);
+    fs::create_dir_all(&db_dir)?;
+    let migration_file = db_dir.join("migration.sql");
+    fs::write(&migration_file, &sql)?;
+    println!(
+        "\n{} 마이그레이션 SQL 생성 완료: {}",
+        target_db.to_uppercase(),
+        migration_file.display()
+    );
 
     Ok(())
 }
