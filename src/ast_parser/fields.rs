@@ -190,10 +190,10 @@ fn parse_timezone(pair: Pair<Rule>) -> Result<Timezone, AstBuildError> {
 
 /// Parse UTC offset string like "+9", "-5", "+5:30" into Timezone::Offset
 fn parse_tz_offset(s: &str) -> Result<Timezone, ()> {
-    let (sign, rest) = if s.starts_with('+') {
-        (1i8, &s[1..])
-    } else if s.starts_with('-') {
-        (-1i8, &s[1..])
+    let (sign, rest) = if let Some(r) = s.strip_prefix('+') {
+        (1i8, r)
+    } else if let Some(r) = s.strip_prefix('-') {
+        (-1i8, r)
     } else {
         return Err(());
     };

@@ -189,8 +189,8 @@ pub struct RelationDef {
 /// An item that can appear within a struct.
 #[derive(Serialize, Debug, Clone)]
 pub enum StructItem {
-    /// A field definition.
-    Field(FieldDef),
+    /// A field definition (boxed to reduce enum size variance).
+    Field(Box<FieldDef>),
     /// A comment.
     Comment(String),
     /// An annotation.
