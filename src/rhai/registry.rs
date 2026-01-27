@@ -299,7 +299,7 @@ fn register_types_and_getters(engine: &mut Engine) {
         "as_field",
         |item: &mut StructItem| -> Result<FieldDef, Box<EvalAltResult>> {
             match item {
-                StructItem::Field(f) => Ok(f.clone()),
+                StructItem::Field(f) => Ok((**f).clone()),
                 _ => Err(Box::new(EvalAltResult::ErrorSystem(
                     "Cannot convert to FieldDef".to_string(),
                     Box::new(rhai::LexError::UnterminatedString),

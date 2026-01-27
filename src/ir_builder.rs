@@ -38,6 +38,7 @@ fn is_readonly(metadata: &[Metadata]) -> bool {
 /// Returns Some(separator) if @pack is present:
 /// - `@pack` → Some(";") (default separator)
 /// - `@pack(separator: ",")` → Some(",")
+///
 /// Returns None if @pack is not present.
 fn extract_pack_separator(metadata: &[Metadata]) -> Option<String> {
     for meta in metadata {
@@ -127,8 +128,7 @@ fn extract_constraint_info(constraints: &[ast_model::Constraint]) -> ConstraintI
             ast_model::Constraint::ForeignKey(path, alias) => {
                 // Parse the path: e.g., ["game", "character", "Player", "id"]
                 // The last element is the field, everything before is the table FQN
-                if path.len() >= 2 {
-                    let target_field = path.last().unwrap().clone();
+                if let (Some(target_field), true) = (path.last().cloned(), path.len() >= 2) {
                     let target_table_fqn = path[..path.len() - 1].join(".");
                     info.foreign_key = Some(ForeignKeyDef {
                         target_table_fqn,
@@ -593,7 +593,10 @@ fn convert_table_to_struct(
 ) -> StructDef {
     let mut items = Vec::new();
     let mut header_items = Vec::new();
-    let name = table.name.clone().unwrap();
+    let name = table
+        .name
+        .clone()
+        .unwrap_or_else(|| "UnnamedTable".to_string());
     let fqn = if current_ns.is_empty() {
         name.clone()
     } else {
@@ -645,7 +648,7 @@ fn convert_table_to_struct(
                 // Pass current_ns (namespace FQN) for type resolution, and fqn (struct FQN) for inline types
                 let (field_def, new_nested_structs, new_nested_enums) =
                     convert_field_to_ir(field, current_ns, &fqn);
-                items.push(StructItem::Field(field_def));
+                items.push(StructItem::Field(Box::new(field_def)));
                 // Add the new nested types to the items list
                 items.extend(new_nested_structs.into_iter().map(StructItem::EmbeddedStruct));
                 items.extend(new_nested_enums.into_iter().map(StructItem::InlineEnum));
@@ -793,6 +796,10 @@ fn convert_field_to_ir(
 ) -> (FieldDef, Vec<StructDef>, Vec<EnumDef>) {
     match field {
         ast_model::FieldDefinition::Regular(rf) => {
+            let field_name = rf
+                .name
+                .clone()
+                .unwrap_or_else(|| "unnamed_field".to_string());
             let attributes = convert_constraints_to_attributes(&rf.constraints);
             let mut inline_enums = Vec::new();
 
@@ -800,7 +807,7 @@ fn convert_field_to_ir(
                 ast_model::TypeName::InlineEnum(e) => {
                     // Generate a unique name for the inline enum
                     // For now, let's use FieldName_Enum. We'll need table context later for better names.
-                    let generated_enum_name = format!("{}_Enum", rf.name.clone().expect("Regular field name must be present").to_pascal_case());
+                    let generated_enum_name = format!("{}_Enum", field_name.to_pascal_case());
 
                     // Create the EnumDef using the generated name
                     let enum_fqn = if owner_fqn.is_empty() { generated_enum_name.clone() } else { format!("{}.{}", owner_fqn, generated_enum_name) };
@@ -816,7 +823,7 @@ fn convert_field_to_ir(
 
             (
                 FieldDef {
-                    name: rf.name.clone().expect("Regular field name must be present"),
+                    name: field_name,
                     field_type,
                     attributes,
                     is_primary_key: constraint_info.is_primary_key,
@@ -835,7 +842,11 @@ fn convert_field_to_ir(
             )
         }
         ast_model::FieldDefinition::InlineEmbed(ief) => {
-            let struct_name = ief.name.clone().expect("Inline embed field name must be present").to_pascal_case();
+            let field_name = ief
+                .name
+                .clone()
+                .unwrap_or_else(|| "unnamed_embed".to_string());
+            let struct_name = field_name.to_pascal_case();
             let inline_struct = convert_table_to_struct(
                 &ast_model::Table {
                     name: Some(struct_name.clone()),
@@ -849,7 +860,7 @@ fn convert_field_to_ir(
             let nested_items = vec![inline_struct];
 
             let field_def = FieldDef {
-                name: ief.name.clone().expect("Inline embed field name must be present"),
+                name: field_name,
                 field_type: build_type_ref_from_base(
                     &format!("{}.{}", owner_fqn, struct_name),
                     &struct_name,
@@ -871,8 +882,12 @@ fn convert_field_to_ir(
             (field_def, nested_items, Vec::new())
         }
         ast_model::FieldDefinition::InlineEnum(e) => {
-            let generated_enum_name = format!("{}__Enum", e.name.clone().expect("Inline enum name must be present").to_pascal_case());
-            
+            let field_name = e
+                .name
+                .clone()
+                .unwrap_or_else(|| "unnamed_enum".to_string());
+            let generated_enum_name = format!("{}__Enum", field_name.to_pascal_case());
+
             // Create a temporary Enum from InlineEnumField
             let temp_enum = ast_model::Enum {
                 metadata: e.metadata.clone(),
@@ -881,9 +896,9 @@ fn convert_field_to_ir(
             };
 
             let enum_def = convert_enum_to_enum_def(&temp_enum, Some(generated_enum_name.clone()), owner_fqn);
-            
+
             let field_def = FieldDef {
-                name: e.name.clone().expect("Inline enum name must be present"),
+                name: field_name,
                 field_type: build_type_ref_from_base(
                     &format!("{}.{}", owner_fqn, generated_enum_name),
                     &generated_enum_name,
@@ -958,12 +973,19 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>, 
         };
 
         items.push(EnumItem::Member(ir_model::EnumMember {
-            name: variant.name.clone().unwrap(),
+            name: variant
+                .name
+                .clone()
+                .unwrap_or_else(|| "UnnamedVariant".to_string()),
             value: member_value,
         }));
     }
 
-    let name = name_override.unwrap_or_else(|| e.name.clone().expect("Named enum must have a name"));
+    let name = name_override.unwrap_or_else(|| {
+        e.name
+            .clone()
+            .unwrap_or_else(|| "UnnamedEnum".to_string())
+    });
     let fqn = if ns_or_owner_fqn.is_empty() { name.clone() } else { format!("{}.{}", ns_or_owner_fqn, name) };
     EnumDef { name, fqn, items }
 }
@@ -1250,7 +1272,10 @@ fn convert_annotation_to_ir(ast_ann: &ast_model::Annotation) -> AnnotationDef {
     }
 
     AnnotationDef {
-        name: ast_ann.name.clone().unwrap(),
+        name: ast_ann
+            .name
+            .clone()
+            .unwrap_or_else(|| "unnamed".to_string()),
         positional_args,
         params,
     }
@@ -1341,7 +1366,7 @@ mod tests {
         struct_def.items.iter().find_map(|item| {
             if let StructItem::Field(f) = item {
                 if f.name == name {
-                    return Some(f);
+                    return Some(f.as_ref());
                 }
             }
             None
