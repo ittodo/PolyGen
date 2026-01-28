@@ -146,6 +146,22 @@
 | SQL 지원 방식 | @datasource 기반 자동 생성 |
 | Rename 지원 | `.renames` 파일 방식 |
 | SQLite 최소 버전 | 3.25.0 (RENAME COLUMN 지원) |
+| 타입 매핑 통일 | 문제 발생 시 C# Rust 헬퍼 → Rhai 템플릿으로 이관 |
+
+### 타입 매핑 현황
+
+현재 C#만 Rust 헬퍼(`src/rhai/csharp/type_mapping.rs`)로 구현되어 있고,
+다른 언어(C++, Rust, TypeScript, Go)는 Rhai 템플릿으로 구현됨.
+
+```
+C#:    src/rhai/csharp/type_mapping.rs       (Rust)
+C++:   templates/cpp/rhai_utils/type_mapping.rhai    (Rhai)
+Rust:  templates/rust/rhai_utils/type_mapping.rhai   (Rhai)
+TS:    templates/typescript/rhai_utils/type_mapping.rhai (Rhai)
+Go:    templates/go/rhai_utils/type_mapping.rhai     (Rhai)
+```
+
+**향후 계획**: 일관성 문제나 유지보수 이슈 발생 시 C#도 Rhai로 통일
 
 ---
 
