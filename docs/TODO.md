@@ -8,6 +8,11 @@
 
 ### ✅ 완료된 작업
 
+#### 문서화 (2026-01-28)
+- [x] `CUSTOMIZATION.md` - Rhai 템플릿 커스터마이징 가이드 (5개 언어)
+- [x] `SOURCE_STRUCTURE.md` - 소스 코드 구조 문서화
+- [x] `CLAUDE.md` 진입점 및 문서 동기화 규칙 추가
+
 #### 코드 품질 개선 (2026-01-28)
 - [x] Clippy 경고 수정: `strip_prefix()` 사용 (ast_parser/fields.rs)
 - [x] Clippy 경고 수정: `Box<FieldDef>` 적용으로 enum 크기 최적화 (ir_model.rs)
@@ -172,6 +177,8 @@ Go:    templates/go/rhai_utils/type_mapping.rhai     (Rhai)
 
 | 문서 | 설명 |
 |------|------|
+| `CUSTOMIZATION.md` | Rhai 템플릿 커스터마이징 가이드 |
+| `SOURCE_STRUCTURE.md` | 소스 코드 구조 |
 | `archive/REFACTORING_TODO.md` | 코어 리팩토링 Phase 1-5 (완료) |
 | `archive/PHASE4_TODO.md` | 성능 & 확장성 개선 (완료) |
 | `SQL_TODO.md` | SQL/DB 지원 상세 |
@@ -184,8 +191,8 @@ Go:    templates/go/rhai_utils/type_mapping.rhai     (Rhai)
 | 우선순위 | 작업 | 난이도 | 가치 |
 |---------|------|--------|------|
 | 🔴 높음 | DB 파일 경로 UI | 하 | UX 개선 |
+| 🟡 중간 | GUI 시각화 개선 | 중 | UX 향상 |
 | 🟡 중간 | Watch 모드 | 중 | DX 향상 |
-| 🟡 중간 | Mock 데이터 생성 | 중 | 테스트 편의 |
 | 🟡 중간 | VS Code 확장 | 중 | DX 향상 |
 | 🟢 낮음 | Python 지원 | 중 | 사용자층 확대 |
 | 🟢 낮음 | MySQL 지원 | 중 | DB 확장 |
