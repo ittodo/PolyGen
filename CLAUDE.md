@@ -526,6 +526,7 @@ cd tests/runners/typescript && ./run_tests.sh
 | 문서 | 설명 |
 |------|------|
 | `docs/SOURCE_STRUCTURE.md` | **소스 코드 구조 (모듈별 역할)** |
+| `docs/CUSTOMIZATION.md` | **Rhai 템플릿 커스터마이징 가이드** |
 | `docs/TODO.md` | 할일 목록 및 진행 상황 |
 | `docs/TEMPLATE_REFACTOR_PLAN.md` | 템플릿 리팩토링 계획 |
 | `docs/SQL_TODO.md` | SQL/DB 지원 상세 |
