@@ -108,10 +108,9 @@
 - [ ] `polygen docs --output docs/schema.md` - CI/CD용
 - [ ] GUI 시각화로 대체 가능, 필요시 구현
 
-#### Mock 데이터 생성
-- [ ] `polygen mock --schema game.poly --count 100`
-- [ ] 제약조건 기반 랜덤 데이터 생성
-- [ ] CSV/JSON 출력
+#### ~~Mock 데이터 생성~~ (삭제)
+- AI가 더 현실적인 데이터 생성 가능
+- 복잡한 분포/관계 표현에 한계
 
 #### GUI 추가 기능
 - [ ] 프로젝트별 프리셋 저장/불러오기
