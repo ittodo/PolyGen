@@ -1,9 +1,49 @@
+//! Rhai Template Engine Integration
+//!
+//! This module provides the bridge between PolyGen's IR (Intermediate Representation)
+//! and the Rhai scripting engine used for code generation templates.
+//!
+//! ## Overview
+//!
+//! The Rhai generator executes `.rhai` template scripts with access to:
+//! - `schema`: The complete [`SchemaContext`] containing all parsed type definitions
+//! - `output_dir`: The target directory for generated files
+//!
+//! Templates use Rhai's scripting capabilities combined with registered helper
+//! functions to generate language-specific code (C#, C++, Rust, TypeScript, etc.).
+//!
+//! ## Template Structure
+//!
+//! Templates are located in `templates/<language>/` and typically include:
+//! - `<lang>_file.rhai`: Main entry point for code generation
+//! - `<lang>_*_file.rhai`: Additional generators (CSV loaders, JSON mappers, etc.)
+//! - `rhai_utils/`: Shared utility functions
+
 use crate::error::CodeGenError;
 use crate::ir_model::SchemaContext;
 use crate::rhai::{register_core, register_csharp};
 use rhai::{Engine, Scope};
 use std::path::Path;
 
+/// Executes a Rhai template script to generate code from the schema context.
+///
+/// This function sets up the Rhai engine with all registered helper functions,
+/// injects the schema context and output directory, then evaluates the template.
+///
+/// # Arguments
+///
+/// * `schema_context` - The IR containing all parsed type definitions
+/// * `template_path` - Path to the `.rhai` template file
+/// * `output_dir` - Target directory where generated files will be written
+///
+/// # Returns
+///
+/// Returns the template's output string on success, or a [`CodeGenError`] on failure.
+///
+/// # Errors
+///
+/// * [`CodeGenError::TemplateReadError`] - Failed to read the template file
+/// * [`CodeGenError::RhaiExecutionError`] - Template execution failed
 pub fn generate_code_with_rhai(
     schema_context: &SchemaContext,
     template_path: &Path,
