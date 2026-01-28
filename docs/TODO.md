@@ -99,10 +99,14 @@
 - [ ] 스키마 변경 감지 → 자동 재생성
 - [ ] 파일 시스템 감시 (notify crate)
 
-#### 스키마 문서 생성
-- [ ] `polygen docs --output docs/schema.md`
-- [ ] Markdown 기반 API 문서
-- [ ] 테이블/필드 설명, 제약조건 표
+#### GUI 시각화 개선 (우선)
+- [ ] 테이블 상세 정보 패널 확장
+- [ ] 필드 제약조건 시각적 표시 개선
+- [ ] 관계 그래프 인터랙션 강화
+
+#### 스키마 문서 생성 (낮은 우선순위)
+- [ ] `polygen docs --output docs/schema.md` - CI/CD용
+- [ ] GUI 시각화로 대체 가능, 필요시 구현
 
 #### Mock 데이터 생성
 - [ ] `polygen mock --schema game.poly --count 100`
