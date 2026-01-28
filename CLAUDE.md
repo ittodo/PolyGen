@@ -36,6 +36,31 @@ Generated Code + Static Utilities
 
 ---
 
+## 소스 코드 진입점
+
+### 주요 진입점
+
+| 파일 | 역할 | 설명 |
+|------|------|------|
+| `src/main.rs` | CLI 진입점 | `lib.rs` 호출 |
+| `src/lib.rs` | 라이브러리 진입점 | Clap CLI 정의, 명령어 라우팅 |
+| `src/pipeline.rs` | 파이프라인 조율 | 전체 컴파일 플로우 관리 |
+
+### 레이어별 핵심 파일
+
+| 레이어 | 핵심 파일 | 역할 |
+|--------|----------|------|
+| **파싱** | `ast_parser/mod.rs` | Pest → AST 변환 |
+| **검증** | `validation.rs` | AST 유효성 검사 |
+| **IR 변환** | `ir_builder.rs` | AST → IR 변환 (1,742줄) |
+| **코드 생성** | `rhai_generator.rs` | Rhai 템플릿 실행 |
+| **함수 등록** | `rhai/registry.rs` | Rhai 헬퍼 함수 등록 |
+| **마이그레이션** | `migration.rs` | 스키마 diff, ALTER 생성 |
+
+> 상세 구조: [docs/SOURCE_STRUCTURE.md](docs/SOURCE_STRUCTURE.md)
+
+---
+
 ## 디렉토리 구조
 
 ```
@@ -500,13 +525,13 @@ cd tests/runners/typescript && ./run_tests.sh
 
 | 문서 | 설명 |
 |------|------|
-| `development_guide.md` | 개발 워크플로우 가이드 |
-| `REFACTORING_TODO.md` | 리팩토링 진행 상황 |
-| `RHAI_REFACTOR_PLAN.md` | Rhai 모듈 리팩토링 계획 |
-| `TEMPLATE_REFACTOR_PLAN.md` | 템플릿 통합 계획 |
-| `PHASE4_TODO.md` | Phase 4 상세 계획 |
-| `agent.md` | 에이전트용 빠른 인덱스 |
-| `src/agent.md` | 소스 코드 구조 |
+| `docs/SOURCE_STRUCTURE.md` | **소스 코드 구조 (모듈별 역할)** |
+| `docs/TODO.md` | 할일 목록 및 진행 상황 |
+| `docs/TEMPLATE_REFACTOR_PLAN.md` | 템플릿 리팩토링 계획 |
+| `docs/SQL_TODO.md` | SQL/DB 지원 상세 |
+| `docs/LANGUAGE_SUPPORT_GUIDE.md` | 언어 지원 가이드 |
+| `docs/agent.md` | 에이전트용 빠른 인덱스 |
+| `src/agent.md` | 소스 코드 구조 (간략) |
 | `templates/agent.md` | 템플릿 시스템 가이드 |
 | `tests/agent.md` | 테스트 구조 |
 
@@ -518,6 +543,32 @@ cd tests/runners/typescript && ./run_tests.sh
 2. **스냅샷 변경**: 코어 로직 변경 시 `cargo insta review`로 스냅샷 업데이트 필요
 3. **인코딩**: UTF-8 사용
 4. **명시적 요청 없이 코드 변경 금지**: 사용자의 명시적 지시가 있을 때만 코드 수정
+
+---
+
+## 문서 동기화 규칙
+
+**소스 파일 추가/변경/삭제 시 반드시 관련 문서를 업데이트하세요.**
+
+| 변경 유형 | 업데이트 대상 문서 |
+|----------|-------------------|
+| `.rs` 파일 추가/삭제 | `docs/SOURCE_STRUCTURE.md`, `CLAUDE.md` (디렉토리 구조) |
+| 새 모듈 추가 | `docs/SOURCE_STRUCTURE.md` (모듈별 상세) |
+| 공개 API 변경 | 해당 `.rs` 파일의 doc comment |
+| 새 기능 완료 | `docs/TODO.md` (완료 항목 체크) |
+| 새 언어 지원 | `CLAUDE.md` (지원 언어), `docs/LANGUAGE_SUPPORT_GUIDE.md` |
+| 새 어노테이션 | `CLAUDE.md` (어노테이션 표), `docs/ANNOTATIONS_AND_ATTRIBUTES.md` |
+| 템플릿 변경 | `templates/agent.md` |
+| 테스트 추가 | `tests/agent.md` |
+
+### 문서화 체크리스트
+
+```
+□ 새 파일 추가 시 → SOURCE_STRUCTURE.md 업데이트
+□ 함수 시그니처 변경 → doc comment 업데이트
+□ 기능 완료 시 → TODO.md 체크
+□ 주요 변경 시 → CLAUDE.md 업데이트 날짜 변경
+```
 
 ---
 
@@ -536,4 +587,4 @@ cd tests/runners/typescript && ./run_tests.sh
 
 ---
 
-*최종 업데이트: 2026-01-26*
+*최종 업데이트: 2026-01-28*
