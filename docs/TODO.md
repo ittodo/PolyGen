@@ -1,12 +1,21 @@
 # PolyGen TODO
 
-> 최종 업데이트: 2026-01-26
+> 최종 업데이트: 2026-01-28
 
 ---
 
 ## 현재 진행 상황
 
 ### ✅ 완료된 작업
+
+#### 코드 품질 개선 (2026-01-28)
+- [x] Clippy 경고 수정: `strip_prefix()` 사용 (ast_parser/fields.rs)
+- [x] Clippy 경고 수정: `Box<FieldDef>` 적용으로 enum 크기 최적화 (ir_model.rs)
+- [x] Clippy 경고 수정: doc comment 형식 수정 (ir_builder.rs)
+- [x] 위험한 `unwrap()`/`expect()` 10곳 → `unwrap_or_else()` 패턴으로 변경
+- [x] `is_readonly()` 함수 간소화 (중복 로직 제거)
+- [x] `rhai_generator.rs` 모듈 문서화 추가
+- [x] `codegen.rs` 사용 예제 추가
 
 #### 코어 리팩토링 (Phase 1-4)
 - [x] Clippy 경고 수정, 패키지명 정리
