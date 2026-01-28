@@ -24,14 +24,7 @@ fn extract_soft_delete_field(metadata: &[Metadata]) -> Option<String> {
 
 /// Checks if @readonly annotation is present.
 fn is_readonly(metadata: &[Metadata]) -> bool {
-    for meta in metadata {
-        if let Metadata::Annotation(ann) = meta {
-            if ann.name.as_deref() == Some("readonly") {
-                return true;
-            }
-        }
-    }
-    false
+    extract_annotation_string(metadata, "readonly").is_some()
 }
 
 /// Extracts the @pack separator from metadata.

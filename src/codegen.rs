@@ -3,6 +3,31 @@
 //! This module provides the infrastructure for generating code in various target languages.
 //! It uses Rhai templates to transform the IR into language-specific code.
 //!
+//! # Usage Example
+//!
+//! ```rust,ignore
+//! use polygen::codegen::CodeGenerator;
+//! use polygen::ir_model::SchemaContext;
+//! use std::path::PathBuf;
+//!
+//! // Create a code generator for C#
+//! let generator = CodeGenerator::new(
+//!     "csharp",
+//!     PathBuf::from("templates"),
+//!     PathBuf::from("output"),
+//! );
+//!
+//! // Generate code from the schema context
+//! let schema_context: SchemaContext = /* ... */;
+//! generator.generate(&schema_context)?;
+//!
+//! // Generate extra templates (CSV loaders, JSON mappers, etc.)
+//! generator.generate_extras(&schema_context)?;
+//!
+//! // Copy static support files
+//! generator.copy_configured_static_files(&PathBuf::from("."))?;
+//! ```
+//!
 //! # Template Organization
 //!
 //! Templates are organized in directories by language:
