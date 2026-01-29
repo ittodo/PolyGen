@@ -23,10 +23,12 @@ for file in schema.files {
     let indent = 0;
 
     // Add using statements
-    file_content += eval("`" + using_template + "`");
+    let using_result = eval("`" + using_template + "`");
+    file_content += using_result;
 
     // Generate namespace container content (DataTable classes per namespace)
-    file_content += eval("`" + container_namespace + "`");
+    let container_ns_result = eval("`" + container_namespace + "`");
+    file_content += container_ns_result;
 
     // Generate root container that aggregates all tables
     // Get the container namespace name from file path

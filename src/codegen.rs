@@ -55,6 +55,7 @@
 //! - Main and extra templates
 
 use anyhow::Result;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -88,6 +89,8 @@ pub struct CodeGenerator {
     pub output_dir: PathBuf,
     /// Language configuration loaded from TOML file.
     config: Option<LanguageConfig>,
+    /// Whether to enable preview mode (source marker injection).
+    preview_mode: bool,
 }
 
 impl CodeGenerator {
@@ -107,7 +110,14 @@ impl CodeGenerator {
             templates_dir,
             output_dir,
             config,
+            preview_mode: false,
         }
+    }
+
+    /// Enables preview mode for source marker injection.
+    pub fn with_preview_mode(mut self, enabled: bool) -> Self {
+        self.preview_mode = enabled;
+        self
     }
 
     /// Returns the language configuration, if available.
@@ -145,7 +155,15 @@ impl CodeGenerator {
         let template_path = self.template_dir().join(&main_template);
 
         println!("Using Rhai template engine.");
-        rhai_generator::generate_code_with_rhai(ir_context, &template_path, &self.output_dir)?;
+        let before = collect_output_files(&self.output_dir);
+        rhai_generator::generate_code_with_rhai_opts(
+            ir_context,
+            &template_path,
+            &self.output_dir,
+            self.preview_mode,
+        )?;
+        let after = collect_output_files(&self.output_dir);
+        record_manifest(&self.output_dir, &main_template, &before, &after);
 
         Ok(())
     }
@@ -157,7 +175,15 @@ impl CodeGenerator {
         let template_path = self.template_dir().join(template_name);
 
         if template_path.exists() {
-            rhai_generator::generate_code_with_rhai(ir_context, &template_path, &self.output_dir)?;
+            let before = collect_output_files(&self.output_dir);
+            rhai_generator::generate_code_with_rhai_opts(
+                ir_context,
+                &template_path,
+                &self.output_dir,
+                self.preview_mode,
+            )?;
+            let after = collect_output_files(&self.output_dir);
+            record_manifest(&self.output_dir, template_name, &before, &after);
         }
 
         Ok(())
@@ -296,4 +322,79 @@ pub fn discover_languages(templates_dir: &Path) -> Vec<String> {
     }
 
     languages
+}
+
+/// The manifest file name used to track which template generated each output file.
+pub const MANIFEST_FILENAME: &str = ".polygen_manifest.json";
+
+/// Recursively collect all file paths under a directory.
+fn collect_output_files(dir: &Path) -> HashSet<PathBuf> {
+    let mut files = HashSet::new();
+    collect_files_recursive(dir, &mut files);
+    files
+}
+
+fn collect_files_recursive(dir: &Path, files: &mut HashSet<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_files_recursive(&path, files);
+            } else {
+                files.insert(path);
+            }
+        }
+    }
+}
+
+/// Record newly created files into the manifest, mapping them to the template that created them.
+fn record_manifest(output_dir: &Path, template_name: &str, before: &HashSet<PathBuf>, after: &HashSet<PathBuf>) {
+    let new_files: Vec<&PathBuf> = after.difference(before).collect();
+    if new_files.is_empty() {
+        return;
+    }
+
+    let manifest_path = output_dir.join(MANIFEST_FILENAME);
+
+    // Load existing manifest or create new
+    let mut manifest: HashMap<String, String> = if manifest_path.exists() {
+        fs::read_to_string(&manifest_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
+
+    // Add new entries
+    for file_path in new_files {
+        if let Ok(relative) = file_path.strip_prefix(output_dir) {
+            let key = relative.to_string_lossy().replace('\\', "/");
+            // Skip manifest file itself and debug files
+            if key == MANIFEST_FILENAME || key.starts_with("debug/") {
+                continue;
+            }
+            manifest.insert(key, template_name.to_string());
+        }
+    }
+
+    // Write manifest
+    if let Ok(json) = serde_json::to_string_pretty(&manifest) {
+        let _ = fs::write(&manifest_path, json);
+    }
+}
+
+/// Load the template manifest from an output directory.
+///
+/// Returns a map of `relative_file_path -> template_name`.
+pub fn load_manifest(output_dir: &Path) -> HashMap<String, String> {
+    let manifest_path = output_dir.join(MANIFEST_FILENAME);
+    if manifest_path.exists() {
+        fs::read_to_string(&manifest_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        HashMap::new()
+    }
 }

@@ -27,6 +27,15 @@ fn main() {
             commands::add_recent_project,
             commands::remove_recent_project,
             commands::clear_recent_projects,
+            // Template editor commands
+            commands::list_template_languages,
+            commands::list_template_files,
+            commands::read_template_file,
+            commands::write_template_file,
+            commands::create_new_language,
+            commands::delete_template_file,
+            commands::preview_template,
+            commands::validate_rhai_script,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -21,7 +21,7 @@
 
 use crate::error::CodeGenError;
 use crate::ir_model::SchemaContext;
-use crate::rhai::{register_core, register_csharp};
+use crate::rhai::{register_core_with_entry, register_csharp};
 use rhai::{Engine, Scope};
 use std::path::Path;
 
@@ -49,10 +49,28 @@ pub fn generate_code_with_rhai(
     template_path: &Path,
     output_dir: &Path,
 ) -> Result<String, CodeGenError> {
+    generate_code_with_rhai_opts(schema_context, template_path, output_dir, false)
+}
+
+/// Executes a Rhai template script with optional preview mode.
+///
+/// When `preview_mode` is true, a `_preview_mode` boolean variable is injected
+/// into the Rhai scope, allowing templates to conditionally emit source markers
+/// using `source_mark(template_name, content)`.
+pub fn generate_code_with_rhai_opts(
+    schema_context: &SchemaContext,
+    template_path: &Path,
+    output_dir: &Path,
+    preview_mode: bool,
+) -> Result<String, CodeGenError> {
     let mut engine = Engine::new();
     // Increase recursion/complexity limits for larger templates
     engine.set_max_expr_depths(2048, 2048);
-    register_core(&mut engine);
+    let entry_name = template_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    register_core_with_entry(&mut engine, preview_mode, entry_name);
     register_csharp(&mut engine);
 
     let mut scope = Scope::new();
@@ -60,6 +78,7 @@ pub fn generate_code_with_rhai(
     // Register the schema context with the Rhai engine
     scope.push("schema", schema_context.clone());
     scope.push("output_dir", output_dir.to_string_lossy().to_string());
+    scope.push("_preview_mode", preview_mode);
 
     let script = std::fs::read_to_string(template_path).map_err(|e| {
         CodeGenError::TemplateReadError {

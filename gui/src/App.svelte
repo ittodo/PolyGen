@@ -9,6 +9,7 @@
   import FileTabs from "./lib/components/FileTabs.svelte";
   import FileList from "./lib/components/FileList.svelte";
   import SchemaVisualization from "./lib/components/SchemaVisualization.svelte";
+  import TemplateEditor from "./lib/components/TemplateEditor.svelte";
 
   interface OpenFile {
     path: string;
@@ -43,8 +44,8 @@
   let importedFiles = $state<ImportedFile[]>([]); // Always keep track of imports
   let recentProjects = $state<RecentProject[]>([]);
 
-  // View mode: "editor" or "visualize"
-  let viewMode = $state<"editor" | "visualize">("editor");
+  // View mode: "editor", "visualize", or "template"
+  let viewMode = $state<"editor" | "visualize" | "template">("editor");
 
   // Load recent projects on initialization
   $effect(() => {
@@ -422,6 +423,12 @@ namespace example {
         onclick={() => (viewMode = "visualize")}
         title="Schema Visualization"
       >Visualize</button>
+      <button
+        class="toolbar-btn"
+        class:active={viewMode === "template"}
+        onclick={() => (viewMode = "template")}
+        title="Template Editor"
+      >Templates</button>
     </div>
     <div class="header-right">
       <span class="file-count">{openFiles.length} file(s) open</span>
@@ -501,7 +508,7 @@ namespace example {
             <button class="secondary" onclick={selectSchemaFile}>Open Schema File</button>
           </div>
         {/if}
-      {:else}
+      {:else if viewMode === "visualize"}
         <!-- Visualization View -->
         <div class="visualization-wrapper">
           {#if mainFilePath}
@@ -512,6 +519,15 @@ namespace example {
               <button class="secondary" onclick={selectSchemaFile}>Open Schema File</button>
             </div>
           {/if}
+        </div>
+      {:else}
+        <!-- Template Editor View -->
+        <div class="template-wrapper">
+          <TemplateEditor
+            templatesDir={templatesDir}
+            schemaPath={mainFilePath}
+            onLog={addLog}
+          />
         </div>
       {/if}
     </section>
@@ -647,6 +663,12 @@ namespace example {
     overflow: hidden;
     background-color: var(--bg-primary);
     border-radius: 0 0 8px 8px;
+  }
+
+  .template-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .empty-editor {

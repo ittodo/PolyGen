@@ -118,6 +118,10 @@ pub enum Commands {
         /// Path to baseline schema file for migration diff
         #[arg(short, long)]
         baseline: Option<PathBuf>,
+
+        /// Preview mode: generate to temp directory and print results to stdout
+        #[arg(long)]
+        preview: bool,
     },
 
     /// Generate migration SQL by comparing schema versions or DB state
@@ -169,7 +173,8 @@ pub fn run(cli: Cli) -> Result<()> {
             output_dir,
             lang,
             baseline,
-        }) => run_generate(schema_path, templates_dir, output_dir, lang, baseline),
+            preview,
+        }) => run_generate(schema_path, templates_dir, output_dir, lang, baseline, preview),
 
         Some(Commands::Migrate {
             baseline,
@@ -194,6 +199,7 @@ pub fn run(cli: Cli) -> Result<()> {
                     cli.output_dir,
                     cli.lang,
                     cli.baseline,
+                    false,
                 )
             } else {
                 anyhow::bail!("스키마 경로가 필요합니다. --schema-path 또는 'polygen generate --schema-path' 를 사용하세요.")
@@ -209,7 +215,12 @@ fn run_generate(
     output_dir: PathBuf,
     lang: Option<String>,
     baseline: Option<PathBuf>,
+    preview: bool,
 ) -> Result<()> {
+    if preview {
+        return run_generate_preview(schema_path, templates_dir, lang);
+    }
+
     let mut config = PipelineConfig::new(schema_path, templates_dir, output_dir);
 
     if let Some(lang) = lang {
@@ -222,6 +233,86 @@ fn run_generate(
 
     let pipeline = CompilationPipeline::new(config);
     pipeline.run()
+}
+
+/// Preview mode: generate to temp directory and print all generated files to stdout
+fn run_generate_preview(
+    schema_path: PathBuf,
+    templates_dir: PathBuf,
+    lang: Option<String>,
+) -> Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let output_dir = temp_dir.path().to_path_buf();
+
+    let mut config = PipelineConfig::new(schema_path, templates_dir, output_dir.clone())
+        .with_preview_mode(true);
+
+    if let Some(lang) = lang {
+        config = config.with_language(lang);
+    }
+
+    let pipeline = CompilationPipeline::new(config);
+    pipeline.run()?;
+
+    // Load manifest to include template source info in output
+    let manifest = codegen::load_manifest(&output_dir);
+
+    // Read and print all generated files
+    print_directory_contents(&output_dir, &output_dir, &manifest)?;
+
+    Ok(())
+}
+
+/// Recursively print all file contents in a directory.
+///
+/// The manifest maps relative file paths to the Rhai template that generated them.
+/// Output format: `=== relative/path [template_name.rhai] ===`
+fn print_directory_contents(
+    dir: &std::path::Path,
+    base: &std::path::Path,
+    manifest: &std::collections::HashMap<String, String>,
+) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+
+    let mut entries: Vec<_> = fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            // Skip debug directory
+            if path.file_name().and_then(|n| n.to_str()) == Some("debug") {
+                continue;
+            }
+            print_directory_contents(&path, base, manifest)?;
+        } else {
+            let relative = path.strip_prefix(base).unwrap_or(&path);
+            let relative_str = relative.to_string_lossy().replace('\\', "/");
+
+            // Skip manifest file itself
+            if relative_str == codegen::MANIFEST_FILENAME {
+                continue;
+            }
+
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|_| "<binary file>".to_string());
+
+            // Include template source if available
+            if let Some(template) = manifest.get(&relative_str) {
+                println!("=== {} [{}] ===", relative.display(), template);
+            } else {
+                println!("=== {} ===", relative.display());
+            }
+            println!("{}", content);
+            println!();
+        }
+    }
+
+    Ok(())
 }
 
 /// Run the migrate command (migration-only mode)

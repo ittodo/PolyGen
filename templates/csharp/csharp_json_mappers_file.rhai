@@ -12,11 +12,13 @@ for file in schema.files {
 
     let file_content = "";
     let indent = 0;
-    file_content += eval("`" + using_template + "`");
+    let using_result = eval("`" + using_template + "`");
+    file_content += using_result;
     let ns_prefix = "";
     let current_ns_name = "";
     let current_ns_enums = [];
-    file_content += eval("`" + mappers_template + "`");
+    let mappers_result = eval("`" + mappers_template + "`");
+    file_content += mappers_result;
 
     print("Generating file: " + final_path);
     write_file(final_path, file_content);

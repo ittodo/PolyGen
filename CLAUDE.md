@@ -94,32 +94,51 @@ PolyGen/
 │       ├── common/           # 공통 함수
 │       └── csharp/           # C# 전용 함수
 │
-├── templates/                # Rhai 템플릿 (60+ 파일)
-│   ├── csharp/               # C# 템플릿
+├── templates/                # Rhai 템플릿 (90+ 파일)
+│   ├── csharp/               # C# 템플릿 (49 파일)
 │   │   ├── csharp.toml       # 언어 설정
 │   │   ├── csharp_file.rhai  # 메인 클래스 생성
 │   │   ├── csharp_csv_mappers_file.rhai
 │   │   ├── csharp_json_mappers_file.rhai
 │   │   ├── csharp_binary_*.rhai
 │   │   ├── class/            # 클래스 템플릿
+│   │   ├── container/        # Container 템플릿
 │   │   ├── enum/             # Enum 템플릿
 │   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── cpp/                  # C++ 템플릿
+│   ├── cpp/                  # C++ 템플릿 (8 파일)
 │   │   ├── cpp.toml          # 언어 설정
 │   │   ├── cpp_file.rhai     # 메인 헤더 생성
-│   │   ├── cpp_loaders_file.rhai  # CSV/JSON 로더
+│   │   ├── cpp_loaders_file.rhai  # CSV/JSON/Binary 로더
 │   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── rust/                 # Rust 템플릿
+│   ├── rust/                 # Rust 템플릿 (8 파일)
 │   │   ├── rust.toml         # 언어 설정
 │   │   ├── rust_file.rhai    # 메인 모듈 생성
-│   │   ├── rust_loaders_file.rhai  # CSV 로더
+│   │   ├── rust_loaders_file.rhai  # CSV/JSON/Binary 로더
 │   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── typescript/           # TypeScript 템플릿
+│   ├── typescript/           # TypeScript 템플릿 (10 파일)
 │   │   ├── typescript.toml   # 언어 설정
 │   │   ├── typescript_file.rhai  # 인터페이스 생성
 │   │   ├── typescript_zod_file.rhai  # Zod 스키마 생성
 │   │   └── rhai_utils/       # 유틸리티 스크립트
-│   └── mysql/                # MySQL 템플릿
+│   ├── go/                   # Go 템플릿 (6 파일)
+│   │   ├── go.toml           # 언어 설정
+│   │   ├── go_file.rhai      # 메인 패키지 생성
+│   │   ├── go_container_file.rhai  # Container
+│   │   └── rhai_utils/       # 유틸리티 스크립트
+│   ├── unreal/               # Unreal Engine 템플릿 (7 파일)
+│   │   ├── unreal.toml       # 언어 설정
+│   │   ├── unreal_file.rhai  # USTRUCT/UENUM 생성
+│   │   ├── unreal_loaders_file.rhai  # CSV/JSON 로더
+│   │   ├── unreal_hotreload_file.rhai  # Hot Reload
+│   │   └── rhai_utils/       # 유틸리티 스크립트
+│   ├── sqlite/               # SQLite 템플릿 (3 파일)
+│   │   ├── sqlite.toml       # 언어 설정
+│   │   ├── sqlite_file.rhai  # DDL 생성
+│   │   ├── sqlite_migration_file.rhai  # 마이그레이션
+│   │   └── rhai_utils/       # 유틸리티 스크립트
+│   ├── mysql/                # MySQL 템플릿 (4 파일, toml 미완성)
+│   ├── mermaid/              # Mermaid 다이어그램 (예정)
+│   └── rhai_utils/           # 공유 유틸리티 (indent 등)
 │
 ├── static/                   # 런타임 정적 파일
 │   └── csharp/               # C# 유틸리티
@@ -513,11 +532,15 @@ cd tests/runners/typescript && ./run_tests.sh
 
 | 언어 | 상태 | 기능 |
 |------|------|------|
-| C# | ✅ 완료 | 클래스, Enum, CSV/JSON/Binary 로더 |
-| C++ | ✅ 완료 | 헤더 전용, 구조체, Enum, CSV/JSON/Binary 로더 |
-| Rust | ✅ 완료 | 모듈, Struct, Enum, CSV/Binary 로더 |
-| MySQL | 🚧 진행중 | DDL 스크립트 생성 |
-| TypeScript | ✅ 완료 | 인터페이스, Enum, Zod 스키마 검증 |
+| C# | ✅ 완료 | 클래스, Enum, CSV/JSON/Binary 로더, Container, SQLite Accessor |
+| C++ | ✅ 완료 | 헤더 전용, 구조체, Enum, CSV/JSON/Binary 로더, Container, SQLite Accessor |
+| Rust | ✅ 완료 | 모듈, Struct, Enum, CSV/Binary 로더, Container, SQLite Accessor |
+| TypeScript | ✅ 완료 | 인터페이스, Enum, Zod 스키마 검증, SQLite Accessor |
+| Go | ✅ 완료 | 패키지, Struct, Enum, Container |
+| Unreal | ✅ 완료 | USTRUCT/UENUM 매크로, CSV/JSON 로더, Hot Reload |
+| SQLite | ✅ 완료 | DDL 생성, Migration 스크립트 |
+| MySQL | 🚧 진행중 | DDL 스크립트 생성 (toml 설정 미완성) |
+| Mermaid | 📝 예정 | 빈 디렉토리 (다이어그램 생성 예정) |
 
 ---
 

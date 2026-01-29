@@ -39,6 +39,7 @@
 - [x] Rust - 모듈, Struct, Enum, CSV/Binary 로더, Container, Validation
 - [x] TypeScript - 인터페이스, Enum, Zod 스키마, Validation
 - [x] Go - Struct, Enum, CSV/JSON/Binary 로더, Container, Validation
+- [x] Unreal Engine - USTRUCT/UENUM 매크로, CSV/JSON 로더, Hot Reload
 - [x] 통합 테스트 프레임워크 (8개 테스트 케이스)
 
 #### 데이터 무결성 검증 시스템
@@ -171,14 +172,16 @@
 ### 타입 매핑 현황
 
 현재 C#만 Rust 헬퍼(`src/rhai/csharp/type_mapping.rs`)로 구현되어 있고,
-다른 언어(C++, Rust, TypeScript, Go)는 Rhai 템플릿으로 구현됨.
+다른 언어(C++, Rust, TypeScript, Go, Unreal, SQLite)는 Rhai 템플릿으로 구현됨.
 
 ```
-C#:    src/rhai/csharp/type_mapping.rs       (Rust)
-C++:   templates/cpp/rhai_utils/type_mapping.rhai    (Rhai)
-Rust:  templates/rust/rhai_utils/type_mapping.rhai   (Rhai)
-TS:    templates/typescript/rhai_utils/type_mapping.rhai (Rhai)
-Go:    templates/go/rhai_utils/type_mapping.rhai     (Rhai)
+C#:     src/rhai/csharp/type_mapping.rs                  (Rust)
+C++:    templates/cpp/rhai_utils/type_mapping.rhai        (Rhai)
+Rust:   templates/rust/rhai_utils/type_mapping.rhai       (Rhai)
+TS:     templates/typescript/rhai_utils/type_mapping.rhai  (Rhai)
+Go:     templates/go/rhai_utils/type_mapping.rhai         (Rhai)
+Unreal: templates/unreal/rhai_utils/type_mapping.rhai     (Rhai)
+SQLite: templates/sqlite/rhai_utils/type_mapping.rhai     (Rhai)
 ```
 
 **향후 계획**: 일관성 문제나 유지보수 이슈 발생 시 C#도 Rhai로 통일

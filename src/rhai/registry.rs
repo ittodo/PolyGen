@@ -60,9 +60,17 @@ use std::path::Path;
 /// register_core(&mut engine);
 /// // Engine is now ready for template execution
 /// ```
-pub fn register_core(engine: &mut Engine) {
+pub fn register_core(engine: &mut Engine, preview_mode: bool) {
     register_types_and_getters(engine);
-    register_common_helpers(engine);
+    register_common_helpers(engine, preview_mode, None);
+}
+
+/// Registers core IR types and helpers with an optional entry-point template name.
+/// When `entry_template` is provided in preview mode, `write_file()` will wrap
+/// content that has no source markers with the entry-point template name.
+pub fn register_core_with_entry(engine: &mut Engine, preview_mode: bool, entry_template: &str) {
+    register_types_and_getters(engine);
+    register_common_helpers(engine, preview_mode, Some(entry_template.to_string()));
 }
 
 fn register_types_and_getters(engine: &mut Engine) {
@@ -558,16 +566,31 @@ fn register_types_and_getters(engine: &mut Engine) {
     });
 }
 
-fn register_common_helpers(engine: &mut Engine) {
+fn register_common_helpers(engine: &mut Engine, preview_mode: bool, entry_template: Option<String>) {
     // Case conversion functions
     engine.register_fn("to_snake_case", |s: &str| s.to_snake_case());
     engine.register_fn("to_pascal_case", |s: &str| s.to_pascal_case());
     engine.register_fn("to_camel_case", |s: &str| s.to_lower_camel_case());
 
+    // source_mark(template_name, content) -> content wrapped with source markers
+    // Used in preview mode to track which template generated each code block.
+    // Markers: /*@source:template_name*/ ... /*@/source*/
+    engine.register_fn(
+        "source_mark",
+        |template_name: &str, content: &str| -> String {
+            format!(
+                "/*@source:{}*/\n{}/*@/source*/\n",
+                template_name, content
+            )
+        },
+    );
+
     // render_items(items[], template_path, var_name) -> string
+    // In preview mode, wraps each rendered item with source markers.
+    let preview_render = preview_mode;
     engine.register_fn(
         "render_items",
-        |context: NativeCallContext,
+        move |context: NativeCallContext,
          items: Array,
          template_path: &str,
          var_name: &str|
@@ -585,18 +608,45 @@ fn register_common_helpers(engine: &mut Engine) {
                 let mut scope = Scope::new();
                 scope.push(var_name, item);
                 let rendered = engine.eval_with_scope::<String>(&mut scope, &template_literal)?;
-                result.push_str(&rendered);
+                if preview_render {
+                    let filename = Path::new(template_path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(template_path);
+                    result.push_str(&format!(
+                        "/*@source:{}*/\n{}/*@/source*/\n",
+                        filename, rendered
+                    ));
+                } else {
+                    result.push_str(&rendered);
+                }
             }
             Ok(result)
         },
     );
 
     // include(path) -> string
+    // In preview mode, wraps the template content with source markers so that
+    // after eval(), the output is automatically annotated with its source template.
+    let preview_include = preview_mode;
     engine.register_fn(
         "include",
-        |path: &str| -> Result<String, Box<EvalAltResult>> {
+        move |path: &str| -> Result<String, Box<EvalAltResult>> {
             match std::fs::read_to_string(path) {
-                Ok(s) => Ok(s),
+                Ok(content) => {
+                    if preview_include {
+                        let filename = Path::new(path)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(path);
+                        Ok(format!(
+                            "/*@source:{}*/\n{}\n/*@/source*/",
+                            filename, content
+                        ))
+                    } else {
+                        Ok(content)
+                    }
+                }
                 Err(e) => Err(Box::new(EvalAltResult::ErrorSystem(
                     format!("File Read Error at path: {}", path),
                     e.to_string().into(),
@@ -606,9 +656,31 @@ fn register_common_helpers(engine: &mut Engine) {
     );
 
     // write_file(path, content)
+    // In preview mode with entry_template set, wraps content with a source marker
+    // if no markers exist yet (for inline templates that don't use include()).
+    let preview_write = preview_mode;
+    let entry_tmpl = entry_template;
     engine.register_fn(
         "write_file",
-        |path: &str, content: &str| -> Result<(), Box<EvalAltResult>> {
+        move |path: &str, content: &str| -> Result<(), Box<EvalAltResult>> {
+            // In preview mode, wrap unmarked content with the entry-point template name
+            let final_content = if preview_write {
+                if let Some(ref tmpl_name) = entry_tmpl {
+                    if !content.contains("/*@source:") {
+                        format!(
+                            "/*@source:{}*/\n{}/*@/source*/\n",
+                            tmpl_name, content
+                        )
+                    } else {
+                        content.to_string()
+                    }
+                } else {
+                    content.to_string()
+                }
+            } else {
+                content.to_string()
+            };
+
             if let Some(p) = Path::new(path).parent() {
                 if !p.exists() {
                     if let Err(e) = std::fs::create_dir_all(p) {
@@ -620,7 +692,7 @@ fn register_common_helpers(engine: &mut Engine) {
                 }
             }
 
-            match std::fs::write(path, content) {
+            match std::fs::write(path, &final_content) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(Box::new(EvalAltResult::ErrorSystem(
                     "File Write Error".to_string(),

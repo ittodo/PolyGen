@@ -55,6 +55,8 @@ pub struct PipelineConfig {
     pub debug_output: bool,
     /// Optional baseline schema path for migration diff generation.
     pub baseline_path: Option<PathBuf>,
+    /// Whether to enable preview mode (source marker injection in generated code).
+    pub preview_mode: bool,
 }
 
 impl PipelineConfig {
@@ -69,6 +71,7 @@ impl PipelineConfig {
             target_lang: None,
             debug_output: true,
             baseline_path: None,
+            preview_mode: false,
         }
     }
 
@@ -92,6 +95,12 @@ impl PipelineConfig {
     /// and generate migration SQL files.
     pub fn with_baseline(mut self, baseline_path: PathBuf) -> Self {
         self.baseline_path = Some(baseline_path);
+        self
+    }
+
+    /// Enables preview mode (source marker injection in generated code).
+    pub fn with_preview_mode(mut self, enabled: bool) -> Self {
+        self.preview_mode = enabled;
         self
     }
 }
@@ -273,7 +282,8 @@ impl CompilationPipeline {
             lang,
             self.config.templates_dir.clone(),
             self.config.output_dir.clone(),
-        );
+        )
+        .with_preview_mode(self.config.preview_mode);
 
         // Get the current working directory for resolving static file paths
         let base_dir = std::env::current_dir()?;
@@ -316,7 +326,8 @@ impl CompilationPipeline {
                 &datasource,
                 self.config.templates_dir.clone(),
                 self.config.output_dir.clone(),
-            );
+            )
+            .with_preview_mode(self.config.preview_mode);
 
             // Check if template exists for this datasource
             if generator.has_template(&format!("{}_file.rhai", datasource)) {

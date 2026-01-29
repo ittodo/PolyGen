@@ -16,12 +16,14 @@ for file in schema.files {
 
     let file_content = "";
     let indent = 0;
-    file_content += eval("`" + using_template + "`");
+    let using_result = eval("`" + using_template + "`");
+    file_content += using_result;
     // Initialize namespace variables for readers templates
     let ns_prefix = "";
     let current_ns_name = "";
     let current_ns_enums = [];
-    file_content += eval("`" + readers_template + "`");
+    let readers_result = eval("`" + readers_template + "`");
+    file_content += readers_result;
 
     print("Generating file: " + final_path);
     write_file(final_path, file_content);

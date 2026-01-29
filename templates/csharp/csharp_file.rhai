@@ -25,8 +25,11 @@ for file in schema.files {
     let indent = 0;
 
     // Add using statements and the common logic namespace
-    file_content += eval("`" + using_template + "`");
-    file_content += eval("`" + csharp_logic_namespace + "`");
+    let using_result = eval("`" + using_template + "`");
+    file_content += using_result;
+
+    let ns_result = eval("`" + csharp_logic_namespace + "`");
+    file_content += ns_result;
 
     
 

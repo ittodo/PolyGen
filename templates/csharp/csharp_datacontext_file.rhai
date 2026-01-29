@@ -95,7 +95,8 @@ for file in schema.files {
     let file_content = "";
 
     // Add using statements
-    file_content += eval("`" + using_template + "`");
+    let using_result = eval("`" + using_template + "`");
+    file_content += using_result;
 
     // Generate namespace
     file_content += "namespace " + context_ns_name + ".DataContext\n";

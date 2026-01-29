@@ -1230,3 +1230,551 @@ pub fn clear_recent_projects(app: AppHandle) -> Result<(), String> {
     save_recent_projects(&app, &[])?;
     Ok(())
 }
+
+// ============================================================================
+// Template Editor Commands
+// ============================================================================
+
+/// Template language info
+#[derive(Debug, Clone, Serialize)]
+pub struct TemplateLanguageInfo {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub file_count: usize,
+}
+
+/// Template file info
+#[derive(Debug, Clone, Serialize)]
+pub struct TemplateFileInfo {
+    pub name: String,
+    pub path: String,
+    pub relative_path: String,
+    pub is_directory: bool,
+    pub children: Vec<TemplateFileInfo>,
+}
+
+/// Get the default templates directory
+fn get_default_templates_dir() -> Result<PathBuf, String> {
+    // In development, use the templates directory from the project root
+    if cfg!(debug_assertions) {
+        Ok(PathBuf::from("../../templates"))
+    } else {
+        // In production, templates should be bundled with the app
+        Ok(PathBuf::from("templates"))
+    }
+}
+
+/// List all template languages
+#[tauri::command]
+pub fn list_template_languages(templates_dir: Option<String>) -> Result<Vec<TemplateLanguageInfo>, String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir()?,
+    };
+
+    if !templates_path.exists() {
+        return Err(format!("Templates directory not found: {:?}", templates_path));
+    }
+
+    let mut languages = Vec::new();
+
+    let entries = fs::read_dir(&templates_path)
+        .map_err(|e| format!("Failed to read templates directory: {}", e))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let dir_name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            // Skip rhai_utils (shared utilities)
+            if dir_name == "rhai_utils" {
+                continue;
+            }
+
+            // Check if there's a .toml config file
+            let toml_path = path.join(format!("{}.toml", dir_name));
+            let name = if toml_path.exists() {
+                // Try to read the name from toml
+                if let Ok(content) = fs::read_to_string(&toml_path) {
+                    extract_toml_value(&content, "name")
+                        .unwrap_or_else(|| dir_name.clone())
+                } else {
+                    dir_name.clone()
+                }
+            } else {
+                dir_name.clone()
+            };
+
+            // Count .rhai files
+            let file_count = count_rhai_files(&path);
+
+            languages.push(TemplateLanguageInfo {
+                id: dir_name,
+                name,
+                path: path.to_string_lossy().to_string(),
+                file_count,
+            });
+        }
+    }
+
+    // Sort by name
+    languages.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(languages)
+}
+
+/// Extract a value from TOML content (simple parser)
+fn extract_toml_value(content: &str, key: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(&format!("{} ", key)) || trimmed.starts_with(&format!("{}=", key)) {
+            if let Some(value_part) = trimmed.split('=').nth(1) {
+                let value = value_part.trim().trim_matches('"').trim_matches('\'');
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Count .rhai files in a directory recursively
+fn count_rhai_files(path: &Path) -> usize {
+    let mut count = 0;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                count += count_rhai_files(&entry_path);
+            } else if entry_path.extension().and_then(|e| e.to_str()) == Some("rhai") {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// List template files for a specific language
+#[tauri::command]
+pub fn list_template_files(
+    lang: String,
+    templates_dir: Option<String>,
+) -> Result<Vec<TemplateFileInfo>, String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir()?,
+    };
+
+    let lang_path = templates_path.join(&lang);
+    if !lang_path.exists() {
+        return Err(format!("Language directory not found: {:?}", lang_path));
+    }
+
+    fn build_file_tree(path: &Path, base_path: &Path) -> Vec<TemplateFileInfo> {
+        let mut files = Vec::new();
+
+        if let Ok(entries) = fs::read_dir(path) {
+            let mut entries: Vec<_> = entries.flatten().collect();
+            entries.sort_by(|a, b| {
+                let a_is_dir = a.path().is_dir();
+                let b_is_dir = b.path().is_dir();
+                match (a_is_dir, b_is_dir) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => a.file_name().cmp(&b.file_name()),
+                }
+            });
+
+            for entry in entries {
+                let entry_path = entry.path();
+                let name = entry_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let relative_path = entry_path.strip_prefix(base_path)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| name.clone());
+
+                if entry_path.is_dir() {
+                    let children = build_file_tree(&entry_path, base_path);
+                    files.push(TemplateFileInfo {
+                        name,
+                        path: entry_path.to_string_lossy().to_string(),
+                        relative_path,
+                        is_directory: true,
+                        children,
+                    });
+                } else {
+                    // Only include .rhai and .toml files
+                    let ext = entry_path.extension().and_then(|e| e.to_str());
+                    if ext == Some("rhai") || ext == Some("toml") {
+                        files.push(TemplateFileInfo {
+                            name,
+                            path: entry_path.to_string_lossy().to_string(),
+                            relative_path,
+                            is_directory: false,
+                            children: Vec::new(),
+                        });
+                    }
+                }
+            }
+        }
+
+        files
+    }
+
+    Ok(build_file_tree(&lang_path, &lang_path))
+}
+
+/// Read a template file
+#[tauri::command]
+pub fn read_template_file(
+    lang: String,
+    relative_path: String,
+    templates_dir: Option<String>,
+) -> Result<String, String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir()?,
+    };
+
+    let file_path = templates_path.join(&lang).join(&relative_path);
+
+    // Security: ensure path doesn't escape the templates directory
+    let canonical_templates = templates_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve templates path: {}", e))?;
+    let canonical_file = file_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve file path: {}", e))?;
+
+    if !canonical_file.starts_with(&canonical_templates) {
+        return Err("Invalid path: access denied".to_string());
+    }
+
+    fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+}
+
+/// Write a template file
+#[tauri::command]
+pub fn write_template_file(
+    lang: String,
+    relative_path: String,
+    content: String,
+    templates_dir: Option<String>,
+) -> Result<(), String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir()?,
+    };
+
+    let file_path = templates_path.join(&lang).join(&relative_path);
+
+    // Security: ensure path doesn't escape the templates directory
+    // For new files, check parent directory
+    let parent_path = file_path.parent()
+        .ok_or("Invalid file path")?;
+
+    if !parent_path.exists() {
+        fs::create_dir_all(parent_path)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+
+    let canonical_templates = templates_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve templates path: {}", e))?;
+    let canonical_parent = parent_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve parent path: {}", e))?;
+
+    if !canonical_parent.starts_with(&canonical_templates) {
+        return Err("Invalid path: access denied".to_string());
+    }
+
+    fs::write(&file_path, content)
+        .map_err(|e| format!("Failed to write file: {}", e))
+}
+
+/// Create a new language template
+#[tauri::command]
+pub fn create_new_language(
+    lang_id: String,
+    lang_name: String,
+    templates_dir: Option<String>,
+) -> Result<(), String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir()?,
+    };
+
+    let lang_path = templates_path.join(&lang_id);
+
+    if lang_path.exists() {
+        return Err(format!("Language '{}' already exists", lang_id));
+    }
+
+    // Create directory structure
+    fs::create_dir_all(&lang_path)
+        .map_err(|e| format!("Failed to create language directory: {}", e))?;
+
+    fs::create_dir_all(lang_path.join("rhai_utils"))
+        .map_err(|e| format!("Failed to create rhai_utils directory: {}", e))?;
+
+    // Create .toml config file
+    let toml_content = format!(r#"[language]
+id = "{}"
+name = "{}"
+version = "1.0"
+
+[code_generation]
+extension = "txt"
+namespace_separator = "."
+indent = "    "
+"#, lang_id, lang_name);
+
+    fs::write(lang_path.join(format!("{}.toml", lang_id)), toml_content)
+        .map_err(|e| format!("Failed to create config file: {}", e))?;
+
+    // Create main template file
+    let main_template = format!(r#"// {lang_name} Code Generator Template
+// This is the main entry point for code generation.
+//
+// Available variables:
+//   - file: FileDef with namespaces, imports
+//   - config: Language configuration from .toml
+//
+// Available functions:
+//   - to_pascal_case(text), to_snake_case(text), to_camel_case(text)
+//   - indent(text, level), indent_lines(text, level)
+//   - map_type(type_ref) - use rhai_utils/type_mapping.rhai
+//
+// See CUSTOMIZATION.md for full documentation.
+
+// Import type mapping utilities
+import "rhai_utils/type_mapping" as types;
+
+// File header
+`// Generated by PolyGen - {lang_name}`
+`// Do not edit manually`
+``
+
+// Process each namespace
+for ns in file.namespaces {{
+    let ns_name = ns.name;
+
+    `// Namespace: ${{ns_name}}`
+    ``
+
+    // Generate structs/classes
+    for struct_def in ns.structs {{
+        let name = struct_def.name;
+        let fields = struct_def.fields;
+
+        `struct ${{name}} {{}}`
+        for field in fields {{
+            let field_name = field.field_name;
+            let field_type = types::map_type(field.type_ref);
+            `    ${{field_name}}: ${{field_type}}`
+        }}
+        `}}`
+        ``
+    }}
+
+    // Generate enums
+    for enum_def in ns.enums {{
+        let name = enum_def.name;
+        let variants = enum_def.variants;
+
+        `enum ${{name}} {{}}`
+        for variant in variants {{
+            `    ${{variant.name}} = ${{variant.value}}`
+        }}
+        `}}`
+        ``
+    }}
+}}
+"#, lang_name = lang_name);
+
+    fs::write(lang_path.join(format!("{}_file.rhai", lang_id)), main_template)
+        .map_err(|e| format!("Failed to create main template: {}", e))?;
+
+    // Create type mapping utility
+    let type_mapping = r#"// Type Mapping Utilities
+// Map PolyGen types to target language types
+
+fn map_type(type_ref) {
+    let base_type = type_ref.base_type;
+    let is_optional = type_ref.is_optional;
+    let is_array = type_ref.is_array;
+
+    // Map primitive types
+    let mapped = switch base_type {
+        "string" => "String",
+        "bool" => "Bool",
+        "bytes" => "Bytes",
+        "u8" => "UInt8",
+        "u16" => "UInt16",
+        "u32" => "UInt32",
+        "u64" => "UInt64",
+        "i8" => "Int8",
+        "i16" => "Int16",
+        "i32" => "Int32",
+        "i64" => "Int64",
+        "f32" => "Float32",
+        "f64" => "Float64",
+        _ => base_type,  // Custom types pass through
+    };
+
+    // Handle array
+    if is_array {
+        mapped = `Array<${mapped}>`;
+    }
+
+    // Handle optional
+    if is_optional {
+        mapped = `Optional<${mapped}>`;
+    }
+
+    mapped
+}
+
+fn get_default_value(type_ref) {
+    let base_type = type_ref.base_type;
+
+    switch base_type {
+        "string" => `""`,
+        "bool" => "false",
+        "u8" | "u16" | "u32" | "u64" => "0",
+        "i8" | "i16" | "i32" | "i64" => "0",
+        "f32" | "f64" => "0.0",
+        _ => "null",
+    }
+}
+"#;
+
+    fs::write(lang_path.join("rhai_utils/type_mapping.rhai"), type_mapping)
+        .map_err(|e| format!("Failed to create type mapping: {}", e))?;
+
+    Ok(())
+}
+
+/// Delete a template file or directory
+#[tauri::command]
+pub fn delete_template_file(
+    lang: String,
+    relative_path: String,
+    templates_dir: Option<String>,
+) -> Result<(), String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir()?,
+    };
+
+    let file_path = templates_path.join(&lang).join(&relative_path);
+
+    // Security: ensure path doesn't escape the templates directory
+    let canonical_templates = templates_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve templates path: {}", e))?;
+    let canonical_file = file_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve file path: {}", e))?;
+
+    if !canonical_file.starts_with(&canonical_templates) {
+        return Err("Invalid path: access denied".to_string());
+    }
+
+    // Don't allow deleting the language root or critical files
+    if relative_path.is_empty() || relative_path == "/" {
+        return Err("Cannot delete language root directory".to_string());
+    }
+
+    if file_path.is_dir() {
+        fs::remove_dir_all(&file_path)
+            .map_err(|e| format!("Failed to delete directory: {}", e))
+    } else {
+        fs::remove_file(&file_path)
+            .map_err(|e| format!("Failed to delete file: {}", e))
+    }
+}
+
+/// Preview template result - generate code using the current template
+/// Uses --preview flag to output generated files to stdout
+#[tauri::command]
+pub fn preview_template(
+    schema_path: String,
+    lang: String,
+    templates_dir: Option<String>,
+) -> Result<String, String> {
+    let polygen = get_polygen_path();
+
+    // Resolve templates directory to absolute path so polygen can find it
+    // regardless of the working directory
+    let resolved_templates = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir()?,
+    };
+    let resolved_templates = resolved_templates.canonicalize()
+        .map_err(|e| format!("Templates directory not found: {}", e))?;
+
+    // Resolve schema path to absolute as well
+    let resolved_schema = PathBuf::from(&schema_path).canonicalize()
+        .map_err(|e| format!("Schema file not found: {}: {}", schema_path, e))?;
+
+    // Set working directory to the parent of the templates directory (project root)
+    // so that Rhai `import "templates/..."` paths resolve correctly.
+    let project_root = resolved_templates.parent()
+        .ok_or_else(|| "Cannot determine project root from templates directory".to_string())?;
+
+    let mut cmd = Command::new(&polygen);
+    cmd.current_dir(project_root)
+        .arg("generate")
+        .arg("--schema-path")
+        .arg(&resolved_schema)
+        .arg("--lang")
+        .arg(&lang)
+        .arg("--templates-dir")
+        .arg(&resolved_templates)
+        .arg("--preview");
+
+    let output = cmd.output().map_err(|e| format!("Failed to execute polygen: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(stderr.to_string())
+    }
+}
+
+/// Validate a Rhai script
+#[tauri::command]
+pub fn validate_rhai_script(content: String) -> Result<Vec<SchemaError>, String> {
+    use rhai::Engine;
+
+    let engine = Engine::new();
+    let mut errors = Vec::new();
+
+    match engine.compile(&content) {
+        Ok(_) => {
+            // Script is valid
+        }
+        Err(e) => {
+            // Extract position from parse error
+            let (line, col) = match e.position() {
+                rhai::Position::NONE => (1, 1),
+                pos => (pos.line().unwrap_or(1), pos.position().unwrap_or(1)),
+            };
+
+            errors.push(SchemaError {
+                start_line: line,
+                start_column: col,
+                end_line: line,
+                end_column: col + 10,
+                message: e.to_string(),
+                severity: "error".to_string(),
+            });
+        }
+    }
+
+    Ok(errors)
+}
