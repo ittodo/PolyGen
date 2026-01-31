@@ -1,0 +1,27 @@
+%-- ValidateForeignKeys method
+// ValidateForeignKeys validates foreign key references exist in related tables.
+func (t *{{struct.name | suffix("Table")}}) ValidateForeignKeys(container *{{container_name}}) *ValidationResult {
+	result := NewValidationResult()
+%if !struct.has_foreign_keys
+	_ = container // Suppress unused variable warning
+%else
+	for _, row := range t.rows {
+		rowKey := fmt.Sprintf("%v", row.{{struct.pk_field_name | pascal_case}})
+%for field in struct.fk_fields
+%if field.field_type.is_option
+		if row.{{field.name | pascal_case}} != nil {
+			if container.{{field.foreign_key.target_table_name | pascal_case | suffix("s")}}.{{field.foreign_key.target_field | pascal_case | prefix("GetBy")}}(*row.{{field.name | pascal_case}}) == nil {
+				result.AddError(ForeignKeyError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, "{{field.foreign_key.target_table_name}}", fmt.Sprintf("%v", *row.{{field.name | pascal_case}})))
+			}
+		}
+%else
+		if container.{{field.foreign_key.target_table_name | pascal_case | suffix("s")}}.{{field.foreign_key.target_field | pascal_case | prefix("GetBy")}}(row.{{field.name | pascal_case}}) == nil {
+			result.AddError(ForeignKeyError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, "{{field.foreign_key.target_table_name}}", fmt.Sprintf("%v", row.{{field.name | pascal_case}})))
+		}
+%endif
+%endfor
+	}
+%endif
+	return result
+}
+%blank

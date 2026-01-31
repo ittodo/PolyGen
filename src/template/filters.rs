@@ -21,6 +21,8 @@ pub fn apply_string_filter(value: &str, filter: &Filter) -> Option<String> {
         Filter::Upper => Some(value.to_uppercase()),
         Filter::Lower => Some(value.to_lowercase()),
         Filter::Quote => Some(format!("\"{}\"", value)),
+        Filter::Suffix(s) => Some(format!("{}{}", value, s)),
+        Filter::Prefix(s) => Some(format!("{}{}", s, value)),
         // These require context — handled by the renderer
         Filter::LangType
         | Filter::Format

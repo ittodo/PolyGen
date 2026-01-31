@@ -1,0 +1,14 @@
+%-- LoadAll and Clear methods
+// LoadAll loads multiple rows into the table.
+func (t *{{struct.name | suffix("Table")}}) LoadAll(rows []*{{struct.name}}) {
+	for _, row := range rows { t.AddRow(row) }
+}
+%blank
+// Clear removes all rows from the table.
+func (t *{{struct.name | suffix("Table")}}) Clear() {
+	t.rows = make([]*{{struct.name}}, 0)
+%for idx in struct.indexes
+	t.{{idx.field_name | pascal_case | prefix("by")}}.Clear()
+%endfor
+}
+%blank

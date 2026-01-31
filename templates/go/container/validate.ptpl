@@ -1,0 +1,65 @@
+%-- Validate method with field constraint checking
+// Validate validates all rows against field constraints.
+func (t *{{struct.name | suffix("Table")}}) Validate() *ValidationResult {
+	result := NewValidationResult()
+	for _, row := range t.rows {
+		rowKey := fmt.Sprintf("%v", row.{{struct.pk_field_name | pascal_case}})
+%for field in struct.fields
+%if field.has_max_length
+%if field.field_type.is_option
+		if row.{{field.name | pascal_case}} != nil && len(*row.{{field.name | pascal_case}}) > {{field.max_length}} {
+			result.AddError(MaxLengthError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.max_length}}, len(*row.{{field.name | pascal_case}})))
+		}
+%elif field.field_type.is_string
+		if len(row.{{field.name | pascal_case}}) > {{field.max_length}} {
+			result.AddError(MaxLengthError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.max_length}}, len(row.{{field.name | pascal_case}})))
+		}
+%endif
+%endif
+%if field.has_range
+%if field.field_type.is_option
+%if field.field_type.is_float
+		if row.{{field.name | pascal_case}} != nil && !ValidateRangeFloat(*row.{{field.name | pascal_case}}, {{field.range.min}}, {{field.range.max}}) {
+			result.AddError(RangeError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.range.min}}, {{field.range.max}}, *row.{{field.name | pascal_case}}))
+		}
+%elif field.field_type.is_unsigned
+		if row.{{field.name | pascal_case}} != nil && !ValidateRangeUint(*row.{{field.name | pascal_case}}, {{field.range.min}}, {{field.range.max}}) {
+			result.AddError(RangeError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.range.min}}, {{field.range.max}}, *row.{{field.name | pascal_case}}))
+		}
+%else
+		if row.{{field.name | pascal_case}} != nil && !ValidateRangeInt(*row.{{field.name | pascal_case}}, {{field.range.min}}, {{field.range.max}}) {
+			result.AddError(RangeError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.range.min}}, {{field.range.max}}, *row.{{field.name | pascal_case}}))
+		}
+%endif
+%else
+%if field.field_type.is_float
+		if !ValidateRangeFloat(row.{{field.name | pascal_case}}, {{field.range.min}}, {{field.range.max}}) {
+			result.AddError(RangeError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.range.min}}, {{field.range.max}}, row.{{field.name | pascal_case}}))
+		}
+%elif field.field_type.is_unsigned
+		if !ValidateRangeUint(row.{{field.name | pascal_case}}, {{field.range.min}}, {{field.range.max}}) {
+			result.AddError(RangeError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.range.min}}, {{field.range.max}}, row.{{field.name | pascal_case}}))
+		}
+%else
+		if !ValidateRangeInt(row.{{field.name | pascal_case}}, {{field.range.min}}, {{field.range.max}}) {
+			result.AddError(RangeError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, {{field.range.min}}, {{field.range.max}}, row.{{field.name | pascal_case}}))
+		}
+%endif
+%endif
+%endif
+%if field.has_regex_pattern
+%if field.field_type.is_option
+		if row.{{field.name | pascal_case}} != nil && !ValidateRegex(*row.{{field.name | pascal_case}}, `{{field.regex_pattern}}`) {
+			result.AddError(RegexError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, `{{field.regex_pattern}}`, *row.{{field.name | pascal_case}}))
+		}
+%elif field.field_type.is_string
+		if !ValidateRegex(row.{{field.name | pascal_case}}, `{{field.regex_pattern}}`) {
+			result.AddError(RegexError("{{struct.name}}", "{{field.name | pascal_case}}", rowKey, `{{field.regex_pattern}}`, row.{{field.name | pascal_case}}))
+		}
+%endif
+%endif
+%endfor
+	}
+	return result
+}
+%blank

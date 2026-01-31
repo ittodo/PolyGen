@@ -1,0 +1,15 @@
+%-- Constructor for DataTable
+// New{{struct.name | suffix("Table")}} creates a new {{struct.name | suffix("Table")}}.
+func New{{struct.name | suffix("Table")}}() *{{struct.name | suffix("Table")}} {
+	return &{{struct.name | suffix("Table")}}{
+		rows: make([]*{{struct.name}}, 0),
+%for idx in struct.indexes
+%if idx.is_unique
+		{{idx.field_name | pascal_case | prefix("by")}}: NewUniqueIndex[{{idx.field_type | lang_type}}, *{{struct.name}}](),
+%else
+		{{idx.field_name | pascal_case | prefix("by")}}: NewGroupIndex[{{idx.field_type | lang_type}}, *{{struct.name}}](),
+%endif
+%endfor
+	}
+}
+%blank

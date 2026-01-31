@@ -138,6 +138,12 @@ impl ContextValue {
                         .map(|ns| ContextValue::Namespace(ns.clone()))
                         .collect(),
                 ),
+                "all_tables" => {
+                    // Collect all non-embed, non-__Enum structs from all namespaces (flat)
+                    let mut tables = Vec::new();
+                    collect_tables_from_namespaces(&f.namespaces, &mut tables);
+                    ContextValue::List(tables)
+                }
                 _ => ContextValue::Null,
             },
             ContextValue::Namespace(ns) => match name {
@@ -261,6 +267,36 @@ impl ContextValue {
                     let has = s.items.iter().any(|item| matches!(item, StructItem::Field(f) if f.default_value.is_some()));
                     ContextValue::Bool(has)
                 }
+                "has_foreign_keys" => {
+                    let has = s.items.iter().any(|item| matches!(item, StructItem::Field(f) if f.foreign_key.is_some()));
+                    ContextValue::Bool(has)
+                }
+                "fk_fields" => {
+                    let fields: Vec<ContextValue> = s
+                        .items
+                        .iter()
+                        .filter_map(|item| match item {
+                            StructItem::Field(f) if f.foreign_key.is_some() => {
+                                Some(ContextValue::Field(f.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    ContextValue::List(fields)
+                }
+                "pk_field_name" => {
+                    // Find primary key field name (defaults to "Id")
+                    let pk = s.items.iter().find_map(|item| match item {
+                        StructItem::Field(f) if f.is_primary_key => {
+                            Some(f.name.clone())
+                        }
+                        _ => None,
+                    });
+                    match pk {
+                        Some(name) => ContextValue::String(name),
+                        None => ContextValue::String("Id".to_string()),
+                    }
+                }
                 _ => ContextValue::Null,
             },
             ContextValue::StructItem(item) => match name {
@@ -338,6 +374,9 @@ impl ContextValue {
                     None => ContextValue::Null,
                 },
                 "has_auto_update" => ContextValue::Bool(f.auto_update.is_some()),
+                "has_max_length" => ContextValue::Bool(f.max_length.is_some()),
+                "has_range" => ContextValue::Bool(f.range.is_some()),
+                "has_regex_pattern" => ContextValue::Bool(f.regex_pattern.is_some()),
                 _ => ContextValue::Null,
             },
             ContextValue::TypeRef(t) => match name {
@@ -352,6 +391,13 @@ impl ContextValue {
                 "is_enum" => ContextValue::Bool(t.is_enum),
                 "is_option" => ContextValue::Bool(t.is_option),
                 "is_list" => ContextValue::Bool(t.is_list),
+                "is_float" => ContextValue::Bool(
+                    t.type_name == "f32" || t.type_name == "f64"
+                ),
+                "is_unsigned" => ContextValue::Bool(
+                    t.type_name.starts_with('u') && t.is_primitive
+                ),
+                "is_string" => ContextValue::Bool(t.type_name == "string"),
                 "inner_type" | "inner" => match &t.inner_type {
                     Some(inner) => ContextValue::TypeRef(*inner.clone()),
                     None => ContextValue::Null,
@@ -474,6 +520,11 @@ impl ContextValue {
                 "is_composite" => ContextValue::Bool(idx.is_composite()),
                 "field_count" => ContextValue::Int(idx.field_count() as i64),
                 "source" => ContextValue::String(idx.source.clone()),
+                "field_name" => ContextValue::String(idx.field_name().to_string()),
+                "field_type" => match idx.field_type() {
+                    Some(t) => ContextValue::TypeRef(t.clone()),
+                    None => ContextValue::Null,
+                },
                 _ => ContextValue::Null,
             },
             ContextValue::Relation(rel) => match name {
@@ -486,6 +537,15 @@ impl ContextValue {
             ContextValue::ForeignKey(fk) => match name {
                 "target_table_fqn" => ContextValue::String(fk.target_table_fqn.clone()),
                 "target_field" => ContextValue::String(fk.target_field.clone()),
+                "target_table_name" => {
+                    // Extract last segment of FQN: "game.character.Player" → "Player"
+                    let table_name = fk.target_table_fqn
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(&fk.target_table_fqn)
+                        .to_string();
+                    ContextValue::String(table_name)
+                }
                 "alias" => match &fk.alias {
                     Some(a) => ContextValue::String(a.clone()),
                     None => ContextValue::Null,
@@ -553,6 +613,28 @@ impl ContextValue {
         match self {
             ContextValue::List(l) => Some(l),
             _ => None,
+        }
+    }
+}
+
+/// Recursively collects all non-__Enum structs from namespaces.
+///
+/// Returns them as ContextValue::Struct entries in a flat list.
+/// Note: embeds ARE included (they may be used as container tables).
+fn collect_tables_from_namespaces(namespaces: &[NamespaceDef], out: &mut Vec<ContextValue>) {
+    for ns in namespaces {
+        for item in &ns.items {
+            match item {
+                NamespaceItem::Struct(s) => {
+                    if !s.name.ends_with("__Enum") {
+                        out.push(ContextValue::Struct(s.clone()));
+                    }
+                }
+                NamespaceItem::Namespace(child_ns) => {
+                    collect_tables_from_namespaces(&[*child_ns.clone()], out);
+                }
+                _ => {}
+            }
         }
     }
 }

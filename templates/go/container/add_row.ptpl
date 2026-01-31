@@ -1,0 +1,13 @@
+%-- AddRow method
+// AddRow adds a row to the table.
+func (t *{{struct.name | suffix("Table")}}) AddRow(row *{{struct.name}}) {
+%for idx in struct.indexes
+%if idx.is_unique
+	t.{{idx.field_name | pascal_case | prefix("by")}}.Insert(row.{{idx.field_name | pascal_case}}, row)
+%else
+	t.{{idx.field_name | pascal_case | prefix("by")}}.Add(row.{{idx.field_name | pascal_case}}, row)
+%endif
+%endfor
+	t.rows = append(t.rows, row)
+}
+%blank

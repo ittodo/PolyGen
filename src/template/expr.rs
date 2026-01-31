@@ -49,6 +49,10 @@ pub enum Filter {
     CsvRead,
     /// Check if struct FQN is embedded anywhere in schema.
     IsEmbedded,
+    /// Append a suffix string.
+    Suffix(String),
+    /// Prepend a prefix string.
+    Prefix(String),
 }
 
 /// A parsed condition expression for `%if`.
@@ -175,6 +179,18 @@ fn parse_filter(name: &str) -> Result<Filter, String> {
     if name.starts_with("join(") && name.ends_with(')') {
         let sep = name[5..name.len() - 1].trim().trim_matches('"').trim_matches('\'');
         return Ok(Filter::Join(sep.to_string()));
+    }
+
+    // Handle suffix("str") syntax
+    if name.starts_with("suffix(") && name.ends_with(')') {
+        let s = name[7..name.len() - 1].trim().trim_matches('"').trim_matches('\'');
+        return Ok(Filter::Suffix(s.to_string()));
+    }
+
+    // Handle prefix("str") syntax
+    if name.starts_with("prefix(") && name.ends_with(')') {
+        let s = name[7..name.len() - 1].trim().trim_matches('"').trim_matches('\'');
+        return Ok(Filter::Prefix(s.to_string()));
     }
 
     match name {

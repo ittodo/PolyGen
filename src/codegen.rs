@@ -327,15 +327,124 @@ impl CodeGenerator {
     /// Generates code for all extra templates defined in the language config.
     ///
     /// Extra templates are processed after the main template.
+    /// Supports both Rhai (`.rhai`) and PolyTemplate (`.ptpl`) extra templates.
     pub fn generate_extras(&self, ir_context: &SchemaContext) -> Result<()> {
         if let Some(config) = &self.config {
             for template_name in config.extra_templates() {
-                if self.has_template(template_name) {
+                if template_name.ends_with(".ptpl") {
+                    println!("Processing extra ptpl template: {}", template_name);
+                    self.generate_extra_with_polytemplate(ir_context, template_name)?;
+                } else if self.has_template(template_name) {
                     println!("Processing extra template: {}", template_name);
                     self.generate_with_template(ir_context, template_name)?;
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Generates code using an extra PolyTemplate (`.ptpl`) template.
+    ///
+    /// Derives the output filename suffix from the template name:
+    /// e.g., `go_container_file.ptpl` → `_container` suffix.
+    fn generate_extra_with_polytemplate(
+        &self,
+        ir_context: &SchemaContext,
+        template_name: &str,
+    ) -> Result<()> {
+        let render_config = self.build_render_config();
+        let engine_config = template::EngineConfig { render_config };
+
+        let engine = template::TemplateEngine::new(self.template_dir(), engine_config)
+            .map_err(|e| anyhow::anyhow!("Failed to load .ptpl templates: {}", e))?;
+
+        let extension = self
+            .config
+            .as_ref()
+            .map(|c| c.extension.clone())
+            .unwrap_or_default();
+
+        // Derive output suffix from template name
+        let output_suffix = derive_output_suffix(template_name, &self.language);
+
+        // Load existing manifest
+        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
+        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
+            fs::read_to_string(&manifest_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        for file in &ir_context.files {
+            let poly_path = Path::new(&file.path);
+            let stem = poly_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output");
+            let output_filename = format!("{}{}{}", stem, output_suffix, extension);
+
+            // Build context
+            let mut file_ctx = template::context::TemplateContext::with_file(file);
+            file_ctx.set(
+                "package_name",
+                template::context::ContextValue::String(stem.to_lowercase()),
+            );
+            file_ctx.set(
+                "source_path",
+                template::context::ContextValue::String(file.path.clone()),
+            );
+            file_ctx.set(
+                "schema",
+                template::context::ContextValue::Schema(ir_context.clone()),
+            );
+
+            // Compute container_name: PascalCase(stem) + "Container"
+            use heck::ToPascalCase;
+            let container_name = format!("{}Container", stem.to_pascal_case());
+            file_ctx.set(
+                "container_name",
+                template::context::ContextValue::String(container_name),
+            );
+
+            let result = engine
+                .render(template_name, &file_ctx)
+                .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))?;
+
+            let output_path = self.lang_output_dir().join(&output_filename);
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut content = result.lines.join("\n");
+            if !content.ends_with('\n') {
+                content.push('\n');
+            }
+            fs::write(&output_path, &content)?;
+            println!("Generated: {}", output_path.display());
+
+            // Record in manifest
+            if let Ok(relative) = output_path.strip_prefix(&self.output_dir) {
+                let key = relative.to_string_lossy().replace('\\', "/");
+                manifest.insert(key, template_name.to_string());
+            }
+
+            // Write source map if in preview mode
+            if self.preview_mode {
+                let map_filename = format!("{}.ptpl.map", output_path.display());
+                let map_path = PathBuf::from(&map_filename);
+                if let Ok(json) = result.source_map.to_json() {
+                    fs::write(&map_path, json)?;
+                }
+            }
+        }
+
+        // Write manifest
+        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
+            let _ = fs::write(&manifest_path, json);
+        }
+
         Ok(())
     }
 
@@ -457,6 +566,30 @@ pub fn discover_languages(templates_dir: &Path) -> Vec<String> {
     }
 
     languages
+}
+
+/// Derives an output filename suffix from a template name.
+///
+/// Examples:
+/// - `"go_container_file.ptpl"` with lang `"go"` → `"_container"`
+/// - `"csharp_binary_readers_file.ptpl"` with lang `"csharp"` → `"_binary_readers"`
+fn derive_output_suffix(template_name: &str, language: &str) -> String {
+    let stem = Path::new(template_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(template_name);
+
+    // Strip lang prefix: "go_container_file" → "container_file"
+    let without_lang = stem
+        .strip_prefix(&format!("{}_", language))
+        .unwrap_or(stem);
+
+    // Strip "_file" suffix: "container_file" → "container"
+    let core = without_lang
+        .strip_suffix("_file")
+        .unwrap_or(without_lang);
+
+    format!("_{}", core)
 }
 
 /// The manifest file name used to track which template generated each output file.

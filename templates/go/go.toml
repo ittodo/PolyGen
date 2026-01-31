@@ -35,5 +35,5 @@ format = "[]{{type}}"
 # Main template for generating Go structs (using new PolyTemplate engine)
 main = "go_file.ptpl"
 
-# Extra templates to run after the main template (still using Rhai)
-extra = ["go_container_file.rhai"]
+# Extra templates to run after the main template (using PolyTemplate engine)
+extra = ["go_container_file.ptpl"]

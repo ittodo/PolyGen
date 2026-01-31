@@ -1,0 +1,54 @@
+%-- Root container struct aggregating all data tables
+// {{container_name}} is the root container aggregating all data tables.
+type {{container_name}} struct {
+%for table in file.all_tables
+	{{table.name | pascal_case | suffix("s")}} *{{table.name | suffix("Table")}}
+%endfor
+}
+%blank
+// New{{container_name}} creates a new {{container_name}}.
+func New{{container_name}}() *{{container_name}} {
+	return &{{container_name}}{
+%for table in file.all_tables
+		{{table.name | pascal_case | suffix("s")}}: New{{table.name | suffix("Table")}}(),
+%endfor
+	}
+}
+%blank
+// Clear clears all tables.
+func (c *{{container_name}}) Clear() {
+%for table in file.all_tables
+	c.{{table.name | pascal_case | suffix("s")}}.Clear()
+%endfor
+}
+%blank
+// ValidateAll validates all tables and returns combined results.
+func (c *{{container_name}}) ValidateAll() *ValidationResult {
+	result := NewValidationResult()
+	// Field constraint validation
+%for table in file.all_tables
+	result.Merge(c.{{table.name | pascal_case | suffix("s")}}.Validate())
+%endfor
+	// Foreign key validation
+%for table in file.all_tables
+	result.Merge(c.{{table.name | pascal_case | suffix("s")}}.ValidateForeignKeys(c))
+%endfor
+	return result
+}
+%blank
+// ValidateOrPanic validates all tables and panics if any validation fails.
+func (c *{{container_name}}) ValidateOrPanic() {
+	result := c.ValidateAll()
+	if !result.IsValid() {
+		panic(NewValidationException(result))
+	}
+}
+%blank
+// ValidateOrError validates all tables and returns an error if any validation fails.
+func (c *{{container_name}}) ValidateOrError() error {
+	result := c.ValidateAll()
+	if !result.IsValid() {
+		return NewValidationException(result)
+	}
+	return nil
+}

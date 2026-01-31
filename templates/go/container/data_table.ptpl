@@ -1,0 +1,20 @@
+%-- DataTable for a single struct/table
+%-- Context: struct (StructDef)
+// {{struct.name | suffix("Table")}} is a data table for {{struct.name}}.
+type {{struct.name | suffix("Table")}} struct {
+	rows []*{{struct.name}}
+%for idx in struct.indexes
+%if idx.is_unique
+	{{idx.field_name | pascal_case | prefix("by")}} *UniqueIndex[{{idx.field_type | lang_type}}, *{{struct.name}}]
+%else
+	{{idx.field_name | pascal_case | prefix("by")}} *GroupIndex[{{idx.field_type | lang_type}}, *{{struct.name}}]
+%endif
+%endfor
+}
+%blank
+%include "container/constructor.ptpl" with struct
+%include "container/accessors.ptpl" with struct
+%include "container/add_row.ptpl" with struct
+%include "container/load_clear.ptpl" with struct
+%include "container/validate.ptpl" with struct
+%include "container/validate_fk.ptpl" with struct
