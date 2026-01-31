@@ -110,6 +110,7 @@
       return expandedDirs.has(file.relative_path) ? "folder-open" : "folder";
     }
     if (file.name.endsWith(".rhai")) return "code";
+    if (file.name.endsWith(".ptpl")) return "template";
     if (file.name.endsWith(".toml")) return "settings";
     return "file";
   }
@@ -301,6 +302,11 @@
   .icon.code::before {
     content: "#";
     color: var(--accent);
+  }
+
+  .icon.template::before {
+    content: "%";
+    color: var(--success, #4caf50);
   }
 
   .icon.settings::before {

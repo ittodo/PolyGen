@@ -1,0 +1,15 @@
+// --- {{namespace.name | pascal_case}} types ---
+%blank
+%for item in namespace.items
+%if item.is_struct
+%include "section/struct_block.ptpl" with item.as_struct
+%blank
+%elif item.is_enum
+%include "section/enum_block.ptpl" with item.as_enum
+%blank
+%elif item.is_comment
+// {{item.as_comment}}
+%elif item.is_namespace
+%include "section/package_block.ptpl" with item.as_namespace
+%endif
+%endfor

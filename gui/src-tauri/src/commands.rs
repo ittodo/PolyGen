@@ -1309,8 +1309,8 @@ pub fn list_template_languages(templates_dir: Option<String>) -> Result<Vec<Temp
                 dir_name.clone()
             };
 
-            // Count .rhai files
-            let file_count = count_rhai_files(&path);
+            // Count template files (.rhai + .ptpl)
+            let file_count = count_template_files(&path);
 
             languages.push(TemplateLanguageInfo {
                 id: dir_name,
@@ -1341,16 +1341,18 @@ fn extract_toml_value(content: &str, key: &str) -> Option<String> {
     None
 }
 
-/// Count .rhai files in a directory recursively
-fn count_rhai_files(path: &Path) -> usize {
+/// Count template files (.rhai and .ptpl) in a directory recursively
+fn count_template_files(path: &Path) -> usize {
     let mut count = 0;
     if let Ok(entries) = fs::read_dir(path) {
         for entry in entries.flatten() {
             let entry_path = entry.path();
             if entry_path.is_dir() {
-                count += count_rhai_files(&entry_path);
-            } else if entry_path.extension().and_then(|e| e.to_str()) == Some("rhai") {
-                count += 1;
+                count += count_template_files(&entry_path);
+            } else if let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) {
+                if ext == "rhai" || ext == "ptpl" {
+                    count += 1;
+                }
             }
         }
     }
@@ -1409,9 +1411,9 @@ pub fn list_template_files(
                         children,
                     });
                 } else {
-                    // Only include .rhai and .toml files
+                    // Only include .rhai, .ptpl and .toml files
                     let ext = entry_path.extension().and_then(|e| e.to_str());
-                    if ext == Some("rhai") || ext == Some("toml") {
+                    if ext == Some("rhai") || ext == Some("ptpl") || ext == Some("toml") {
                         files.push(TemplateFileInfo {
                             name,
                             path: entry_path.to_string_lossy().to_string(),

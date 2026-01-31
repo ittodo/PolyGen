@@ -8,10 +8,32 @@ extension = ".go"
 [static_files]
 "polygen_support.go" = "static/go/polygen_support.go"
 
+# Type mapping: poly type → Go type
+[type_map]
+u8 = "uint8"
+u16 = "uint16"
+u32 = "uint32"
+u64 = "uint64"
+i8 = "int8"
+i16 = "int16"
+i32 = "int32"
+i64 = "int64"
+f32 = "float32"
+f64 = "float64"
+bool = "bool"
+string = "string"
+bytes = "[]byte"
+
+[type_map.optional]
+format = "*{{type}}"
+
+[type_map.list]
+format = "[]{{type}}"
+
 # Template configuration
 [templates]
-# Main template for generating Go structs
-main = "go_file.rhai"
+# Main template for generating Go structs (using new PolyTemplate engine)
+main = "go_file.ptpl"
 
-# Extra templates to run after the main template
+# Extra templates to run after the main template (still using Rhai)
 extra = ["go_container_file.rhai"]

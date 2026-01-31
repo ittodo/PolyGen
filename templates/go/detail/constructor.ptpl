@@ -1,0 +1,10 @@
+%if struct.has_defaults
+// New{{struct.name}} creates a new {{struct.name}} with default values.
+func New{{struct.name}}() *{{struct.name}} {
+	r := &{{struct.name}}{}
+%for field in struct.default_fields
+	r.{{field.name | pascal_case}} = {{field.default_value}}
+%endfor
+	return r
+}
+%endif

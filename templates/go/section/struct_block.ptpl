@@ -1,0 +1,24 @@
+%for comment in struct.doc_comments
+// {{comment}}
+%endfor
+type {{struct.name}} struct {
+%for item in struct.items
+%if item.is_field
+%include "detail/field_declaration.ptpl" with item.as_field
+%elif item.is_comment
+	// {{item.as_comment}}
+%endif
+%endfor
+}
+%blank
+%for item in struct.items
+%if item.is_inline_enum
+%include "section/enum_block.ptpl" with item.as_inline_enum
+%endif
+%endfor
+%for item in struct.items
+%if item.is_embedded_struct
+%include "section/struct_block.ptpl" with item.as_embedded_struct
+%endif
+%endfor
+%include "detail/constructor.ptpl" with struct

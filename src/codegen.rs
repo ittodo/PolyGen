@@ -62,6 +62,7 @@ use std::path::{Path, PathBuf};
 use crate::ir_model::SchemaContext;
 use crate::lang_config::{LanguageConfig, StaticFileEntry};
 use crate::rhai_generator;
+use crate::template;
 
 /// Configuration for a static file to be copied during code generation.
 ///
@@ -145,6 +146,9 @@ impl CodeGenerator {
     /// The main template is determined by:
     /// 1. The `templates.main` setting in the language config
     /// 2. Fallback to `{language}_file.rhai`
+    ///
+    /// If the main template has a `.ptpl` extension, the new PolyTemplate engine
+    /// is used instead of Rhai.
     pub fn generate(&self, ir_context: &SchemaContext) -> Result<()> {
         let main_template = self
             .config
@@ -152,20 +156,151 @@ impl CodeGenerator {
             .map(|c| c.main_template(&self.language))
             .unwrap_or_else(|| format!("{}_file.rhai", self.language));
 
-        let template_path = self.template_dir().join(&main_template);
-
-        println!("Using Rhai template engine.");
-        let before = collect_output_files(&self.output_dir);
-        rhai_generator::generate_code_with_rhai_opts(
-            ir_context,
-            &template_path,
-            &self.output_dir,
-            self.preview_mode,
-        )?;
-        let after = collect_output_files(&self.output_dir);
-        record_manifest(&self.output_dir, &main_template, &before, &after);
+        if main_template.ends_with(".ptpl") {
+            println!("Using PolyTemplate engine.");
+            self.generate_with_polytemplate(ir_context, &main_template)?;
+        } else {
+            println!("Using Rhai template engine.");
+            let template_path = self.template_dir().join(&main_template);
+            let before = collect_output_files(&self.output_dir);
+            rhai_generator::generate_code_with_rhai_opts(
+                ir_context,
+                &template_path,
+                &self.output_dir,
+                self.preview_mode,
+            )?;
+            let after = collect_output_files(&self.output_dir);
+            record_manifest(&self.output_dir, &main_template, &before, &after);
+        }
 
         Ok(())
+    }
+
+    /// Generates code using the PolyTemplate engine (`.ptpl` templates).
+    fn generate_with_polytemplate(
+        &self,
+        ir_context: &SchemaContext,
+        main_template: &str,
+    ) -> Result<()> {
+        // Build RenderConfig from language TOML
+        let render_config = self.build_render_config();
+
+        let engine_config = template::EngineConfig { render_config };
+
+        // Load templates from the language template directory
+        let engine = template::TemplateEngine::new(self.template_dir(), engine_config)
+            .map_err(|e| anyhow::anyhow!("Failed to load .ptpl templates: {}", e))?;
+
+        println!(
+            "Loaded {} .ptpl templates from {}",
+            engine.template_count(),
+            self.template_dir().display()
+        );
+
+        // Determine file extension from config
+        let extension = self
+            .config
+            .as_ref()
+            .map(|c| c.extension.clone())
+            .unwrap_or_default();
+
+        // Load existing manifest for recording ptpl outputs
+        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
+        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
+            fs::read_to_string(&manifest_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        // Render each file in the schema
+        for file in &ir_context.files {
+            // Build output filename: "schemas/player.poly" → "player.go"
+            let poly_path = Path::new(&file.path);
+            let stem = poly_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output");
+            let output_filename = format!("{}{}", stem, extension);
+
+            // Build context with file + extra variables
+            let mut file_ctx = template::context::TemplateContext::with_file(file);
+            file_ctx.set(
+                "package_name",
+                template::context::ContextValue::String(stem.to_lowercase()),
+            );
+            file_ctx.set(
+                "source_path",
+                template::context::ContextValue::String(file.path.clone()),
+            );
+            file_ctx.set(
+                "schema",
+                template::context::ContextValue::Schema(ir_context.clone()),
+            );
+
+            let result = engine
+                .render(main_template, &file_ctx)
+                .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))?;
+
+            // Write output file
+            let output_path = self.lang_output_dir().join(&output_filename);
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut content = result.lines.join("\n");
+            if !content.ends_with('\n') {
+                content.push('\n');
+            }
+            fs::write(&output_path, &content)?;
+            println!("Generated: {}", output_path.display());
+
+            // Record in manifest
+            if let Ok(relative) = output_path.strip_prefix(&self.output_dir) {
+                let key = relative.to_string_lossy().replace('\\', "/");
+                manifest.insert(key, main_template.to_string());
+            }
+
+            // Write source map if in preview mode
+            if self.preview_mode {
+                // Append .ptpl.map to full filename (e.g. game_schema.go.ptpl.map)
+                let map_filename = format!("{}.ptpl.map", output_path.display());
+                let map_path = PathBuf::from(&map_filename);
+                if let Ok(json) = result.source_map.to_json() {
+                    fs::write(&map_path, json)?;
+                }
+            }
+        }
+
+        // Write manifest
+        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
+            let _ = fs::write(&manifest_path, json);
+        }
+
+        Ok(())
+    }
+
+    /// Builds a `RenderConfig` from the language TOML configuration.
+    fn build_render_config(&self) -> template::renderer::RenderConfig {
+        let mut config = template::renderer::RenderConfig::default();
+
+        if let Some(lang_config) = &self.config {
+            config.type_map = lang_config.type_map.type_map();
+            config.type_map_optional = lang_config.type_map.optional_format();
+            config.type_map_list = lang_config.type_map.list_format();
+
+            config.binary_read = lang_config.binary_read.type_map();
+            config.binary_read_option = lang_config.binary_read.sub_format("option");
+            config.binary_read_list = lang_config.binary_read.sub_format("list");
+            config.binary_read_enum = lang_config.binary_read.sub_format("enum");
+            config.binary_read_struct = lang_config.binary_read.sub_format("struct");
+
+            config.csv_read = lang_config.csv_read.type_map();
+            config.csv_read_struct = lang_config.csv_read.sub_format("struct");
+        }
+
+        config
     }
 
     /// Generates code using a specific template file.

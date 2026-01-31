@@ -1,0 +1,8 @@
+%-- Enum members with explicit values
+%for item in enum.items
+%if item.is_member
+	{{enum.name}}{{item.as_member.name}} {{enum.name}} = {{item.as_member.value}}
+%elif item.is_comment
+	// {{item.as_comment}}
+%endif
+%endfor

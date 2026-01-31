@@ -1,0 +1,10 @@
+type {{enum.name}} int32
+%blank
+const (
+%if enum.use_iota
+%include "detail/enum_members_iota.ptpl"
+%else
+%include "detail/enum_members_explicit.ptpl"
+%endif
+)
+%blank

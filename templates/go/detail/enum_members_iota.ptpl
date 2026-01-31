@@ -1,0 +1,15 @@
+%-- Enum members using iota pattern (sequential values from 0)
+%-- Doc comments appear before first member
+%for item in enum.items_before_first_member
+%if item.is_comment
+	// {{item.as_comment}}
+%endif
+%endfor
+	{{enum.name}}{{enum.first_member_name}} {{enum.name}} = iota
+%for item in enum.items_after_first_member
+%if item.is_member
+	{{enum.name}}{{item.as_member.name}}
+%elif item.is_comment
+	// {{item.as_comment}}
+%endif
+%endfor

@@ -42,6 +42,104 @@ pub struct LanguageConfig {
     /// Template configuration.
     #[serde(default)]
     pub templates: TemplateConfig,
+
+    /// Type mapping: poly type name → language type name (e.g., "u32" → "uint").
+    #[serde(default)]
+    pub type_map: TypeMapConfig,
+
+    /// Binary read expressions: poly type name → read expression.
+    #[serde(default)]
+    pub binary_read: RoleMappingConfig,
+
+    /// Binary write expressions: poly type name → write expression.
+    #[serde(default)]
+    pub binary_write: RoleMappingConfig,
+
+    /// CSV read expressions: poly type name → read expression.
+    #[serde(default)]
+    pub csv_read: RoleMappingConfig,
+
+    /// CSV write expressions: poly type name → write expression.
+    #[serde(default)]
+    pub csv_write: RoleMappingConfig,
+}
+
+/// Type mapping configuration with optional/list format patterns.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct TypeMapConfig {
+    /// Primitive type mappings: poly type → lang type.
+    #[serde(flatten)]
+    pub types: HashMap<String, toml::Value>,
+}
+
+impl TypeMapConfig {
+    /// Returns the flat type → lang_type mapping (excluding sub-tables).
+    pub fn type_map(&self) -> HashMap<String, String> {
+        self.types
+            .iter()
+            .filter_map(|(k, v)| {
+                if let toml::Value::String(s) = v {
+                    Some((k.clone(), s.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Returns the optional type format (e.g., `"*{{type}}"`).
+    pub fn optional_format(&self) -> Option<String> {
+        self.types.get("optional").and_then(|v| {
+            v.as_table()
+                .and_then(|t| t.get("format"))
+                .and_then(|f| f.as_str())
+                .map(|s| s.to_string())
+        })
+    }
+
+    /// Returns the list type format (e.g., `"[]{{type}}"`).
+    pub fn list_format(&self) -> Option<String> {
+        self.types.get("list").and_then(|v| {
+            v.as_table()
+                .and_then(|t| t.get("format"))
+                .and_then(|f| f.as_str())
+                .map(|s| s.to_string())
+        })
+    }
+}
+
+/// Role-based mapping configuration for binary/csv operations.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RoleMappingConfig {
+    /// Type → expression mappings and sub-table overrides.
+    #[serde(flatten)]
+    pub entries: HashMap<String, toml::Value>,
+}
+
+impl RoleMappingConfig {
+    /// Returns the flat type → expression mapping (excluding sub-tables).
+    pub fn type_map(&self) -> HashMap<String, String> {
+        self.entries
+            .iter()
+            .filter_map(|(k, v)| {
+                if let toml::Value::String(s) = v {
+                    Some((k.clone(), s.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Returns the format string for a named sub-table (e.g., "option", "list", "enum", "struct").
+    pub fn sub_format(&self, name: &str) -> Option<String> {
+        self.entries.get(name).and_then(|v| {
+            v.as_table()
+                .and_then(|t| t.get("format"))
+                .and_then(|f| f.as_str())
+                .map(|s| s.to_string())
+        })
+    }
 }
 
 /// Template configuration for a language.
@@ -66,12 +164,12 @@ impl LanguageConfig {
     /// # Returns
     ///
     /// The parsed configuration, or an error if loading/parsing fails.
-    pub fn load(config_path: &Path) -> Result<Self, ConfigError> {
+    pub fn load(config_path: &Path) -> Result<Self, Box<ConfigError>> {
         let content = fs::read_to_string(config_path)
-            .map_err(|e| ConfigError::IoError(config_path.to_path_buf(), e))?;
+            .map_err(|e| Box::new(ConfigError::IoError(config_path.to_path_buf(), e)))?;
 
         toml::from_str(&content)
-            .map_err(|e| ConfigError::ParseError(config_path.to_path_buf(), e))
+            .map_err(|e| Box::new(ConfigError::ParseError(config_path.to_path_buf(), e)))
     }
 
     /// Tries to load language configuration from the templates directory.
@@ -83,7 +181,7 @@ impl LanguageConfig {
     ///
     /// * `templates_dir` - Root templates directory
     /// * `language` - Language identifier
-    pub fn load_for_language(templates_dir: &Path, language: &str) -> Result<Self, ConfigError> {
+    pub fn load_for_language(templates_dir: &Path, language: &str) -> Result<Self, Box<ConfigError>> {
         let config_path = templates_dir.join(language).join(format!("{}.toml", language));
 
         if config_path.exists() {
@@ -97,6 +195,11 @@ impl LanguageConfig {
                     main: Some(format!("{}_file.rhai", language)),
                     extra: Vec::new(),
                 },
+                type_map: TypeMapConfig::default(),
+                binary_read: RoleMappingConfig::default(),
+                binary_write: RoleMappingConfig::default(),
+                csv_read: RoleMappingConfig::default(),
+                csv_write: RoleMappingConfig::default(),
             })
         }
     }
@@ -266,6 +369,44 @@ extra = ["csharp_readers.rhai"]
         // Find the Utils.cs entry
         let utils_entry = entries.iter().find(|e| e.filename == "Utils.cs").unwrap();
         assert_eq!(utils_entry.dest_subdir, PathBuf::from("Common"));
+    }
+
+    #[test]
+    fn test_type_map_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_content = r#"
+extension = ".go"
+
+[type_map]
+u8 = "uint8"
+u32 = "uint32"
+string = "string"
+bool = "bool"
+
+[type_map.optional]
+format = "*{{type}}"
+
+[type_map.list]
+format = "[]{{type}}"
+
+[templates]
+main = "go_file.ptpl"
+"#;
+
+        create_config_file(temp_dir.path(), "go", config_content);
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+
+        let tm = config.type_map.type_map();
+        assert_eq!(tm.get("u32"), Some(&"uint32".to_string()));
+        assert_eq!(tm.get("string"), Some(&"string".to_string()));
+        assert_eq!(
+            config.type_map.optional_format(),
+            Some("*{{type}}".to_string())
+        );
+        assert_eq!(
+            config.type_map.list_format(),
+            Some("[]{{type}}".to_string())
+        );
     }
 
     #[test]

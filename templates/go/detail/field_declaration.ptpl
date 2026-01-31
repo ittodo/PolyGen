@@ -1,0 +1,5 @@
+%if field.field_type.is_option
+	{{field.name | pascal_case}} {{field.field_type | lang_type}} `json:"{{field.name | snake_case}},omitempty"`
+%else
+	{{field.name | pascal_case}} {{field.field_type | lang_type}} `json:"{{field.name | snake_case}}"`
+%endif
