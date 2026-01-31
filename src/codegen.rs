@@ -299,15 +299,41 @@ impl CodeGenerator {
 
             config.csv_read = lang_config.csv_read.type_map();
             config.csv_read_struct = lang_config.csv_read.sub_format("struct");
+
+            // Load Rhai prelude scripts
+            config.rhai_prelude = self.load_rhai_prelude(lang_config);
         }
 
         config
     }
 
+    /// Loads Rhai prelude script contents from the language template directory.
+    fn load_rhai_prelude(&self, lang_config: &LanguageConfig) -> Vec<String> {
+        let mut scripts = Vec::new();
+        for path in &lang_config.rhai.prelude {
+            let full_path = self.template_dir().join(path);
+            match fs::read_to_string(&full_path) {
+                Ok(content) => scripts.push(content),
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to load Rhai prelude '{}': {}",
+                        full_path.display(),
+                        e
+                    );
+                }
+            }
+        }
+        scripts
+    }
+
     /// Generates code using a specific template file.
     ///
     /// Use this for additional templates beyond the main one (e.g., readers, writers).
-    pub fn generate_with_template(&self, ir_context: &SchemaContext, template_name: &str) -> Result<()> {
+    pub fn generate_with_template(
+        &self,
+        ir_context: &SchemaContext,
+        template_name: &str,
+    ) -> Result<()> {
         let template_path = self.template_dir().join(template_name);
 
         if template_path.exists() {
@@ -581,14 +607,10 @@ fn derive_output_suffix(template_name: &str, language: &str) -> String {
         .unwrap_or(template_name);
 
     // Strip lang prefix: "go_container_file" → "container_file"
-    let without_lang = stem
-        .strip_prefix(&format!("{}_", language))
-        .unwrap_or(stem);
+    let without_lang = stem.strip_prefix(&format!("{}_", language)).unwrap_or(stem);
 
     // Strip "_file" suffix: "container_file" → "container"
-    let core = without_lang
-        .strip_suffix("_file")
-        .unwrap_or(without_lang);
+    let core = without_lang.strip_suffix("_file").unwrap_or(without_lang);
 
     // Use PascalCase with dot prefix to match Rhai naming:
     // "container" → ".Container", "binary_readers" → ".BinaryReaders"
@@ -620,7 +642,12 @@ fn collect_files_recursive(dir: &Path, files: &mut HashSet<PathBuf>) {
 }
 
 /// Record newly created files into the manifest, mapping them to the template that created them.
-fn record_manifest(output_dir: &Path, template_name: &str, before: &HashSet<PathBuf>, after: &HashSet<PathBuf>) {
+fn record_manifest(
+    output_dir: &Path,
+    template_name: &str,
+    before: &HashSet<PathBuf>,
+    after: &HashSet<PathBuf>,
+) {
     let new_files: Vec<&PathBuf> = after.difference(before).collect();
     if new_files.is_empty() {
         return;

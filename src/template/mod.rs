@@ -39,6 +39,7 @@ pub mod expr;
 pub mod filters;
 pub mod parser;
 pub mod renderer;
+pub mod rhai_bridge;
 pub mod source_map;
 
 use std::collections::HashMap;

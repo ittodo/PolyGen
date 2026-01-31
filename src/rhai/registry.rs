@@ -73,7 +73,7 @@ pub fn register_core_with_entry(engine: &mut Engine, preview_mode: bool, entry_t
     register_common_helpers(engine, preview_mode, Some(entry_template.to_string()));
 }
 
-fn register_types_and_getters(engine: &mut Engine) {
+pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_type_with_name::<SchemaContext>("SchemaContext");
     engine.register_get("files", |ctx: &mut SchemaContext| {
         ctx.files
@@ -100,7 +100,10 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_type_with_name::<NamespaceDef>("NamespaceDef");
     engine.register_get("name", |ns: &mut NamespaceDef| ns.name.clone());
     engine.register_get("datasource", |ns: &mut NamespaceDef| {
-        ns.datasource.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+        ns.datasource
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("items", |ns: &mut NamespaceDef| {
         ns.items
@@ -201,18 +204,30 @@ fn register_types_and_getters(engine: &mut Engine) {
             .collect::<Vec<Dynamic>>()
     });
     engine.register_get("datasource", |s: &mut StructDef| {
-        s.datasource.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+        s.datasource
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("cache_strategy", |s: &mut StructDef| {
-        s.cache_strategy.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+        s.cache_strategy
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("is_readonly", |s: &mut StructDef| s.is_readonly);
     engine.register_get("soft_delete_field", |s: &mut StructDef| {
-        s.soft_delete_field.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+        s.soft_delete_field
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("is_embed", |s: &mut StructDef| s.is_embed);
     engine.register_get("pack_separator", |s: &mut StructDef| {
-        s.pack_separator.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+        s.pack_separator
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
     });
 
     // Register IndexDef type and getters
@@ -387,7 +402,9 @@ fn register_types_and_getters(engine: &mut Engine) {
             .unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("max_length", |f: &mut FieldDef| {
-        f.max_length.map(|v| Dynamic::from(v as i64)).unwrap_or(Dynamic::UNIT)
+        f.max_length
+            .map(|v| Dynamic::from(v as i64))
+            .unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("default_value", |f: &mut FieldDef| {
         f.default_value
@@ -396,10 +413,7 @@ fn register_types_and_getters(engine: &mut Engine) {
             .unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("range", |f: &mut FieldDef| {
-        f.range
-            .clone()
-            .map(Dynamic::from)
-            .unwrap_or(Dynamic::UNIT)
+        f.range.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
     });
     engine.register_get("regex_pattern", |f: &mut FieldDef| {
         f.regex_pattern
@@ -409,10 +423,16 @@ fn register_types_and_getters(engine: &mut Engine) {
     });
     // Convenience methods for checking if constraints are set
     engine.register_get("has_max_length", |f: &mut FieldDef| f.max_length.is_some());
-    engine.register_get("has_default_value", |f: &mut FieldDef| f.default_value.is_some());
+    engine.register_get("has_default_value", |f: &mut FieldDef| {
+        f.default_value.is_some()
+    });
     engine.register_get("has_range", |f: &mut FieldDef| f.range.is_some());
-    engine.register_get("has_regex_pattern", |f: &mut FieldDef| f.regex_pattern.is_some());
-    engine.register_get("has_foreign_key", |f: &mut FieldDef| f.foreign_key.is_some());
+    engine.register_get("has_regex_pattern", |f: &mut FieldDef| {
+        f.regex_pattern.is_some()
+    });
+    engine.register_get("has_foreign_key", |f: &mut FieldDef| {
+        f.foreign_key.is_some()
+    });
     // Auto-timestamp getters
     engine.register_get("auto_create", |f: &mut FieldDef| {
         f.auto_create
@@ -426,8 +446,12 @@ fn register_types_and_getters(engine: &mut Engine) {
             .map(Dynamic::from)
             .unwrap_or(Dynamic::UNIT)
     });
-    engine.register_get("has_auto_create", |f: &mut FieldDef| f.auto_create.is_some());
-    engine.register_get("has_auto_update", |f: &mut FieldDef| f.auto_update.is_some());
+    engine.register_get("has_auto_create", |f: &mut FieldDef| {
+        f.auto_create.is_some()
+    });
+    engine.register_get("has_auto_update", |f: &mut FieldDef| {
+        f.auto_update.is_some()
+    });
 
     // Register TimezoneRef type and getters
     engine.register_type_with_name::<TimezoneRef>("TimezoneRef");
@@ -459,7 +483,9 @@ fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("lang_type", |t: &mut TypeRef| t.lang_type.clone());
     engine.register_get("namespace_fqn", |t: &mut TypeRef| t.namespace_fqn.clone());
     engine.register_get("type_name", |t: &mut TypeRef| t.type_name.clone());
-    engine.register_get("parent_type_path", |t: &mut TypeRef| t.parent_type_path.clone());
+    engine.register_get("parent_type_path", |t: &mut TypeRef| {
+        t.parent_type_path.clone()
+    });
     engine.register_get("is_primitive", |t: &mut TypeRef| t.is_primitive);
     engine.register_get("is_option", |t: &mut TypeRef| t.is_option);
     engine.register_get("is_list", |t: &mut TypeRef| t.is_list);
@@ -566,7 +592,11 @@ fn register_types_and_getters(engine: &mut Engine) {
     });
 }
 
-fn register_common_helpers(engine: &mut Engine, preview_mode: bool, entry_template: Option<String>) {
+fn register_common_helpers(
+    engine: &mut Engine,
+    preview_mode: bool,
+    entry_template: Option<String>,
+) {
     // Case conversion functions
     engine.register_fn("to_snake_case", |s: &str| s.to_snake_case());
     engine.register_fn("to_pascal_case", |s: &str| s.to_pascal_case());
@@ -578,10 +608,7 @@ fn register_common_helpers(engine: &mut Engine, preview_mode: bool, entry_templa
     engine.register_fn(
         "source_mark",
         |template_name: &str, content: &str| -> String {
-            format!(
-                "/*@source:{}*/\n{}/*@/source*/\n",
-                template_name, content
-            )
+            format!("/*@source:{}*/\n{}/*@/source*/\n", template_name, content)
         },
     );
 
@@ -591,13 +618,17 @@ fn register_common_helpers(engine: &mut Engine, preview_mode: bool, entry_templa
     engine.register_fn(
         "render_items",
         move |context: NativeCallContext,
-         items: Array,
-         template_path: &str,
-         var_name: &str|
-         -> Result<String, Box<EvalAltResult>> {
+              items: Array,
+              template_path: &str,
+              var_name: &str|
+              -> Result<String, Box<EvalAltResult>> {
             let template = match std::fs::read_to_string(template_path) {
                 Ok(s) => s,
-                Err(e) => return Err(format!("Failed to read template file '{}': {}", template_path, e).into()),
+                Err(e) => {
+                    return Err(
+                        format!("Failed to read template file '{}': {}", template_path, e).into(),
+                    )
+                }
             };
 
             let engine = context.engine();
@@ -667,10 +698,7 @@ fn register_common_helpers(engine: &mut Engine, preview_mode: bool, entry_templa
             let final_content = if preview_write {
                 if let Some(ref tmpl_name) = entry_tmpl {
                     if !content.contains("/*@source:") {
-                        format!(
-                            "/*@source:{}*/\n{}/*@/source*/\n",
-                            tmpl_name, content
-                        )
+                        format!("/*@source:{}*/\n{}/*@/source*/\n", tmpl_name, content)
                     } else {
                         content.to_string()
                     }

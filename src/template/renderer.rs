@@ -11,8 +11,9 @@ use crate::template::context::{ContextValue, TemplateContext};
 use crate::template::expr::{CondExpr, Filter};
 use crate::template::filters::apply_string_filter;
 use crate::template::parser::{
-    IncludeBinding, LineSegment, ParsedTemplate, TemplateNode,
+    IncludeBinding, LineSegment, MatchArm, ParsedTemplate, TemplateNode,
 };
+use crate::template::rhai_bridge::RhaiBridge;
 use crate::template::source_map::{SourceMap, SourceMapEntry};
 
 /// Maximum include depth to prevent infinite recursion.
@@ -49,6 +50,11 @@ pub struct RenderConfig {
     pub embedded_struct_fqns: std::collections::HashSet<String>,
     /// Set of all enum FQNs in the schema.
     pub all_enum_fqns: std::collections::HashSet<String>,
+    /// Rhai prelude script contents to execute before `%logic` blocks.
+    ///
+    /// Each entry is the full source code of a prelude script.
+    /// Functions defined here are available in all `%logic` blocks.
+    pub rhai_prelude: Vec<String>,
 }
 
 /// Result of rendering a template: output lines + source map.
@@ -59,6 +65,9 @@ pub struct RenderResult {
     /// Source map mapping each output line to its template origin.
     pub source_map: SourceMap,
 }
+
+/// Maximum while-loop iterations to prevent infinite loops.
+const MAX_WHILE_ITERATIONS: usize = 10_000;
 
 /// The template renderer.
 pub struct Renderer<'a> {
@@ -74,14 +83,17 @@ pub struct Renderer<'a> {
     output_lines: Vec<String>,
     /// Source map entries (one per output line).
     source_map: SourceMap,
+    /// File-scope variable bindings from `%let`/`%set` and `%logic`.
+    file_bindings: HashMap<String, ContextValue>,
+    /// Lazy-initialized Rhai bridge for `%logic` blocks.
+    rhai_bridge: Option<RhaiBridge>,
+    /// Defined blocks from `%block name(params)` for `%render`.
+    blocks: HashMap<String, (Vec<String>, Vec<TemplateNode>)>,
 }
 
 impl<'a> Renderer<'a> {
     /// Creates a new renderer.
-    pub fn new(
-        templates: &'a HashMap<String, ParsedTemplate>,
-        config: &'a RenderConfig,
-    ) -> Self {
+    pub fn new(templates: &'a HashMap<String, ParsedTemplate>, config: &'a RenderConfig) -> Self {
         Self {
             templates,
             config,
@@ -89,6 +101,9 @@ impl<'a> Renderer<'a> {
             ir_path: None,
             output_lines: Vec::new(),
             source_map: SourceMap::new(),
+            file_bindings: HashMap::new(),
+            rhai_bridge: None,
+            blocks: HashMap::new(),
         }
     }
 
@@ -184,6 +199,12 @@ impl<'a> Renderer<'a> {
                 if let Some(items) = coll_value.as_list() {
                     for item in items {
                         let child_ctx = context.child_with(variable, item.clone());
+                        // Apply where filter if present
+                        if let Some(ref where_cond) = collection.where_filter {
+                            if !self.eval_condition(where_cond, &child_ctx)? {
+                                continue;
+                            }
+                        }
                         self.render_nodes(body, &child_ctx, source_file, indent)?;
                     }
                 }
@@ -199,6 +220,92 @@ impl<'a> Renderer<'a> {
                     template_path,
                     context_bindings,
                     *include_indent,
+                    context,
+                    source_file,
+                    *line,
+                    indent,
+                )?;
+            }
+
+            TemplateNode::LetSet { name, expr, .. } => {
+                let value = self.eval_let_expr(expr, context)?;
+                self.file_bindings.insert(name.clone(), value);
+            }
+
+            TemplateNode::While {
+                condition, body, ..
+            } => {
+                let mut iterations = 0;
+                while self.eval_condition(condition, context)? {
+                    self.render_nodes(body, context, source_file, indent)?;
+                    iterations += 1;
+                    if iterations >= MAX_WHILE_ITERATIONS {
+                        return Err(format!(
+                            "{}:{}: %while loop exceeded maximum iterations ({})",
+                            source_file,
+                            match node {
+                                TemplateNode::While { line, .. } => *line,
+                                _ => 0,
+                            },
+                            MAX_WHILE_ITERATIONS
+                        ));
+                    }
+                }
+            }
+
+            TemplateNode::LogicBlock { line, body } => {
+                // Lazy-init the Rhai bridge with prelude scripts
+                if self.rhai_bridge.is_none() {
+                    let mut bridge = RhaiBridge::new();
+                    if !self.config.rhai_prelude.is_empty() {
+                        bridge
+                            .load_prelude(&self.config.rhai_prelude)
+                            .map_err(|e| format!("{}:{}: {}", source_file, line, e))?;
+                    }
+                    self.rhai_bridge = Some(bridge);
+                }
+                let bridge = self.rhai_bridge.as_mut().unwrap();
+                let new_bindings = bridge
+                    .execute_logic(body, &self.file_bindings)
+                    .map_err(|e| format!("{}:{}: {}", source_file, line, e))?;
+                // Merge results into file_bindings
+                for (name, value) in new_bindings {
+                    self.file_bindings.insert(name, value);
+                }
+            }
+            TemplateNode::Match {
+                line,
+                subject,
+                arms,
+                else_body,
+            } => {
+                self.render_match(
+                    subject,
+                    arms,
+                    else_body.as_deref(),
+                    context,
+                    source_file,
+                    *line,
+                    indent,
+                )?;
+            }
+
+            TemplateNode::BlockDef {
+                name, params, body, ..
+            } => {
+                // Register block for later %render calls (no output)
+                self.blocks
+                    .insert(name.clone(), (params.clone(), body.clone()));
+            }
+
+            TemplateNode::Render {
+                line,
+                target,
+                binding,
+            } => {
+                self.render_block_call(
+                    target,
+                    binding.as_deref(),
                     context,
                     source_file,
                     *line,
@@ -270,16 +377,24 @@ impl<'a> Renderer<'a> {
         // Calculate total indent
         let total_indent = parent_indent + include_indent.unwrap_or(0);
 
-        // Push onto include stack
+        // Push onto include stack, save and clear file_bindings, rhai_bridge, blocks for isolation
         self.include_stack.push(full_path.clone());
+        let saved_bindings = std::mem::take(&mut self.file_bindings);
+        let saved_bridge = self.rhai_bridge.take();
+        let saved_blocks = std::mem::take(&mut self.blocks);
 
         // Render the included template's nodes
         let nodes = template.nodes.clone();
         let included_source = template.source_file.clone();
-        self.render_nodes(&nodes, &child_ctx, &included_source, total_indent)?;
+        let result = self.render_nodes(&nodes, &child_ctx, &included_source, total_indent);
 
-        // Pop include stack
+        // Restore file_bindings, rhai_bridge, blocks and pop include stack
+        self.file_bindings = saved_bindings;
+        self.rhai_bridge = saved_bridge;
+        self.blocks = saved_blocks;
         self.include_stack.pop();
+
+        result?;
 
         Ok(())
     }
@@ -312,11 +427,7 @@ impl<'a> Renderer<'a> {
     }
 
     /// Evaluates a condition expression.
-    fn eval_condition(
-        &self,
-        cond: &CondExpr,
-        context: &TemplateContext,
-    ) -> Result<bool, String> {
+    fn eval_condition(&self, cond: &CondExpr, context: &TemplateContext) -> Result<bool, String> {
         match cond {
             CondExpr::Property(path) => {
                 let value = self.resolve_path(path, context)?;
@@ -354,7 +465,7 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    /// Resolves a property path against the context.
+    /// Resolves a property path against file_bindings first, then context.
     fn resolve_path(
         &self,
         path: &[String],
@@ -364,11 +475,13 @@ impl<'a> Renderer<'a> {
             return Err("Empty property path".to_string());
         }
 
-        // First segment: look up in context bindings
+        // First segment: check file_bindings, then context
         let root_name = &path[0];
-        let root_value = context
+        let root_value = self
+            .file_bindings
             .get(root_name)
             .cloned()
+            .or_else(|| context.get(root_name).cloned())
             .unwrap_or(ContextValue::Null);
 
         // Resolve remaining segments
@@ -377,6 +490,171 @@ impl<'a> Renderer<'a> {
         } else {
             Ok(root_value.resolve_path(&path[1..]))
         }
+    }
+
+    /// Renders a `%match` construct.
+    #[allow(clippy::too_many_arguments)]
+    fn render_match(
+        &mut self,
+        subject: &str,
+        arms: &[MatchArm],
+        else_body: Option<&[TemplateNode]>,
+        context: &TemplateContext,
+        source_file: &str,
+        _line: usize,
+        indent: usize,
+    ) -> Result<(), String> {
+        // Evaluate subject to a string value
+        let subject_value = self.eval_match_subject(subject, context)?;
+
+        // Try each arm
+        for arm in arms {
+            if self.match_pattern(&subject_value, &arm.pattern)? {
+                // Check guard if present
+                if let Some(ref guard) = arm.guard {
+                    let guard_cond = crate::template::expr::parse_condition(guard)
+                        .map_err(|e| format!("{}:{}: guard error: {}", source_file, arm.line, e))?;
+                    if !self.eval_condition(&guard_cond, context)? {
+                        continue;
+                    }
+                }
+                self.render_nodes(&arm.body, context, source_file, indent)?;
+                return Ok(());
+            }
+        }
+
+        // No arm matched — try else
+        if let Some(else_nodes) = else_body {
+            self.render_nodes(else_nodes, context, source_file, indent)?;
+        }
+
+        Ok(())
+    }
+
+    /// Evaluates a match subject expression to a string.
+    fn eval_match_subject(
+        &self,
+        subject: &str,
+        context: &TemplateContext,
+    ) -> Result<String, String> {
+        let path: Vec<String> = subject.split('.').map(|s| s.trim().to_string()).collect();
+        let value = self.resolve_path(&path, context)?;
+        Ok(value.to_display_string())
+    }
+
+    /// Checks if a subject value matches a pattern.
+    ///
+    /// Patterns:
+    /// - `_` — wildcard, always matches
+    /// - `"literal"` — string literal comparison
+    /// - bare value — compared as string
+    fn match_pattern(&self, subject: &str, pattern: &str) -> Result<bool, String> {
+        let pattern = pattern.trim();
+
+        // Wildcard
+        if pattern == "_" {
+            return Ok(true);
+        }
+
+        // String literal: `"value"`
+        if pattern.starts_with('"') && pattern.ends_with('"') && pattern.len() >= 2 {
+            let literal = &pattern[1..pattern.len() - 1];
+            return Ok(subject == literal);
+        }
+
+        // Bare value comparison
+        Ok(subject == pattern)
+    }
+
+    /// Renders a `%render` block call.
+    #[allow(clippy::too_many_arguments)]
+    fn render_block_call(
+        &mut self,
+        target: &str,
+        binding: Option<&str>,
+        context: &TemplateContext,
+        source_file: &str,
+        line: usize,
+        indent: usize,
+    ) -> Result<(), String> {
+        // Dynamic dispatch: $var_name -> resolve from file_bindings
+        let block_name = if let Some(var_name) = target.strip_prefix('$') {
+            self.file_bindings
+                .get(var_name)
+                .map(|v| v.to_display_string())
+                .ok_or_else(|| {
+                    format!(
+                        "{}:{}: Dynamic block name '{}' not found in bindings",
+                        source_file, line, var_name
+                    )
+                })?
+        } else {
+            target.to_string()
+        };
+
+        // Look up block
+        let (params, body) = self.blocks.get(&block_name).cloned().ok_or_else(|| {
+            format!(
+                "{}:{}: Block '{}' not defined",
+                source_file, line, block_name
+            )
+        })?;
+
+        // Build context with binding
+        let child_ctx = if let Some(binding_expr) = binding {
+            let path: Vec<String> = binding_expr
+                .split('.')
+                .map(|s| s.trim().to_string())
+                .collect();
+            let value = self.resolve_path(&path, context)?;
+
+            // Bind value to first param name (or the binding expression name)
+            let bind_name = params.first().map(|s| s.as_str()).unwrap_or(binding_expr);
+            context.child_with(bind_name, value)
+        } else {
+            context.child()
+        };
+
+        self.render_nodes(&body, &child_ctx, source_file, indent)
+    }
+
+    /// Evaluates a `%let`/`%set` expression.
+    ///
+    /// Supports:
+    /// - String literals: `"hello"` → String
+    /// - Integer literals: `42` → Int
+    /// - Float literals: `3.14` → Float
+    /// - Boolean literals: `true`/`false` → Bool
+    /// - Property paths: `struct.name` → resolved value
+    fn eval_let_expr(&self, expr: &str, context: &TemplateContext) -> Result<ContextValue, String> {
+        let expr = expr.trim();
+
+        // String literal
+        if expr.starts_with('"') && expr.ends_with('"') && expr.len() >= 2 {
+            return Ok(ContextValue::String(expr[1..expr.len() - 1].to_string()));
+        }
+
+        // Boolean literals
+        if expr == "true" {
+            return Ok(ContextValue::Bool(true));
+        }
+        if expr == "false" {
+            return Ok(ContextValue::Bool(false));
+        }
+
+        // Integer literal
+        if let Ok(i) = expr.parse::<i64>() {
+            return Ok(ContextValue::Int(i));
+        }
+
+        // Float literal
+        if let Ok(f) = expr.parse::<f64>() {
+            return Ok(ContextValue::Float(f));
+        }
+
+        // Property path
+        let path: Vec<String> = expr.split('.').map(|s| s.trim().to_string()).collect();
+        self.resolve_path(&path, context)
     }
 
     /// Resolves a collection path for `%for` loops.
@@ -587,8 +865,14 @@ impl<'a> Renderer<'a> {
     fn apply_binary_read_struct_filter(&self, value: &ContextValue) -> Result<String, String> {
         if let Some(ref fmt) = self.config.binary_read_struct {
             let type_ref = self.extract_type_ref(value);
-            let type_name = type_ref.as_ref().map(|t| t.type_name.as_str()).unwrap_or("Unknown");
-            let ns_fqn = type_ref.as_ref().map(|t| t.namespace_fqn.as_str()).unwrap_or("");
+            let type_name = type_ref
+                .as_ref()
+                .map(|t| t.type_name.as_str())
+                .unwrap_or("Unknown");
+            let ns_fqn = type_ref
+                .as_ref()
+                .map(|t| t.namespace_fqn.as_str())
+                .unwrap_or("");
             Ok(fmt
                 .replace("{{type_name}}", type_name)
                 .replace("{{reader_ns}}", ns_fqn))
@@ -877,8 +1161,7 @@ mod tests {
 
     #[test]
     fn test_render_elif() {
-        let source =
-            "%if a\nA\n%elif b\nB\n%elif c\nC\n%else\nD\n%endif";
+        let source = "%if a\nA\n%elif b\nB\n%elif c\nC\n%else\nD\n%endif";
         let templates = make_templates(&[("test.ptpl", source)]);
         let config = RenderConfig::default();
 
@@ -893,7 +1176,253 @@ mod tests {
     }
 
     #[test]
-    fn test_source_map_tracking() {
+    fn test_render_let_string() {
+        let source = "%let greeting = \"hello\"\n{{greeting}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["hello"]);
+    }
+
+    #[test]
+    fn test_render_let_int() {
+        let source = "%let count = 42\n{{count}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["42"]);
+    }
+
+    #[test]
+    fn test_render_let_path() {
+        let source = "%let n = name\n{{n}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let mut ctx = TemplateContext::new();
+        ctx.set("name", ContextValue::String("World".to_string()));
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["World"]);
+    }
+
+    #[test]
+    fn test_render_set_overwrite() {
+        let source = "%let x = \"first\"\n{{x}}\n%set x = \"second\"\n{{x}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["first", "second"]);
+    }
+
+    #[test]
+    fn test_render_let_in_condition() {
+        let source = "%let flag = true\n%if flag\nyes\n%endif";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["yes"]);
+    }
+
+    #[test]
+    fn test_render_for_where() {
+        let source = "%for item in items | where item.is_active\n{{item.name}}\n%endfor";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let mut ctx = TemplateContext::new();
+
+        let mut active = HashMap::new();
+        active.insert("name".to_string(), ContextValue::String("A".to_string()));
+        active.insert("is_active".to_string(), ContextValue::Bool(true));
+
+        let mut inactive = HashMap::new();
+        inactive.insert("name".to_string(), ContextValue::String("B".to_string()));
+        inactive.insert("is_active".to_string(), ContextValue::Bool(false));
+
+        let mut active2 = HashMap::new();
+        active2.insert("name".to_string(), ContextValue::String("C".to_string()));
+        active2.insert("is_active".to_string(), ContextValue::Bool(true));
+
+        ctx.set(
+            "items",
+            ContextValue::List(vec![
+                ContextValue::Map(active),
+                ContextValue::Map(inactive),
+                ContextValue::Map(active2),
+            ]),
+        );
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["A", "C"]);
+    }
+
+    #[test]
+    fn test_render_include_isolates_file_bindings() {
+        let main = "%let x = \"main\"\n%include \"child.ptpl\"\n{{x}}";
+        let child = "%let x = \"child\"\n{{x}}";
+        let templates = make_templates(&[("main.ptpl", main), ("child.ptpl", child)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("main.ptpl", &ctx).unwrap();
+        // child sets x="child" but main's x should still be "main" after include
+        assert_eq!(result.lines, vec!["child", "main"]);
+    }
+
+    #[test]
+    fn test_render_logic_block() {
+        let source = "%logic\nlet x = 42;\n%endlogic\n{{x}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["42"]);
+    }
+
+    #[test]
+    fn test_render_logic_with_let() {
+        let source = "%let base = 10\n%logic\nlet doubled = base * 2;\n%endlogic\n{{doubled}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["20"]);
+    }
+
+    #[test]
+    fn test_render_logic_function() {
+        let source =
+            "%logic\nfn greet(name) { \"Hello \" + name }\nlet msg = greet(\"World\");\n%endlogic\n{{msg}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["Hello World"]);
+    }
+
+    #[test]
+    fn test_render_logic_include_isolation() {
+        let main = "%logic\nlet x = 1;\n%endlogic\n%include \"child.ptpl\"\n{{x}}";
+        let child = "%logic\nlet x = 99;\n%endlogic\n{{x}}";
+        let templates = make_templates(&[("main.ptpl", main), ("child.ptpl", child)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("main.ptpl", &ctx).unwrap();
+        // child outputs 99, then main's x is still 1
+        assert_eq!(result.lines, vec!["99", "1"]);
+    }
+
+    #[test]
+    fn test_render_match_literal() {
+        let source = "%let t = \"u32\"\n%match t\n%when \"u32\"\nuint\n%when \"string\"\nstr\n%else\nobject\n%endmatch";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["uint"]);
+    }
+
+    #[test]
+    fn test_render_match_else() {
+        let source = "%let t = \"bool\"\n%match t\n%when \"u32\"\nuint\n%else\nother\n%endmatch";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["other"]);
+    }
+
+    #[test]
+    fn test_render_match_wildcard() {
+        let source = "%let t = \"anything\"\n%match t\n%when _\ncaught\n%endmatch";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["caught"]);
+    }
+
+    #[test]
+    fn test_render_block_and_render() {
+        let source = "%block greet(name)\nHello {{name}}!\n%endblock\n%render greet with greeting";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let mut ctx = TemplateContext::new();
+        ctx.set("greeting", ContextValue::String("World".to_string()));
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["Hello World!"]);
+    }
+
+    #[test]
+    fn test_render_block_no_params() {
+        let source = "%block header\n// Generated code\n%endblock\n%render header";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["// Generated code"]);
+    }
+
+    #[test]
+    fn test_render_block_dynamic() {
+        let source =
+            "%block a\nA\n%endblock\n%block b\nB\n%endblock\n%let which = \"a\"\n%render $which";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["A"]);
+    }
+
+    #[test]
+    fn test_render_logic_with_prelude() {
+        let source = "%logic\nlet result = double(21);\n%endlogic\n{{result}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let mut config = RenderConfig::default();
+        config.rhai_prelude = vec!["fn double(x) { x * 2 }".to_string()];
+        let ctx = TemplateContext::new();
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["42"]);
+    }
+
+    #[test]
+    fn test_render_source_map_tracking() {
         let source = "line1\nline2\nline3";
         let templates = make_templates(&[("test.ptpl", source)]);
         let config = RenderConfig::default();

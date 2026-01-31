@@ -62,6 +62,10 @@ pub struct LanguageConfig {
     /// CSV write expressions: poly type name → write expression.
     #[serde(default)]
     pub csv_write: RoleMappingConfig,
+
+    /// Rhai scripting configuration for PolyTemplate `%logic` blocks.
+    #[serde(default)]
+    pub rhai: RhaiConfig,
 }
 
 /// Type mapping configuration with optional/list format patterns.
@@ -152,6 +156,18 @@ impl RoleMappingConfig {
     }
 }
 
+/// Rhai scripting configuration for PolyTemplate `%logic` blocks.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RhaiConfig {
+    /// Prelude script files to execute before any `%logic` block.
+    ///
+    /// These are relative paths within the language's template directory
+    /// (e.g., `"rhai_utils/helpers.rhai"`). Functions defined in prelude
+    /// scripts are available in all `%logic` blocks.
+    #[serde(default)]
+    pub prelude: Vec<String>,
+}
+
 /// Template configuration for a language.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TemplateConfig {
@@ -191,8 +207,13 @@ impl LanguageConfig {
     ///
     /// * `templates_dir` - Root templates directory
     /// * `language` - Language identifier
-    pub fn load_for_language(templates_dir: &Path, language: &str) -> Result<Self, Box<ConfigError>> {
-        let config_path = templates_dir.join(language).join(format!("{}.toml", language));
+    pub fn load_for_language(
+        templates_dir: &Path,
+        language: &str,
+    ) -> Result<Self, Box<ConfigError>> {
+        let config_path = templates_dir
+            .join(language)
+            .join(format!("{}.toml", language));
 
         if config_path.exists() {
             Self::load(&config_path)
@@ -210,6 +231,7 @@ impl LanguageConfig {
                 binary_write: RoleMappingConfig::default(),
                 csv_read: RoleMappingConfig::default(),
                 csv_write: RoleMappingConfig::default(),
+                rhai: RhaiConfig::default(),
             })
         }
     }
@@ -434,5 +456,39 @@ extension = ".py"
         assert_eq!(config.extension, ".py");
         assert!(config.static_files.is_empty());
         assert_eq!(config.main_template("python"), "python_file.rhai");
+    }
+
+    #[test]
+    fn test_rhai_config_prelude() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_content = r#"
+extension = ".go"
+
+[rhai]
+prelude = ["rhai_utils/helpers.rhai", "rhai_utils/types.rhai"]
+
+[templates]
+main = "go_file.ptpl"
+"#;
+
+        create_config_file(temp_dir.path(), "go", config_content);
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+
+        assert_eq!(config.rhai.prelude.len(), 2);
+        assert_eq!(config.rhai.prelude[0], "rhai_utils/helpers.rhai");
+        assert_eq!(config.rhai.prelude[1], "rhai_utils/types.rhai");
+    }
+
+    #[test]
+    fn test_rhai_config_default_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_content = r#"
+extension = ".cs"
+"#;
+
+        create_config_file(temp_dir.path(), "csharp", config_content);
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp").unwrap();
+
+        assert!(config.rhai.prelude.is_empty());
     }
 }

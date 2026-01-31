@@ -54,6 +54,8 @@ pub enum ContextValue {
     Range(RangeDef),
     /// A list of context values.
     List(Vec<ContextValue>),
+    /// A key-value map (for `%logic` / `%let` computed values).
+    Map(HashMap<String, ContextValue>),
     /// Null / absent value.
     Null,
 }
@@ -130,7 +132,10 @@ impl ContextValue {
         match self {
             ContextValue::Schema(s) => match name {
                 "files" => ContextValue::List(
-                    s.files.iter().map(|f| ContextValue::File(f.clone())).collect(),
+                    s.files
+                        .iter()
+                        .map(|f| ContextValue::File(f.clone()))
+                        .collect(),
                 ),
                 _ => ContextValue::Null,
             },
@@ -170,13 +175,16 @@ impl ContextValue {
                     // e.g., ", IHasPlayerTable, IHasMonsterTable"
                     let mut tables = Vec::new();
                     collect_tables_from_namespaces(&f.namespaces, &mut tables);
-                    let names: Vec<String> = tables.iter().filter_map(|t| {
-                        if let ContextValue::Struct(s) = t {
-                            Some(format!(", IHas{}Table", s.name))
-                        } else {
-                            None
-                        }
-                    }).collect();
+                    let names: Vec<String> = tables
+                        .iter()
+                        .filter_map(|t| {
+                            if let ContextValue::Struct(s) = t {
+                                Some(format!(", IHas{}Table", s.name))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     ContextValue::String(names.join(""))
                 }
                 _ => ContextValue::Null,
@@ -194,7 +202,10 @@ impl ContextValue {
                         .collect(),
                 ),
                 "has_structs" => {
-                    let has = ns.items.iter().any(|item| matches!(item, NamespaceItem::Struct(_)));
+                    let has = ns
+                        .items
+                        .iter()
+                        .any(|item| matches!(item, NamespaceItem::Struct(_)));
                     ContextValue::Bool(has)
                 }
                 "structs" => {
@@ -318,11 +329,15 @@ impl ContextValue {
                     ContextValue::List(fields)
                 }
                 "has_defaults" => {
-                    let has = s.items.iter().any(|item| matches!(item, StructItem::Field(f) if f.default_value.is_some()));
+                    let has = s.items.iter().any(
+                        |item| matches!(item, StructItem::Field(f) if f.default_value.is_some()),
+                    );
                     ContextValue::Bool(has)
                 }
                 "has_foreign_keys" => {
-                    let has = s.items.iter().any(|item| matches!(item, StructItem::Field(f) if f.foreign_key.is_some()));
+                    let has = s.items.iter().any(
+                        |item| matches!(item, StructItem::Field(f) if f.foreign_key.is_some()),
+                    );
                     ContextValue::Bool(has)
                 }
                 "fk_fields" => {
@@ -341,9 +356,7 @@ impl ContextValue {
                 "pk_field_name" => {
                     // Find primary key field name (defaults to "Id")
                     let pk = s.items.iter().find_map(|item| match item {
-                        StructItem::Field(f) if f.is_primary_key => {
-                            Some(f.name.clone())
-                        }
+                        StructItem::Field(f) if f.is_primary_key => Some(f.name.clone()),
                         _ => None,
                     });
                     match pk {
@@ -352,7 +365,10 @@ impl ContextValue {
                     }
                 }
                 "has_primary_key" => {
-                    let has = s.items.iter().any(|item| matches!(item, StructItem::Field(f) if f.is_primary_key));
+                    let has = s
+                        .items
+                        .iter()
+                        .any(|item| matches!(item, StructItem::Field(f) if f.is_primary_key));
                     ContextValue::Bool(has)
                 }
                 "namespace_fqn" => {
@@ -379,7 +395,11 @@ impl ContextValue {
                         .items
                         .iter()
                         .filter_map(|item| match item {
-                            StructItem::Field(f) if f.max_length.is_some() || f.range.is_some() || f.regex_pattern.is_some() => {
+                            StructItem::Field(f)
+                                if f.max_length.is_some()
+                                    || f.range.is_some()
+                                    || f.regex_pattern.is_some() =>
+                            {
                                 Some(ContextValue::Field(f.clone()))
                             }
                             _ => None,
@@ -389,12 +409,15 @@ impl ContextValue {
                 }
                 "auto_create_field" => {
                     // Find the field with auto_create timestamp
-                    s.items.iter().find_map(|item| match item {
-                        StructItem::Field(f) if f.auto_create.is_some() => {
-                            Some(ContextValue::Field(f.clone()))
-                        }
-                        _ => None,
-                    }).unwrap_or(ContextValue::Null)
+                    s.items
+                        .iter()
+                        .find_map(|item| match item {
+                            StructItem::Field(f) if f.auto_create.is_some() => {
+                                Some(ContextValue::Field(f.clone()))
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or(ContextValue::Null)
                 }
                 _ => ContextValue::Null,
             },
@@ -405,9 +428,7 @@ impl ContextValue {
                 "is_embedded_struct" => {
                     ContextValue::Bool(matches!(item, StructItem::EmbeddedStruct(_)))
                 }
-                "is_inline_enum" => {
-                    ContextValue::Bool(matches!(item, StructItem::InlineEnum(_)))
-                }
+                "is_inline_enum" => ContextValue::Bool(matches!(item, StructItem::InlineEnum(_))),
                 "as_field" => match item {
                     StructItem::Field(f) => ContextValue::Field(f.clone()),
                     _ => ContextValue::Null,
@@ -479,7 +500,8 @@ impl ContextValue {
                 "nav_name" => {
                     // FK navigation property name: strip _id/Id suffix from field name
                     if let Some(fk) = &f.foreign_key {
-                        let target_name = fk.target_table_fqn
+                        let target_name = fk
+                            .target_table_fqn
                             .rsplit('.')
                             .next()
                             .unwrap_or(&fk.target_table_fqn);
@@ -497,7 +519,8 @@ impl ContextValue {
                 }
                 "name_pascal" => {
                     // Convert field name to PascalCase
-                    let pascal = f.name
+                    let pascal = f
+                        .name
                         .split('_')
                         .map(|part| {
                             let mut chars = part.chars();
@@ -523,12 +546,8 @@ impl ContextValue {
                 "is_enum" => ContextValue::Bool(t.is_enum),
                 "is_option" => ContextValue::Bool(t.is_option),
                 "is_list" => ContextValue::Bool(t.is_list),
-                "is_float" => ContextValue::Bool(
-                    t.type_name == "f32" || t.type_name == "f64"
-                ),
-                "is_unsigned" => ContextValue::Bool(
-                    t.type_name.starts_with('u') && t.is_primitive
-                ),
+                "is_float" => ContextValue::Bool(t.type_name == "f32" || t.type_name == "f64"),
+                "is_unsigned" => ContextValue::Bool(t.type_name.starts_with('u') && t.is_primitive),
                 "is_string" => ContextValue::Bool(t.type_name == "string"),
                 "inner_type" | "inner" => match &t.inner_type {
                     Some(inner) => ContextValue::TypeRef(*inner.clone()),
@@ -670,7 +689,10 @@ impl ContextValue {
                     None => ContextValue::Null,
                 },
                 "fields" => ContextValue::List(
-                    idx.fields.iter().map(|f| ContextValue::IndexField(f.clone())).collect(),
+                    idx.fields
+                        .iter()
+                        .map(|f| ContextValue::IndexField(f.clone()))
+                        .collect(),
                 ),
                 _ => ContextValue::Null,
             },
@@ -686,7 +708,8 @@ impl ContextValue {
                 "source_field" => ContextValue::String(rel.source_field.clone()),
                 "source_field_pascal" => {
                     // Convert snake_case to PascalCase: "player_id" → "PlayerId"
-                    let pascal = rel.source_field
+                    let pascal = rel
+                        .source_field
                         .split('_')
                         .map(|part| {
                             let mut chars = part.chars();
@@ -705,7 +728,8 @@ impl ContextValue {
                 "target_field" => ContextValue::String(fk.target_field.clone()),
                 "target_table_name" => {
                     // Extract last segment of FQN: "game.character.Player" → "Player"
-                    let table_name = fk.target_table_fqn
+                    let table_name = fk
+                        .target_table_fqn
                         .rsplit('.')
                         .next()
                         .unwrap_or(&fk.target_table_fqn)
@@ -724,6 +748,7 @@ impl ContextValue {
                 "literal_type" => ContextValue::String(r.literal_type.clone()),
                 _ => ContextValue::Null,
             },
+            ContextValue::Map(map) => map.get(name).cloned().unwrap_or(ContextValue::Null),
             ContextValue::Timezone(tz) => match name {
                 "kind" => ContextValue::String(tz.kind.clone()),
                 "name" => match &tz.name {
@@ -764,6 +789,7 @@ impl ContextValue {
             ContextValue::Int(i) => i.to_string(),
             ContextValue::Float(f) => f.to_string(),
             ContextValue::AnnotationParam(p) => format!("{} = \"{}\"", p.key, p.value),
+            ContextValue::Map(_) => "[Map]".to_string(),
             ContextValue::Null => String::new(),
             _ => format!("[{:?}]", std::mem::discriminant(self)),
         }
@@ -777,6 +803,7 @@ impl ContextValue {
             ContextValue::Int(i) => *i != 0,
             ContextValue::Float(f) => *f != 0.0,
             ContextValue::List(l) => !l.is_empty(),
+            ContextValue::Map(m) => !m.is_empty(),
             ContextValue::Null => false,
             // IR objects are truthy (they exist)
             _ => true,
@@ -899,6 +926,48 @@ mod tests {
         let child = ctx.child_with("age", ContextValue::Int(42));
         assert_eq!(child.get("name").unwrap().to_display_string(), "Test");
         assert_eq!(child.get("age").unwrap().to_display_string(), "42");
+    }
+
+    #[test]
+    fn test_map_property_access() {
+        let mut map = HashMap::new();
+        map.insert("x".to_string(), ContextValue::Int(10));
+        map.insert(
+            "name".to_string(),
+            ContextValue::String("hello".to_string()),
+        );
+        let cv = ContextValue::Map(map);
+
+        assert_eq!(cv.get_property("x").to_display_string(), "10");
+        assert_eq!(cv.get_property("name").to_display_string(), "hello");
+        assert!(matches!(cv.get_property("missing"), ContextValue::Null));
+    }
+
+    #[test]
+    fn test_map_nested() {
+        let mut inner = HashMap::new();
+        inner.insert(
+            "value".to_string(),
+            ContextValue::String("nested".to_string()),
+        );
+        let mut outer = HashMap::new();
+        outer.insert("child".to_string(), ContextValue::Map(inner));
+        let cv = ContextValue::Map(outer);
+
+        let result = cv.resolve_path(&["child".to_string(), "value".to_string()]);
+        assert_eq!(result.to_display_string(), "nested");
+    }
+
+    #[test]
+    fn test_map_display_and_truthy() {
+        let empty_map = ContextValue::Map(HashMap::new());
+        assert_eq!(empty_map.to_display_string(), "[Map]");
+        assert!(!empty_map.is_truthy());
+
+        let mut map = HashMap::new();
+        map.insert("k".to_string(), ContextValue::Int(1));
+        let non_empty = ContextValue::Map(map);
+        assert!(non_empty.is_truthy());
     }
 
     #[test]

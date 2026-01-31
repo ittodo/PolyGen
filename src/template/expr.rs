@@ -81,6 +81,8 @@ pub enum CondExpr {
 pub struct CollectionExpr {
     /// Property access chain to the collection.
     pub path: Vec<String>,
+    /// Optional `| where condition` filter applied during iteration.
+    pub where_filter: Option<CondExpr>,
 }
 
 /// Parse a `{{...}}` interpolation expression.
@@ -164,7 +166,11 @@ pub fn parse_condition(input: &str) -> Result<CondExpr, String> {
     // Handle property with filter: `struct.fqn | is_embedded`
     if input.contains('|') {
         let parts: Vec<&str> = input.splitn(2, '|').collect();
-        let path: Vec<String> = parts[0].trim().split('.').map(|s| s.trim().to_string()).collect();
+        let path: Vec<String> = parts[0]
+            .trim()
+            .split('.')
+            .map(|s| s.trim().to_string())
+            .collect();
         let filter = parse_filter(parts[1].trim())?;
         return Ok(CondExpr::PropertyWithFilter(path, filter));
     }
@@ -180,38 +186,59 @@ pub fn parse_condition(input: &str) -> Result<CondExpr, String> {
 
 /// Parse a collection expression for `%for`.
 ///
-/// Input: `"namespace.items"` → `CollectionExpr { path: ["namespace", "items"] }`
+/// Supports optional `| where condition` filter:
+/// - `"namespace.items"` → path only
+/// - `"struct.fields | where field.is_primary_key"` → path + where filter
 pub fn parse_collection(input: &str) -> Result<CollectionExpr, String> {
     let input = input.trim();
     if input.is_empty() {
         return Err("Empty collection expression".to_string());
     }
 
-    let path: Vec<String> = input.split('.').map(|s| s.trim().to_string()).collect();
+    // Check for `| where` filter
+    let (path_str, where_filter) = if let Some(pos) = input.find("| where ") {
+        let path_part = input[..pos].trim();
+        let cond_part = input[pos + 8..].trim(); // Skip "| where "
+        let cond = parse_condition(cond_part)?;
+        (path_part, Some(cond))
+    } else {
+        (input, None)
+    };
+
+    let path: Vec<String> = path_str.split('.').map(|s| s.trim().to_string()).collect();
     if path.iter().any(|p| p.is_empty()) {
-        return Err(format!("Invalid collection path: '{}'", input));
+        return Err(format!("Invalid collection path: '{}'", path_str));
     }
 
-    Ok(CollectionExpr { path })
+    Ok(CollectionExpr { path, where_filter })
 }
 
 /// Parse a single filter name.
 fn parse_filter(name: &str) -> Result<Filter, String> {
     // Handle join("sep") syntax
     if name.starts_with("join(") && name.ends_with(')') {
-        let sep = name[5..name.len() - 1].trim().trim_matches('"').trim_matches('\'');
+        let sep = name[5..name.len() - 1]
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'');
         return Ok(Filter::Join(sep.to_string()));
     }
 
     // Handle suffix("str") syntax
     if name.starts_with("suffix(") && name.ends_with(')') {
-        let s = name[7..name.len() - 1].trim().trim_matches('"').trim_matches('\'');
+        let s = name[7..name.len() - 1]
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'');
         return Ok(Filter::Suffix(s.to_string()));
     }
 
     // Handle prefix("str") syntax
     if name.starts_with("prefix(") && name.ends_with(')') {
-        let s = name[7..name.len() - 1].trim().trim_matches('"').trim_matches('\'');
+        let s = name[7..name.len() - 1]
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'');
         return Ok(Filter::Prefix(s.to_string()));
     }
 
@@ -258,7 +285,10 @@ fn find_logical_op(input: &str, op: &str) -> Option<usize> {
             in_string = !in_string;
             continue;
         }
-        if !in_string && i + op_bytes.len() <= bytes.len() && &bytes[i..i + op_bytes.len()] == op_bytes {
+        if !in_string
+            && i + op_bytes.len() <= bytes.len()
+            && &bytes[i..i + op_bytes.len()] == op_bytes
+        {
             return Some(i);
         }
     }
@@ -318,7 +348,10 @@ mod tests {
     #[test]
     fn test_parse_condition_simple() {
         let cond = parse_condition("field.is_primary_key").unwrap();
-        assert_eq!(cond, CondExpr::Property(vec!["field".into(), "is_primary_key".into()]));
+        assert_eq!(
+            cond,
+            CondExpr::Property(vec!["field".into(), "is_primary_key".into()])
+        );
     }
 
     #[test]
@@ -326,7 +359,10 @@ mod tests {
         let cond = parse_condition("!field.is_optional").unwrap();
         match cond {
             CondExpr::Not(inner) => {
-                assert_eq!(*inner, CondExpr::Property(vec!["field".into(), "is_optional".into()]));
+                assert_eq!(
+                    *inner,
+                    CondExpr::Property(vec!["field".into(), "is_optional".into()])
+                );
             }
             _ => panic!("Expected Not"),
         }
@@ -337,8 +373,14 @@ mod tests {
         let cond = parse_condition("field.is_primary_key && field.is_unique").unwrap();
         match cond {
             CondExpr::And(left, right) => {
-                assert_eq!(*left, CondExpr::Property(vec!["field".into(), "is_primary_key".into()]));
-                assert_eq!(*right, CondExpr::Property(vec!["field".into(), "is_unique".into()]));
+                assert_eq!(
+                    *left,
+                    CondExpr::Property(vec!["field".into(), "is_primary_key".into()])
+                );
+                assert_eq!(
+                    *right,
+                    CondExpr::Property(vec!["field".into(), "is_unique".into()])
+                );
             }
             _ => panic!("Expected And"),
         }
@@ -360,6 +402,35 @@ mod tests {
     fn test_parse_collection() {
         let coll = parse_collection("namespace.items").unwrap();
         assert_eq!(coll.path, vec!["namespace", "items"]);
+        assert!(coll.where_filter.is_none());
+    }
+
+    #[test]
+    fn test_parse_collection_with_where() {
+        let coll = parse_collection("struct.fields | where field.is_primary_key").unwrap();
+        assert_eq!(coll.path, vec!["struct", "fields"]);
+        assert_eq!(
+            coll.where_filter,
+            Some(CondExpr::Property(vec![
+                "field".into(),
+                "is_primary_key".into()
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_parse_collection_where_with_not() {
+        let coll = parse_collection("struct.fields | where !field.is_optional").unwrap();
+        assert_eq!(coll.path, vec!["struct", "fields"]);
+        match &coll.where_filter {
+            Some(CondExpr::Not(inner)) => {
+                assert_eq!(
+                    **inner,
+                    CondExpr::Property(vec!["field".into(), "is_optional".into()])
+                );
+            }
+            _ => panic!("Expected Not condition in where_filter"),
+        }
     }
 
     #[test]
@@ -394,10 +465,14 @@ mod tests {
 
     #[test]
     fn test_parse_condition_equals_with_and() {
-        let cond = parse_condition("field.is_primary_key && field.field_type.type_name == \"u32\"").unwrap();
+        let cond = parse_condition("field.is_primary_key && field.field_type.type_name == \"u32\"")
+            .unwrap();
         match cond {
             CondExpr::And(left, right) => {
-                assert_eq!(*left, CondExpr::Property(vec!["field".into(), "is_primary_key".into()]));
+                assert_eq!(
+                    *left,
+                    CondExpr::Property(vec!["field".into(), "is_primary_key".into()])
+                );
                 assert_eq!(
                     *right,
                     CondExpr::Equals(
