@@ -1,0 +1,9 @@
+{
+  "csharp/csv_test_schema.Container.cs": "csharp_container_file.ptpl",
+  "csharp/csv_test_schema.BinaryWriters.cs": "csharp_binary_writers_file.rhai",
+  "csharp/CsvSchemas/test.csv.TestObject.csv": "csharp_csv_columns_file.rhai",
+  "csharp/csv_test_schema.CsvMappers.cs": "csharp_csv_mappers_file.rhai",
+  "csharp/CsvSchemas/test.csv.Point.csv": "csharp_csv_columns_file.rhai",
+  "csharp/csv_test_schema.cs": "csharp_file.ptpl",
+  "csharp/csv_test_schema.BinaryReaders.cs": "csharp_binary_readers_file.rhai"
+}

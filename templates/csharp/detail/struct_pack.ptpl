@@ -1,0 +1,2 @@
+%-- Pack/Unpack methods for @pack embeds. Context: struct
+%-- TODO: Implement Pack/Unpack when @pack annotation testing is available

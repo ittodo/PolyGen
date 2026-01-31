@@ -1,0 +1,92 @@
+        /// <summary>
+        /// Loads {{struct.name}} data from a CSV file.
+        /// </summary>
+        public static void Load{{struct.name}}sFromCsv({{file.container_name}}DataContainer container, string filePath, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+        {
+            foreach (var item in Csv.{{struct.namespace_fqn}}.{{struct.name}}.ReadRowsWithHeader(filePath, separator, gapMode))
+            {
+                container.{{struct.name}}s.Add(item);
+            }
+        }
+
+        /// <summary>
+        /// Loads {{struct.name}} data from CSV files matching a pattern.
+        /// Supports: single file, wildcards (*.csv), directories (data/).
+        /// Files are sorted alphabetically and merged sequentially.
+        /// </summary>
+        /// <exception cref="DuplicateKeyException">Thrown when duplicate primary keys are found across files.</exception>
+        public static void Load{{struct.name}}sFromCsvPattern({{file.container_name}}DataContainer container, string pattern, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+        {
+            var files = PatternLoader.ResolvePattern(container.RootDirectory, pattern, ".csv");
+%if struct.has_primary_key
+            var seenKeys = new HashSet<object>();
+            string? firstFile = null;
+%endif
+            foreach (var file in files)
+            {
+                foreach (var item in Csv.{{struct.namespace_fqn}}.{{struct.name}}.ReadRowsWithHeader(file, separator, gapMode))
+                {
+%if struct.has_primary_key
+                    var key = item.{{struct.pk_field_name}};
+                    if (seenKeys.Contains(key))
+                    {
+                        throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+                    }
+                    seenKeys.Add(key);
+                    if (firstFile == null) firstFile = file;
+%endif
+                    container.{{struct.name}}s.Add(item);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads {{struct.name}} data from a JSON file.
+        /// </summary>
+        public static void Load{{struct.name}}sFromJson({{file.container_name}}DataContainer container, string filePath)
+        {
+            var json = File.ReadAllText(filePath);
+            var items = System.Text.Json.JsonSerializer.Deserialize<List<global::{{struct.namespace_fqn}}.{{struct.name}}>>(json);
+            if (items != null)
+            {
+                foreach (var item in items)
+                {
+                    container.{{struct.name}}s.Add(item);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads {{struct.name}} data from JSON files matching a pattern.
+        /// </summary>
+        /// <exception cref="DuplicateKeyException">Thrown when duplicate primary keys are found across files.</exception>
+        public static void Load{{struct.name}}sFromJsonPattern({{file.container_name}}DataContainer container, string pattern)
+        {
+            var files = PatternLoader.ResolvePattern(container.RootDirectory, pattern, ".json");
+%if struct.has_primary_key
+            var seenKeys = new HashSet<object>();
+            string? firstFile = null;
+%endif
+            foreach (var file in files)
+            {
+                var json = File.ReadAllText(file);
+                var items = System.Text.Json.JsonSerializer.Deserialize<List<global::{{struct.namespace_fqn}}.{{struct.name}}>>(json);
+                if (items != null)
+                {
+                    foreach (var item in items)
+                    {
+%if struct.has_primary_key
+                        var key = item.{{struct.pk_field_name}};
+                        if (seenKeys.Contains(key))
+                        {
+                            throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+                        }
+                        seenKeys.Add(key);
+                        if (firstFile == null) firstFile = file;
+%endif
+                        container.{{struct.name}}s.Add(item);
+                    }
+                }
+            }
+        }
+

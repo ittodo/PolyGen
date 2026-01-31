@@ -1,0 +1,11 @@
+%if struct.auto_create_field
+%if struct.auto_create_field.auto_create.kind == "utc"
+        row.{{struct.auto_create_field.name}} = DateTime.UtcNow;
+%elif struct.auto_create_field.auto_create.kind == "local"
+        row.{{struct.auto_create_field.name}} = DateTime.Now;
+%elif struct.auto_create_field.auto_create.kind == "offset"
+        row.{{struct.auto_create_field.name}} = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours({{struct.auto_create_field.auto_create.offset_hours}})).DateTime;
+%else
+        row.{{struct.auto_create_field.name}} = DateTime.UtcNow;
+%endif
+%endif

@@ -1,0 +1,50 @@
+    /// <summary>
+    /// Validates all rows against field constraints (MaxLength, Range, Regex).
+    /// </summary>
+    public ValidationResult Validate()
+    {
+        var result = new ValidationResult();
+        foreach (var row in _rows)
+        {
+%if struct.has_validations
+%for field in struct.validation_fields
+%if field.has_max_length
+            if (row.{{field.name}} != null && row.{{field.name}}.Length > {{field.max_length}})
+%if struct.has_primary_key
+                result.AddError(ValidationHelpers.MaxLengthError("{{struct.name}}", "{{field.name}}", row.{{struct.pk_field_name}}, {{field.max_length}}, row.{{field.name}}.Length));
+%else
+                result.AddError(ValidationHelpers.MaxLengthError("{{struct.name}}", "{{field.name}}", null, {{field.max_length}}, row.{{field.name}}.Length));
+%endif
+%endif
+%if field.has_range
+%if field.field_type.is_option
+            if (row.{{field.name}}.HasValue && !ValidationHelpers.ValidateRange(row.{{field.name}}.Value, {{field.range.min}}, {{field.range.max}}))
+%else
+            if (!ValidationHelpers.ValidateRange(row.{{field.name}}, {{field.range.min}}, {{field.range.max}}))
+%endif
+%if struct.has_primary_key
+                result.AddError(ValidationHelpers.RangeError("{{struct.name}}", "{{field.name}}", row.{{struct.pk_field_name}}, {{field.range.min}}, {{field.range.max}}, row.{{field.name}}));
+%else
+                result.AddError(ValidationHelpers.RangeError("{{struct.name}}", "{{field.name}}", null, {{field.range.min}}, {{field.range.max}}, row.{{field.name}}));
+%endif
+%endif
+%if field.has_regex_pattern
+%if field.field_type.is_option
+            if (row.{{field.name}} != null && !ValidationHelpers.ValidateRegex(row.{{field.name}}, @"{{field.regex_pattern}}"))
+%else
+            if (!ValidationHelpers.ValidateRegex(row.{{field.name}}, @"{{field.regex_pattern}}"))
+%endif
+%if struct.has_primary_key
+                result.AddError(ValidationHelpers.RegexError("{{struct.name}}", "{{field.name}}", row.{{struct.pk_field_name}}, @"{{field.regex_pattern}}", row.{{field.name}}));
+%else
+                result.AddError(ValidationHelpers.RegexError("{{struct.name}}", "{{field.name}}", null, @"{{field.regex_pattern}}", row.{{field.name}}));
+%endif
+%endif
+%endfor
+%else
+            // No field constraints to validate
+            _ = row; // Suppress unused variable warning
+%endif
+        }
+        return result;
+    }

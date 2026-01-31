@@ -287,7 +287,7 @@ fn parse_include(directive: &str, line_num: usize) -> Result<TemplateNode, Strin
     let mut bindings = Vec::new();
     let mut indent = None;
 
-    // Parse remaining: `with var, key=val indent=N`
+    // Parse remaining: `with var, key=val indent N` or `with var indent=N`
     if !remainder.is_empty() {
         let mut parts = remainder;
 
@@ -296,7 +296,27 @@ fn parse_include(directive: &str, line_num: usize) -> Result<TemplateNode, Strin
             parts = after_with.trim();
         }
 
-        // Parse bindings and indent
+        // Extract `indent N` or `indent=N` from the end before splitting by comma
+        // This handles both "with s indent 1" and "with s, indent=1" syntax.
+        let indent_re_space = " indent ";
+        let indent_re_eq = " indent=";
+        if let Some(pos) = parts.rfind(indent_re_space) {
+            let val_str = parts[pos + indent_re_space.len()..].trim();
+            indent = Some(
+                val_str.parse::<usize>()
+                    .map_err(|_| format!("Line {}: Invalid indent value: {}", line_num, val_str))?,
+            );
+            parts = parts[..pos].trim();
+        } else if let Some(pos) = parts.rfind(indent_re_eq) {
+            let val_str = parts[pos + indent_re_eq.len()..].trim();
+            indent = Some(
+                val_str.parse::<usize>()
+                    .map_err(|_| format!("Line {}: Invalid indent value: {}", line_num, val_str))?,
+            );
+            parts = parts[..pos].trim();
+        }
+
+        // Parse bindings
         for token in parts.split(',') {
             let token = token.trim();
             if token.is_empty() {

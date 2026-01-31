@@ -1,0 +1,13 @@
+        /// <summary>
+        /// Loads all tables from JSON files in a directory.
+        /// Files should be named: {TableName}.json
+        /// </summary>
+        public static void LoadAllFromJsonDirectory({{file.container_name}}DataContainer container, string directoryPath)
+        {
+%for table in file.all_tables
+            var {{table.name | lower}}Path = Path.Combine(directoryPath, "{{table.name}}.json");
+            if (File.Exists({{table.name | lower}}Path))
+                Load{{table.name}}sFromJson(container, {{table.name | lower}}Path);
+
+%endfor
+        }

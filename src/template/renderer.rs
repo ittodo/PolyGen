@@ -27,6 +27,10 @@ pub struct RenderConfig {
     pub type_map_optional: Option<String>,
     /// List type format from `[type_map.list]`.
     pub type_map_list: Option<String>,
+    /// Non-primitive type format from `[type_map.non_primitive]`.
+    /// Use `{{type}}` for the resolved type name.
+    /// Example: `"global::{{type}}"` for C#.
+    pub type_map_non_primitive: Option<String>,
     /// Type → binary read expression from `[binary_read]`.
     pub binary_read: HashMap<String, String>,
     /// Optional binary read format from `[binary_read.option]`.
@@ -339,6 +343,14 @@ impl<'a> Renderer<'a> {
                 let r = self.eval_condition(right, context)?;
                 Ok(l || r)
             }
+            CondExpr::Equals(path, literal) => {
+                let value = self.resolve_path(path, context)?;
+                Ok(value.to_display_string() == *literal)
+            }
+            CondExpr::NotEquals(path, literal) => {
+                let value = self.resolve_path(path, context)?;
+                Ok(value.to_display_string() != *literal)
+            }
         }
     }
 
@@ -409,34 +421,66 @@ impl<'a> Renderer<'a> {
         }
     }
 
+    /// Maps a non-wrapped TypeRef to its target language base type.
+    /// Uses TOML type_map for primitives, and applies non_primitive format for others.
+    fn map_base_type(&self, type_ref: &crate::ir_model::TypeRef) -> String {
+        self.config
+            .type_map
+            .get(&type_ref.type_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                if !type_ref.is_primitive {
+                    // For non-primitive types, use the `original` field from IR
+                    // which mirrors how Rhai templates resolve types:
+                    // - Same-namespace types: "ItemType" (no dot, no prefix)
+                    // - Cross-namespace types: "game.common.StatBlock" (has dot, gets prefix)
+                    let raw_name = &type_ref.original;
+                    if raw_name.contains('.') {
+                        if let Some(ref fmt) = self.config.type_map_non_primitive {
+                            fmt.replace("{{type}}", raw_name)
+                        } else {
+                            raw_name.clone()
+                        }
+                    } else {
+                        raw_name.clone()
+                    }
+                } else {
+                    type_ref.type_name.clone()
+                }
+            })
+    }
+
     /// `lang_type` filter: maps a poly type to the target language type.
     fn apply_lang_type_filter(&self, value: &ContextValue) -> Result<String, String> {
         match value {
             ContextValue::TypeRef(type_ref) => {
-                // Always use TOML type_map for ptpl rendering.
-                // The IR's lang_type field is set for Rhai templates and may not
-                // match the target language when using TOML-based type mapping.
-                let base = self
-                    .config
-                    .type_map
-                    .get(&type_ref.type_name)
-                    .cloned()
-                    .unwrap_or_else(|| type_ref.type_name.clone());
-
+                // For Option/List types, delegate to inner_type for the base mapping,
+                // then wrap with the appropriate format. This avoids double-wrapping
+                // since `original` already includes the wrapper (e.g., "List<Position>").
                 if type_ref.is_option {
-                    if let Some(ref fmt) = self.config.type_map_optional {
-                        Ok(fmt.replace("{{type}}", &base))
+                    let inner_base = if let Some(inner) = &type_ref.inner_type {
+                        self.apply_lang_type_filter(&ContextValue::TypeRef(*inner.clone()))?
                     } else {
-                        Ok(format!("{}?", base))
+                        self.map_base_type(type_ref)
+                    };
+                    if let Some(ref fmt) = self.config.type_map_optional {
+                        Ok(fmt.replace("{{type}}", &inner_base))
+                    } else {
+                        Ok(format!("{}?", inner_base))
                     }
                 } else if type_ref.is_list {
-                    if let Some(ref fmt) = self.config.type_map_list {
-                        Ok(fmt.replace("{{type}}", &base))
+                    let inner_base = if let Some(inner) = &type_ref.inner_type {
+                        self.apply_lang_type_filter(&ContextValue::TypeRef(*inner.clone()))?
                     } else {
-                        Ok(format!("List<{}>", base))
+                        self.map_base_type(type_ref)
+                    };
+                    if let Some(ref fmt) = self.config.type_map_list {
+                        Ok(fmt.replace("{{type}}", &inner_base))
+                    } else {
+                        Ok(format!("List<{}>", inner_base))
                     }
                 } else {
-                    Ok(base)
+                    Ok(self.map_base_type(type_ref))
                 }
             }
             ContextValue::Field(field) => {
@@ -635,6 +679,12 @@ fn infer_binding_name(value: &ContextValue, path: &[String]) -> String {
         ContextValue::File(_) => return "file".to_string(),
         ContextValue::Schema(_) => return "schema".to_string(),
         ContextValue::TypeRef(_) => return "type".to_string(),
+        ContextValue::Relation(_) => return "relation".to_string(),
+        ContextValue::Index(_) => return "index".to_string(),
+        ContextValue::IndexField(_) => return "index_field".to_string(),
+        ContextValue::Annotation(_) => return "annotation".to_string(),
+        ContextValue::ForeignKey(_) => return "foreign_key".to_string(),
+        ContextValue::AnnotationParam(_) => return "param".to_string(),
         _ => {}
     }
 

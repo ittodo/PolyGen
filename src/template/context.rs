@@ -38,8 +38,12 @@ pub enum ContextValue {
     EnumMember(EnumMember),
     /// An annotation definition.
     Annotation(AnnotationDef),
+    /// An annotation parameter (key-value pair).
+    AnnotationParam(AnnotationParam),
     /// An index definition.
     Index(IndexDef),
+    /// An index field definition (part of a composite index).
+    IndexField(IndexFieldDef),
     /// A relation definition.
     Relation(RelationDef),
     /// A foreign key definition.
@@ -144,6 +148,37 @@ impl ContextValue {
                     collect_tables_from_namespaces(&f.namespaces, &mut tables);
                     ContextValue::List(tables)
                 }
+                "container_name" => {
+                    // Derive PascalCase container name from file path:
+                    // "examples/game_schema.poly" -> "GameSchema"
+                    let base = f.path.rsplit('/').next().unwrap_or(&f.path);
+                    let base = base.strip_suffix(".poly").unwrap_or(base);
+                    let pascal = base
+                        .split('_')
+                        .map(|part| {
+                            let mut chars = part.chars();
+                            match chars.next() {
+                                None => String::new(),
+                                Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                            }
+                        })
+                        .collect::<String>();
+                    ContextValue::String(pascal)
+                }
+                "all_tables_interface_list" => {
+                    // Generate ", IHas{Name}Table" for each table
+                    // e.g., ", IHasPlayerTable, IHasMonsterTable"
+                    let mut tables = Vec::new();
+                    collect_tables_from_namespaces(&f.namespaces, &mut tables);
+                    let names: Vec<String> = tables.iter().filter_map(|t| {
+                        if let ContextValue::Struct(s) = t {
+                            Some(format!(", IHas{}Table", s.name))
+                        } else {
+                            None
+                        }
+                    }).collect();
+                    ContextValue::String(names.join(""))
+                }
                 _ => ContextValue::Null,
             },
             ContextValue::Namespace(ns) => match name {
@@ -158,6 +193,25 @@ impl ContextValue {
                         .map(|item| ContextValue::NamespaceItem(item.clone()))
                         .collect(),
                 ),
+                "has_structs" => {
+                    let has = ns.items.iter().any(|item| matches!(item, NamespaceItem::Struct(_)));
+                    ContextValue::Bool(has)
+                }
+                "structs" => {
+                    let structs: Vec<ContextValue> = ns
+                        .items
+                        .iter()
+                        .filter_map(|item| match item {
+                            NamespaceItem::Struct(s) => Some(ContextValue::Struct(s.clone())),
+                            _ => None,
+                        })
+                        .collect();
+                    ContextValue::List(structs)
+                }
+                "fqn" => {
+                    // Namespace FQN (e.g., "game.character")
+                    ContextValue::String(ns.name.clone())
+                }
                 _ => ContextValue::Null,
             },
             ContextValue::NamespaceItem(item) => match name {
@@ -297,6 +351,51 @@ impl ContextValue {
                         None => ContextValue::String("Id".to_string()),
                     }
                 }
+                "has_primary_key" => {
+                    let has = s.items.iter().any(|item| matches!(item, StructItem::Field(f) if f.is_primary_key));
+                    ContextValue::Bool(has)
+                }
+                "namespace_fqn" => {
+                    // Extract namespace from FQN: "game.character.Player" -> "game.character"
+                    if let Some(pos) = s.fqn.rfind('.') {
+                        ContextValue::String(s.fqn[..pos].to_string())
+                    } else {
+                        ContextValue::String(String::new())
+                    }
+                }
+                "has_validations" => {
+                    // Check if any field has max_length, range, or regex_pattern
+                    let has = s.items.iter().any(|item| match item {
+                        StructItem::Field(f) => {
+                            f.max_length.is_some() || f.range.is_some() || f.regex_pattern.is_some()
+                        }
+                        _ => false,
+                    });
+                    ContextValue::Bool(has)
+                }
+                "validation_fields" => {
+                    // Fields that have max_length, range, or regex_pattern
+                    let fields: Vec<ContextValue> = s
+                        .items
+                        .iter()
+                        .filter_map(|item| match item {
+                            StructItem::Field(f) if f.max_length.is_some() || f.range.is_some() || f.regex_pattern.is_some() => {
+                                Some(ContextValue::Field(f.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    ContextValue::List(fields)
+                }
+                "auto_create_field" => {
+                    // Find the field with auto_create timestamp
+                    s.items.iter().find_map(|item| match item {
+                        StructItem::Field(f) if f.auto_create.is_some() => {
+                            Some(ContextValue::Field(f.clone()))
+                        }
+                        _ => None,
+                    }).unwrap_or(ContextValue::Null)
+                }
                 _ => ContextValue::Null,
             },
             ContextValue::StructItem(item) => match name {
@@ -377,6 +476,39 @@ impl ContextValue {
                 "has_max_length" => ContextValue::Bool(f.max_length.is_some()),
                 "has_range" => ContextValue::Bool(f.range.is_some()),
                 "has_regex_pattern" => ContextValue::Bool(f.regex_pattern.is_some()),
+                "nav_name" => {
+                    // FK navigation property name: strip _id/Id suffix from field name
+                    if let Some(fk) = &f.foreign_key {
+                        let target_name = fk.target_table_fqn
+                            .rsplit('.')
+                            .next()
+                            .unwrap_or(&fk.target_table_fqn);
+                        let name = if f.name.ends_with("_id") {
+                            f.name[..f.name.len() - 3].to_string()
+                        } else if f.name.ends_with("Id") {
+                            f.name[..f.name.len() - 2].to_string()
+                        } else {
+                            target_name.to_string()
+                        };
+                        ContextValue::String(name)
+                    } else {
+                        ContextValue::Null
+                    }
+                }
+                "name_pascal" => {
+                    // Convert field name to PascalCase
+                    let pascal = f.name
+                        .split('_')
+                        .map(|part| {
+                            let mut chars = part.chars();
+                            match chars.next() {
+                                None => String::new(),
+                                Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                            }
+                        })
+                        .collect::<String>();
+                    ContextValue::String(pascal)
+                }
                 _ => ContextValue::Null,
             },
             ContextValue::TypeRef(t) => match name {
@@ -512,6 +644,18 @@ impl ContextValue {
                         .map(|arg| ContextValue::String(arg.clone()))
                         .collect(),
                 ),
+                "params" => ContextValue::List(
+                    a.params
+                        .iter()
+                        .map(|p| ContextValue::AnnotationParam(p.clone()))
+                        .collect(),
+                ),
+                "has_params" => ContextValue::Bool(!a.params.is_empty()),
+                _ => ContextValue::Null,
+            },
+            ContextValue::AnnotationParam(p) => match name {
+                "key" => ContextValue::String(p.key.clone()),
+                "value" => ContextValue::String(p.value.clone()),
                 _ => ContextValue::Null,
             },
             ContextValue::Index(idx) => match name {
@@ -525,6 +669,14 @@ impl ContextValue {
                     Some(t) => ContextValue::TypeRef(t.clone()),
                     None => ContextValue::Null,
                 },
+                "fields" => ContextValue::List(
+                    idx.fields.iter().map(|f| ContextValue::IndexField(f.clone())).collect(),
+                ),
+                _ => ContextValue::Null,
+            },
+            ContextValue::IndexField(ifd) => match name {
+                "name" => ContextValue::String(ifd.name.clone()),
+                "field_type" => ContextValue::TypeRef(ifd.field_type.clone()),
                 _ => ContextValue::Null,
             },
             ContextValue::Relation(rel) => match name {
@@ -532,6 +684,20 @@ impl ContextValue {
                 "source_table_fqn" => ContextValue::String(rel.source_table_fqn.clone()),
                 "source_table_name" => ContextValue::String(rel.source_table_name.clone()),
                 "source_field" => ContextValue::String(rel.source_field.clone()),
+                "source_field_pascal" => {
+                    // Convert snake_case to PascalCase: "player_id" → "PlayerId"
+                    let pascal = rel.source_field
+                        .split('_')
+                        .map(|part| {
+                            let mut chars = part.chars();
+                            match chars.next() {
+                                None => String::new(),
+                                Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                            }
+                        })
+                        .collect::<String>();
+                    ContextValue::String(pascal)
+                }
                 _ => ContextValue::Null,
             },
             ContextValue::ForeignKey(fk) => match name {
@@ -564,6 +730,14 @@ impl ContextValue {
                     Some(n) => ContextValue::String(n.clone()),
                     None => ContextValue::Null,
                 },
+                "offset_hours" => match tz.offset_hours {
+                    Some(h) => ContextValue::Int(h as i64),
+                    None => ContextValue::Int(0),
+                },
+                "offset_minutes" => match tz.offset_minutes {
+                    Some(m) => ContextValue::Int(m as i64),
+                    None => ContextValue::Int(0),
+                },
                 _ => ContextValue::Null,
             },
             _ => ContextValue::Null,
@@ -589,6 +763,7 @@ impl ContextValue {
             ContextValue::Bool(b) => b.to_string(),
             ContextValue::Int(i) => i.to_string(),
             ContextValue::Float(f) => f.to_string(),
+            ContextValue::AnnotationParam(p) => format!("{} = \"{}\"", p.key, p.value),
             ContextValue::Null => String::new(),
             _ => format!("[{:?}]", std::mem::discriminant(self)),
         }

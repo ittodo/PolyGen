@@ -53,6 +53,8 @@ pub enum Filter {
     Suffix(String),
     /// Prepend a prefix string.
     Prefix(String),
+    /// Remove all dots from a string (e.g., "game.character" → "gamecharacter").
+    RemoveDots,
 }
 
 /// A parsed condition expression for `%if`.
@@ -68,6 +70,10 @@ pub enum CondExpr {
     And(Box<CondExpr>, Box<CondExpr>),
     /// Logical OR: `expr || expr`.
     Or(Box<CondExpr>, Box<CondExpr>),
+    /// String equality: `property.path == "literal"`.
+    Equals(Vec<String>, String),
+    /// String inequality: `property.path != "literal"`.
+    NotEquals(Vec<String>, String),
 }
 
 /// A collection expression for `%for var in collection`.
@@ -137,6 +143,22 @@ pub fn parse_condition(input: &str) -> Result<CondExpr, String> {
     if let Some(rest) = input.strip_prefix('!') {
         let inner = parse_condition(rest)?;
         return Ok(CondExpr::Not(Box::new(inner)));
+    }
+
+    // Handle equality: `property.path == "literal"` or `property.path != "literal"`
+    if let Some(pos) = find_comparison_op(input, "==") {
+        let left = input[..pos].trim();
+        let right = input[pos + 2..].trim();
+        let path: Vec<String> = left.split('.').map(|s| s.trim().to_string()).collect();
+        let literal = parse_string_literal(right)?;
+        return Ok(CondExpr::Equals(path, literal));
+    }
+    if let Some(pos) = find_comparison_op(input, "!=") {
+        let left = input[..pos].trim();
+        let right = input[pos + 2..].trim();
+        let path: Vec<String> = left.split('.').map(|s| s.trim().to_string()).collect();
+        let literal = parse_string_literal(right)?;
+        return Ok(CondExpr::NotEquals(path, literal));
     }
 
     // Handle property with filter: `struct.fqn | is_embedded`
@@ -209,20 +231,57 @@ fn parse_filter(name: &str) -> Result<Filter, String> {
         "binary_read_struct" => Ok(Filter::BinaryReadStruct),
         "csv_read" => Ok(Filter::CsvRead),
         "is_embedded" => Ok(Filter::IsEmbedded),
+        "remove_dots" => Ok(Filter::RemoveDots),
         _ => Err(format!("Unknown filter: '{}'", name)),
     }
 }
 
-/// Find a logical operator (`&&` or `||`) at the top level (not inside parentheses).
+/// Find a logical operator (`&&` or `||`) at the top level (not inside parentheses or strings).
 fn find_logical_op(input: &str, op: &str) -> Option<usize> {
     let bytes = input.as_bytes();
     let op_bytes = op.as_bytes();
     if bytes.len() < op_bytes.len() {
         return None;
     }
-    bytes
-        .windows(op_bytes.len())
-        .position(|w| w == op_bytes)
+    let mut in_string = false;
+    let mut escape = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if b == b'\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if b == b'"' {
+            in_string = !in_string;
+            continue;
+        }
+        if !in_string && i + op_bytes.len() <= bytes.len() && &bytes[i..i + op_bytes.len()] == op_bytes {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Find a comparison operator (`==` or `!=`) at the top level (not inside strings).
+fn find_comparison_op(input: &str, op: &str) -> Option<usize> {
+    // Reuse the same logic as find_logical_op but ensure we don't match inside strings
+    find_logical_op(input, op)
+}
+
+/// Parse a string literal: `"value"` → `value`.
+fn parse_string_literal(input: &str) -> Result<String, String> {
+    let input = input.trim();
+    if input.starts_with('"') && input.ends_with('"') && input.len() >= 2 {
+        Ok(input[1..input.len() - 1].to_string())
+    } else {
+        Err(format!(
+            "Expected string literal in quotes, got: '{}'",
+            input
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -307,5 +366,47 @@ mod tests {
     fn test_parse_expr_error() {
         assert!(parse_expr("").is_err());
         assert!(parse_expr(".name").is_err());
+    }
+
+    #[test]
+    fn test_parse_condition_equals() {
+        let cond = parse_condition("field.field_type.type_name == \"f32\"").unwrap();
+        assert_eq!(
+            cond,
+            CondExpr::Equals(
+                vec!["field".into(), "field_type".into(), "type_name".into()],
+                "f32".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_condition_not_equals() {
+        let cond = parse_condition("namespace.datasource != \"sqlite\"").unwrap();
+        assert_eq!(
+            cond,
+            CondExpr::NotEquals(
+                vec!["namespace".into(), "datasource".into()],
+                "sqlite".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_condition_equals_with_and() {
+        let cond = parse_condition("field.is_primary_key && field.field_type.type_name == \"u32\"").unwrap();
+        match cond {
+            CondExpr::And(left, right) => {
+                assert_eq!(*left, CondExpr::Property(vec!["field".into(), "is_primary_key".into()]));
+                assert_eq!(
+                    *right,
+                    CondExpr::Equals(
+                        vec!["field".into(), "field_type".into(), "type_name".into()],
+                        "u32".to_string()
+                    )
+                );
+            }
+            _ => panic!("Expected And"),
+        }
     }
 }

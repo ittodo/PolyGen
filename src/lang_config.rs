@@ -106,6 +106,16 @@ impl TypeMapConfig {
                 .map(|s| s.to_string())
         })
     }
+
+    /// Returns the non-primitive type format (e.g., `"global::{{type}}"`).
+    pub fn non_primitive_format(&self) -> Option<String> {
+        self.types.get("non_primitive").and_then(|v| {
+            v.as_table()
+                .and_then(|t| t.get("format"))
+                .and_then(|f| f.as_str())
+                .map(|s| s.to_string())
+        })
+    }
 }
 
 /// Role-based mapping configuration for binary/csv operations.

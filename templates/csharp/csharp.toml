@@ -17,10 +17,36 @@ extension = ".cs"
 "Common/PatternLoader.cs" = "static/csharp/PatternLoader.cs"
 "Common/Validation.cs" = "static/csharp/Validation.cs"
 
+# Type mapping: poly type → C# type
+[type_map]
+u8 = "byte"
+i8 = "sbyte"
+u16 = "ushort"
+i16 = "short"
+u32 = "uint"
+i32 = "int"
+u64 = "ulong"
+i64 = "long"
+f32 = "float"
+f64 = "double"
+bool = "bool"
+string = "string"
+bytes = "byte[]"
+timestamp = "DateTime"
+
+[type_map.optional]
+format = "{{type}}?"
+
+[type_map.list]
+format = "List<{{type}}>"
+
+[type_map.non_primitive]
+format = "global::{{type}}"
+
 # Template configuration
 [templates]
 # Main template for generating entity classes
-main = "csharp_file.rhai"
+main = "csharp_file.ptpl"
 
 # Extra templates to run after the main template
 extra = [
@@ -28,7 +54,7 @@ extra = [
     "csharp_binary_writers_file.rhai",
     "csharp_csv_columns_file.rhai",
     "csharp_csv_mappers_file.rhai",
-    "csharp_container_file.rhai",
+    "csharp_container_file.ptpl",
     "csharp_datacontext_file.rhai",
     "csharp_sqlite_accessor_file.rhai",
 ]

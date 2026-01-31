@@ -289,6 +289,7 @@ impl CodeGenerator {
             config.type_map = lang_config.type_map.type_map();
             config.type_map_optional = lang_config.type_map.optional_format();
             config.type_map_list = lang_config.type_map.list_format();
+            config.type_map_non_primitive = lang_config.type_map.non_primitive_format();
 
             config.binary_read = lang_config.binary_read.type_map();
             config.binary_read_option = lang_config.binary_read.sub_format("option");
@@ -589,7 +590,10 @@ fn derive_output_suffix(template_name: &str, language: &str) -> String {
         .strip_suffix("_file")
         .unwrap_or(without_lang);
 
-    format!("_{}", core)
+    // Use PascalCase with dot prefix to match Rhai naming:
+    // "container" → ".Container", "binary_readers" → ".BinaryReaders"
+    use heck::ToPascalCase;
+    format!(".{}", core.to_pascal_case())
 }
 
 /// The manifest file name used to track which template generated each output file.

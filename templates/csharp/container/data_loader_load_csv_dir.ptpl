@@ -1,0 +1,13 @@
+        /// <summary>
+        /// Loads all tables from CSV files in a directory.
+        /// Files should be named: {TableName}.csv
+        /// </summary>
+        public static void LoadAllFromCsvDirectory({{file.container_name}}DataContainer container, string directoryPath, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+        {
+%for table in file.all_tables
+            var {{table.name | lower}}Path = Path.Combine(directoryPath, "{{table.name}}.csv");
+            if (File.Exists({{table.name | lower}}Path))
+                Load{{table.name}}sFromCsv(container, {{table.name | lower}}Path, separator, gapMode);
+
+%endfor
+        }
