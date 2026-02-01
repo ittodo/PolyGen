@@ -356,7 +356,10 @@ pub fn to_mermaid(viz: &SchemaVisualization) -> String {
                 format!(" \"{}\"", markers.join(","))
             };
 
-            output.push_str(&format!("        {} {}{}\n", type_str, field.name, marker_str));
+            output.push_str(&format!(
+                "        {} {}{}\n",
+                type_str, field.name, marker_str
+            ));
         }
         output.push_str("    }\n");
     }

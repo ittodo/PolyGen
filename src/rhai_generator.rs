@@ -80,12 +80,11 @@ pub fn generate_code_with_rhai_opts(
     scope.push("output_dir", output_dir.to_string_lossy().to_string());
     scope.push("_preview_mode", preview_mode);
 
-    let script = std::fs::read_to_string(template_path).map_err(|e| {
-        CodeGenError::TemplateReadError {
+    let script =
+        std::fs::read_to_string(template_path).map_err(|e| CodeGenError::TemplateReadError {
             path: template_path.display().to_string(),
             source: e,
-        }
-    })?;
+        })?;
 
     engine
         .eval_with_scope::<String>(&mut scope, &script)

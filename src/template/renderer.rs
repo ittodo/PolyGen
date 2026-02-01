@@ -55,6 +55,9 @@ pub struct RenderConfig {
     /// Each entry is the full source code of a prelude script.
     /// Functions defined here are available in all `%logic` blocks.
     pub rhai_prelude: Vec<String>,
+    /// When true, registers `write_file(path, content)` on the Rhai bridge,
+    /// allowing `%logic` blocks to write files directly.
+    pub enable_write_file: bool,
 }
 
 /// Result of rendering a template: output lines + source map.
@@ -155,8 +158,16 @@ impl<'a> Renderer<'a> {
         match node {
             TemplateNode::OutputLine { line, segments } => {
                 let rendered = self.render_segments(segments, context)?;
-                let indented = apply_indent(&rendered, indent);
-                self.emit_line(indented, source_file, *line);
+                // Handle multi-line strings from %logic blocks
+                if rendered.contains('\n') {
+                    for sub_line in rendered.split('\n') {
+                        let indented = apply_indent(sub_line, indent);
+                        self.emit_line(indented, source_file, *line);
+                    }
+                } else {
+                    let indented = apply_indent(&rendered, indent);
+                    self.emit_line(indented, source_file, *line);
+                }
             }
 
             TemplateNode::BlankLine { line } => {
@@ -257,6 +268,9 @@ impl<'a> Renderer<'a> {
                 // Lazy-init the Rhai bridge with prelude scripts
                 if self.rhai_bridge.is_none() {
                     let mut bridge = RhaiBridge::new();
+                    if self.config.enable_write_file {
+                        bridge.register_write_file();
+                    }
                     if !self.config.rhai_prelude.is_empty() {
                         bridge
                             .load_prelude(&self.config.rhai_prelude)
@@ -265,12 +279,19 @@ impl<'a> Renderer<'a> {
                     self.rhai_bridge = Some(bridge);
                 }
                 let bridge = self.rhai_bridge.as_mut().unwrap();
+                // Merge context bindings + file_bindings (file_bindings take priority)
+                let mut combined = context.bindings().clone();
+                for (k, v) in &self.file_bindings {
+                    combined.insert(k.clone(), v.clone());
+                }
                 let new_bindings = bridge
-                    .execute_logic(body, &self.file_bindings)
+                    .execute_logic(body, &combined)
                     .map_err(|e| format!("{}:{}: {}", source_file, line, e))?;
-                // Merge results into file_bindings
+                // Only merge NEW variables back (not context originals)
                 for (name, value) in new_bindings {
-                    self.file_bindings.insert(name, value);
+                    if context.get(&name).is_none() {
+                        self.file_bindings.insert(name, value);
+                    }
                 }
             }
             TemplateNode::Match {
@@ -1419,6 +1440,36 @@ mod tests {
         let renderer = Renderer::new(&templates, &config);
         let result = renderer.render("test.ptpl", &ctx).unwrap();
         assert_eq!(result.lines, vec!["42"]);
+    }
+
+    #[test]
+    fn test_render_logic_accesses_context_variables() {
+        // %logic blocks should be able to access context variables (schema, file, etc.)
+        let source = "%logic\nlet ctx_name = name;\n%endlogic\n{{ctx_name}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let mut ctx = TemplateContext::new();
+        ctx.set("name", ContextValue::String("FromContext".to_string()));
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        assert_eq!(result.lines, vec!["FromContext"]);
+    }
+
+    #[test]
+    fn test_render_logic_does_not_overwrite_context_variables() {
+        // Variables from context should not be overwritten back to file_bindings
+        let source = "%logic\nlet name = name + \"_modified\";\nlet new_var = 42;\n%endlogic\n{{name}} {{new_var}}";
+        let templates = make_templates(&[("test.ptpl", source)]);
+        let config = RenderConfig::default();
+        let mut ctx = TemplateContext::new();
+        ctx.set("name", ContextValue::String("Original".to_string()));
+
+        let renderer = Renderer::new(&templates, &config);
+        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        // name should remain "Original" (from context, not overwritten)
+        // new_var should be accessible (new variable created in logic)
+        assert_eq!(result.lines, vec!["Original 42"]);
     }
 
     #[test]

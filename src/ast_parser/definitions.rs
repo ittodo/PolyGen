@@ -1,9 +1,9 @@
-use pest::iterators::Pair;
 use crate::ast_model::{
     Definition, Embed, Enum, EnumVariant, Namespace, NamespaceImport, Table, TableMember,
 };
 use crate::error::AstBuildError;
 use crate::Rule;
+use pest::iterators::Pair;
 
 use super::fields::parse_table_member;
 use super::helpers::{extract_comment_content, parse_path};

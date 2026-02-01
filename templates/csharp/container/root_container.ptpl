@@ -4,6 +4,11 @@
     /// </summary>
     public class {{file.container_name}}DataContainer : IDataContainer{{file.all_tables_interface_list}}
     {
+        /// <summary>
+        /// Gets or sets the root directory for resolving relative file paths.
+        /// </summary>
+        public string RootDirectory { get; set; } = ".";
+
 %for table in file.all_tables
 %if table.namespace_fqn
         public global::{{table.namespace_fqn}}.Container.{{table.name}}Table {{table.name}}s { get; } = new();
@@ -12,8 +17,9 @@
 %endif
 %endfor
 %blank
-        public {{file.container_name}}DataContainer()
+        public {{file.container_name}}DataContainer(string rootDirectory = ".")
         {
+            RootDirectory = rootDirectory;
 %for table in file.all_tables
             {{table.name}}s.SetContainer(this);
 %endfor

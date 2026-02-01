@@ -43,7 +43,9 @@
 
 use crate::ir_model::{FieldDef, FileDef, StructDef, StructItem};
 use crate::rhai::common::{resolve_enum, resolve_struct, resolve_struct_with_ns, unwrap_option};
-use crate::rhai::csharp::type_mapping::{cs_type_for, is_inline_enum_name, is_primitive_like, map_cs_primitive};
+use crate::rhai::csharp::type_mapping::{
+    cs_type_for, is_inline_enum_name, is_primitive_like, map_cs_primitive,
+};
 use rhai::{Array, Dynamic, Engine};
 
 /// Registers CSV loader helper functions to the Rhai engine.

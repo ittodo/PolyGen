@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas/constraints_table.poly",
+        path: "tests/schemas\\constraints_table.poly",
         file_imports: [],
         definitions: [
             Table(

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Polygen.Common;
+using CsvTestSchema.Container;
 
 namespace test.csv.Container
 {
@@ -192,11 +193,17 @@ namespace CsvTestSchema.Container
     /// </summary>
     public class CsvTestSchemaDataContainer : IDataContainer, IHasPointTable, IHasTestObjectTable
     {
+        /// <summary>
+        /// Gets or sets the root directory for resolving relative file paths.
+        /// </summary>
+        public string RootDirectory { get; set; } = ".";
+
         public global::test.csv.Container.PointTable Points { get; } = new();
         public global::test.csv.Container.TestObjectTable TestObjects { get; } = new();
 
-        public CsvTestSchemaDataContainer()
+        public CsvTestSchemaDataContainer(string rootDirectory = ".")
         {
+            RootDirectory = rootDirectory;
             Points.SetContainer(this);
             TestObjects.SetContainer(this);
         }
@@ -343,7 +350,7 @@ namespace CsvTestSchema.Container
                     var key = item.id;
                     if (seenKeys.Contains(key))
                     {
-                        throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+                        throw new DuplicateKeyException(key.ToString(), firstFile ?? file, file);
                     }
                     seenKeys.Add(key);
                     if (firstFile == null) firstFile = file;
@@ -388,7 +395,7 @@ namespace CsvTestSchema.Container
                         var key = item.id;
                         if (seenKeys.Contains(key))
                         {
-                            throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+                            throw new DuplicateKeyException(key.ToString(), firstFile ?? file, file);
                         }
                         seenKeys.Add(key);
                         if (firstFile == null) firstFile = file;

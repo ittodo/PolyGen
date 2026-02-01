@@ -111,7 +111,11 @@ struct ConstraintInfo {
 }
 
 /// Extracts structured constraint information from AST constraints.
-fn extract_constraint_info(constraints: &[ast_model::Constraint]) -> ConstraintInfo {
+/// `current_ns` is used to fully qualify FK target table names that lack a namespace prefix.
+fn extract_constraint_info(
+    constraints: &[ast_model::Constraint],
+    current_ns: &str,
+) -> ConstraintInfo {
     let mut info = ConstraintInfo::default();
 
     for constraint in constraints {
@@ -122,7 +126,8 @@ fn extract_constraint_info(constraints: &[ast_model::Constraint]) -> ConstraintI
                 // Parse the path: e.g., ["game", "character", "Player", "id"]
                 // The last element is the field, everything before is the table FQN
                 if let (Some(target_field), true) = (path.last().cloned(), path.len() >= 2) {
-                    let target_table_fqn = path[..path.len() - 1].join(".");
+                    let raw_table_fqn = path[..path.len() - 1].join(".");
+                    let target_table_fqn = qualify(&raw_table_fqn, current_ns);
                     info.foreign_key = Some(ForeignKeyDef {
                         target_table_fqn,
                         target_field,
@@ -237,7 +242,12 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
                     items: Vec::new(),
                 };
                 // Recurse into this new top-level namespace
-                populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &ns_name, ns_datasource.as_deref());
+                populate_items_recursively(
+                    &mut new_ns.items,
+                    &ns_ast.definitions,
+                    &ns_name,
+                    ns_datasource.as_deref(),
+                );
                 top_level_namespaces.push(new_ns);
             } else {
                 // Any other item at the top level belongs to the "global" namespace.
@@ -256,11 +266,7 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
         }
 
         // Convert AST renames to IR renames
-        let renames = ast
-            .renames
-            .iter()
-            .map(convert_rename)
-            .collect();
+        let renames = ast.renames.iter().map(convert_rename).collect();
 
         let file_def = FileDef {
             path: file_name,
@@ -369,10 +375,7 @@ fn apply_relation_to_namespaces(
                     }
                 }
                 NamespaceItem::Namespace(nested_ns) => {
-                    if apply_relation_to_namespaces(
-                        &mut [(**nested_ns).clone()],
-                        pending,
-                    ) {
+                    if apply_relation_to_namespaces(&mut [(**nested_ns).clone()], pending) {
                         // Need to update the boxed namespace
                         // This is a bit awkward due to the Box
                         return true;
@@ -423,22 +426,36 @@ fn add_definition_to_items(
                 datasource: ns_datasource.clone(),
                 items: Vec::new(),
             };
-            populate_items_recursively(&mut new_ns.items, &ns_ast.definitions, &next_ns, ns_datasource.as_deref());
+            populate_items_recursively(
+                &mut new_ns.items,
+                &ns_ast.definitions,
+                &next_ns,
+                ns_datasource.as_deref(),
+            );
             items.push(NamespaceItem::Namespace(Box::new(new_ns)));
         }
         Definition::Table(table) => {
-            items.push(NamespaceItem::Struct(convert_table_to_struct(table, current_ns, inherited_datasource)));
+            items.push(NamespaceItem::Struct(convert_table_to_struct(
+                table,
+                current_ns,
+                inherited_datasource,
+            )));
         }
         Definition::Enum(e) => {
-            items.push(NamespaceItem::Enum(convert_enum_to_enum_def(e, None, current_ns)));
+            items.push(NamespaceItem::Enum(convert_enum_to_enum_def(
+                e, None, current_ns,
+            )));
         }
         Definition::Embed(embed) => {
-            items.push(NamespaceItem::Struct(convert_embed_to_struct(embed, current_ns)));
+            items.push(NamespaceItem::Struct(convert_embed_to_struct(
+                embed, current_ns,
+            )));
         }
         Definition::Comment(c) => {
             items.push(NamespaceItem::Comment(c.clone()));
         }
-        Definition::Annotation(_) => { /* Annotations are handled within other items, not as top-level IR items */ }
+        Definition::Annotation(_) => { /* Annotations are handled within other items, not as top-level IR items */
+        }
     }
 }
 
@@ -597,8 +614,8 @@ fn convert_table_to_struct(
     };
 
     // Extract table-level datasource, or inherit from namespace
-    let table_datasource = extract_datasource(&table.metadata)
-        .or_else(|| inherited_datasource.map(String::from));
+    let table_datasource =
+        extract_datasource(&table.metadata).or_else(|| inherited_datasource.map(String::from));
 
     // Extract advanced annotations
     let cache_strategy = extract_cache_strategy(&table.metadata);
@@ -643,14 +660,22 @@ fn convert_table_to_struct(
                     convert_field_to_ir(field, current_ns, &fqn);
                 items.push(StructItem::Field(Box::new(field_def)));
                 // Add the new nested types to the items list
-                items.extend(new_nested_structs.into_iter().map(StructItem::EmbeddedStruct));
+                items.extend(
+                    new_nested_structs
+                        .into_iter()
+                        .map(StructItem::EmbeddedStruct),
+                );
                 items.extend(new_nested_enums.into_iter().map(StructItem::InlineEnum));
             }
             TableMember::Embed(embed) => {
-                items.push(StructItem::EmbeddedStruct(convert_embed_to_struct(embed, &fqn)));
+                items.push(StructItem::EmbeddedStruct(convert_embed_to_struct(
+                    embed, &fqn,
+                )));
             }
             TableMember::Enum(e) => {
-                items.push(StructItem::InlineEnum(convert_enum_to_enum_def(e, None, &fqn)));
+                items.push(StructItem::InlineEnum(convert_enum_to_enum_def(
+                    e, None, &fqn,
+                )));
             }
             TableMember::Comment(c) => items.push(StructItem::Comment(c.clone())),
         }
@@ -716,10 +741,7 @@ fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
 }
 
 /// Builds index definitions from @index annotations on a table.
-fn build_indexes_from_annotations(
-    header: &[StructItem],
-    items: &[StructItem],
-) -> Vec<IndexDef> {
+fn build_indexes_from_annotations(header: &[StructItem], items: &[StructItem]) -> Vec<IndexDef> {
     let mut indexes = Vec::new();
 
     // Build a map of field names to their types for lookup
@@ -738,21 +760,22 @@ fn build_indexes_from_annotations(
         if let StructItem::Annotation(ann) = item {
             if ann.name == "index" && !ann.positional_args.is_empty() {
                 // Check if "unique: true" is specified in params
-                let is_unique = ann.params.iter().any(|p| {
-                    p.key == "unique" && (p.value == "true" || p.value == "1")
-                });
+                let is_unique = ann
+                    .params
+                    .iter()
+                    .any(|p| p.key == "unique" && (p.value == "true" || p.value == "1"));
 
                 // Build field definitions from positional args
                 let fields: Vec<ir_model::IndexFieldDef> = ann
                     .positional_args
                     .iter()
                     .filter_map(|field_name| {
-                        field_types.get(field_name).map(|field_type| {
-                            ir_model::IndexFieldDef {
+                        field_types
+                            .get(field_name)
+                            .map(|field_type| ir_model::IndexFieldDef {
                                 name: field_name.clone(),
                                 field_type: field_type.clone(),
-                            }
-                        })
+                            })
                     })
                     .collect();
 
@@ -803,16 +826,26 @@ fn convert_field_to_ir(
                     let generated_enum_name = format!("{}_Enum", field_name.to_pascal_case());
 
                     // Create the EnumDef using the generated name
-                    let enum_fqn = if owner_fqn.is_empty() { generated_enum_name.clone() } else { format!("{}.{}", owner_fqn, generated_enum_name) };
-                    let enum_def = convert_enum_to_enum_def(e, Some(generated_enum_name.clone()), owner_fqn);
+                    let enum_fqn = if owner_fqn.is_empty() {
+                        generated_enum_name.clone()
+                    } else {
+                        format!("{}.{}", owner_fqn, generated_enum_name)
+                    };
+                    let enum_def =
+                        convert_enum_to_enum_def(e, Some(generated_enum_name.clone()), owner_fqn);
                     inline_enums.push(enum_def);
-                    build_type_ref_from_base(&enum_fqn, &generated_enum_name, &rf.field_type.cardinality, false)
-                },
+                    build_type_ref_from_base(
+                        &enum_fqn,
+                        &generated_enum_name,
+                        &rf.field_type.cardinality,
+                        false,
+                    )
+                }
                 _ => build_type_ref(&rf.field_type, current_ns),
             };
 
             // Extract constraint info for the new fields
-            let constraint_info = extract_constraint_info(&rf.constraints);
+            let constraint_info = extract_constraint_info(&rf.constraints, current_ns);
 
             (
                 FieldDef {
@@ -875,10 +908,7 @@ fn convert_field_to_ir(
             (field_def, nested_items, Vec::new())
         }
         ast_model::FieldDefinition::InlineEnum(e) => {
-            let field_name = e
-                .name
-                .clone()
-                .unwrap_or_else(|| "unnamed_enum".to_string());
+            let field_name = e.name.clone().unwrap_or_else(|| "unnamed_enum".to_string());
             let generated_enum_name = format!("{}__Enum", field_name.to_pascal_case());
 
             // Create a temporary Enum from InlineEnumField
@@ -888,7 +918,8 @@ fn convert_field_to_ir(
                 variants: e.variants.clone(),
             };
 
-            let enum_def = convert_enum_to_enum_def(&temp_enum, Some(generated_enum_name.clone()), owner_fqn);
+            let enum_def =
+                convert_enum_to_enum_def(&temp_enum, Some(generated_enum_name.clone()), owner_fqn);
 
             let field_def = FieldDef {
                 name: field_name,
@@ -934,7 +965,11 @@ fn convert_constraints_to_attributes(constraints: &[ast_model::Constraint]) -> V
         .collect()
 }
 
-fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>, ns_or_owner_fqn: &str) -> EnumDef {
+fn convert_enum_to_enum_def(
+    e: &ast_model::Enum,
+    name_override: Option<String>,
+    ns_or_owner_fqn: &str,
+) -> EnumDef {
     let mut items = Vec::new();
     let mut current_value: i64 = 0; // Initialize counter for sequential numbering
 
@@ -974,12 +1009,13 @@ fn convert_enum_to_enum_def(e: &ast_model::Enum, name_override: Option<String>, 
         }));
     }
 
-    let name = name_override.unwrap_or_else(|| {
-        e.name
-            .clone()
-            .unwrap_or_else(|| "UnnamedEnum".to_string())
-    });
-    let fqn = if ns_or_owner_fqn.is_empty() { name.clone() } else { format!("{}.{}", ns_or_owner_fqn, name) };
+    let name = name_override
+        .unwrap_or_else(|| e.name.clone().unwrap_or_else(|| "UnnamedEnum".to_string()));
+    let fqn = if ns_or_owner_fqn.is_empty() {
+        name.clone()
+    } else {
+        format!("{}.{}", ns_or_owner_fqn, name)
+    };
     EnumDef { name, fqn, items }
 }
 
@@ -1003,12 +1039,26 @@ fn convert_embed_to_struct(embed: &ast_model::Embed, owner_fqn: &str) -> StructD
 fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeRef {
     let (base_fqn, base_name, is_primitive, is_enum) = match &t.base_type {
         ast_model::TypeName::Path(p) => (p.join("."), p.join("."), false, false),
-        ast_model::TypeName::Basic(b) => (basic_name(b).to_string(), basic_name(b).to_string(), true, false),
-        ast_model::TypeName::InlineEnum(_) => ("__ANON_ENUM__".to_string(), "__ANON_ENUM__".to_string(), false, true),
+        ast_model::TypeName::Basic(b) => (
+            basic_name(b).to_string(),
+            basic_name(b).to_string(),
+            true,
+            false,
+        ),
+        ast_model::TypeName::InlineEnum(_) => (
+            "__ANON_ENUM__".to_string(),
+            "__ANON_ENUM__".to_string(),
+            false,
+            true,
+        ),
     };
     match t.cardinality {
         Some(ast_model::Cardinality::Optional) => {
-            let inner_fqn = if is_primitive { base_fqn } else { qualify(&base_fqn, current_ns) };
+            let inner_fqn = if is_primitive {
+                base_fqn
+            } else {
+                qualify(&base_fqn, current_ns)
+            };
             let inner_ns = namespace_of_owned(&inner_fqn);
             let inner = TypeRef {
                 original: base_name.clone(),
@@ -1041,7 +1091,11 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             }
         }
         Some(ast_model::Cardinality::Array) => {
-            let inner_fqn = if is_primitive { base_fqn } else { qualify(&base_fqn, current_ns) };
+            let inner_fqn = if is_primitive {
+                base_fqn
+            } else {
+                qualify(&base_fqn, current_ns)
+            };
             let inner_ns = namespace_of_owned(&inner_fqn);
             let inner = TypeRef {
                 original: base_name.clone(),
@@ -1074,7 +1128,11 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             }
         }
         None => {
-            let core_fqn = if is_primitive { base_fqn } else { qualify(&base_fqn, current_ns) };
+            let core_fqn = if is_primitive {
+                base_fqn
+            } else {
+                qualify(&base_fqn, current_ns)
+            };
             let core_ns = namespace_of_owned(&core_fqn);
             TypeRef {
                 original: base_name.clone(),
@@ -1094,7 +1152,12 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
     }
 }
 
-fn build_type_ref_from_base(base_fqn: &str, base_name: &str, c: &Option<ast_model::Cardinality>, primitive_hint: bool) -> TypeRef {
+fn build_type_ref_from_base(
+    base_fqn: &str,
+    base_name: &str,
+    c: &Option<ast_model::Cardinality>,
+    primitive_hint: bool,
+) -> TypeRef {
     match c {
         Some(ast_model::Cardinality::Optional) => {
             let inner_ns = namespace_of_owned(base_fqn);
@@ -1210,18 +1273,18 @@ fn parent_type_path_of(fqn: &str, namespace_fqn: &str) -> String {
     if namespace_fqn.is_empty() {
         return String::new();
     }
-    
+
     // Remove namespace prefix from FQN to get the type path
     let type_path = if fqn.starts_with(namespace_fqn) && fqn.len() > namespace_fqn.len() {
-        &fqn[namespace_fqn.len() + 1..]  // +1 to skip the dot
+        &fqn[namespace_fqn.len() + 1..] // +1 to skip the dot
     } else {
         fqn
     };
-    
+
     // Find the last dot in the type path
     match type_path.rfind('.') {
         Some(i) => type_path[..i].to_string(),
-        None => String::new(),  // Top-level type in namespace
+        None => String::new(), // Top-level type in namespace
     }
 }
 
@@ -1463,7 +1526,10 @@ mod tests {
 
     #[test]
     fn test_build_ir_single_enum() {
-        let asts = vec![make_ast(vec![make_enum("Status", vec!["Active", "Inactive"])])];
+        let asts = vec![make_ast(vec![make_enum(
+            "Status",
+            vec!["Active", "Inactive"],
+        )])];
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
@@ -1479,7 +1545,10 @@ mod tests {
     fn test_build_ir_namespaced_types() {
         let asts = vec![make_ast(vec![make_namespace(
             vec!["game", "common"],
-            vec![make_table("User", vec![]), make_enum("Status", vec!["Active"])],
+            vec![
+                make_table("User", vec![]),
+                make_enum("Status", vec!["Active"]),
+            ],
         )])];
         let ctx = build_ir(&asts);
 
@@ -1599,7 +1668,10 @@ mod tests {
     fn test_unique_enum_name_resolution() {
         // If an enum name is unique across all namespaces, it should resolve
         let asts = vec![make_ast(vec![
-            make_namespace(vec!["common"], vec![make_enum("UniqueStatus", vec!["Active"])]),
+            make_namespace(
+                vec!["common"],
+                vec![make_enum("UniqueStatus", vec!["Active"])],
+            ),
             make_namespace(
                 vec!["user"],
                 vec![make_table(
@@ -1647,16 +1719,20 @@ mod tests {
             field_number: None,
         }));
 
-        let asts = vec![make_ast(vec![make_table("Account", vec![inline_enum_field])])];
+        let asts = vec![make_ast(vec![make_table(
+            "Account",
+            vec![inline_enum_field],
+        )])];
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
         let account = find_struct(ns, "Account").unwrap();
 
         // Find the inline enum (uses double underscore in the name: Role__Enum)
-        let has_inline_enum = account.items.iter().any(|item| {
-            matches!(item, StructItem::InlineEnum(e) if e.name == "Role__Enum")
-        });
+        let has_inline_enum = account
+            .items
+            .iter()
+            .any(|item| matches!(item, StructItem::InlineEnum(e) if e.name == "Role__Enum"));
         assert!(has_inline_enum);
 
         // The field should reference the inline enum

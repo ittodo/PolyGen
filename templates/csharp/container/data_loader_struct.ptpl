@@ -30,7 +30,7 @@
                     var key = item.{{struct.pk_field_name}};
                     if (seenKeys.Contains(key))
                     {
-                        throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+                        throw new DuplicateKeyException(key.ToString(), firstFile ?? file, file);
                     }
                     seenKeys.Add(key);
                     if (firstFile == null) firstFile = file;
@@ -79,7 +79,7 @@
                         var key = item.{{struct.pk_field_name}};
                         if (seenKeys.Contains(key))
                         {
-                            throw new DuplicateKeyException(key?.ToString() ?? "(null)", firstFile ?? file, file);
+                            throw new DuplicateKeyException(key.ToString(), firstFile ?? file, file);
                         }
                         seenKeys.Add(key);
                         if (firstFile == null) firstFile = file;

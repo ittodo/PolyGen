@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Polygen.Common;
+using {{file.container_name}}.Container;
 
 %-- Namespace-level containers (DataTable + Container per namespace)
 %for ns in file.namespaces

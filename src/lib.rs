@@ -175,7 +175,14 @@ pub fn run(cli: Cli) -> Result<()> {
             lang,
             baseline,
             preview,
-        }) => run_generate(schema_path, templates_dir, output_dir, lang, baseline, preview),
+        }) => run_generate(
+            schema_path,
+            templates_dir,
+            output_dir,
+            lang,
+            baseline,
+            preview,
+        ),
 
         Some(Commands::Migrate {
             baseline,
@@ -245,8 +252,8 @@ fn run_generate_preview(
     let temp_dir = tempfile::tempdir()?;
     let output_dir = temp_dir.path().to_path_buf();
 
-    let mut config = PipelineConfig::new(schema_path, templates_dir, output_dir.clone())
-        .with_preview_mode(true);
+    let mut config =
+        PipelineConfig::new(schema_path, templates_dir, output_dir.clone()).with_preview_mode(true);
 
     if let Some(lang) = lang {
         config = config.with_language(lang);
@@ -277,9 +284,7 @@ fn print_directory_contents(
         return Ok(());
     }
 
-    let mut entries: Vec<_> = fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
-        .collect();
+    let mut entries: Vec<_> = fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
     entries.sort_by_key(|e| e.file_name());
 
     for entry in entries {
@@ -299,8 +304,7 @@ fn print_directory_contents(
                 continue;
             }
 
-            let content = fs::read_to_string(&path)
-                .unwrap_or_else(|_| "<binary file>".to_string());
+            let content = fs::read_to_string(&path).unwrap_or_else(|_| "<binary file>".to_string());
 
             // Include template source if available
             if let Some(template) = manifest.get(&relative_str) {
@@ -393,14 +397,31 @@ fn run_migrate(
             migration::SchemaChange::TableRemoved { table_name, .. } => {
                 println!("  - 테이블 삭제: {}", table_name);
             }
-            migration::SchemaChange::ColumnAdded { table_name, column_name, .. } => {
+            migration::SchemaChange::ColumnAdded {
+                table_name,
+                column_name,
+                ..
+            } => {
                 println!("  + 컬럼 추가: {}.{}", table_name, column_name);
             }
-            migration::SchemaChange::ColumnRemoved { table_name, column_name, .. } => {
+            migration::SchemaChange::ColumnRemoved {
+                table_name,
+                column_name,
+                ..
+            } => {
                 println!("  - 컬럼 삭제: {}.{}", table_name, column_name);
             }
-            migration::SchemaChange::ColumnTypeChanged { table_name, column_name, old_type, new_type, .. } => {
-                println!("  ~ 타입 변경: {}.{} ({} → {})", table_name, column_name, old_type, new_type);
+            migration::SchemaChange::ColumnTypeChanged {
+                table_name,
+                column_name,
+                old_type,
+                new_type,
+                ..
+            } => {
+                println!(
+                    "  ~ 타입 변경: {}.{} ({} → {})",
+                    table_name, column_name, old_type, new_type
+                );
             }
         }
     }
@@ -451,11 +472,7 @@ fn run_migrate(
 }
 
 /// Run the visualize command
-fn run_visualize(
-    schema_path: PathBuf,
-    format: String,
-    output: Option<PathBuf>,
-) -> Result<()> {
+fn run_visualize(schema_path: PathBuf, format: String, output: Option<PathBuf>) -> Result<()> {
     println!("--- 스키마 시각화 ---");
     println!("  스키마: {}", schema_path.display());
     println!("  포맷: {}", format);
@@ -480,7 +497,10 @@ fn run_visualize(
     let output_str = match format.to_lowercase().as_str() {
         "json" => serde_json::to_string_pretty(&viz)?,
         "mermaid" => visualize::to_mermaid(&viz),
-        _ => anyhow::bail!("지원하지 않는 포맷: {}. 'json' 또는 'mermaid'를 사용하세요.", format),
+        _ => anyhow::bail!(
+            "지원하지 않는 포맷: {}. 'json' 또는 'mermaid'를 사용하세요.",
+            format
+        ),
     };
 
     // Write or print output

@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas/named_embed.poly",
+        path: "tests/schemas\\named_embed.poly",
         file_imports: [],
         definitions: [
             Embed(

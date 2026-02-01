@@ -673,7 +673,10 @@ mod tests {
 
     #[test]
     fn test_make_table_name() {
-        assert_eq!(make_table_name("game.data", "ItemTable"), "game_data_ItemTable");
+        assert_eq!(
+            make_table_name("game.data", "ItemTable"),
+            "game_data_ItemTable"
+        );
         assert_eq!(make_table_name("", "Player"), "Player");
     }
 

@@ -1,4 +1,7 @@
-import "templates/rhai_utils/indent" as indent_utils;
+%logic
+// CSV Column Schema Generator
+// Writes one .csv file per struct with the header row (column names).
+// Handles embedded structs (dot notation), lists ([0]), options (transparent).
 
 fn unwrap_option(t) {
     let t = if type_of(t) == "TypeRef" { t.original } else { t };
@@ -19,14 +22,16 @@ fn is_primitive_like(t) {
     }
 }
 
-// find embedded struct by name within a struct 's'
 fn find_embedded_struct(s, name) {
-    for it in s.items { if it.is_embedded_struct() { let es = it.as_embedded_struct(); if es.name == name { return es; } } }
+    for it in s.items {
+        if it.is_embedded_struct() {
+            let es = it.as_embedded_struct();
+            if es.name == name { return es; }
+        }
+    }
     ()
 }
 
-// Recursively collect columns according to rules
-// Lookup helpers across schema
 fn find_struct_in_ns(ns, target_name) {
     for item in ns.items {
         if item.is_struct() {
@@ -68,7 +73,13 @@ fn any_struct_named(all_files, target_name) {
         for root_ns in file.namespaces {
             let s = find_struct_in_ns(root_ns, target_name);
             if s != () { return s; }
-            for item in root_ns.items { if item.is_namespace() { let child = item.as_namespace(); let t = any_struct_named_in(child, target_name, root_ns.name); if t != () { return t; } } }
+            for item in root_ns.items {
+                if item.is_namespace() {
+                    let child = item.as_namespace();
+                    let t = any_struct_named_in(child, target_name, root_ns.name);
+                    if t != () { return t; }
+                }
+            }
         }
     }
     ()
@@ -77,7 +88,13 @@ fn any_struct_named(all_files, target_name) {
 fn any_struct_named_in(ns, target_name, prefix) {
     let s = find_struct_in_ns(ns, target_name);
     if s != () { return s; }
-    for item in ns.items { if item.is_namespace() { let child = item.as_namespace(); let t = any_struct_named_in(child, target_name, if prefix == "" { ns.name } else { prefix + "." + ns.name }); if t != () { return t; } } }
+    for item in ns.items {
+        if item.is_namespace() {
+            let child = item.as_namespace();
+            let t = any_struct_named_in(child, target_name, if prefix == "" { ns.name } else { prefix + "." + ns.name });
+            if t != () { return t; }
+        }
+    }
     ()
 }
 
@@ -88,14 +105,12 @@ fn resolve_struct(all_files, type_string, current_ns_name) {
         return resolve_struct(all_files, inner, current_ns_name);
     }
     if core.contains(".") {
-        // fully qualified via split
         let parts = core.split(".");
         let name = parts[parts.len-1];
         let ns = ""; let i = 0;
         for seg in parts { if i < parts.len-1 { if ns != "" { ns += "."; } ns += seg; } i += 1; }
         return get_struct_at(all_files, ns, name);
     } else {
-        // try current namespace, then any
         if current_ns_name != () && current_ns_name != "" {
             let s = get_struct_at(all_files, current_ns_name, core);
             if s != () { return s; }
@@ -109,7 +124,6 @@ fn collect_columns_with(ctx_struct, prefix, type_string, visited, depth, current
     let t = unwrap_option(type_string);
 
     if depth >= 10 {
-        // Depth guard reached; stop here.
         cols.push(prefix);
         return cols;
     }
@@ -128,8 +142,7 @@ fn collect_columns_with(ctx_struct, prefix, type_string, visited, depth, current
     let es = find_embedded_struct(ctx_struct, t);
     if es != () {
         if visited.contains(es.name) {
-            print("Error: Circular embed detected at '" + es.name + "' while collecting CSV columns for struct '" + ctx_struct.name + "'.");
-            return cols; // stop on cycle
+            return cols;
         }
         let next_visited = visited + [es.name];
         for it in es.items {
@@ -147,7 +160,6 @@ fn collect_columns_with(ctx_struct, prefix, type_string, visited, depth, current
     let ext = resolve_struct(all_files, t, current_ns_name);
     if ext != () {
         if visited.contains(ext.name) {
-            print("Error: Circular type reference detected at '" + ext.name + "' while collecting CSV columns for struct '" + ctx_struct.name + "'.");
             return cols;
         }
         let next_visited = visited + [ext.name];
@@ -167,33 +179,53 @@ fn collect_columns_with(ctx_struct, prefix, type_string, visited, depth, current
     cols
 }
 
-for file in schema.files {
-    if file.path == () || file.path == "" { continue; }
-    for ns in file.namespaces {
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                // Build header following rules: embed uses dot, list uses [0], option is transparent, enums included
-                let headers = [];
-                for it in s.items {
-                    if it.is_field() {
-                        let f = it.as_field();
-                        let current_ns_name = ns.name;
-                        let cols = collect_columns_with(s, f.name, f.field_type, [s.name], 0, current_ns_name, schema.files);
-                        for c in cols { headers.push(c); }
-                    }
-                }
-                let header_line = "";
-                let first = true;
-                for h in headers { if !first { header_line += ","; } header_line += h; first = false; }
+// Only run for the primary file
+let skip_output = false;
+let is_primary = false;
+for f in schema.files {
+    let fp = f.path;
+    if fp != () && fp != "" {
+        if fp == file.path {
+            is_primary = true;
+        }
+        break;
+    }
+}
+if !is_primary {
+    skip_output = true;
+}
 
-                let out_dir = "output/csharp/CsvSchemas";
-                let out_name = ns.name + "." + s.name + ".csv";
-                let final_path = output_dir + "/csharp/CsvSchemas/" + out_name;
-                write_file(final_path, header_line + "\n");
+if !skip_output {
+    for f in schema.files {
+        if f.path == () || f.path == "" { continue; }
+        for ns in f.namespaces {
+            for item in ns.items {
+                if item.is_struct() {
+                    let s = item.as_struct();
+                    let headers = [];
+                    for it in s.items {
+                        if it.is_field() {
+                            let fld = it.as_field();
+                            let current_ns_name = ns.name;
+                            let cols = collect_columns_with(s, fld.name, fld.field_type, [s.name], 0, current_ns_name, schema.files);
+                            for c in cols { headers.push(c); }
+                        }
+                    }
+                    let header_line = "";
+                    let first = true;
+                    for h in headers { if !first { header_line += ","; } header_line += h; first = false; }
+
+                    let out_name = ns.name + "." + s.name + ".csv";
+                    let final_path = output_dir + "/csharp/CsvSchemas/" + out_name;
+                    write_file(final_path, header_line + "\n");
+                }
             }
         }
     }
 }
 
-""
+// Force skip_output so no main file is generated
+skip_output = true;
+%endlogic
+%if !skip_output
+%endif

@@ -1,7 +1,7 @@
-use pest::iterators::Pair;
 use crate::ast_model::{Annotation, AnnotationArg, AnnotationParam, Metadata};
 use crate::error::AstBuildError;
 use crate::Rule;
+use pest::iterators::Pair;
 
 use super::helpers::extract_comment_content;
 use super::literals::parse_literal;
@@ -76,12 +76,13 @@ pub fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, AstBuildError> {
                                 })?
                                 .as_str()
                                 .to_string();
-                            let value_pair = param_inner.next().ok_or(AstBuildError::MissingElement {
-                                rule: Rule::annotation_param,
-                                element: "value".to_string(),
-                                line: p_line,
-                                col: p_col,
-                            })?;
+                            let value_pair =
+                                param_inner.next().ok_or(AstBuildError::MissingElement {
+                                    rule: Rule::annotation_param,
+                                    element: "value".to_string(),
+                                    line: p_line,
+                                    col: p_col,
+                                })?;
                             args.push(AnnotationArg::Named(AnnotationParam {
                                 key,
                                 value: parse_literal(value_pair)?,

@@ -148,7 +148,11 @@ impl CompilationPipeline {
     }
 
     /// Generate migration diff by comparing baseline and current schema.
-    fn generate_migration_diff(&self, baseline_path: &Path, current_ir: &SchemaContext) -> Result<()> {
+    fn generate_migration_diff(
+        &self,
+        baseline_path: &Path,
+        current_ir: &SchemaContext,
+    ) -> Result<()> {
         use crate::migration::MigrationDiff;
 
         println!("\n--- 마이그레이션 diff 생성 중 ---");
@@ -195,10 +199,16 @@ impl CompilationPipeline {
     /// Prepare the output directory
     fn prepare_output_dir(&self) -> Result<()> {
         if self.config.output_dir.exists() {
-            println!("기존 출력 디렉토리 삭제 중: {}", self.config.output_dir.display());
+            println!(
+                "기존 출력 디렉토리 삭제 중: {}",
+                self.config.output_dir.display()
+            );
             fs::remove_dir_all(&self.config.output_dir)?;
         }
-        println!("출력 디렉토리 생성 중: {}", self.config.output_dir.display());
+        println!(
+            "출력 디렉토리 생성 중: {}",
+            self.config.output_dir.display()
+        );
         fs::create_dir_all(&self.config.output_dir)?;
         Ok(())
     }
@@ -206,12 +216,16 @@ impl CompilationPipeline {
     /// Parse all schema files
     fn parse_schemas(&self) -> Result<Vec<AstRoot>> {
         println!("--- 스키마 처리 시작 ---");
-        let asts = parse_and_merge_schemas(&self.config.schema_path, Some(&self.config.output_dir))?;
+        let asts =
+            parse_and_merge_schemas(&self.config.schema_path, Some(&self.config.output_dir))?;
 
         if self.config.debug_output {
             let ast_debug_path = self.config.output_dir.join("ast_debug.txt");
             fs::write(&ast_debug_path, format!("{:#?}", asts))?;
-            println!("AST 디버그 출력이 파일에 저장되었습니다: {}", ast_debug_path.display());
+            println!(
+                "AST 디버그 출력이 파일에 저장되었습니다: {}",
+                ast_debug_path.display()
+            );
         }
 
         Ok(asts)
@@ -240,7 +254,10 @@ impl CompilationPipeline {
             if let Err(e) = fs::write(&ir_debug_path, format!("{:#?}", ir_context)) {
                 eprintln!("IR 디버그 파일 쓰기 실패: {}", e);
             } else {
-                println!("IR 디버그 출력이 파일에 저장되었습니다: {}", ir_debug_path.display());
+                println!(
+                    "IR 디버그 출력이 파일에 저장되었습니다: {}",
+                    ir_debug_path.display()
+                );
             }
         }
 
@@ -407,7 +424,10 @@ fn collect_datasources_from_namespace(
 /// # Errors
 ///
 /// Returns an error if any file cannot be read or parsed.
-pub fn parse_and_merge_schemas(initial_path: &Path, output_dir: Option<&Path>) -> Result<Vec<AstRoot>> {
+pub fn parse_and_merge_schemas(
+    initial_path: &Path,
+    output_dir: Option<&Path>,
+) -> Result<Vec<AstRoot>> {
     let mut files_to_process: VecDeque<PathBuf> = VecDeque::new();
     let mut processed_files: HashSet<PathBuf> = HashSet::new();
     let mut all_asts: Vec<AstRoot> = Vec::new();

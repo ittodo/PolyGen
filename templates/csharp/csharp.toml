@@ -50,11 +50,15 @@ main = "csharp_file.ptpl"
 
 # Extra templates to run after the main template
 extra = [
-    "csharp_binary_readers_file.rhai",
-    "csharp_binary_writers_file.rhai",
-    "csharp_csv_columns_file.rhai",
-    "csharp_csv_mappers_file.rhai",
+    "csharp_binary_readers_file.ptpl",
+    "csharp_binary_writers_file.ptpl",
+    "csharp_csv_columns_file.ptpl",
+    "csharp_csv_mappers_file.ptpl",
     "csharp_container_file.ptpl",
-    "csharp_datacontext_file.rhai",
-    "csharp_sqlite_accessor_file.rhai",
+    "csharp_datacontext_file.ptpl",
+    "csharp_sqlite_accessor_file.ptpl",
 ]
+
+# Rhai prelude scripts for %logic blocks in ptpl templates
+[rhai]
+prelude = ["rhai_utils/binary_mapping.rhai", "rhai_utils/type_utils.rhai"]

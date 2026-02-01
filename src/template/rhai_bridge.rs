@@ -1,15 +1,16 @@
 //! Rhai bridge for `%logic` blocks in PolyTemplate v2.
 //!
 //! Provides a sandboxed Rhai engine for computation within templates.
-//! Only IR type registration and case-conversion functions are available;
-//! I/O operations (write_file, include, etc.) are intentionally excluded.
+//! IR type registration, case-conversion functions, and optional I/O
+//! operations (`write_file`) are available.
 //!
 //! The bridge converts between [`ContextValue`] and Rhai [`Dynamic`] values
-//! at the `%endlogic` boundary, enforcing the single-line string constraint.
+//! at the `%endlogic` boundary.
 
 use std::collections::HashMap;
+use std::path::Path;
 
-use rhai::{Dynamic, Engine, Scope, AST};
+use rhai::{Dynamic, Engine, EvalAltResult, Scope, AST};
 
 use crate::template::context::ContextValue;
 
@@ -148,6 +149,34 @@ impl RhaiBridge {
             prelude_ast: None,
         }
     }
+
+    /// Registers the `write_file(path, content)` function on the Rhai engine.
+    ///
+    /// This enables `%logic` blocks to write files directly (e.g., CSV schema files).
+    pub fn register_write_file(&mut self) {
+        self.engine.register_fn(
+            "write_file",
+            |path: &str, content: &str| -> Result<(), Box<EvalAltResult>> {
+                if let Some(p) = Path::new(path).parent() {
+                    if !p.exists() {
+                        if let Err(e) = std::fs::create_dir_all(p) {
+                            return Err(Box::new(EvalAltResult::ErrorSystem(
+                                "Directory Creation Error".to_string(),
+                                e.to_string().into(),
+                            )));
+                        }
+                    }
+                }
+                match std::fs::write(path, content) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(Box::new(EvalAltResult::ErrorSystem(
+                        "File Write Error".to_string(),
+                        e.to_string().into(),
+                    ))),
+                }
+            },
+        );
+    }
 }
 
 /// Converts a [`ContextValue`] to a Rhai [`Dynamic`] value.
@@ -200,12 +229,6 @@ pub fn dynamic_to_context_value(value: Dynamic) -> Result<ContextValue, String> 
     }
     if value.is_string() {
         let s = value.into_string().unwrap();
-        if s.contains('\n') {
-            return Err(format!(
-                "String value contains newline (multi-line strings cannot flow to ptpl context): '{}'",
-                s.chars().take(50).collect::<String>()
-            ));
-        }
         return Ok(ContextValue::String(s));
     }
     if value.is_array() {
@@ -292,12 +315,16 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_logic_newline_error() {
+    fn test_execute_logic_multiline_string() {
         let mut bridge = RhaiBridge::new();
         let bindings = HashMap::new();
-        let result = bridge.execute_logic("let bad = \"line1\\nline2\";", &bindings);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("newline"));
+        let result = bridge
+            .execute_logic("let multiline = \"line1\\nline2\";", &bindings)
+            .unwrap();
+        assert_eq!(
+            result.get("multiline").unwrap().to_display_string(),
+            "line1\nline2"
+        );
     }
 
     #[test]

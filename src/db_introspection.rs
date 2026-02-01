@@ -62,8 +62,12 @@ pub struct SqliteIntrospector {
 impl SqliteIntrospector {
     /// Open a SQLite database for introspection.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path.as_ref())
-            .with_context(|| format!("Failed to open SQLite database: {}", path.as_ref().display()))?;
+        let conn = Connection::open(path.as_ref()).with_context(|| {
+            format!(
+                "Failed to open SQLite database: {}",
+                path.as_ref().display()
+            )
+        })?;
         Ok(Self { conn })
     }
 
@@ -89,7 +93,7 @@ impl SqliteIntrospector {
              WHERE type='table'
              AND name NOT LIKE 'sqlite_%'
              AND name NOT LIKE '_polygen_%'
-             ORDER BY name"
+             ORDER BY name",
         )?;
 
         let names = stmt
@@ -124,7 +128,9 @@ impl SqliteIntrospector {
         let mut columns = HashMap::new();
 
         // PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
-        let mut stmt = self.conn.prepare(&format!("PRAGMA table_info('{}')", table_name))?;
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info('{}')", table_name))?;
 
         let column_iter = stmt.query_map([], |row| {
             Ok(DbColumn {
@@ -149,12 +155,14 @@ impl SqliteIntrospector {
         let mut indexes = Vec::new();
 
         // Get index list
-        let mut stmt = self.conn.prepare(&format!("PRAGMA index_list('{}')", table_name))?;
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA index_list('{}')", table_name))?;
 
         let index_info: Vec<(String, bool)> = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, String>(1)?, // name
+                    row.get::<_, String>(1)?,   // name
                     row.get::<_, i32>(2)? == 1, // unique
                 ))
             })?
@@ -167,7 +175,9 @@ impl SqliteIntrospector {
                 continue;
             }
 
-            let mut col_stmt = self.conn.prepare(&format!("PRAGMA index_info('{}')", index_name))?;
+            let mut col_stmt = self
+                .conn
+                .prepare(&format!("PRAGMA index_info('{}')", index_name))?;
             let columns: Vec<String> = col_stmt
                 .query_map([], |row| row.get::<_, String>(2))? // name is at index 2
                 .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -302,7 +312,10 @@ mod tests {
             [],
         )?;
         conn.execute("CREATE INDEX idx_item_name ON Item(name)", [])?;
-        conn.execute("CREATE UNIQUE INDEX idx_item_category ON Item(category)", [])?;
+        conn.execute(
+            "CREATE UNIQUE INDEX idx_item_category ON Item(category)",
+            [],
+        )?;
 
         let introspector = SqliteIntrospector::open(file.path())?;
         let schema = introspector.read_schema()?;
@@ -310,11 +323,19 @@ mod tests {
         let item = &schema.tables["Item"];
         assert_eq!(item.indexes.len(), 2);
 
-        let name_idx = item.indexes.iter().find(|i| i.name == "idx_item_name").unwrap();
+        let name_idx = item
+            .indexes
+            .iter()
+            .find(|i| i.name == "idx_item_name")
+            .unwrap();
         assert!(!name_idx.is_unique);
         assert_eq!(name_idx.columns, vec!["name"]);
 
-        let cat_idx = item.indexes.iter().find(|i| i.name == "idx_item_category").unwrap();
+        let cat_idx = item
+            .indexes
+            .iter()
+            .find(|i| i.name == "idx_item_category")
+            .unwrap();
         assert!(cat_idx.is_unique);
         assert_eq!(cat_idx.columns, vec!["category"]);
 
@@ -326,8 +347,14 @@ mod tests {
         let (file, conn) = create_test_db()?;
 
         conn.execute("CREATE TABLE Users (id INTEGER PRIMARY KEY, name TEXT)", [])?;
-        conn.execute("CREATE TABLE Items (id INTEGER PRIMARY KEY, title TEXT)", [])?;
-        conn.execute("CREATE TABLE Orders (id INTEGER PRIMARY KEY, user_id INTEGER)", [])?;
+        conn.execute(
+            "CREATE TABLE Items (id INTEGER PRIMARY KEY, title TEXT)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE Orders (id INTEGER PRIMARY KEY, user_id INTEGER)",
+            [],
+        )?;
 
         let introspector = SqliteIntrospector::open(file.path())?;
         let schema = introspector.read_schema()?;

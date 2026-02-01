@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas/rename_test.poly",
+        path: "tests/schemas\\rename_test.poly",
         file_imports: [
             "test_migration.renames",
         ],

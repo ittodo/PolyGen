@@ -1,10 +1,10 @@
-use pest::iterators::Pair;
 use crate::ast_model::{
     Cardinality, Constraint, EnumVariant, FieldDefinition, InlineEmbedField, InlineEnumField,
     RegularField, TableMember, Timezone,
 };
 use crate::error::AstBuildError;
 use crate::Rule;
+use pest::iterators::Pair;
 
 use super::definitions::{parse_embed, parse_enum};
 use super::helpers::{extract_comment_content, parse_path};
@@ -17,14 +17,25 @@ pub fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError
     let mut member_inner = pair.into_inner().peekable();
     let metadata = parse_metadata(&mut member_inner)?;
 
-    let member_pair = require_next!(member_inner, Rule::table_member, "field or embed definition", line, col)?;
+    let member_pair = require_next!(
+        member_inner,
+        Rule::table_member,
+        "field or embed definition",
+        line,
+        col
+    )?;
 
     let (inner_line, inner_col) = member_pair.line_col();
     let mut member = match member_pair.as_rule() {
         Rule::field_definition => TableMember::Field(parse_field_definition(member_pair)?),
         Rule::embed_def => TableMember::Embed(parse_embed(member_pair)?),
         Rule::enum_def => TableMember::Enum(parse_enum(member_pair)?),
-        found => unexpected_rule!(found, "field_definition, embed_def, or enum_def", inner_line, inner_col),
+        found => unexpected_rule!(
+            found,
+            "field_definition, embed_def, or enum_def",
+            inner_line,
+            inner_col
+        ),
     };
 
     // Attach metadata to the member
@@ -53,9 +64,18 @@ pub fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, AstBu
     let (inner_line, inner_col) = inner_pair.line_col();
     let def = match inner_pair.as_rule() {
         Rule::regular_field => FieldDefinition::Regular(parse_regular_field(inner_pair)?),
-        Rule::inline_embed_field => FieldDefinition::InlineEmbed(parse_inline_embed_field(inner_pair)?),
-        Rule::inline_enum_field => FieldDefinition::InlineEnum(parse_inline_enum_field(inner_pair)?),
-        found => unexpected_rule!(found, "regular_field, inline_embed_field, or inline_enum_field", inner_line, inner_col),
+        Rule::inline_embed_field => {
+            FieldDefinition::InlineEmbed(parse_inline_embed_field(inner_pair)?)
+        }
+        Rule::inline_enum_field => {
+            FieldDefinition::InlineEnum(parse_inline_enum_field(inner_pair)?)
+        }
+        found => unexpected_rule!(
+            found,
+            "regular_field, inline_embed_field, or inline_enum_field",
+            inner_line,
+            inner_col
+        ),
     };
     Ok(def)
 }
@@ -67,9 +87,13 @@ pub fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildErr
     let name = require_next!(inner, Rule::regular_field, "name", line, col)?
         .as_str()
         .to_string();
-    let type_with_cardinality = parse_type_with_cardinality(
-        require_next!(inner, Rule::regular_field, "type_with_cardinality", line, col)?
-    )?;
+    let type_with_cardinality = parse_type_with_cardinality(require_next!(
+        inner,
+        Rule::regular_field,
+        "type_with_cardinality",
+        line,
+        col
+    )?)?;
 
     let mut constraints = Vec::new();
     let mut field_number = None;
@@ -79,7 +103,14 @@ pub fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildErr
             Rule::constraint => constraints.push(parse_constraint(p)?),
             Rule::field_number => {
                 let (p_line, p_col) = p.line_col();
-                let text = require_next!(p.into_inner(), Rule::field_number, "integer value", p_line, p_col)?.as_str();
+                let text = require_next!(
+                    p.into_inner(),
+                    Rule::field_number,
+                    "integer value",
+                    p_line,
+                    p_col
+                )?
+                .as_str();
                 field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
                     element: "field_number".to_string(),
                     value: text.to_string(),
@@ -105,7 +136,13 @@ pub fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildErr
 
 pub fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
     let (line, col) = pair.line_col();
-    let inner_pair = require_next!(pair.into_inner(), Rule::constraint, "constraint type", line, col)?;
+    let inner_pair = require_next!(
+        pair.into_inner(),
+        Rule::constraint,
+        "constraint type",
+        line,
+        col
+    )?;
 
     let (inner_line, inner_col) = inner_pair.line_col();
     let constraint = match inner_pair.as_rule() {
@@ -113,7 +150,14 @@ pub fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
         Rule::unique => Constraint::Unique,
         Rule::index => Constraint::Index,
         Rule::max_length => {
-            let text = require_next!(inner_pair.into_inner(), Rule::max_length, "integer value", inner_line, inner_col)?.as_str();
+            let text = require_next!(
+                inner_pair.into_inner(),
+                Rule::max_length,
+                "integer value",
+                inner_line,
+                inner_col
+            )?
+            .as_str();
             Constraint::MaxLength(text.parse().map_err(|_| AstBuildError::InvalidValue {
                 element: "max_length".to_string(),
                 value: text.to_string(),
@@ -122,31 +166,72 @@ pub fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
             })?)
         }
         Rule::default_val => {
-            let val = parse_literal(require_next!(inner_pair.into_inner(), Rule::default_val, "literal value", inner_line, inner_col)?)?;
+            let val = parse_literal(require_next!(
+                inner_pair.into_inner(),
+                Rule::default_val,
+                "literal value",
+                inner_line,
+                inner_col
+            )?)?;
             Constraint::Default(val)
         }
         Rule::range_val => {
             let mut values = inner_pair.into_inner();
-            let val1 = parse_literal(require_next!(values, Rule::range_val, "first value", inner_line, inner_col)?)?;
-            let val2 = parse_literal(require_next!(values, Rule::range_val, "second value", inner_line, inner_col)?)?;
+            let val1 = parse_literal(require_next!(
+                values,
+                Rule::range_val,
+                "first value",
+                inner_line,
+                inner_col
+            )?)?;
+            let val2 = parse_literal(require_next!(
+                values,
+                Rule::range_val,
+                "second value",
+                inner_line,
+                inner_col
+            )?)?;
             Constraint::Range(val1, val2)
         }
         Rule::regex_val => {
-            let s = require_next!(inner_pair.into_inner(), Rule::regex_val, "string literal", inner_line, inner_col)?.as_str();
+            let s = require_next!(
+                inner_pair.into_inner(),
+                Rule::regex_val,
+                "string literal",
+                inner_line,
+                inner_col
+            )?
+            .as_str();
             Constraint::Regex(s[1..s.len() - 1].to_string())
         }
         Rule::foreign_key_val => {
             let mut inner = inner_pair.into_inner();
-            let path = parse_path(require_next!(inner, Rule::foreign_key_val, "path", inner_line, inner_col)?);
-            let alias = inner.next().map(|ident_pair| ident_pair.as_str().to_string());
+            let path = parse_path(require_next!(
+                inner,
+                Rule::foreign_key_val,
+                "path",
+                inner_line,
+                inner_col
+            )?);
+            let alias = inner
+                .next()
+                .map(|ident_pair| ident_pair.as_str().to_string());
             Constraint::ForeignKey(path, alias)
         }
         Rule::auto_create => {
-            let tz = inner_pair.into_inner().next().map(parse_timezone).transpose()?;
+            let tz = inner_pair
+                .into_inner()
+                .next()
+                .map(parse_timezone)
+                .transpose()?;
             Constraint::AutoCreate(tz)
         }
         Rule::auto_update => {
-            let tz = inner_pair.into_inner().next().map(parse_timezone).transpose()?;
+            let tz = inner_pair
+                .into_inner()
+                .next()
+                .map(parse_timezone)
+                .transpose()?;
             Constraint::AutoUpdate(tz)
         }
         found => unexpected_rule!(found, "a constraint type", inner_line, inner_col),
@@ -163,7 +248,13 @@ pub fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
 /// - `"Korea Standard Time"`: Windows TimeZone ID
 fn parse_timezone(pair: Pair<Rule>) -> Result<Timezone, AstBuildError> {
     let (line, col) = pair.line_col();
-    let inner_pair = require_next!(pair.into_inner(), Rule::timezone, "timezone specification", line, col)?;
+    let inner_pair = require_next!(
+        pair.into_inner(),
+        Rule::timezone,
+        "timezone specification",
+        line,
+        col
+    )?;
 
     let (inner_line, inner_col) = inner_pair.line_col();
     let tz = match inner_pair.as_rule() {
@@ -183,7 +274,12 @@ fn parse_timezone(pair: Pair<Rule>) -> Result<Timezone, AstBuildError> {
             // Remove quotes
             Timezone::Named(s[1..s.len() - 1].to_string())
         }
-        found => unexpected_rule!(found, "timezone (utc, local, offset, or string)", inner_line, inner_col),
+        found => unexpected_rule!(
+            found,
+            "timezone (utc, local, offset, or string)",
+            inner_line,
+            inner_col
+        ),
     };
     Ok(tz)
 }
@@ -229,17 +325,26 @@ pub fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, As
                 cardinality = Some(match p.as_str() {
                     "?" => Cardinality::Optional,
                     "[]" => Cardinality::Array,
-                    s => return Err(AstBuildError::InvalidValue {
-                        element: "cardinality".to_string(),
-                        value: s.to_string(),
-                        line: p_line,
-                        col: p_col,
-                    }),
+                    s => {
+                        return Err(AstBuildError::InvalidValue {
+                            element: "cardinality".to_string(),
+                            value: s.to_string(),
+                            line: p_line,
+                            col: p_col,
+                        })
+                    }
                 });
             }
             Rule::field_number => {
                 let (p_line, p_col) = p.line_col();
-                let text = require_next!(p.into_inner(), Rule::field_number, "integer value", p_line, p_col)?.as_str();
+                let text = require_next!(
+                    p.into_inner(),
+                    Rule::field_number,
+                    "integer value",
+                    p_line,
+                    p_col
+                )?
+                .as_str();
                 field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
                     element: "field_number".to_string(),
                     value: text.to_string(),
@@ -250,7 +355,12 @@ pub fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, As
             Rule::doc_comment => members.push(TableMember::Comment(extract_comment_content(p))),
             found => {
                 let (p_line, p_col) = p.line_col();
-                unexpected_rule!(found, "IDENT, table_member, cardinality, or field_number", p_line, p_col);
+                unexpected_rule!(
+                    found,
+                    "IDENT, table_member, cardinality, or field_number",
+                    p_line,
+                    p_col
+                );
             }
         }
     }
@@ -291,22 +401,24 @@ pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstB
                 let (p_line, p_col) = p.line_col();
                 let mut variant_inner = p.into_inner().peekable();
                 let metadata = parse_metadata(&mut variant_inner)?;
-                let variant_name = require_next!(variant_inner, Rule::enum_variant, "name", p_line, p_col)?
-                    .as_str()
-                    .to_string();
+                let variant_name =
+                    require_next!(variant_inner, Rule::enum_variant, "name", p_line, p_col)?
+                        .as_str()
+                        .to_string();
 
                 let mut variant_value: Option<i64> = None;
                 if let Some(value_pair) = variant_inner.peek() {
                     if value_pair.as_rule() == Rule::INTEGER {
                         let consumed_value_pair = variant_inner.next().unwrap();
-                        variant_value = Some(consumed_value_pair.as_str().parse().map_err(|_| {
-                            AstBuildError::InvalidValue {
-                                element: "enum variant value".to_string(),
-                                value: consumed_value_pair.as_str().to_string(),
-                                line: p_line,
-                                col: p_col,
-                            }
-                        })?);
+                        variant_value =
+                            Some(consumed_value_pair.as_str().parse().map_err(|_| {
+                                AstBuildError::InvalidValue {
+                                    element: "enum variant value".to_string(),
+                                    value: consumed_value_pair.as_str().to_string(),
+                                    line: p_line,
+                                    col: p_col,
+                                }
+                            })?);
                     }
                 }
 
@@ -337,17 +449,26 @@ pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstB
                 cardinality = Some(match p.as_str() {
                     "?" => Cardinality::Optional,
                     "[]" => Cardinality::Array,
-                    s => return Err(AstBuildError::InvalidValue {
-                        element: "cardinality".to_string(),
-                        value: s.to_string(),
-                        line: p_line,
-                        col: p_col,
-                    }),
+                    s => {
+                        return Err(AstBuildError::InvalidValue {
+                            element: "cardinality".to_string(),
+                            value: s.to_string(),
+                            line: p_line,
+                            col: p_col,
+                        })
+                    }
                 });
             }
             Rule::field_number => {
                 let (p_line, p_col) = p.line_col();
-                let text = require_next!(p.into_inner(), Rule::field_number, "integer value", p_line, p_col)?.as_str();
+                let text = require_next!(
+                    p.into_inner(),
+                    Rule::field_number,
+                    "integer value",
+                    p_line,
+                    p_col
+                )?
+                .as_str();
                 field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
                     element: "field_number".to_string(),
                     value: text.to_string(),
@@ -357,7 +478,12 @@ pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstB
             }
             found => {
                 let (p_line, p_col) = p.line_col();
-                unexpected_rule!(found, "enum_variant, cardinality, or field_number", p_line, p_col);
+                unexpected_rule!(
+                    found,
+                    "enum_variant, cardinality, or field_number",
+                    p_line,
+                    p_col
+                );
             }
         }
     }

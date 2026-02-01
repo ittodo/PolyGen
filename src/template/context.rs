@@ -101,6 +101,11 @@ impl TemplateContext {
         self.bindings.get(name)
     }
 
+    /// Returns a reference to all bindings.
+    pub fn bindings(&self) -> &HashMap<String, ContextValue> {
+        &self.bindings
+    }
+
     /// Creates a child context inheriting all current bindings.
     pub fn child(&self) -> Self {
         Self {

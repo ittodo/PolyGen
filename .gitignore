@@ -51,6 +51,15 @@ tests/runners/rust/generated/
 # C++ test runner
 tests/runners/cpp/generated/
 
+# IDE files
+*.sln
+
+# Temp baseline for diff comparison
+/test_baseline/
+
+# Skill files
+*.skill
+
 # Tauri generated files
 gui/src-tauri/gen/
 gui/src-tauri/capabilities/

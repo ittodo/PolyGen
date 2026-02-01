@@ -40,7 +40,11 @@ fn collect_from_members(
                 }
             }
             TableMember::Field(FieldDefinition::InlineEmbed(ief)) => {
-                path.push(ief.name.clone().expect("Inline embed name should be present"));
+                path.push(
+                    ief.name
+                        .clone()
+                        .expect("Inline embed name should be present"),
+                );
                 let embed_fqn = path.join(".");
                 if !registry.register(&embed_fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(embed_fqn));
@@ -73,7 +77,9 @@ fn collect_all_types(
             Definition::Table(t) => {
                 let fqn = path
                     .iter()
-                    .chain(std::iter::once(t.name.as_ref().expect("Table name should be present")))
+                    .chain(std::iter::once(
+                        t.name.as_ref().expect("Table name should be present"),
+                    ))
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(".");
@@ -81,7 +87,12 @@ fn collect_all_types(
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
 
-                path.push(t.name.as_ref().expect("Table name should be present").clone());
+                path.push(
+                    t.name
+                        .as_ref()
+                        .expect("Table name should be present")
+                        .clone(),
+                );
                 collect_from_members(&t.members, path, registry)?;
                 path.pop();
             }
@@ -101,14 +112,21 @@ fn collect_all_types(
             Definition::Embed(e) => {
                 let fqn = path
                     .iter()
-                    .chain(std::iter::once(e.name.as_ref().expect("Embed name should be present")))
+                    .chain(std::iter::once(
+                        e.name.as_ref().expect("Embed name should be present"),
+                    ))
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(".");
                 if !registry.register(&fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
-                path.push(e.name.as_ref().expect("Embed name should be present").clone());
+                path.push(
+                    e.name
+                        .as_ref()
+                        .expect("Embed name should be present")
+                        .clone(),
+                );
                 collect_from_members(&e.members, path, registry)?;
                 path.pop();
             }
@@ -133,7 +151,10 @@ fn check_type_path(
     let current_namespace = current_scope.join(".");
 
     // Use TypeRegistry's resolve method
-    if registry.resolve(&used_type_str, &current_namespace).is_some() {
+    if registry
+        .resolve(&used_type_str, &current_namespace)
+        .is_some()
+    {
         return Ok(());
     }
 
@@ -201,7 +222,10 @@ fn validate_single_auto_create(
         .iter()
         .filter_map(|member| {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = member {
-                let has_auto_create = rf.constraints.iter().any(|c| matches!(c, Constraint::AutoCreate(_)));
+                let has_auto_create = rf
+                    .constraints
+                    .iter()
+                    .any(|c| matches!(c, Constraint::AutoCreate(_)));
                 if has_auto_create {
                     return rf.name.clone();
                 }
@@ -230,7 +254,10 @@ fn validate_single_auto_create(
 fn validate_timestamp_constraints(
     rf: &crate::ast_model::RegularField,
 ) -> Result<(), ValidationError> {
-    let is_timestamp = matches!(rf.field_type.base_type, TypeName::Basic(BasicType::Timestamp));
+    let is_timestamp = matches!(
+        rf.field_type.base_type,
+        TypeName::Basic(BasicType::Timestamp)
+    );
     let field_name = rf.name.clone().unwrap_or_else(|| "<unknown>".to_string());
 
     for constraint in &rf.constraints {
@@ -451,10 +478,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_embed_names_fails() {
-        let definitions = vec![
-            make_embed("Address", vec![]),
-            make_embed("Address", vec![]),
-        ];
+        let definitions = vec![make_embed("Address", vec![]), make_embed("Address", vec![])];
         let result = validate_ast(&definitions);
         assert_eq!(
             result,
@@ -530,7 +554,10 @@ mod tests {
                 vec!["game", "user"],
                 vec![make_table(
                     "User",
-                    vec![make_field_with_type("status", vec!["game", "common", "Status"])],
+                    vec![make_field_with_type(
+                        "status",
+                        vec!["game", "common", "Status"],
+                    )],
                 )],
             ),
         ];
@@ -767,7 +794,12 @@ mod tests {
         )];
         let result = validate_ast(&definitions);
         assert!(result.is_err());
-        if let Err(ValidationError::InvalidConstraint { constraint, message, .. }) = result {
+        if let Err(ValidationError::InvalidConstraint {
+            constraint,
+            message,
+            ..
+        }) = result
+        {
             assert_eq!(constraint, "auto_create");
             assert!(message.contains("only one auto_create field is allowed"));
         } else {

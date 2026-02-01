@@ -1,7 +1,7 @@
-use pest::iterators::Pair;
 use crate::ast_model::Literal;
 use crate::error::AstBuildError;
 use crate::Rule;
+use pest::iterators::Pair;
 
 /// Helper function to parse a literal value
 pub fn parse_literal(pair: Pair<Rule>) -> Result<Literal, AstBuildError> {

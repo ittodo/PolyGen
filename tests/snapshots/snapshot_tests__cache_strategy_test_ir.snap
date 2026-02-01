@@ -419,7 +419,7 @@ SchemaContext {
                                             is_index: true,
                                             foreign_key: Some(
                                                 ForeignKeyDef {
-                                                    target_table_fqn: "Player",
+                                                    target_table_fqn: "game.data.Player",
                                                     target_field: "id",
                                                     alias: None,
                                                 },
@@ -455,7 +455,7 @@ SchemaContext {
                                             is_index: true,
                                             foreign_key: Some(
                                                 ForeignKeyDef {
-                                                    target_table_fqn: "Item",
+                                                    target_table_fqn: "game.data.Item",
                                                     target_field: "id",
                                                     alias: None,
                                                 },
@@ -817,7 +817,7 @@ SchemaContext {
                                             is_index: true,
                                             foreign_key: Some(
                                                 ForeignKeyDef {
-                                                    target_table_fqn: "Player",
+                                                    target_table_fqn: "game.data.Player",
                                                     target_field: "id",
                                                     alias: None,
                                                 },

@@ -3,11 +3,11 @@
 //! This module extracts symbol definitions and type references from .poly files
 //! using the Pest parser, enabling navigation from type references to their definitions.
 
-use pest::Parser;
 use crate::{Polygen, Rule};
+use pest::Parser;
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use serde::Serialize;
 
 /// Represents a source location span (1-indexed line/column)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -122,7 +122,11 @@ impl SymbolTable {
     }
 
     /// Find the definition at a position and return all its references (including the definition itself)
-    pub fn find_all_references_at(&self, line: usize, col: usize) -> Option<(Option<&DefinitionInfo>, Vec<&TypeReference>)> {
+    pub fn find_all_references_at(
+        &self,
+        line: usize,
+        col: usize,
+    ) -> Option<(Option<&DefinitionInfo>, Vec<&TypeReference>)> {
         // First, check if we're on a definition
         if let Some(def) = self.definition_at(line, col) {
             let refs = self.find_references(&def.fqn);
@@ -146,7 +150,12 @@ impl SymbolTable {
     pub fn get_all_type_names(&self) -> Vec<(&str, &str, &DefinitionKind)> {
         self.definitions
             .values()
-            .filter(|d| matches!(d.kind, DefinitionKind::Table | DefinitionKind::Enum | DefinitionKind::Embed))
+            .filter(|d| {
+                matches!(
+                    d.kind,
+                    DefinitionKind::Table | DefinitionKind::Enum | DefinitionKind::Embed
+                )
+            })
             .map(|d| (d.name.as_str(), d.fqn.as_str(), &d.kind))
             .collect()
     }
@@ -360,11 +369,7 @@ impl<'a> SymbolCollector<'a> {
         }
     }
 
-    fn visit_namespace(
-        &mut self,
-        pair: pest::iterators::Pair<'_, Rule>,
-        parent_namespace: &str,
-    ) {
+    fn visit_namespace(&mut self, pair: pest::iterators::Pair<'_, Rule>, parent_namespace: &str) {
         let mut namespace_path = String::new();
         let mut name_span = None;
 
@@ -677,11 +682,7 @@ impl<'a> SymbolCollector<'a> {
         }
     }
 
-    fn visit_constraint(
-        &mut self,
-        pair: pest::iterators::Pair<'_, Rule>,
-        current_namespace: &str,
-    ) {
+    fn visit_constraint(&mut self, pair: pest::iterators::Pair<'_, Rule>, current_namespace: &str) {
         for inner in pair.into_inner() {
             if inner.as_rule() == Rule::foreign_key_val {
                 self.visit_foreign_key(inner, current_namespace);
@@ -766,7 +767,8 @@ fn resolve_references(table: &mut SymbolTable) {
         .collect();
 
     for reference in &mut table.references {
-        reference.resolved_fqn = resolve_single_reference(&reference.path, &reference.context_namespace, &definitions);
+        reference.resolved_fqn =
+            resolve_single_reference(&reference.path, &reference.context_namespace, &definitions);
     }
 }
 
@@ -920,7 +922,10 @@ namespace game.entity {
             .find(|r| r.path.contains("Position"))
             .unwrap();
 
-        assert_eq!(pos_ref.resolved_fqn, Some("game.common.Position".to_string()));
+        assert_eq!(
+            pos_ref.resolved_fqn,
+            Some("game.common.Position".to_string())
+        );
     }
 
     #[test]
@@ -983,7 +988,11 @@ namespace game {
         let item_ref = table.references.iter().find(|r| r.path == "Item").unwrap();
         assert_eq!(item_ref.resolved_fqn, Some("game.Item".to_string()));
 
-        let field_ref = table.references.iter().find(|r| r.path == "Item.id").unwrap();
+        let field_ref = table
+            .references
+            .iter()
+            .find(|r| r.path == "Item.id")
+            .unwrap();
         assert_eq!(field_ref.resolved_fqn, Some("game.Item.id".to_string()));
 
         // The field definition should exist
@@ -1010,14 +1019,26 @@ namespace game.junction {
         let table = build_symbol_table(content).unwrap();
 
         // Should have reference to game.character.Player (table path)
-        let table_ref = table.references.iter().find(|r| r.path == "game.character.Player");
+        let table_ref = table
+            .references
+            .iter()
+            .find(|r| r.path == "game.character.Player");
         assert!(table_ref.is_some(), "Should have table reference");
-        assert_eq!(table_ref.unwrap().resolved_fqn, Some("game.character.Player".to_string()));
+        assert_eq!(
+            table_ref.unwrap().resolved_fqn,
+            Some("game.character.Player".to_string())
+        );
 
         // Should have reference to game.character.Player.id (field path)
-        let field_ref = table.references.iter().find(|r| r.path == "game.character.Player.id");
+        let field_ref = table
+            .references
+            .iter()
+            .find(|r| r.path == "game.character.Player.id");
         assert!(field_ref.is_some(), "Should have field reference");
-        assert_eq!(field_ref.unwrap().resolved_fqn, Some("game.character.Player.id".to_string()));
+        assert_eq!(
+            field_ref.unwrap().resolved_fqn,
+            Some("game.character.Player.id".to_string())
+        );
     }
 
     #[test]
@@ -1039,9 +1060,15 @@ namespace game {
         let types = table.get_all_type_names();
 
         assert_eq!(types.len(), 3);
-        assert!(types.iter().any(|(name, _, kind)| *name == "Player" && *kind == &DefinitionKind::Table));
-        assert!(types.iter().any(|(name, _, kind)| *name == "Status" && *kind == &DefinitionKind::Enum));
-        assert!(types.iter().any(|(name, _, kind)| *name == "Stats" && *kind == &DefinitionKind::Embed));
+        assert!(types
+            .iter()
+            .any(|(name, _, kind)| *name == "Player" && *kind == &DefinitionKind::Table));
+        assert!(types
+            .iter()
+            .any(|(name, _, kind)| *name == "Status" && *kind == &DefinitionKind::Enum));
+        assert!(types
+            .iter()
+            .any(|(name, _, kind)| *name == "Stats" && *kind == &DefinitionKind::Embed));
     }
 
     #[test]

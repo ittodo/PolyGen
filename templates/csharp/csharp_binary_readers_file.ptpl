@@ -5,3 +5,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.IO;
 using System.Text;
 using Polygen.Common;
+%for ns in file.namespaces
+%include "binary/readers_namespace_block" with ns
+%endfor

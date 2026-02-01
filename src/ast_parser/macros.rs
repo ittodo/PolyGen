@@ -6,12 +6,14 @@
 /// ```
 macro_rules! require_next {
     ($iter:expr, $rule:expr, $element:expr, $line:expr, $col:expr) => {
-        $iter.next().ok_or(crate::error::AstBuildError::MissingElement {
-            rule: $rule,
-            element: $element.to_string(),
-            line: $line,
-            col: $col,
-        })
+        $iter
+            .next()
+            .ok_or(crate::error::AstBuildError::MissingElement {
+                rule: $rule,
+                element: $element.to_string(),
+                line: $line,
+                col: $col,
+            })
     };
 }
 
@@ -35,4 +37,3 @@ macro_rules! unexpected_rule {
         })
     };
 }
-

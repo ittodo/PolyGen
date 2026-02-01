@@ -1,10 +1,10 @@
-use pest::iterators::Pair;
 use crate::ast_model::{BasicType, Cardinality, TypeName, TypeWithCardinality};
 use crate::error::AstBuildError;
 use crate::Rule;
+use pest::iterators::Pair;
 
-use super::helpers::parse_path;
 use super::definitions::parse_enum;
+use super::helpers::parse_path;
 
 pub fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinality, AstBuildError> {
     let (line, col) = pair.line_col();

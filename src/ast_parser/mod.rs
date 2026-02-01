@@ -874,7 +874,10 @@ game.Player.hp -> health;
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
-                assert_eq!(rf.field_type.base_type, TypeName::Basic(BasicType::Timestamp));
+                assert_eq!(
+                    rf.field_type.base_type,
+                    TypeName::Basic(BasicType::Timestamp)
+                );
             } else {
                 panic!("Expected Regular field");
             }
@@ -949,7 +952,9 @@ game.Player.hp -> health;
         if let Definition::Table(table) = &ast.definitions[0] {
             // Korea time: +9
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
-                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) = &rf.constraints[0] {
+                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) =
+                    &rf.constraints[0]
+                {
                     assert_eq!(*hours, 9);
                     assert_eq!(*minutes, 0);
                 } else {
@@ -959,7 +964,9 @@ game.Player.hp -> health;
 
             // India time: +5:30
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[1] {
-                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) = &rf.constraints[0] {
+                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) =
+                    &rf.constraints[0]
+                {
                     assert_eq!(*hours, 5);
                     assert_eq!(*minutes, 30);
                 } else {
@@ -969,7 +976,9 @@ game.Player.hp -> health;
 
             // NY time: -5
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[2] {
-                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) = &rf.constraints[0] {
+                if let Constraint::AutoCreate(Some(Timezone::Offset { hours, minutes })) =
+                    &rf.constraints[0]
+                {
                     assert_eq!(*hours, -5);
                     assert_eq!(*minutes, 0);
                 } else {

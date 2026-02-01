@@ -1,5 +1,5 @@
-use pest::iterators::Pair;
 use crate::Rule;
+use pest::iterators::Pair;
 
 /// Helper function to parse a path (e.g., "game.common")
 pub fn parse_path(pair: Pair<Rule>) -> Vec<String> {

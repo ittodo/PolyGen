@@ -304,6 +304,9 @@ impl CodeGenerator {
             config.rhai_prelude = self.load_rhai_prelude(lang_config);
         }
 
+        // Enable write_file for %logic blocks
+        config.enable_write_file = true;
+
         config
     }
 
@@ -434,6 +437,12 @@ impl CodeGenerator {
             file_ctx.set(
                 "container_name",
                 template::context::ContextValue::String(container_name),
+            );
+            file_ctx.set(
+                "output_dir",
+                template::context::ContextValue::String(
+                    self.output_dir.to_string_lossy().to_string(),
+                ),
             );
 
             let result = engine

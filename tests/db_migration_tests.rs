@@ -29,7 +29,10 @@ fn create_test_schema(content: &str) -> anyhow::Result<NamedTempFile> {
 /// Helper to parse schema and build IR.
 fn build_ir_from_schema(schema_path: &std::path::Path) -> anyhow::Result<polygen::SchemaContext> {
     let asts = parse_and_merge_schemas(&PathBuf::from(schema_path), None)?;
-    let defs: Vec<_> = asts.iter().flat_map(|ast| ast.definitions.clone()).collect();
+    let defs: Vec<_> = asts
+        .iter()
+        .flat_map(|ast| ast.definitions.clone())
+        .collect();
     validation::validate_ast(&defs)?;
     Ok(ir_builder::build_ir(&asts))
 }
