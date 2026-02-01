@@ -11,7 +11,8 @@
 ### 핵심 개념
 
 - **입력**: `.poly` 스키마 파일 (선언적 데이터 모델 정의)
-- **출력**: 타겟 언어 코드 (C#, C++, Rust, TypeScript 지원, MySQL 확장 예정)
+- **출력**: 타겟 언어 코드 (C#, C++, Rust, TypeScript, Go, Unreal, SQLite)
+- **템플릿 엔진**: PolyTemplate (.ptpl) — 선언적 코드 생성 DSL + Rhai 스크립팅
 - **목적**: 데이터 모델을 한 번 정의하고 모든 플랫폼에서 일관된 코드 생성
 
 ---
@@ -29,7 +30,7 @@
        ↓
 [4. IR Builder] ─────── src/ir_builder.rs (AST → IR 변환)
        ↓
-[5. Code Generator] ─── src/rhai_generator.rs + templates/ (코드 생성)
+[5. Code Generator] ─── src/template/ + templates/ (PolyTemplate 엔진)
        ↓
 Generated Code + Static Utilities
 ```
@@ -53,7 +54,9 @@ Generated Code + Static Utilities
 | **파싱** | `ast_parser/mod.rs` | Pest → AST 변환 |
 | **검증** | `validation.rs` | AST 유효성 검사 |
 | **IR 변환** | `ir_builder.rs` | AST → IR 변환 (1,742줄) |
-| **코드 생성** | `rhai_generator.rs` | Rhai 템플릿 실행 |
+| **코드 생성** | `template/renderer.rs` | PolyTemplate (.ptpl) 렌더링 |
+| **템플릿 파서** | `template/parser.rs` | .ptpl 파일 파싱 (디렉티브, 인터폴레이션) |
+| **Rhai 브릿지** | `template/rhai_bridge.rs` | %logic 블록, %if 조건 Rhai 평가 |
 | **함수 등록** | `rhai/registry.rs` | Rhai 헬퍼 함수 등록 |
 | **마이그레이션** | `migration.rs` | 스키마 diff, ALTER 생성 |
 
@@ -85,7 +88,12 @@ PolyGen/
 │   ├── type_registry.rs      # 타입 레지스트리 (Phase 4)
 │   ├── pipeline.rs           # 컴파일 파이프라인
 │   ├── codegen.rs            # 코드 생성 유틸리티
-│   ├── rhai_generator.rs     # Rhai 템플릿 엔진
+│   ├── rhai_generator.rs     # Rhai 템플릿 엔진 (레거시, ptpl 전환 완료)
+│   ├── template/             # PolyTemplate 엔진
+│   │   ├── parser.rs         # .ptpl 파서 (디렉티브, 인터폴레이션)
+│   │   ├── renderer.rs       # 템플릿 렌더러 (출력 생성)
+│   │   ├── rhai_bridge.rs    # Rhai 연동 (%logic, %if 조건 평가)
+│   │   └── expr.rs           # 표현식/필터 파싱
 │   ├── migration.rs          # 마이그레이션 diff 생성
 │   ├── db_introspection.rs   # DB 스키마 introspection (SQLite)
 │   ├── error.rs              # 에러 타입 정의
@@ -94,51 +102,57 @@ PolyGen/
 │       ├── common/           # 공통 함수
 │       └── csharp/           # C# 전용 함수
 │
-├── templates/                # Rhai 템플릿 (90+ 파일)
-│   ├── csharp/               # C# 템플릿 (49 파일)
-│   │   ├── csharp.toml       # 언어 설정
-│   │   ├── csharp_file.rhai  # 메인 클래스 생성
-│   │   ├── csharp_csv_mappers_file.rhai
-│   │   ├── csharp_json_mappers_file.rhai
-│   │   ├── csharp_binary_*.rhai
-│   │   ├── class/            # 클래스 템플릿
+├── templates/                # PolyTemplate (.ptpl) 템플릿 (83+ 파일)
+│   ├── csharp/               # C# 템플릿 (51 파일)
+│   │   ├── csharp.toml       # 언어 설정 + 타입 매핑
+│   │   ├── csharp_file.ptpl  # 메인 클래스 생성
+│   │   ├── csharp_csv_columns_file.ptpl  # CSV 컬럼 매핑
+│   │   ├── csharp_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── class/            # 클래스 상세 템플릿
 │   │   ├── container/        # Container 템플릿
+│   │   ├── csv/              # CSV 관련 템플릿
 │   │   ├── enum/             # Enum 템플릿
-│   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── cpp/                  # C++ 템플릿 (8 파일)
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── cpp/                  # C++ 템플릿
 │   │   ├── cpp.toml          # 언어 설정
-│   │   ├── cpp_file.rhai     # 메인 헤더 생성
-│   │   ├── cpp_loaders_file.rhai  # CSV/JSON/Binary 로더
-│   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── rust/                 # Rust 템플릿 (8 파일)
+│   │   ├── cpp_file.ptpl     # 메인 헤더 생성
+│   │   ├── cpp_loaders_file.ptpl      # CSV/JSON/Binary 로더
+│   │   ├── cpp_container_file.ptpl    # Container + 인덱스
+│   │   ├── cpp_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── detail/           # 상세 템플릿 (pack, auto_update)
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── rust/                 # Rust 템플릿
 │   │   ├── rust.toml         # 언어 설정
-│   │   ├── rust_file.rhai    # 메인 모듈 생성
-│   │   ├── rust_loaders_file.rhai  # CSV/JSON/Binary 로더
-│   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── typescript/           # TypeScript 템플릿 (10 파일)
+│   │   ├── rust_file.ptpl    # 메인 모듈 생성
+│   │   ├── rust_loaders_file.ptpl     # CSV/Binary 로더
+│   │   ├── rust_container_file.ptpl   # Container
+│   │   ├── rust_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── detail/           # 상세 템플릿 (pack, auto_update)
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── typescript/           # TypeScript 템플릿
 │   │   ├── typescript.toml   # 언어 설정
-│   │   ├── typescript_file.rhai  # 인터페이스 생성
-│   │   ├── typescript_zod_file.rhai  # Zod 스키마 생성
-│   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── go/                   # Go 템플릿 (6 파일)
+│   │   ├── typescript_file.ptpl       # 인터페이스 생성
+│   │   ├── typescript_zod_file.ptpl   # Zod 스키마 생성
+│   │   ├── typescript_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── detail/           # 상세 템플릿
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── go/                   # Go 템플릿
 │   │   ├── go.toml           # 언어 설정
-│   │   ├── go_file.rhai      # 메인 패키지 생성
-│   │   ├── go_container_file.rhai  # Container
-│   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── unreal/               # Unreal Engine 템플릿 (7 파일)
+│   │   ├── go_file.ptpl      # 메인 패키지 생성
+│   │   └── go_container_file.ptpl     # Container
+│   ├── unreal/               # Unreal Engine 템플릿
 │   │   ├── unreal.toml       # 언어 설정
-│   │   ├── unreal_file.rhai  # USTRUCT/UENUM 생성
-│   │   ├── unreal_loaders_file.rhai  # CSV/JSON 로더
-│   │   ├── unreal_hotreload_file.rhai  # Hot Reload
-│   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── sqlite/               # SQLite 템플릿 (3 파일)
+│   │   ├── unreal_file.ptpl           # USTRUCT/UENUM 생성
+│   │   ├── unreal_loaders_file.ptpl   # CSV/JSON 로더
+│   │   ├── unreal_hotreload_file.ptpl # Hot Reload
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── sqlite/               # SQLite 템플릿
 │   │   ├── sqlite.toml       # 언어 설정
-│   │   ├── sqlite_file.rhai  # DDL 생성
-│   │   ├── sqlite_migration_file.rhai  # 마이그레이션
-│   │   └── rhai_utils/       # 유틸리티 스크립트
-│   ├── mysql/                # MySQL 템플릿 (4 파일, toml 미완성)
+│   │   ├── sqlite_file.ptpl           # DDL 생성
+│   │   ├── sqlite_migration_file.ptpl # 마이그레이션
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
 │   ├── mermaid/              # Mermaid 다이어그램 (예정)
-│   └── rhai_utils/           # 공유 유틸리티 (indent 등)
+│   └── rhai_utils/           # 공유 Rhai 유틸리티 (indent 등)
 │
 ├── static/                   # 런타임 정적 파일
 │   └── csharp/               # C# 유틸리티
@@ -153,20 +167,23 @@ PolyGen/
 │   ├── schemas/              # 테스트용 스키마 (13+ 파일)
 │   ├── snapshots/            # Insta 스냅샷
 │   ├── output/               # 테스트 출력
-│   ├── integration/          # 통합 테스트 스키마 (8개 케이스)
+│   ├── integration/          # 통합 테스트 스키마 (10개 케이스)
 │   │   ├── 01_basic_types/   # 기본 타입 테스트
-│   │   ├── 02_enums/         # Enum 테스트
+│   │   ├── 02_imports/       # 크로스 네임스페이스 임포트
 │   │   ├── 03_nested_namespaces/  # 중첩 네임스페이스
-│   │   ├── 04_optional_fields/    # Optional 필드
-│   │   ├── 05_arrays/        # 배열 테스트
-│   │   ├── 06_annotations/   # 어노테이션
-│   │   ├── 07_cross_references/   # 타입 간 참조
-│   │   └── 08_complex_schema/     # 종합 테스트
+│   │   ├── 04_inline_enums/  # 인라인 Enum
+│   │   ├── 05_embedded_structs/   # 임베디드 구조체
+│   │   ├── 06_arrays_and_optionals/  # 배열 + Optional
+│   │   ├── 07_indexes/       # 인덱스 + 외래 키
+│   │   ├── 08_complex_schema/     # 종합 테스트 (RPG 시스템)
+│   │   ├── 09_sqlite/        # SQLite DDL + Accessor
+│   │   └── 10_pack_embed/    # @pack 직렬화 (테스트 파일 미작성)
 │   └── runners/              # 언어별 테스트 러너
-│       ├── cpp/              # C++ 테스트 (CMake)
-│       ├── csharp/           # C# 테스트 (.NET)
+│       ├── cpp/              # C++ 테스트 (MSVC)
+│       ├── csharp/           # C# 테스트 (.NET 8.0)
 │       ├── rust/             # Rust 테스트 (Cargo)
-│       └── typescript/       # TypeScript 테스트 (npm/tsc)
+│       ├── typescript/       # TypeScript 테스트 (tsc --noEmit)
+│       └── sqlite/           # SQLite DDL 검증
 │
 ├── examples/                 # 예제 스키마
 │   └── game_schema.poly      # 게임 데이터 예제
@@ -184,7 +201,7 @@ PolyGen/
 | 문법/파싱 문제 | `src/polygen.pest` → `src/ast_parser/` |
 | 이름/타입/제약 검증 | `src/validation.rs` |
 | 타입 해석/IR 구조 | `src/ir_builder.rs` → `src/ir_model.rs` |
-| 생성 코드 변경 | `templates/<lang>/` (Rhai 템플릿) |
+| 생성 코드 변경 | `templates/<lang>/` (PolyTemplate .ptpl) |
 | 런타임 유틸리티 | `static/<lang>/` |
 | DB 마이그레이션 | `src/migration.rs` → `src/db_introspection.rs` |
 | 회귀 테스트 | `tests/` |
@@ -442,34 +459,31 @@ table Player {
 - `ir_builder.rs` - 20개 테스트 (타입 해석, 카디널리티 등)
 - `ast_parser/` - 24개 테스트 (파싱 검증)
 
-### 통합 테스트
+#### 통합 테스트
 
 통합 테스트는 생성된 코드가 각 언어에서 올바르게 컴파일되고 동작하는지 검증합니다.
 
 ```bash
-# C++ 테스트 실행
-cd tests/runners/cpp && ./run_tests.sh
-
-# C# 테스트 실행
-cd tests/runners/csharp && dotnet test
-
-# Rust 테스트 실행
-cd tests/runners/rust && cargo test
-
-# TypeScript 테스트 실행
-cd tests/runners/typescript && ./run_tests.sh
+# Windows (.bat)
+tests\runners\sqlite\run_tests.bat
+tests\runners\typescript\run_tests.bat
+tests\runners\csharp\run_tests.bat
+tests\runners\cpp\run_tests.bat
+tests\runners\rust\run_tests.bat
 ```
 
 | 테스트 케이스 | 검증 내용 |
 |--------------|----------|
 | 01_basic_types | 기본 타입 (u8-u64, i8-i64, f32/f64, string, bool) |
-| 02_enums | Enum 정의 및 직렬화 |
-| 03_nested_namespaces | 중첩 네임스페이스와 cross-namespace 타입 참조 |
-| 04_optional_fields | Optional 필드 (`?`) 처리 |
-| 05_arrays | 배열 타입 (`[]`) 처리 |
-| 06_annotations | @load, @taggable 어노테이션 |
-| 07_cross_references | 외래 키 및 타입 간 참조 |
+| 02_imports | 크로스 네임스페이스 임포트 및 타입 참조 |
+| 03_nested_namespaces | 중첩 네임스페이스 |
+| 04_inline_enums | 인라인 Enum 정의 |
+| 05_embedded_structs | Embed 정의, 중첩 embed |
+| 06_arrays_and_optionals | 배열 + Optional 필드 |
+| 07_indexes | 인덱스, 외래 키, Container 검증 |
 | 08_complex_schema | 게임 데이터 종합 테스트 (RPG 시스템) |
+| 09_sqlite | SQLite DDL 생성 + Accessor 컴파일 |
+| 10_pack_embed | @pack 직렬화 (테스트 파일 미작성) |
 
 ---
 
@@ -495,10 +509,13 @@ cd tests/runners/typescript && ./run_tests.sh
 - **최대 컬럼**: ~100자
 - **들여쓰기**: 4 스페이스
 
-### 템플릿 (Rhai)
+### 템플릿 (PolyTemplate)
 
-- **파일명**: `<lang>_<purpose>.rhai`
-- **언어 코드**: 소문자 (`csharp`, `mysql`, `typescript`)
+- **파일명**: `<lang>_<purpose>.ptpl` (메인/엑스트라 템플릿)
+- **상세 파일**: `detail/<purpose>.ptpl` (서브 템플릿, %include로 사용)
+- **Rhai 유틸리티**: `rhai_utils/<purpose>.rhai` (prelude 스크립트)
+- **언어 코드**: 소문자 (`csharp`, `typescript`, `sqlite`)
+- **템플릿 문법**: [docs/PTPL_LANGUAGE_GUIDE.md](docs/PTPL_LANGUAGE_GUIDE.md)
 
 ### Git 커밋
 
@@ -510,10 +527,12 @@ cd tests/runners/typescript && ./run_tests.sh
 ## 새 언어 지원 추가
 
 1. `templates/<new_lang>/` 디렉토리 생성
-2. `<new_lang>.toml` 설정 파일 작성
-3. `<new_lang>_file.rhai` 메인 템플릿 작성
-4. (선택) 정적 유틸리티 파일을 `static/<new_lang>/`에 추가
-5. `src/codegen.rs`에 정적 파일 복사 로직 추가
+2. `<new_lang>.toml` 설정 파일 작성 (타입 매핑, binary_read, csv_read 등)
+3. `<new_lang>_file.ptpl` 메인 템플릿 작성
+4. (선택) 엑스트라 템플릿 추가 (loaders, container, sqlite_accessor 등)
+5. (선택) `rhai_utils/type_mapping.rhai` prelude 스크립트 작성
+6. (선택) 정적 유틸리티 파일을 `static/<new_lang>/`에 추가
+7. `src/codegen.rs`에 정적 파일 복사 로직 추가
 
 ---
 
@@ -539,7 +558,6 @@ cd tests/runners/typescript && ./run_tests.sh
 | Go | ✅ 완료 | 패키지, Struct, Enum, Container |
 | Unreal | ✅ 완료 | USTRUCT/UENUM 매크로, CSV/JSON 로더, Hot Reload |
 | SQLite | ✅ 완료 | DDL 생성, Migration 스크립트 |
-| MySQL | 🚧 진행중 | DDL 스크립트 생성 (toml 설정 미완성) |
 | Mermaid | 📝 예정 | 빈 디렉토리 (다이어그램 생성 예정) |
 
 ---
@@ -549,6 +567,7 @@ cd tests/runners/typescript && ./run_tests.sh
 | 문서 | 설명 |
 |------|------|
 | `docs/SOURCE_STRUCTURE.md` | **소스 코드 구조 (모듈별 역할)** |
+| `docs/PTPL_LANGUAGE_GUIDE.md` | **PolyTemplate (.ptpl) 언어 레퍼런스** |
 | `docs/CUSTOMIZATION.md` | **Rhai 템플릿 커스터마이징 가이드** |
 | `docs/TODO.md` | 할일 목록 및 진행 상황 |
 | `docs/TEMPLATE_REFACTOR_PLAN.md` | 템플릿 리팩토링 계획 |
@@ -611,4 +630,4 @@ cd tests/runners/typescript && ./run_tests.sh
 
 ---
 
-*최종 업데이트: 2026-01-28*
+*최종 업데이트: 2026-02-02*
