@@ -9,17 +9,47 @@ extension = ".hpp"
 [static_files]
 "polygen_support.hpp" = "static/cpp/polygen_support.hpp"
 
+# Type mapping: poly type -> C++ type
+[type_map]
+u8 = "uint8_t"
+i8 = "int8_t"
+u16 = "uint16_t"
+i16 = "int16_t"
+u32 = "uint32_t"
+i32 = "int32_t"
+u64 = "uint64_t"
+i64 = "int64_t"
+f32 = "float"
+f64 = "double"
+bool = "bool"
+string = "std::string"
+bytes = "std::vector<uint8_t>"
+timestamp = "std::chrono::system_clock::time_point"
+
+[type_map.optional]
+format = "std::optional<{{type}}>"
+
+[type_map.list]
+format = "std::vector<{{type}}>"
+
+[type_map.non_primitive]
+format = "::{{type}}"
+
 # Template configuration
 [templates]
 # Main template for generating C++ headers (Level 1: Basic)
-main = "cpp_file.rhai"
+main = "cpp_file.ptpl"
 
 # Extra templates to run after the main template
 extra = [
-    # Level 2: Data Loaders (JSON, CSV, Binary)
-    "cpp_loaders_file.rhai",
+    # Level 2: Data Loaders (Binary serialization)
+    "cpp_loaders_file.ptpl",
     # Level 3: Container System (indexes, relations)
-    "cpp_container_file.rhai",
+    "cpp_container_file.ptpl",
     # Level 4: SQLite Accessor (for @datasource("sqlite") tables)
-    "cpp_sqlite_accessor_file.rhai",
+    "cpp_sqlite_accessor_file.ptpl",
 ]
+
+# Rhai prelude scripts for %logic blocks in ptpl templates
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

@@ -1,6 +1,7 @@
+%logic
 // C++ Loaders File Template for PolyGen
-// Generates Binary, JSON, and CSV loading functions
-// NOTE: Rhai passes arrays by value, so we must collect structs inline
+// Generates Binary read/write functions
+// Ported from cpp_loaders_file.rhai
 
 import "templates/cpp/rhai_utils/type_mapping" as cpp_types;
 
@@ -9,7 +10,6 @@ fn get_full_cpp_type(namespace_fqn, type_name) {
     if namespace_fqn == "" {
         return type_name;
     }
-    // Rhai's replace() mutates in-place and returns (), so we must copy first
     let ns_cpp = namespace_fqn + "";
     ns_cpp.replace(".", "::");
     return "::" + ns_cpp + "::" + type_name;
@@ -23,17 +23,12 @@ fn is_pascal_case(s) {
 }
 
 // Get namespace FQN, stripping parent struct name if present
-// For embedded structs, namespace_fqn might be "game.character.Monster"
-// but we need "game.character" since embedded structs are generated as siblings
 fn get_clean_namespace(ns_fqn) {
     if ns_fqn == "" { return ""; }
     let parts = ns_fqn.split(".");
     if parts.len() <= 1 { return ns_fqn; }
-
-    // Check if last segment is PascalCase (likely a struct name)
     let last = parts[parts.len() - 1];
     if is_pascal_case(last) {
-        // Remove the last segment (parent struct name)
         let clean_ns = "";
         for i in 0..(parts.len() - 1) {
             if i > 0 { clean_ns += "."; }
@@ -49,15 +44,9 @@ fn get_type_fqn(type_ref) {
     if type_ref.is_primitive || cpp_types::is_primitive_name(type_ref.type_name) {
         return cpp_types::map_primitive_type(type_ref.type_name);
     }
-
-    // For inline enums, keep the full namespace (they are nested inside structs)
-    // For embedded structs, strip the parent struct name (they are siblings)
     if type_ref.is_enum {
-        // Inline enums keep full path including parent struct
         return get_full_cpp_type(type_ref.namespace_fqn, type_ref.type_name);
     }
-
-    // For other types (embedded structs), strip the parent struct name
     let clean_ns = get_clean_namespace(type_ref.namespace_fqn);
     return get_full_cpp_type(clean_ns, type_ref.type_name);
 }
@@ -79,8 +68,6 @@ fn bin_read_expr(type_ref) {
     if n == "f64" { return "reader.read_f64()"; }
     if n == "bytes" { return "reader.read_bytes()"; }
     if n == "timestamp" { return "reader.read_timestamp()"; }
-
-    // For enums and custom types, use fully qualified names
     let full_type = get_type_fqn(type_ref);
     if type_ref.is_enum {
         return "reader.read_enum<" + full_type + ">()";
@@ -105,7 +92,6 @@ fn bin_write_expr(type_ref, value_expr) {
     if n == "f64" { return "writer.write_f64(" + value_expr + ")"; }
     if n == "bytes" { return "writer.write_bytes(" + value_expr + ")"; }
     if n == "timestamp" { return "writer.write_timestamp(" + value_expr + ")"; }
-
     if type_ref.is_enum {
         return "writer.write_enum(" + value_expr + ")";
     }
@@ -244,13 +230,14 @@ for f in schema.files {
 }
 
 // Main entry point - runs for each file
-for file in schema.files {
-    if file.path == () || file.path == "" {
+let skip_output = true;
+for cur_file in schema.files {
+    if cur_file.path == () || cur_file.path == "" {
         continue;
     }
 
     // Extract filename from path
-    let parts = file.path.split("/");
+    let parts = cur_file.path.split("/");
     let filename = parts[parts.len - 1];
     let base_name = filename + "";
     base_name.replace(".poly", "");
@@ -258,20 +245,17 @@ for file in schema.files {
     let output_filename = base_name + "_loaders.hpp";
     let final_path = output_dir + "/cpp/" + output_filename;
 
-    // Collect all structs from all namespaces in this file (inline, not via function)
-    // Rhai passes arrays by value, so helper functions won't work
+    // Collect all structs from all namespaces in this file
     let all_structs = [];
-    for ns in file.namespaces {
+    for ns in cur_file.namespaces {
         for item in ns.items {
             if item.is_struct() {
                 let s = item.as_struct();
                 all_structs.push(#{ struct_def: s, namespace_name: ns.name });
-                // Also collect embedded structs
                 for si in s.items {
                     if si.is_embedded_struct() {
                         let es = si.as_embedded_struct();
                         all_structs.push(#{ struct_def: es, namespace_name: ns.name });
-                        // Check for doubly nested embedded structs
                         for esi in es.items {
                             if esi.is_embedded_struct() {
                                 let nes = esi.as_embedded_struct();
@@ -281,13 +265,11 @@ for file in schema.files {
                     }
                 }
             } else if item.is_namespace() {
-                // Handle nested namespaces
                 let child_ns = item.as_namespace();
                 for child_item in child_ns.items {
                     if child_item.is_struct() {
                         let cs = child_item.as_struct();
                         all_structs.push(#{ struct_def: cs, namespace_name: child_ns.name });
-                        // Collect embedded structs from nested namespace
                         for csi in cs.items {
                             if csi.is_embedded_struct() {
                                 let ces = csi.as_embedded_struct();
@@ -315,7 +297,6 @@ for file in schema.files {
     result += "#include \"" + base_name + ".hpp\"\n";
     result += "#include \"polygen_support.hpp\"\n";
 
-    // Include other loader headers for cross-file dependencies
     for other_header in all_loader_headers {
         if other_header != output_filename {
             result += "#include \"" + other_header + "\"\n";
@@ -323,10 +304,10 @@ for file in schema.files {
     }
     result += "\n";
 
-    // All loader functions go into a single namespace to avoid cross-file dependency issues
+    // All loader functions in single namespace
     result += "namespace polygen_loaders {\n\n";
 
-    // Generate binary readers for all structs
+    // Binary Readers
     result += "// ============================================================================\n";
     result += "// Binary Readers\n";
     result += "// ============================================================================\n\n";
@@ -347,7 +328,7 @@ for file in schema.files {
         result += generate_binary_read(s, ns);
     }
 
-    // Generate binary writers for all structs
+    // Binary Writers
     result += "// ============================================================================\n";
     result += "// Binary Writers\n";
     result += "// ============================================================================\n\n";
@@ -368,11 +349,10 @@ for file in schema.files {
         result += generate_binary_write(s, ns);
     }
 
-    // Close loader namespace
+    // Close namespace
     result += "} // namespace polygen_loaders\n";
 
     print("Generating loader file: " + final_path);
     write_file(final_path, result);
 }
-
-""
+%endlogic

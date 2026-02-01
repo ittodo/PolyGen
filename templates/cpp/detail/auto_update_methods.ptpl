@@ -1,0 +1,39 @@
+%-- Auto-update timestamp methods. Context: struct
+%logic
+let auto_update_fields = [];
+for item in struct.items {
+    if item.is_field() {
+        let f = item.as_field();
+        if f.auto_update != () {
+            auto_update_fields.push(f);
+        }
+    }
+}
+let has_auto_update = auto_update_fields.len > 0;
+let has_multi_auto_update = auto_update_fields.len > 1;
+
+let methods_code = "";
+if has_auto_update {
+    methods_code += "\n    // Auto-update timestamp methods\n";
+    for f in auto_update_fields {
+        let datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+        methods_code += "\n    /// Updates " + f.name + " to the current timestamp.\n";
+        methods_code += "    void on_update_" + to_snake_case(f.name) + "() {\n";
+        methods_code += "        " + f.name + " = " + datetime_expr + ";\n";
+        methods_code += "    }\n";
+    }
+
+    if has_multi_auto_update {
+        methods_code += "\n    /// Updates all auto-update timestamp fields.\n";
+        methods_code += "    void on_update_all() {\n";
+        for f in auto_update_fields {
+            let datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+            methods_code += "        " + f.name + " = " + datetime_expr + ";\n";
+        }
+        methods_code += "    }\n";
+    }
+}
+%endlogic
+%if has_auto_update
+{{methods_code}}
+%endif

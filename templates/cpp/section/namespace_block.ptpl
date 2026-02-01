@@ -1,0 +1,43 @@
+%-- C++ namespace block. Context: namespace
+%-- Handles nested namespaces by wrapping children inside parent
+%logic
+let ns_name = namespace.name;
+let ns_parts = ns_name.split(".");
+
+// For nested namespaces, is_nested is passed as key-value binding from parent
+// For top-level namespaces, is_nested is not set
+let use_last_segment = false;
+try {
+    if is_nested == "true" {
+        use_last_segment = true;
+    }
+} catch {
+    use_last_segment = false;
+}
+
+let cpp_ns_name = "";
+if use_last_segment {
+    // Use only the last segment for nested namespace
+    cpp_ns_name = ns_parts[ns_parts.len - 1];
+} else {
+    // Use full namespace path with :: separator for top-level
+    cpp_ns_name = ns_name + "";
+    cpp_ns_name.replace(".", "::");
+}
+%endlogic
+namespace {{cpp_ns_name}} {
+
+%for item in namespace.items
+%if item.is_struct
+%include "section/struct_block" with item.as_struct, indent=1
+%elif item.is_enum
+%include "section/enum_block" with item.as_enum, indent=1
+%elif item.is_comment
+    // {{item.as_comment}}
+%elif item.is_namespace
+%include "section/namespace_block" with item.as_namespace, is_nested="true", indent=1
+%endif
+%endfor
+} // namespace {{cpp_ns_name}}
+
+%blank

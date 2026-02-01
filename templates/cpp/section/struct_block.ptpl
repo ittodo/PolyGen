@@ -1,0 +1,39 @@
+%-- C++ struct definition. Context: struct
+%-- Generate embedded structs FIRST (must be declared before parent)
+%for item in struct.items
+%if item.is_embedded_struct
+%include "section/struct_block" with item.as_embedded_struct
+%endif
+%endfor
+%-- Doc comments from header
+%for item in struct.header
+%if item.is_comment
+/// {{item.as_comment}}
+%endif
+%endfor
+struct {{struct.name}} {
+%-- First pass: inline enums (must be defined before field use)
+%for item in struct.items
+%if item.is_inline_enum
+%include "section/enum_block" with item.as_inline_enum, indent=1
+%endif
+%endfor
+%-- Second pass: fields and comments
+%for item in struct.items
+%if item.is_field
+%include "detail/field_declaration" with item.as_field
+%elif item.is_comment
+    // {{item.as_comment}}
+%endif
+%endfor
+
+    {{struct.name}}() = default;
+%-- Pack/Unpack methods for @pack embeds
+%if struct.is_embed && struct.pack_separator
+%include "detail/pack_methods" with struct
+%endif
+%-- Auto-update timestamp methods
+%include "detail/auto_update_methods" with struct
+};
+
+%blank

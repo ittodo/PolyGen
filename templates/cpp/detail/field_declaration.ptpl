@@ -1,0 +1,49 @@
+%-- Single C++ field declaration. Context: field
+%logic
+let f = field;
+let t = f.field_type;
+
+// Get current namespace for relative type resolution
+// 'namespace' binding comes from parent namespace_block
+let current_ns = "";
+try {
+    current_ns = namespace.name;
+} catch {
+    current_ns = "";
+}
+
+let cpp_type = map_type_with_ns(t, current_ns);
+let default_val = "";
+let has_default = false;
+
+if f.default_value != () {
+    has_default = true;
+    default_val = f.default_value + "";
+    let type_name = t.type_name;
+    if type_name == "f32" {
+        if !default_val.ends_with("f") && !default_val.ends_with("F") {
+            default_val += "f";
+        }
+    } else if type_name == "bool" {
+        default_val = default_val.to_lower();
+    } else if type_name == "string" {
+        if !default_val.starts_with("\"") {
+            default_val = "\"" + default_val + "\"";
+        }
+    }
+} else {
+    let dv = get_default_value(t);
+    if dv != "{}" || t.is_list || t.is_option {
+        has_default = true;
+        default_val = dv;
+    }
+}
+
+let field_line = "";
+if has_default {
+    field_line = cpp_type + " " + f.name + " = " + default_val + ";";
+} else {
+    field_line = cpp_type + " " + f.name + ";";
+}
+%endlogic
+    {{field_line}}
