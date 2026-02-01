@@ -32,7 +32,8 @@
 //! - [`validation`]: AST validation (duplicate detection, type reference checking)
 //! - [`pipeline`]: High-level compilation pipeline orchestration
 //! - [`codegen`]: Code generation utilities
-//! - [`rhai`] / [`rhai_generator`]: Rhai template engine integration
+//! - [`rhai`]: Rhai scripting engine helpers (used by PolyTemplate `%logic` blocks)
+//! - [`template`]: PolyTemplate engine (`.ptpl` template rendering)
 
 use anyhow::Result;
 use clap::{Parser as ClapParser, Subcommand};
@@ -52,7 +53,6 @@ pub mod lang_config;
 pub mod migration;
 pub mod pipeline;
 pub mod rhai;
-pub mod rhai_generator;
 pub mod symbol_table;
 pub mod template;
 pub mod type_registry;

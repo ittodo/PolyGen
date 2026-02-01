@@ -1,7 +1,7 @@
 // Test Case 10: Pack Embed
 // Tests @pack annotation on embed types for serializing multiple fields to a single string
 
-namespace test.pack {
+namespace test.pack_embed {
     /// 2D position with default separator (;)
     @pack
     embed Position {

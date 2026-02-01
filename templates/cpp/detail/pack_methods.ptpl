@@ -20,7 +20,12 @@ if fields.len() > 0 {
         if i > 0 {
             pack_body += "        oss << \"" + sep + "\";\n";
         }
-        pack_body += "        oss << " + f.name + ";\n";
+        let type_name = f.field_type.type_name;
+        if type_name == "u8" || type_name == "i8" {
+            pack_body += "        oss << static_cast<int>(" + f.name + ");\n";
+        } else {
+            pack_body += "        oss << " + f.name + ";\n";
+        }
     }
     pack_body += "        return oss.str();";
 

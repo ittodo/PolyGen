@@ -12,7 +12,6 @@ src/
 ├── ir_builder.rs         # AST → IR 변환 로직
 ├── validation.rs         # AST 유효성 검사
 ├── error.rs              # 에러 타입 정의
-├── rhai_generator.rs     # Rhai 템플릿 엔진 연동
 ├── polygen.pest          # Pest 문법 정의
 ├── lib.rs                # 라이브러리 엔트리 + polygen.pest 매크로
 ├── main.rs               # CLI 엔트리 포인트
@@ -74,7 +73,7 @@ src/
   - `ParseError`, `ValidationError`, `GenerationError` 등
 
 ### Code Generation
-- **rhai_generator.rs**: Rhai 템플릿 엔진 연동 (1.1KB)
+- **template/**: PolyTemplate 엔진 (.ptpl 렌더링)
   - `generate_code_with_rhai()`: IR과 Rhai 템플릿으로 코드 생성
   - Rhai 엔진 설정 및 컨텍스트 주입
   - 템플릿 파일 로드 및 실행
@@ -158,7 +157,7 @@ src/
 - `ast_parser.rs` → `ast_model.rs`, `error.rs`
 - `ir_builder.rs` → `ast_model.rs`, `ir_model.rs`, `error.rs`
 - `validation.rs` → `ast_model.rs`, `error.rs`
-- `rhai_generator.rs` → `ir_model.rs`, `rhai/*`
+- `template/` → `ir_model.rs`, `rhai/*`
 - `lib.rs` → 모든 모듈
 - `rhai/*` → `ir_model.rs`
 
@@ -193,7 +192,7 @@ cargo fmt --all        # 포맷팅
 4. `validation.rs`에 검사 로직 추가 (필요한 경우)
 5. `ir_builder.rs`에 IR 변환 로직 추가
 6. `ir_model.rs`에 IR 타입 추가
-7. `rhai_generator.rs` 또는 `rhai/*.rs`에 코드 생성 로직 추가
+7. `templates/<lang>/` 에 .ptpl 템플릿 추가 또는 `rhai/*.rs`에 헬퍼 함수 추가
 8. 템플릿 파일에 새로운 코드 생성 패턴 추가
 9. 테스트 스키마 및 스냅샷 추가
 

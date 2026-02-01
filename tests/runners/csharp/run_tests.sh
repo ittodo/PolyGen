@@ -47,6 +47,7 @@ TEST_CASES=(
     "06_arrays_and_optionals"
     "07_indexes"
     "08_complex_schema"
+    "10_pack_embed"
 )
 
 # Create generated directory

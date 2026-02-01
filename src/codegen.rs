@@ -55,7 +55,7 @@
 //! - Main and extra templates
 
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -63,7 +63,6 @@ use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 
 use crate::ir_model::SchemaContext;
 use crate::lang_config::{ExtraTemplateEntry, LanguageConfig, StaticFileEntry};
-use crate::rhai_generator;
 use crate::template;
 
 /// Configuration for a static file to be copied during code generation.
@@ -158,7 +157,7 @@ impl CodeGenerator {
             .config
             .as_ref()
             .map(|c| c.main_template(&self.language))
-            .unwrap_or_else(|| format!("{}_file.rhai", self.language));
+            .unwrap_or_else(|| format!("{}_file.ptpl", self.language));
 
         let main_per_file = self
             .config
@@ -171,29 +170,15 @@ impl CodeGenerator {
             .as_ref()
             .and_then(|c| c.templates.main_output.clone());
 
-        if main_template.ends_with(".ptpl") {
-            println!("Using PolyTemplate engine.");
-            if main_per_file {
-                self.generate_with_polytemplate(ir_context, &main_template, main_output.as_deref())?;
-            } else {
-                self.generate_schema_wide_polytemplate(
-                    ir_context,
-                    &main_template,
-                    main_output.as_deref(),
-                )?;
-            }
+        println!("Using PolyTemplate engine.");
+        if main_per_file {
+            self.generate_with_polytemplate(ir_context, &main_template, main_output.as_deref())?;
         } else {
-            println!("Using Rhai template engine.");
-            let template_path = self.template_dir().join(&main_template);
-            let before = collect_output_files(&self.output_dir);
-            rhai_generator::generate_code_with_rhai_opts(
+            self.generate_schema_wide_polytemplate(
                 ir_context,
-                &template_path,
-                &self.output_dir,
-                self.preview_mode,
+                &main_template,
+                main_output.as_deref(),
             )?;
-            let after = collect_output_files(&self.output_dir);
-            record_manifest(&self.output_dir, &main_template, &before, &after);
         }
 
         Ok(())
@@ -479,54 +464,23 @@ impl CodeGenerator {
         scripts
     }
 
-    /// Generates code using a specific template file.
-    ///
-    /// Use this for additional templates beyond the main one (e.g., readers, writers).
-    pub fn generate_with_template(
-        &self,
-        ir_context: &SchemaContext,
-        template_name: &str,
-    ) -> Result<()> {
-        let template_path = self.template_dir().join(template_name);
-
-        if template_path.exists() {
-            let before = collect_output_files(&self.output_dir);
-            rhai_generator::generate_code_with_rhai_opts(
-                ir_context,
-                &template_path,
-                &self.output_dir,
-                self.preview_mode,
-            )?;
-            let after = collect_output_files(&self.output_dir);
-            record_manifest(&self.output_dir, template_name, &before, &after);
-        }
-
-        Ok(())
-    }
-
     /// Generates code for all extra templates defined in the language config.
     ///
     /// Extra templates are processed after the main template.
-    /// Supports both Rhai (`.rhai`) and PolyTemplate (`.ptpl`) extra templates.
     /// Dispatches to per-file or schema-wide rendering based on `per_file` setting.
     pub fn generate_extras(&self, ir_context: &SchemaContext) -> Result<()> {
         if let Some(config) = &self.config {
             for entry in config.extra_templates() {
                 let template_name = &entry.template;
-                if template_name.ends_with(".ptpl") {
-                    if entry.per_file {
-                        println!("Processing extra ptpl template (per-file): {}", template_name);
-                        self.generate_extra_per_file_polytemplate(ir_context, entry)?;
-                    } else {
-                        println!(
-                            "Processing extra ptpl template (schema-wide): {}",
-                            template_name
-                        );
-                        self.generate_extra_schema_wide_polytemplate(ir_context, entry)?;
-                    }
-                } else if self.has_template(template_name) {
-                    println!("Processing extra template: {}", template_name);
-                    self.generate_with_template(ir_context, template_name)?;
+                if entry.per_file {
+                    println!("Processing extra ptpl template (per-file): {}", template_name);
+                    self.generate_extra_per_file_polytemplate(ir_context, entry)?;
+                } else {
+                    println!(
+                        "Processing extra ptpl template (schema-wide): {}",
+                        template_name
+                    );
+                    self.generate_extra_schema_wide_polytemplate(ir_context, entry)?;
                 }
             }
         }
@@ -931,67 +885,6 @@ fn derive_output_suffix(template_name: &str, language: &str) -> String {
 /// The manifest file name used to track which template generated each output file.
 pub const MANIFEST_FILENAME: &str = ".polygen_manifest.json";
 
-/// Recursively collect all file paths under a directory.
-fn collect_output_files(dir: &Path) -> HashSet<PathBuf> {
-    let mut files = HashSet::new();
-    collect_files_recursive(dir, &mut files);
-    files
-}
-
-fn collect_files_recursive(dir: &Path, files: &mut HashSet<PathBuf>) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_files_recursive(&path, files);
-            } else {
-                files.insert(path);
-            }
-        }
-    }
-}
-
-/// Record newly created files into the manifest, mapping them to the template that created them.
-fn record_manifest(
-    output_dir: &Path,
-    template_name: &str,
-    before: &HashSet<PathBuf>,
-    after: &HashSet<PathBuf>,
-) {
-    let new_files: Vec<&PathBuf> = after.difference(before).collect();
-    if new_files.is_empty() {
-        return;
-    }
-
-    let manifest_path = output_dir.join(MANIFEST_FILENAME);
-
-    // Load existing manifest or create new
-    let mut manifest: HashMap<String, String> = if manifest_path.exists() {
-        fs::read_to_string(&manifest_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
-    } else {
-        HashMap::new()
-    };
-
-    // Add new entries
-    for file_path in new_files {
-        if let Ok(relative) = file_path.strip_prefix(output_dir) {
-            let key = relative.to_string_lossy().replace('\\', "/");
-            // Skip manifest file itself and debug files
-            if key == MANIFEST_FILENAME || key.starts_with("debug/") {
-                continue;
-            }
-            manifest.insert(key, template_name.to_string());
-        }
-    }
-
-    // Write manifest
-    if let Ok(json) = serde_json::to_string_pretty(&manifest) {
-        let _ = fs::write(&manifest_path, json);
-    }
-}
 
 /// Load the template manifest from an output directory.
 ///

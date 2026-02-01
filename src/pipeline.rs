@@ -347,11 +347,11 @@ impl CompilationPipeline {
             .with_preview_mode(self.config.preview_mode);
 
             // Check if template exists for this datasource
-            if generator.has_template(&format!("{}_file.rhai", datasource)) {
+            if generator.has_template(&format!("{}_file.ptpl", datasource)) {
                 generator.generate(ir_context)?;
                 generator.generate_extras(ir_context)?;
             } else {
-                println!("    (템플릿 없음: {}_file.rhai)", datasource);
+                println!("    (템플릿 없음: {}_file.ptpl)", datasource);
             }
         }
 

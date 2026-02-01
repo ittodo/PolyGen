@@ -1,280 +1,216 @@
 # templates/ - Agent Documentation
 
 ## Scope
-Rhai 스크립팅 템플릿 엔진을 사용하여 다양한 타겟 언어의 코드를 생성하는 템플릿 파일들이 위치한 폴더입니다. 현재 C#과 MySQL 언어를 지원합니다.
+PolyTemplate (.ptpl) 엔진을 사용하여 다양한 타겟 언어의 코드를 생성하는 템플릿 파일들이 위치한 폴더입니다. 지원 언어: C#, C++, Rust, TypeScript, Go, Unreal, SQLite.
+
+## Template Engine
+
+PolyTemplate (.ptpl)은 디렉티브(`%`)로 제어 흐름을, 인터폴레이션(`{{}}`)으로 값 치환을 수행하는 선언적 코드 생성 DSL입니다.
+
+- **디렉티브 라인** (`%`로 시작): `%if`, `%for`, `%include`, `%logic` 등
+- **출력 라인** (그 외): 그대로 출력, `{{expr | filter}}` 부분만 치환
+- **TOML 설정**: 각 언어의 `.toml` 파일에서 타입 매핑, 필터 동작, prelude 정의
+- **Rhai 연동**: `%logic` 블록에서 Rhai 코드 실행, prelude `.rhai` 유틸리티 함수 사용
+
+상세: `docs/PTPL_LANGUAGE_GUIDE.md`
 
 ## Structure
 ```
 templates/
-├── csharp/                    # C# 코드 생성 템플릿
-│   ├── csharp_file.rhai      # 메인 C# 파일 생성
-│   ├── csharp_namespace.rhai  # 네임스페이스 템플릿
-│   ├── csharp_logic_namespace.rhai  # 로직 네임스페이스
-│   ├── csharp_using.rhai      # using 문
-│   ├── csharp_using_csv.rhai  # CSV 관련 using
-│   ├── csharp_using_json.rhai  # JSON 관련 using
-│   ├── csharp_using_readers.rhai  # 바이너리 리더 using
-│   ├── csharp_using_writers.rhai  # 바이너리 라이터 using
-│   ├── csharp_binary_readers.rhai  # 바이너리 리더
-│   ├── csharp_binary_readers_file.rhai  # 바이너리 리더 파일
-│   ├── csharp_binary_readers_namespace.rhai  # 바이너리 리더 네임스페이스
-│   ├── csharp_binary_writers.rhai  # 바이너리 라이터
-│   ├── csharp_binary_writers_file.rhai  # 바이너리 라이터 파일
-│   ├── csharp_binary_writers_namespace.rhai  # 바이너리 라이터 네임스페이스
-│   ├── csharp_csv_mappers.rhai  # CSV 매퍼
-│   ├── csharp_csv_mappers_file.rhai  # CSV 매퍼 파일
-│   ├── csharp_csv_mappers_namespace.rhai  # CSV 매퍼 네임스페이스
-│   ├── csharp_csv_columns_file.rhai  # CSV 컬럼 정의 파일
-│   ├── csharp_json_mappers.rhai  # JSON 매퍼
-│   ├── csharp_json_mappers_file.rhai  # JSON 매퍼 파일
-│   ├── csharp_json_mappers_namespace.rhai  # JSON 매퍼 네임스페이스
-│   ├── struct/               # 구조체 관련 템플릿
-│   │   ├── csharp_logic_struct.rhai
-│   │   ├── csharp_logic_struct_header.rhai
-│   │   ├── csharp_logic_struct_body.rhai
-│   │   ├── csharp_binary_readers_struct.rhai
-│   │   ├── csharp_binary_readers_struct.rhai
-│   │   ├── csharp_binary_readers_struct_body.rhai
-│   │   ├── csharp_binary_writers_struct.rhai
-│   │   ├── csharp_binary_writers_struct_body.rhai
-│   │   ├── csharp_csv_mappers_struct.rhai
-│   │   ├── csharp_csv_mappers_struct_reader.rhai
-│   │   ├── csharp_csv_mappers_struct_writer.rhai
-│   │   └── csharp_json_mappers_struct.rhai
-│   ├── enum/                # 열거형 관련 템플릿
-│   │   ├── csharp_enum.rhai
-│   │   └── csharp_enum_body.rhai
-│   └── rhai_utils/          # Rhai 유틸리티 함수
-│       ├── indent.rhai
-│       ├── csv_helpers.rhai
-│       ├── type_mapping.rhai
-│       ├── type_info.rhai
-│       ├── reader_helpers.rhai
-│       └── read_mapping.rhai
-├── mysql/                    # MySQL 코드 생성 템플릿 (초기 상태)
-│   ├── mysql_file.rhai
-│   ├── mysql_namespace_root.rhai
-│   ├── mysql_namespace.rhai
-│   ├── mysql_struct.rhai
+├── csharp/                    # C# 코드 생성
+│   ├── csharp.toml            # 언어 설정 (type_map, binary_read 등)
+│   ├── csharp_file.ptpl       # 메인 클래스/구조체 생성
+│   ├── csharp_csv_columns_file.ptpl  # CSV 컬럼 정의
+│   ├── csharp_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   ├── section/               # 섹션 단위 템플릿
+│   │   ├── namespace_block.ptpl
+│   │   ├── struct_block.ptpl
+│   │   └── enum_block.ptpl
+│   ├── detail/                # 세부 렌더링
+│   │   ├── struct_header.ptpl
+│   │   ├── struct_body.ptpl
+│   │   ├── struct_field.ptpl
+│   │   ├── struct_pack.ptpl       # @pack Pack/Unpack/TryUnpack
+│   │   ├── struct_fk_nav.ptpl
+│   │   ├── struct_relation_nav.ptpl
+│   │   └── struct_auto_update.ptpl
+│   └── rhai_utils/            # Rhai 유틸리티 (prelude)
+│       ├── type_utils.rhai
+│       └── binary_mapping.rhai
+│
+├── cpp/                       # C++ 헤더 전용 생성
+│   ├── cpp.toml
+│   ├── cpp_file.ptpl          # 구조체/Enum 헤더
+│   ├── cpp_container_file.ptpl  # Container (인덱스, 검증)
+│   ├── cpp_loaders_file.ptpl  # CSV/JSON/Binary 로더
+│   ├── cpp_sqlite_accessor_file.ptpl
+│   ├── section/
+│   │   ├── namespace_block.ptpl
+│   │   ├── struct_block.ptpl
+│   │   └── enum_block.ptpl
+│   ├── detail/
+│   │   ├── struct_body.ptpl
+│   │   └── pack_methods.ptpl  # @pack pack/unpack/try_unpack
 │   └── rhai_utils/
 │       └── type_mapping.rhai
-├── mermaid/                  # Mermaid 다이어그램 생성 (플래그)
-└── rhai_utils/              # 공통 Rhai 유틸리티
+│
+├── rust/                      # Rust 모듈 생성
+│   ├── rust.toml
+│   ├── rust_file.ptpl
+│   ├── rust_container_file.ptpl
+│   ├── rust_loaders_file.ptpl
+│   ├── rust_sqlite_accessor_file.ptpl
+│   ├── section/
+│   │   ├── namespace_block.ptpl
+│   │   ├── struct_block.ptpl
+│   │   └── enum_block.ptpl
+│   ├── detail/
+│   │   ├── struct_body.ptpl
+│   │   └── pack_methods.ptpl  # @pack pack/unpack
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── typescript/                # TypeScript 인터페이스/Zod 생성
+│   ├── typescript.toml
+│   ├── typescript_file.ptpl
+│   ├── typescript_zod_file.ptpl
+│   ├── typescript_sqlite_accessor_file.ptpl
+│   ├── section/
+│   │   ├── namespace_block.ptpl
+│   │   ├── struct_block.ptpl
+│   │   └── enum_block.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── go/                        # Go 패키지 생성
+│   ├── go.toml
+│   ├── go_file.rhai           # (아직 .rhai — 미마이그레이션)
+│   ├── go_container_file.rhai
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── unreal/                    # Unreal Engine USTRUCT/UENUM
+│   ├── unreal.toml
+│   ├── unreal_file.ptpl
+│   ├── unreal_loaders_file.ptpl
+│   ├── unreal_hotreload_file.ptpl
+│   ├── section/
+│   │   ├── namespace_block.ptpl
+│   │   ├── struct_block.ptpl
+│   │   └── enum_block.ptpl
+│   ├── detail/
+│   │   └── struct_body.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── sqlite/                    # SQLite DDL + Migration
+│   ├── sqlite.toml
+│   ├── sqlite_file.ptpl
+│   ├── sqlite_migration_file.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── mermaid/                   # Mermaid 다이어그램 (예정)
+└── rhai_utils/                # 공통 Rhai 유틸리티
     └── indent.rhai
 ```
 
-## Files
+## Template Architecture
 
-### C# 템플릿
+### 파일 구성 패턴
 
-#### 파일 레벨 템플릿
-- **csharp_file.rhai**: 메인 C# 파일 생성
-  - 전체 파일 구조 생성
-  - 네임스페이스, 구조체, 열거형 순회
-  - IR을 순회하며 코드 조립
+각 언어 템플릿은 동일한 구조를 따릅니다:
 
-- **csharp_namespace.rhai**: 네임스페이스 정의
-  - `namespace <path>;` 생성
-  - 중첩 네임스페이스 처리
+1. **`<lang>.toml`**: 언어 설정 (타입 매핑, 필터 정의, 템플릿 목록)
+2. **`<lang>_file.ptpl`**: 메인 엔트리 포인트 (per-file 렌더링)
+3. **`<lang>_<feature>_file.ptpl`**: 추가 기능 템플릿 (container, loaders, sqlite_accessor 등)
+4. **`section/`**: 네임스페이스, 구조체, enum 블록 단위 분리
+5. **`detail/`**: 필드, 헤더, 팩 등 세부 렌더링
+6. **`rhai_utils/`**: `%logic` 블록에서 import하는 Rhai 헬퍼 함수
 
-- **csharp_logic_namespace.rhai**: 로직 네임스페이스
-  - `Polygen.Logic` 네임스페이스
-  - 구조체 생성 로직 포함
+### 렌더링 흐름
 
-- **csharp_using.rhai**: 공통 using 문
-  - `System`, `System.Collections.Generic` 등 기본 using
+```
+<lang>_file.ptpl
+  └─> %for ns in file.namespaces
+      └─> %include "section/namespace_block" with ns
+          └─> %for item in namespace.items
+              └─> %include "section/struct_block" with struct
+                  └─> %include "detail/struct_body" with struct
+                      └─> %include "detail/struct_pack" with struct  (조건부)
+              └─> %include "section/enum_block" with enum
+```
 
-- **csharp_using_csv.rhai**: CSV 관련 using
-  - `Polygen.Common.CsvUtils`, `Polygen.Common.DataSource` 등
+### TOML 설정 구조
 
-- **csharp_using_json.rhai**: JSON 관련 using
-  - `Polygen.Common.JsonUtils`, `Polygen.Common.JsonCsvConverter` 등
+```toml
+[templates]
+main = "<lang>_file.ptpl"
+extension = "cs"
 
-- **csharp_using_readers.rhai**: 바이너리 리더 using
-  - `Polygen.Common.BinaryUtils` 등
+[[templates.extra]]
+template = "<lang>_container_file.ptpl"
+per_file = false
+output = "<lang>/<file>.Container.<ext>"
 
-- **csharp_using_writers.rhai**: 바이너리 라이터 using
-  - `Polygen.Common.BinaryUtils` 등
+[type_map]
+u32 = "uint"
+string = "string"
 
-#### 바이너리 입출력 템플릿
-- **csharp_binary_readers.rhai**: 바이너리 리더
-  - 바이너리 포맷에서 데이터를 읽는 코드 생성
+[binary_read]
+u32 = "reader.ReadUInt32()"
 
-- **csharp_binary_readers_file.rhai**: 바이너리 리더 파일
-  - 전체 바이너리 리더 파일 구조
-
-- **csharp_binary_readers_namespace.rhai**: 바이너리 리더 네임스페이스
-  - `Polygen.BinaryReaders` 네임스페이스
-
-- **csharp_binary_writers.rhai**: 바이너리 라이터
-  - 데이터를 바이너리 포맷으로 쓰는 코드 생성
-
-- **csharp_binary_writers_file.rhai**: 바이너리 라이터 파일
-  - 전체 바이너리 라이터 파일 구조
-
-- **csharp_binary_writers_namespace.rhai**: 바이너리 라이터 네임스페이스
-  - `Polygen.BinaryWriters` 네임스페이스
-
-#### CSV 매퍼 템플릿
-- **csharp_csv_mappers.rhai**: CSV 매퍼
-  - CSV 데이터를 읽고 쓰는 코드 생성
-
-- **csharp_csv_mappers_file.rhai**: CSV 매퍼 파일
-  - 전체 CSV 매퍼 파일 구조
-
-- **csharp_csv_mappers_namespace.rhai**: CSV 매퍼 네임스페이스
-  - `Csv.<namespace>` 네임스페이스
-
-- **csharp_csv_columns_file.rhai**: CSV 컬럼 정의 파일
-  - CSV 컬럼 정보 생성
-  - 헤더 정의
-
-#### JSON 매퍼 템플릿
-- **csharp_json_mappers.rhai**: JSON 매퍼
-  - JSON 데이터를 읽고 쓰는 코드 생성
-
-- **csharp_json_mappers_file.rhai**: JSON 매퍼 파일
-  - 전체 JSON 매퍼 파일 구조
-
-- **csharp_json_mappers_namespace.rhai**: JSON 매퍼 네임스페이스
-  - `Polygen.JsonMappers` 네임스페이스
-
-#### 구조체 템플릿
-- **csharp_logic_struct.rhai**: 논리 구조체
-  - 기본 구조체 생성 (필드, 속성)
-
-- **csharp_logic_struct_header.rhai**: 논리 구조체 헤더
-  - 클래스 선언, 속성 등 헤더 부분
-
-- **csharp_logic_struct_body.rhai**: 논리 구조체 본문
-  - 필드 선언, 생성자 등
-
-- **csharp_binary_readers_struct.rhai**: 바이너리 리더 구조체
-  - 바이너리 데이터를 읽는 메서드 생성
-
-- **csharp_binary_readers_struct_body.rhai**: 바이너리 리더 본문
-  - 필드별 읽기 로직
-
-- **csharp_binary_writers_struct.rhai**: 바이너리 라이터 구조체
-  - 바이너리 데이터를 쓰는 메서드 생성
-
-- **csharp_binary_writers_struct_body.rhai**: 바이너리 라이터 본문
-  - 필드별 쓰기 로직
-
-- **csharp_csv_mappers_struct.rhai**: CSV 매퍼 구조체
-  - CSV 매퍼 클래스 생성
-
-- **csharp_csv_mappers_struct_reader.rhai**: CSV 매퍼 리더
-  - CSV에서 읽는 메서드 생성
-
-- **csharp_csv_mappers_struct_writer.rhai**: CSV 매퍼 라이터
-  - CSV에 쓰는 메서드 생성
-
-- **csharp_json_mappers_struct.rhai**: JSON 매퍼 구조체
-  - JSON 매퍼 클래스 생성
-
-#### 열거형 템플릿
-- **csharp_enum.rhai**: 열거형 생성
-  - `enum` 정의
-
-- **csharp_enum_body.rhai**: 열거형 본문
-  - 열거형 값 생성
-
-#### 유틸리티 템플릿
-- **rhai_utils/indent.rhai**: 인덴트 유틸리티
-  - 들여쓰기 레벨 관리
-
-- **rhai_utils/csv_helpers.rhai**: CSV 헬퍼 함수
-  - CSV 관련 유틸리티 함수
-
-- **rhai_utils/type_mapping.rhai**: 타입 매핑
-  - IR 타입 → C# 타입 변환
-
-- **rhai_utils/type_info.rhai**: 타입 정보
-  - 타입 메타데이터 처리
-
-- **rhai_utils/reader_helpers.rhai**: 리더 헬퍼
-  - 읽기 관련 헬퍼 함수
-
-- **rhai_utils/read_mapping.rhai**: 읽기 매핑
-  - 읽기 로직 매핑
-
-### MySQL 템플릿 (초기 상태)
-- **mysql_file.rhai**: MySQL 파일 생성
-- **mysql_namespace_root.rhai**: 최상위 네임스페이스
-- **mysql_namespace.rhai**: 네임스페이스
-- **mysql_struct.rhai**: 구조체
-- **rhai_utils/type_mapping.rhai**: 타입 매핑
+[rhai]
+prelude = ["rhai_utils/type_utils.rhai"]
+```
 
 ## Key Concepts
 
-### Rhai 템플릿 엔진
-- Rust에서 임베딩 가능한 스크립팅 언어
-- IR 객체를 템플릿에 주입하여 코드 생성
-- `src/rhai_generator.rs`가 Rhai 엔진을 설정하고 템플릿을 실행합니다
+### PolyTemplate 디렉티브
+- `%logic` / `%endlogic`: Rhai 코드 블록 (데이터 준비)
+- `%if` / `%elif` / `%else` / `%endif`: 조건부 출력
+- `%for item in collection` / `%endfor`: 반복
+- `%include "path" with binding`: 하위 템플릿 포함
+- `%match` / `%when` / `%endmatch`: 패턴 매칭
+- `%block` / `%render`: 재사용 가능 블록
+- `%let` / `%set`: 변수 할당
+- `%blank`: 빈 줄 출력
+- `%--`: 주석 (출력 안 함)
 
-### 템플릿 실행 흐름
-1. `lib.rs`에서 타겟 언어 템플릿 파일 경로 결정
-2. `rhai_generator.rs`가 IR을 Rhai 엔진에 주입
-3. Rhai 엔진이 템플릿을 실행하고 코드를 생성
-4. 생성된 코드를 `output/<lang>/` 디렉토리에 저장
+### 인터폴레이션 & 필터
+```
+{{struct.name}}                    → 프로퍼티 접근
+{{field.field_type | lang_type}}   → TOML type_map 기반 타입 변환
+{{name | pascal_case}}             → 케이스 변환
+{{items | join(", ")}}             → 컬렉션 조인
+```
 
-### C# 코드 생성 패턴
-- **네임스페이스**: `Polygen` 루트 하위에 기능별 네임스페이스
-- **CSV 매퍼**: `Csv.<namespace>` 구조
-- **바이너리 리더/라이터**: `Polygen.BinaryReaders`, `Polygen.BinaryWriters`
-- **JSON 매퍼**: `Polygen.JsonMappers`
-
-### 템플릿 파일 명명 규칙
-- `<lang>_file.rhai`: 전체 파일 템플릿
-- `<lang>_namespace.rhai`: 네임스페이스 템플릿
-- `<lang>_<feature>_file.rhai`: 특정 기능 파일 템플릿
-- `<lang>_<feature>_namespace.rhai`: 특정 기능 네임스페이스 템플릿
-
-## Dependencies
-
-### 외부 의존성
-- **Rhai 1.22.2**: 템플릿 엔진
-- **IR (ir_model.rs)**: 템플릿에 주입되는 데이터
-- **Rhai Functions (src/rhai/*.rs)**: 템플릿에서 호출 가능한 커스텀 함수
-
-### 내부 의존성
-- 템플릿은 서로 참조 가능
-- `rhai_utils/` 하위의 유틸리티 함수를 공유
-- C# 템플릿은 `static/csharp/`의 정적 파일과 함께 사용
+### 컨텍스트 변수
+- `schema`: 전체 스키마 (SchemaContext)
+- `file`: 현재 파일 (FileDef)
+- `namespace`: 네임스페이스 (NamespaceDef)
+- `struct`: 구조체 (StructDef) — `is_embed`, `has_pk`, `pack_separator` 등
+- `field`: 필드 (FieldDef) — `field_type`, `is_primary_key`, `is_optional` 등
+- `enum`: 열거형 (EnumDef) — `members`
 
 ## Development Guidelines
 
-### 새로운 타겟 언어 추가 시
+### 새로운 타겟 언어 추가
 1. `templates/<lang>/` 폴더 생성
-2. `<lang>_file.rhai` 템플릿 생성 (최소 요구사항)
-3. 네임스페이스, 구조체, 열거형 템플릿 생성
-4. `templates/<lang>/rhai_utils/type_mapping.rhai`에 타입 매핑 정의
-5. `lib.rs`에서 언어 자동 검출 로직 확인
+2. `<lang>.toml` 설정 파일 작성 (type_map 필수)
+3. `<lang>_file.ptpl` 메인 템플릿 작성
+4. `section/`, `detail/` 하위 템플릿 분리
+5. (선택) `rhai_utils/type_mapping.rhai`에 Rhai 헬퍼 추가
 
-### 템플릿 작성 규칙 (agent.md 참고)
-- **백틱 문자열**: 템플릿 리터럴에 사용
-- **보간**: `${expr}` 형식으로 변수 사용
-- **새줄 처리**: 각 줄 끝에 `+ "\n"` 추가
-- **최소 부작용**: `${...}` 내의 표현식은 단순하게 유지
-
-### C# 코드 스타일 (생성된 코드)
-- **중괄호**: Allman 스타일 (여는 중괄호 다음 줄)
-- **인덴트**: 4 스페이스
-- **한 줄에 한 문장**: 복합문 사용
-- **공백**: 연산자 주변에 공백 추가
+### 템플릿 작성 규칙
+- 복잡한 로직은 `%logic` 블록에서 문자열로 조립, 출력 라인에서 `{{var}}`로 렌더링
+- `%include`로 모듈화하여 재사용성 확보
+- 들여쓰기는 출력 라인에 직접 작성 (템플릿이 곧 출력)
+- 타입 변환은 TOML `type_map` + `lang_type` 필터 활용
 
 ### 테스트
-- 템플릿 변경 후 `cargo test` 실행하여 스냅샷 검증
-- `tests/snapshots/`에 생성된 코드 스냅샷 저장
-- 스냅샷 검토로 코드 생성 로직 확인
+- `cargo test` — 스냅샷 테스트 검증
+- `tests/runners/<lang>/run_tests.bat` — 통합 테스트 (컴파일 + 실행)
+- 템플릿 변경 시 반드시 해당 언어 통합 테스트 실행
 
-### 디버깅
-- `output/<lang>/` 디렉토리에서 생성된 코드 확인
-- `ir_debug.txt`에서 IR 구조 확인
-- Rhai 템플릿의 `print()` 함수로 디버그 출력 가능
-
-### 주의사항
-- **템플릿 복잡도**: 너무 복잡한 로직은 `src/rhai/*.rs`에서 함수로 구현
-- **성능**: 템플릿 내에서 무거운 연산은 피하세요
-- **유지보수성**: 템플릿을 작은 단위로 분리하여 관리
+*최종 업데이트: 2026-02-02*
