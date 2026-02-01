@@ -4,7 +4,7 @@ let is_embedded_globally = false;
 for file in schema.files {
     for ns in file.namespaces {
         let ns_stack = [ns];
-        while ns_stack.len > 0 {
+        while ns_stack.len() > 0 {
             let cur = ns_stack.pop();
             for it in cur.items {
                 if it.is_namespace() {

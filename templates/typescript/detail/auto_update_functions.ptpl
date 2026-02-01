@@ -11,7 +11,7 @@ for item in struct.items {
     }
 }
 %endlogic
-%if auto_update_fields.len > 0
+%if auto_update_fields.len() > 0
 %blank
 // Auto-update timestamp helper functions for {{struct.name}}
 %for f in auto_update_fields
@@ -26,7 +26,7 @@ export function onUpdate{{struct.name}}{{pascal_name}}(obj: {{struct.name}}): vo
     obj.{{field_name}} = {{datetime_expr}};
 }
 %endfor
-%if auto_update_fields.len > 1
+%if auto_update_fields.len() > 1
 %blank
 /** Updates all auto-update timestamp fields. */
 export function onUpdate{{struct.name}}All(obj: {{struct.name}}): void {

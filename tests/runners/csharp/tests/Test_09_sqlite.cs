@@ -227,7 +227,8 @@ class Program
                 name = reader.GetString(1),
                 email = reader.IsDBNull(2) ? null : reader.GetString(2),
                 created_at = reader.GetInt64(3)
-            }
+            },
+            CacheStrategy.FullLoad
         );
 
         userTable.Load();
@@ -258,7 +259,8 @@ class Program
                 name = reader.GetString(1),
                 email = reader.IsDBNull(2) ? null : reader.GetString(2),
                 created_at = reader.GetInt64(3)
-            }
+            },
+            CacheStrategy.FullLoad
         );
 
         var user = userTable.GetById(2);

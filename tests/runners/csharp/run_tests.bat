@@ -112,6 +112,10 @@ for %%T in (%TEST_CASES%) do (
                 mkdir "!TEST_PROJECT_DIR!\Common" >nul 2>&1
                 xcopy "!OUTPUT_DIR!\csharp\Common\*.cs" "!TEST_PROJECT_DIR!\Common\" /q >nul 2>&1
             )
+            if exist "!OUTPUT_DIR!\csharp\Data" (
+                mkdir "!TEST_PROJECT_DIR!\Data" >nul 2>&1
+                xcopy "!OUTPUT_DIR!\csharp\Data\*.cs" "!TEST_PROJECT_DIR!\Data\" /q >nul 2>&1
+            )
             copy "!TEST_FILE!" "!TEST_PROJECT_DIR!\Program.cs" >nul
 
             REM Compile and run

@@ -12,10 +12,10 @@ let pack_body = "";
 let unpack_body = "";
 let sname = struct.name;
 
-if fields.len > 0 {
+if fields.len() > 0 {
     // Pack method body
     pack_body += "        std::ostringstream oss;\n";
-    for i in 0..fields.len {
+    for i in 0..fields.len() {
         let f = fields[i];
         if i > 0 {
             pack_body += "        oss << \"" + sep + "\";\n";
@@ -29,11 +29,11 @@ if fields.len > 0 {
     unpack_body += "        std::istringstream iss(value);\n";
     unpack_body += "        std::string part;\n";
 
-    for i in 0..fields.len {
+    for i in 0..fields.len() {
         let f = fields[i];
         let type_name = f.field_type.type_name;
 
-        if i < fields.len - 1 {
+        if i < fields.len() - 1 {
             unpack_body += "        if (!std::getline(iss, part, '" + sep + "')) {\n";
         } else {
             unpack_body += "        if (!std::getline(iss, part)) {\n";
@@ -65,7 +65,7 @@ if fields.len > 0 {
     }
     unpack_body += "        return result;";
 }
-let has_fields = fields.len > 0;
+let has_fields = fields.len() > 0;
 %endlogic
 %if has_fields
 

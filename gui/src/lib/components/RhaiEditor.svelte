@@ -19,6 +19,7 @@
     onChange?: (value: string) => void;
     readonly?: boolean;
     filePath?: string;
+    initialPosition?: { line: number; column: number } | null;
   }
 
   let {
@@ -26,6 +27,7 @@
     onChange,
     readonly = false,
     filePath = "",
+    initialPosition = null,
   }: Props = $props();
 
   let editorContainer: HTMLDivElement;
@@ -120,6 +122,16 @@
         scheduleValidation();
       }
     });
+
+    // Navigate to initial position if provided
+    if (initialPosition && editor) {
+      editor.setPosition({
+        lineNumber: initialPosition.line,
+        column: initialPosition.column,
+      });
+      editor.revealLineInCenter(initialPosition.line);
+      editor.focus();
+    }
 
     // Initial validation
     scheduleValidation();

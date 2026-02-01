@@ -130,6 +130,14 @@ CSPROJ
 
     # Copy generated files and test file
     cp "$OUTPUT_DIR/csharp"/*.cs "$TEST_PROJECT_DIR/" 2>/dev/null || true
+    # Copy subdirectories (Common, Data, etc.)
+    for subdir in "$OUTPUT_DIR/csharp"/*/; do
+        if [ -d "$subdir" ]; then
+            dirname=$(basename "$subdir")
+            mkdir -p "$TEST_PROJECT_DIR/$dirname"
+            cp "$subdir"*.cs "$TEST_PROJECT_DIR/$dirname/" 2>/dev/null || true
+        fi
+    done
     cp "$TEST_FILE" "$TEST_PROJECT_DIR/Program.cs"
 
     # Compile

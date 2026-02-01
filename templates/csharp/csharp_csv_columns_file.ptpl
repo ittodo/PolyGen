@@ -179,8 +179,7 @@ fn collect_columns_with(ctx_struct, prefix, type_string, visited, depth, current
     cols
 }
 
-// Only run for the primary file
-let skip_output = false;
+// Only run for the primary file (this template writes multiple files via write_file)
 let is_primary = false;
 for f in schema.files {
     let fp = f.path;
@@ -191,11 +190,8 @@ for f in schema.files {
         break;
     }
 }
-if !is_primary {
-    skip_output = true;
-}
 
-if !skip_output {
+if is_primary {
     for f in schema.files {
         if f.path == () || f.path == "" { continue; }
         for ns in f.namespaces {
@@ -223,9 +219,4 @@ if !skip_output {
         }
     }
 }
-
-// Force skip_output so no main file is generated
-skip_output = true;
 %endlogic
-%if !skip_output
-%endif

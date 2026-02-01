@@ -1,7 +1,7 @@
 %logic
 // C++ Loaders File Template for PolyGen
 // Generates Binary read/write functions
-// Ported from cpp_loaders_file.rhai
+// Ported from cpp_loaders_file.rhai → converted to 방식 A
 
 import "templates/cpp/rhai_utils/type_mapping" as cpp_types;
 
@@ -51,6 +51,46 @@ fn get_type_fqn(type_ref) {
     return get_full_cpp_type(clean_ns, type_ref.type_name);
 }
 
+fn get_primitive_reader(type_name) {
+    switch type_name {
+        "string" => "read_string",
+        "bool" => "read_bool",
+        "u8" => "read_u8",
+        "u16" => "read_u16",
+        "u32" => "read_u32",
+        "u64" => "read_u64",
+        "i8" => "read_i8",
+        "i16" => "read_i16",
+        "i32" => "read_i32",
+        "i64" => "read_i64",
+        "f32" => "read_f32",
+        "f64" => "read_f64",
+        "bytes" => "read_bytes",
+        "timestamp" => "read_timestamp",
+        _ => "read_i32"
+    }
+}
+
+fn get_primitive_writer(type_name) {
+    switch type_name {
+        "string" => "write_string",
+        "bool" => "write_bool",
+        "u8" => "write_u8",
+        "u16" => "write_u16",
+        "u32" => "write_u32",
+        "u64" => "write_u64",
+        "i8" => "write_i8",
+        "i16" => "write_i16",
+        "i32" => "write_i32",
+        "i64" => "write_i64",
+        "f32" => "write_f32",
+        "f64" => "write_f64",
+        "bytes" => "write_bytes",
+        "timestamp" => "write_timestamp",
+        _ => "write_i32"
+    }
+}
+
 // Binary read for a field type
 fn bin_read_expr(type_ref) {
     let n = type_ref.type_name;
@@ -98,47 +138,7 @@ fn bin_write_expr(type_ref, value_expr) {
     return "write_" + n + "(writer, " + value_expr + ")";
 }
 
-fn get_primitive_reader(type_name) {
-    switch type_name {
-        "string" => "read_string",
-        "bool" => "read_bool",
-        "u8" => "read_u8",
-        "u16" => "read_u16",
-        "u32" => "read_u32",
-        "u64" => "read_u64",
-        "i8" => "read_i8",
-        "i16" => "read_i16",
-        "i32" => "read_i32",
-        "i64" => "read_i64",
-        "f32" => "read_f32",
-        "f64" => "read_f64",
-        "bytes" => "read_bytes",
-        "timestamp" => "read_timestamp",
-        _ => "read_i32"
-    }
-}
-
-fn get_primitive_writer(type_name) {
-    switch type_name {
-        "string" => "write_string",
-        "bool" => "write_bool",
-        "u8" => "write_u8",
-        "u16" => "write_u16",
-        "u32" => "write_u32",
-        "u64" => "write_u64",
-        "i8" => "write_i8",
-        "i16" => "write_i16",
-        "i32" => "write_i32",
-        "i64" => "write_i64",
-        "f32" => "write_f32",
-        "f64" => "write_f64",
-        "bytes" => "write_bytes",
-        "timestamp" => "write_timestamp",
-        _ => "write_i32"
-    }
-}
-
-// Generate binary read function for a struct
+// Generate binary read function body for a struct
 fn generate_binary_read(s, namespace_fqn) {
     let result = "";
     let full_type = get_full_cpp_type(namespace_fqn, s.name);
@@ -174,12 +174,12 @@ fn generate_binary_read(s, namespace_fqn) {
     }
 
     result += "    return obj;\n";
-    result += "}\n\n";
+    result += "}";
 
     return result;
 }
 
-// Generate binary write function for a struct
+// Generate binary write function body for a struct
 fn generate_binary_write(s, namespace_fqn) {
     let result = "";
     let full_type = get_full_cpp_type(namespace_fqn, s.name);
@@ -213,12 +213,16 @@ fn generate_binary_write(s, namespace_fqn) {
         }
     }
 
-    result += "}\n\n";
+    result += "}";
 
     return result;
 }
 
-// First, collect all loader header names for cross-file includes
+// ============================================================
+// Data preparation
+// ============================================================
+
+// Collect all loader header names for cross-file includes
 let all_loader_headers = [];
 for f in schema.files {
     if f.path == () || f.path == "" { continue; }
@@ -229,25 +233,34 @@ for f in schema.files {
     all_loader_headers.push(bn + "_loaders.hpp");
 }
 
-// Main entry point - runs for each file
-let skip_output = true;
-for cur_file in schema.files {
-    if cur_file.path == () || cur_file.path == "" {
-        continue;
-    }
+// Guard: per_file template needs file.path
+let has_file = file.path != () && file.path != "";
 
-    // Extract filename from path
-    let parts = cur_file.path.split("/");
+// Extract base_name and output_filename
+let base_name = "";
+let output_filename = "";
+if has_file {
+    let parts = file.path.split("/");
     let filename = parts[parts.len - 1];
-    let base_name = filename + "";
+    base_name = filename + "";
     base_name.replace(".poly", "");
+    output_filename = base_name + "_loaders.hpp";
+}
 
-    let output_filename = base_name + "_loaders.hpp";
-    let final_path = output_dir + "/cpp/" + output_filename;
+// Collect other_includes (cross-file headers excluding self)
+let other_includes = [];
+if has_file {
+    for other_header in all_loader_headers {
+        if other_header != output_filename {
+            other_includes.push(other_header);
+        }
+    }
+}
 
-    // Collect all structs from all namespaces in this file
-    let all_structs = [];
-    for ns in cur_file.namespaces {
+// Collect all structs from all namespaces in this file
+let all_structs = [];
+if has_file {
+    for ns in file.namespaces {
         for item in ns.items {
             if item.is_struct() {
                 let s = item.as_struct();
@@ -281,78 +294,63 @@ for cur_file in schema.files {
             }
         }
     }
+}
 
-    if all_structs.is_empty() {
-        continue;
-    }
+let has_structs = all_structs.len() > 0;
 
-    let result = "";
+// Pre-compute per-entry: full_type, read_fwd, write_fwd, read_body, write_body
+let idx = 0;
+for entry in all_structs {
+    let s = entry.struct_def;
+    let ns = entry.namespace_name;
+    let full_type = get_full_cpp_type(ns, s.name);
 
-    // File header
-    result += "// Auto-generated by PolyGen - DO NOT EDIT\n";
-    result += "// Loaders for binary serialization\n";
-    result += "#pragma once\n\n";
+    all_structs[idx].full_type = full_type;
+    all_structs[idx].struct_name = s.name;
+    all_structs[idx].read_fwd = "inline " + full_type + " read_" + s.name + "(polygen::BinaryReader& reader);";
+    all_structs[idx].write_fwd = "inline void write_" + s.name + "(polygen::BinaryWriter& writer, const " + full_type + "& obj);";
+    all_structs[idx].read_body = generate_binary_read(s, ns);
+    all_structs[idx].write_body = generate_binary_write(s, ns);
 
-    // Includes
-    result += "#include \"" + base_name + ".hpp\"\n";
-    result += "#include \"polygen_support.hpp\"\n";
-
-    for other_header in all_loader_headers {
-        if other_header != output_filename {
-            result += "#include \"" + other_header + "\"\n";
-        }
-    }
-    result += "\n";
-
-    // All loader functions in single namespace
-    result += "namespace polygen_loaders {\n\n";
-
-    // Binary Readers
-    result += "// ============================================================================\n";
-    result += "// Binary Readers\n";
-    result += "// ============================================================================\n\n";
-
-    // Forward declarations
-    for entry in all_structs {
-        let s = entry.struct_def;
-        let ns = entry.namespace_name;
-        let full_type = get_full_cpp_type(ns, s.name);
-        result += "inline " + full_type + " read_" + s.name + "(polygen::BinaryReader& reader);\n";
-    }
-    result += "\n";
-
-    // Implementations
-    for entry in all_structs {
-        let s = entry.struct_def;
-        let ns = entry.namespace_name;
-        result += generate_binary_read(s, ns);
-    }
-
-    // Binary Writers
-    result += "// ============================================================================\n";
-    result += "// Binary Writers\n";
-    result += "// ============================================================================\n\n";
-
-    // Forward declarations
-    for entry in all_structs {
-        let s = entry.struct_def;
-        let ns = entry.namespace_name;
-        let full_type = get_full_cpp_type(ns, s.name);
-        result += "inline void write_" + s.name + "(polygen::BinaryWriter& writer, const " + full_type + "& obj);\n";
-    }
-    result += "\n";
-
-    // Implementations
-    for entry in all_structs {
-        let s = entry.struct_def;
-        let ns = entry.namespace_name;
-        result += generate_binary_write(s, ns);
-    }
-
-    // Close namespace
-    result += "} // namespace polygen_loaders\n";
-
-    print("Generating loader file: " + final_path);
-    write_file(final_path, result);
+    idx += 1;
 }
 %endlogic
+%if has_file && has_structs
+// Auto-generated by PolyGen - DO NOT EDIT
+// Loaders for binary serialization
+#pragma once
+%blank
+#include "{{base_name}}.hpp"
+#include "polygen_support.hpp"
+%for hdr in other_includes
+#include "{{hdr}}"
+%endfor
+%blank
+namespace polygen_loaders {
+%blank
+// ============================================================================
+// Binary Readers
+// ============================================================================
+%blank
+%for entry in all_structs
+{{entry.read_fwd}}
+%endfor
+%blank
+%for entry in all_structs
+{{entry.read_body}}
+%blank
+%endfor
+// ============================================================================
+// Binary Writers
+// ============================================================================
+%blank
+%for entry in all_structs
+{{entry.write_fwd}}
+%endfor
+%blank
+%for entry in all_structs
+{{entry.write_body}}
+%blank
+%endfor
+} // namespace polygen_loaders
+%endif

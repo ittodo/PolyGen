@@ -9,8 +9,8 @@ for item in struct.items {
         }
     }
 }
-let has_auto_update = auto_update_fields.len > 0;
-let has_multi_auto_update = auto_update_fields.len > 1;
+let has_auto_update = auto_update_fields.len() > 0;
+let has_multi_auto_update = auto_update_fields.len() > 1;
 
 // Check if we already have an impl block from @pack
 let need_impl = !(struct.is_embed && struct.pack_separator != ());

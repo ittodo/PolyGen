@@ -8,14 +8,14 @@ extension = ".sql"
 [templates]
 # Main template for generating DDL
 main = "sqlite_file.ptpl"
-# NOTE: main_output = "schema.sql" and main_per_file = false
-# will be enabled after template is rewritten to use schema context.
+main_output = "schema.sql"
+main_per_file = false
 
 # Extra templates to run after main
 [[templates.extra]]
 template = "sqlite_migration_file.ptpl"
-# NOTE: output = "migration.sql" and per_file = false
-# will be enabled after template is rewritten to use schema context.
+output = "migration.sql"
+per_file = false
 
 [rhai]
 prelude = ["rhai_utils/type_mapping.rhai"]

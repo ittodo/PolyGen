@@ -46,7 +46,8 @@ output = "{{stem}}.schema.ts"
 # SQLite Accessor (for @datasource("sqlite") tables)
 [[templates.extra]]
 template = "typescript_sqlite_accessor_file.ptpl"
-# NOTE: per_file = false will be enabled after template is rewritten.
+output = "{{stem}}_sqlite_accessor.ts"
+per_file = false
 
 # Rhai scripting configuration
 [rhai]

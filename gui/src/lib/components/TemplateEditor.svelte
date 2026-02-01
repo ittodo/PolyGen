@@ -79,6 +79,9 @@
   // Track current file info
   let currentFile = $state<TemplateFileInfo | null>(null);
 
+  // Editor cursor position for navigation
+  let editorInitialPosition = $state<{ line: number; column: number } | null>(null);
+
   function log(message: string) {
     onLog?.(`[Template] ${message}`);
   }
@@ -260,6 +263,7 @@
       editorContent = content;
       originalContent = content;
       isModified = false;
+      editorInitialPosition = null;
       currentFile = file;
       activeTab = "editor";
       log(`Opened: ${file.name}`);
@@ -400,6 +404,7 @@
           editorContent = content;
           originalContent = content;
           isModified = false;
+          editorInitialPosition = templateLine ? { line: templateLine, column: 1 } : null;
           currentFile = {
             name: templateName.split("/").pop() || templateName,
             path: loc,
@@ -541,6 +546,7 @@
                 value={editorContent}
                 onChange={handleEditorChange}
                 filePath={currentFile.path}
+                initialPosition={editorInitialPosition}
               />
             {/key}
           {:else}

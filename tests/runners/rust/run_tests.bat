@@ -86,6 +86,8 @@ for %%T in (%TEST_CASES%) do (
                     echo serde = { version = "1.0", features = ["derive"] }
                     echo serde_json = "1.0"
                     echo byteorder = "1.5"
+                    echo chrono = "0.4"
+                    echo regex = "1"
                     echo rusqlite = { version = "0.31", features = ["bundled"] }
                 ) > "!TEST_PROJECT_DIR!\Cargo.toml"
             ) else (
@@ -99,6 +101,8 @@ for %%T in (%TEST_CASES%) do (
                     echo serde = { version = "1.0", features = ["derive"] }
                     echo serde_json = "1.0"
                     echo byteorder = "1.5"
+                    echo chrono = "0.4"
+                    echo regex = "1"
                 ) > "!TEST_PROJECT_DIR!\Cargo.toml"
             )
 

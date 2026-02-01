@@ -54,7 +54,8 @@ output = "{{stem}}_container.hpp"
 # Level 4: SQLite Accessor (for @datasource("sqlite") tables)
 [[templates.extra]]
 template = "cpp_sqlite_accessor_file.ptpl"
-# NOTE: per_file = false will be enabled after template is rewritten.
+output = "{{stem}}_sqlite_accessor.hpp"
+per_file = false
 
 # Rhai prelude scripts for %logic blocks in ptpl templates
 [rhai]

@@ -7,7 +7,7 @@ for item in struct.items {
         fields.push(item.as_field());
     }
 }
-let has_fields = fields.len > 0;
+let has_fields = fields.len() > 0;
 
 let pack_body = "";
 let unpack_body = "";
@@ -16,14 +16,14 @@ let sname = struct.name;
 if has_fields {
     // Pack method body: format!("{sep}{sep}...", self.f1, self.f2, ...)
     pack_body = "        format!(\"";
-    for i in 0..fields.len {
+    for i in 0..fields.len() {
         if i > 0 {
             pack_body += sep;
         }
         pack_body += "{}";
     }
     pack_body += "\"";
-    for i in 0..fields.len {
+    for i in 0..fields.len() {
         let f = fields[i];
         let fname = to_snake_case(f.name);
         pack_body += ", self." + fname;
@@ -32,15 +32,15 @@ if has_fields {
 
     // Unpack method body
     unpack_body += "        let parts: Vec<&str> = value.split('" + sep + "').collect();\n";
-    unpack_body += "        if parts.len() != " + fields.len + " {\n";
+    unpack_body += "        if parts.len() != " + fields.len() + " {\n";
     unpack_body += "            return Err(format!(\n";
-    unpack_body += "                \"Expected " + fields.len + " parts but got {} when unpacking " + sname + "\",\n";
+    unpack_body += "                \"Expected " + fields.len() + " parts but got {} when unpacking " + sname + "\",\n";
     unpack_body += "                parts.len()\n";
     unpack_body += "            ));\n";
     unpack_body += "        }\n";
     unpack_body += "        Ok(Self {\n";
 
-    for i in 0..fields.len {
+    for i in 0..fields.len() {
         let f = fields[i];
         let fname = to_snake_case(f.name);
         let type_name = f.field_type.type_name;

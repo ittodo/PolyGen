@@ -116,6 +116,9 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_fn("is_struct", |item: &mut NamespaceItem| {
         matches!(item, NamespaceItem::Struct(_))
     });
+    engine.register_get("is_struct", |item: &mut NamespaceItem| {
+        matches!(item, NamespaceItem::Struct(_))
+    });
     engine.register_fn(
         "as_struct",
         |item: &mut NamespaceItem| -> Result<StructDef, Box<EvalAltResult>> {
@@ -129,6 +132,9 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
         },
     );
     engine.register_fn("is_enum", |item: &mut NamespaceItem| {
+        matches!(item, NamespaceItem::Enum(_))
+    });
+    engine.register_get("is_enum", |item: &mut NamespaceItem| {
         matches!(item, NamespaceItem::Enum(_))
     });
     engine.register_fn(
@@ -147,6 +153,9 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_fn("is_comment", |item: &mut NamespaceItem| {
         matches!(item, NamespaceItem::Comment(_))
     });
+    engine.register_get("is_comment", |item: &mut NamespaceItem| {
+        matches!(item, NamespaceItem::Comment(_))
+    });
     engine.register_fn(
         "as_comment",
         |item: &mut NamespaceItem| -> Result<String, Box<EvalAltResult>> {
@@ -161,6 +170,9 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     );
 
     engine.register_fn("is_namespace", |item: &mut NamespaceItem| {
+        matches!(item, NamespaceItem::Namespace(_))
+    });
+    engine.register_get("is_namespace", |item: &mut NamespaceItem| {
         matches!(item, NamespaceItem::Namespace(_))
     });
     engine.register_fn(
@@ -301,20 +313,35 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_fn("is_field", |item: &mut StructItem| {
         matches!(item, StructItem::Field(_))
     });
+    engine.register_get("is_field", |item: &mut StructItem| {
+        matches!(item, StructItem::Field(_))
+    });
 
     engine.register_fn("is_comment", |item: &mut StructItem| {
+        matches!(item, StructItem::Comment(_))
+    });
+    engine.register_get("is_comment", |item: &mut StructItem| {
         matches!(item, StructItem::Comment(_))
     });
 
     engine.register_fn("is_annotation", |item: &mut StructItem| {
         matches!(item, StructItem::Annotation(_))
     });
+    engine.register_get("is_annotation", |item: &mut StructItem| {
+        matches!(item, StructItem::Annotation(_))
+    });
 
     engine.register_fn("is_embedded_struct", |item: &mut StructItem| {
         matches!(item, StructItem::EmbeddedStruct(_))
     });
+    engine.register_get("is_embedded_struct", |item: &mut StructItem| {
+        matches!(item, StructItem::EmbeddedStruct(_))
+    });
 
     engine.register_fn("is_inline_enum", |item: &mut StructItem| {
+        matches!(item, StructItem::InlineEnum(_))
+    });
+    engine.register_get("is_inline_enum", |item: &mut StructItem| {
         matches!(item, StructItem::InlineEnum(_))
     });
 
@@ -514,7 +541,13 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_fn("is_member", |item: &mut EnumItem| {
         matches!(item, EnumItem::Member(_))
     });
+    engine.register_get("is_member", |item: &mut EnumItem| {
+        matches!(item, EnumItem::Member(_))
+    });
     engine.register_fn("is_comment", |item: &mut EnumItem| {
+        matches!(item, EnumItem::Comment(_))
+    });
+    engine.register_get("is_comment", |item: &mut EnumItem| {
         matches!(item, EnumItem::Comment(_))
     });
     engine.register_fn(
@@ -583,7 +616,13 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_fn("is_table", |k: &mut RenameKind| {
         matches!(k, RenameKind::Table)
     });
+    engine.register_get("is_table", |k: &mut RenameKind| {
+        matches!(k, RenameKind::Table)
+    });
     engine.register_fn("is_field", |k: &mut RenameKind| {
+        matches!(k, RenameKind::Field)
+    });
+    engine.register_get("is_field", |k: &mut RenameKind| {
         matches!(k, RenameKind::Field)
     });
     engine.register_fn("to_string", |k: &mut RenameKind| match k {

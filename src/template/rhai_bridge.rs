@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use rhai::{Dynamic, Engine, EvalAltResult, Scope, AST};
 
@@ -20,6 +21,8 @@ pub struct RhaiBridge {
     scope: Scope<'static>,
     /// Compiled prelude AST containing function definitions.
     prelude_ast: Option<AST>,
+    /// Shared buffer for `set_output()` content.
+    output_buffer: Arc<Mutex<Option<String>>>,
 }
 
 impl Default for RhaiBridge {
@@ -43,10 +46,13 @@ impl RhaiBridge {
         engine.register_fn("to_pascal_case", |s: &str| s.to_pascal_case());
         engine.register_fn("to_camel_case", |s: &str| s.to_lower_camel_case());
 
+        let output_buffer = Arc::new(Mutex::new(None));
+
         Self {
             engine,
             scope: Scope::new(),
             prelude_ast: None,
+            output_buffer,
         }
     }
 
@@ -130,6 +136,49 @@ impl RhaiBridge {
         Ok(())
     }
 
+    /// Evaluates a Rhai expression as a boolean condition.
+    ///
+    /// Uses `compile_expression` for single expressions (no statements).
+    /// Falls back to truthy evaluation via [`dynamic_is_truthy`].
+    pub fn eval_bool(&mut self, expr: &str) -> Result<bool, String> {
+        let ast = self
+            .engine
+            .compile_expression(expr)
+            .map_err(|e| format!("Condition compile error: {}", e))?;
+
+        // Merge with prelude AST if present (functions become available)
+        let combined_ast = if let Some(ref prelude) = self.prelude_ast {
+            prelude.merge(&ast)
+        } else {
+            ast
+        };
+
+        let result: Dynamic = self
+            .engine
+            .eval_ast_with_scope(&mut self.scope, &combined_ast)
+            .map_err(|e| format!("Condition eval error: {}", e))?;
+        Ok(dynamic_is_truthy(&result))
+    }
+
+    /// Pushes a new variable or updates an existing one in the Rhai scope.
+    pub fn push_or_set(&mut self, name: &str, value: Dynamic) {
+        if self.scope.contains(name) {
+            self.scope.set_value(name.to_string(), value);
+        } else {
+            self.scope.push_dynamic(name.to_string(), value);
+        }
+    }
+
+    /// Returns the current scope depth (number of entries).
+    pub fn scope_len(&self) -> usize {
+        self.scope.len()
+    }
+
+    /// Rewinds the scope to a previous depth, removing variables added after that point.
+    pub fn rewind_scope(&mut self, len: usize) {
+        self.scope.rewind(len);
+    }
+
     /// Creates a child bridge for `%include` isolation.
     ///
     /// The child shares the same engine configuration but has a fresh scope.
@@ -147,6 +196,7 @@ impl RhaiBridge {
             engine,
             scope: Scope::new(),
             prelude_ast: None,
+            output_buffer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -200,6 +250,58 @@ impl RhaiBridge {
             },
         );
     }
+
+    /// Registers the `set_output(content)` function on the Rhai engine.
+    ///
+    /// When called from a `%logic` block, the content is stored in a shared buffer.
+    /// The renderer retrieves it via [`take_output()`] and uses it as the template output,
+    /// allowing the codegen engine to handle file writing based on TOML configuration.
+    pub fn register_set_output(&mut self) {
+        let buffer = self.output_buffer.clone();
+        self.engine
+            .register_fn("set_output", move |content: &str| {
+                *buffer.lock().unwrap() = Some(content.to_string());
+            });
+    }
+
+    /// Takes the output content set by `set_output()`, if any.
+    ///
+    /// Returns `Some(content)` if `set_output()` was called during the last
+    /// `execute_logic()` invocation, consuming the buffer.
+    pub fn take_output(&mut self) -> Option<String> {
+        self.output_buffer.lock().unwrap().take()
+    }
+}
+
+/// Checks if a Rhai [`Dynamic`] value is "truthy".
+///
+/// - `bool` → direct value
+/// - `int` → non-zero
+/// - `float` → non-zero
+/// - `string` → non-empty
+/// - `unit` → false
+/// - `array` → non-empty
+/// - anything else → true
+pub fn dynamic_is_truthy(value: &Dynamic) -> bool {
+    if value.is_unit() {
+        return false;
+    }
+    if value.is_bool() {
+        return value.as_bool().unwrap();
+    }
+    if value.is_int() {
+        return value.as_int().unwrap() != 0;
+    }
+    if value.is_float() {
+        return value.as_float().unwrap() != 0.0;
+    }
+    if value.is_string() {
+        return !value.clone().into_string().unwrap().is_empty();
+    }
+    if value.is_array() {
+        return !value.clone().into_array().unwrap().is_empty();
+    }
+    true
 }
 
 /// Converts a [`ContextValue`] to a Rhai [`Dynamic`] value.
@@ -230,6 +332,16 @@ pub fn context_value_to_dynamic(value: &ContextValue) -> Dynamic {
         ContextValue::TypeRef(t) => Dynamic::from(t.clone()),
         ContextValue::Enum(e) => Dynamic::from(e.clone()),
         ContextValue::EnumMember(m) => Dynamic::from(m.clone()),
+        ContextValue::NamespaceItem(ni) => Dynamic::from(ni.clone()),
+        ContextValue::StructItem(si) => Dynamic::from(si.clone()),
+        ContextValue::EnumItem(ei) => Dynamic::from(ei.clone()),
+        ContextValue::Annotation(a) => Dynamic::from(a.clone()),
+        ContextValue::AnnotationParam(ap) => Dynamic::from(ap.clone()),
+        ContextValue::Index(idx) => Dynamic::from(idx.clone()),
+        ContextValue::IndexField(ifd) => Dynamic::from(ifd.clone()),
+        ContextValue::Relation(r) => Dynamic::from(r.clone()),
+        ContextValue::ForeignKey(fk) => Dynamic::from(fk.clone()),
+        ContextValue::Timezone(tz) => Dynamic::from(tz.clone()),
         _ => Dynamic::from(value.to_display_string()),
     }
 }
@@ -297,6 +409,36 @@ pub fn dynamic_to_context_value(value: Dynamic) -> Result<ContextValue, String> 
     }
     if let Some(m) = value.clone().try_cast::<crate::ir_model::EnumMember>() {
         return Ok(ContextValue::EnumMember(m));
+    }
+    if let Some(ni) = value.clone().try_cast::<crate::ir_model::NamespaceItem>() {
+        return Ok(ContextValue::NamespaceItem(ni));
+    }
+    if let Some(si) = value.clone().try_cast::<crate::ir_model::StructItem>() {
+        return Ok(ContextValue::StructItem(si));
+    }
+    if let Some(ei) = value.clone().try_cast::<crate::ir_model::EnumItem>() {
+        return Ok(ContextValue::EnumItem(ei));
+    }
+    if let Some(a) = value.clone().try_cast::<crate::ir_model::AnnotationDef>() {
+        return Ok(ContextValue::Annotation(a));
+    }
+    if let Some(ap) = value.clone().try_cast::<crate::ir_model::AnnotationParam>() {
+        return Ok(ContextValue::AnnotationParam(ap));
+    }
+    if let Some(idx) = value.clone().try_cast::<crate::ir_model::IndexDef>() {
+        return Ok(ContextValue::Index(idx));
+    }
+    if let Some(ifd) = value.clone().try_cast::<crate::ir_model::IndexFieldDef>() {
+        return Ok(ContextValue::IndexField(ifd));
+    }
+    if let Some(r) = value.clone().try_cast::<crate::ir_model::RelationDef>() {
+        return Ok(ContextValue::Relation(r));
+    }
+    if let Some(fk) = value.clone().try_cast::<crate::ir_model::ForeignKeyDef>() {
+        return Ok(ContextValue::ForeignKey(fk));
+    }
+    if let Some(tz) = value.clone().try_cast::<crate::ir_model::TimezoneRef>() {
+        return Ok(ContextValue::Timezone(tz));
     }
 
     // Fallback: convert to string

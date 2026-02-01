@@ -338,16 +338,28 @@ impl CodeGenerator {
             self.template_dir().display()
         );
 
+        // Derive stem from first schema file
+        let stem = ir_context
+            .files
+            .first()
+            .and_then(|f| {
+                Path::new(&f.path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "output".to_string());
+
         // Determine output filename
         let output_filename = output_pattern
-            .map(|p| resolve_output_pattern(p, "schema"))
+            .map(|p| resolve_output_pattern(p, &stem))
             .unwrap_or_else(|| {
                 let ext = self
                     .config
                     .as_ref()
                     .map(|c| c.extension.clone())
                     .unwrap_or_default();
-                format!("output{}", ext)
+                format!("{}{}", stem, ext)
             });
 
         // Build context with schema (no individual file)
@@ -355,6 +367,10 @@ impl CodeGenerator {
         ctx.set(
             "schema",
             template::context::ContextValue::Schema(ir_context.clone()),
+        );
+        ctx.set(
+            "stem",
+            template::context::ContextValue::String(stem.clone()),
         );
         ctx.set(
             "output_dir",
@@ -650,10 +666,21 @@ impl CodeGenerator {
         let engine = template::TemplateEngine::new(self.template_dir(), engine_config)
             .map_err(|e| anyhow::anyhow!("Failed to load .ptpl templates: {}", e))?;
 
+        // Derive stem from first schema file
+        let stem = ir_context
+            .files
+            .first()
+            .and_then(|f| {
+                Path::new(&f.path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "output".to_string());
+
         // Determine output filename
         let output_filename = if let Some(pattern) = &entry.output {
-            // For schema-wide, pattern is used as literal (no stem substitution)
-            pattern.clone()
+            resolve_output_pattern(pattern, &stem)
         } else {
             let ext = self
                 .config
@@ -661,7 +688,7 @@ impl CodeGenerator {
                 .map(|c| c.extension.clone())
                 .unwrap_or_default();
             let suffix = derive_output_suffix(template_name, &self.language);
-            format!("schema{}{}", suffix, ext)
+            format!("{}{}{}", stem, suffix, ext)
         };
 
         // Build context with schema (no individual file)
@@ -669,6 +696,10 @@ impl CodeGenerator {
         ctx.set(
             "schema",
             template::context::ContextValue::Schema(ir_context.clone()),
+        );
+        ctx.set(
+            "stem",
+            template::context::ContextValue::String(stem.clone()),
         );
         ctx.set(
             "output_dir",

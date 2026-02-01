@@ -8,12 +8,12 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::template::context::{ContextValue, TemplateContext};
-use crate::template::expr::{CondExpr, Filter};
+use crate::template::expr::Filter;
 use crate::template::filters::apply_string_filter;
 use crate::template::parser::{
     IncludeBinding, LineSegment, MatchArm, ParsedTemplate, TemplateNode,
 };
-use crate::template::rhai_bridge::RhaiBridge;
+use crate::template::rhai_bridge::{context_value_to_dynamic, RhaiBridge};
 use crate::template::source_map::{SourceMap, SourceMapEntry};
 
 /// Maximum include depth to prevent infinite recursion.
@@ -125,6 +125,9 @@ impl<'a> Renderer<'a> {
             .get(template_name)
             .ok_or_else(|| format!("Template not found: '{}'", template_name))?;
 
+        // Eagerly initialize Rhai bridge so %if conditions can be evaluated via Rhai
+        self.ensure_rhai_bridge(template_name)?;
+
         self.include_stack.push(template_name.to_string());
         let nodes = template.nodes.clone();
         let source_file = template.source_file.clone();
@@ -135,6 +138,40 @@ impl<'a> Renderer<'a> {
             lines: self.output_lines,
             source_map: self.source_map,
         })
+    }
+
+    /// Ensures the Rhai bridge is initialized with prelude, write_file, and set_output.
+    fn ensure_rhai_bridge(&mut self, source_file: &str) -> Result<(), String> {
+        if self.rhai_bridge.is_none() {
+            let mut bridge = RhaiBridge::new();
+            if self.config.enable_write_file {
+                bridge.register_write_file(
+                    self.config.preview_mode,
+                    self.config.entry_template.clone(),
+                );
+            }
+            bridge.register_set_output();
+            if !self.config.rhai_prelude.is_empty() {
+                bridge
+                    .load_prelude(&self.config.rhai_prelude)
+                    .map_err(|e| format!("{}: {}", source_file, e))?;
+            }
+            self.rhai_bridge = Some(bridge);
+        }
+        Ok(())
+    }
+
+    /// Synchronizes context bindings + file_bindings into the Rhai scope.
+    fn sync_context_to_rhai(&mut self, context: &TemplateContext) {
+        let bridge = self.rhai_bridge.as_mut().unwrap();
+        // Push context bindings
+        for (name, value) in context.bindings() {
+            bridge.push_or_set(name, context_value_to_dynamic(value));
+        }
+        // Push file_bindings (higher priority)
+        for (name, value) in &self.file_bindings {
+            bridge.push_or_set(name, context_value_to_dynamic(value));
+        }
     }
 
     /// Renders a list of template nodes.
@@ -189,8 +226,8 @@ impl<'a> Renderer<'a> {
                     self.render_nodes(then_body, context, source_file, indent)?;
                 } else {
                     let mut handled = false;
-                    for (elif_cond, elif_body) in elif_branches {
-                        if self.eval_condition(elif_cond, context)? {
+                    for (elif_cond_str, elif_body) in elif_branches {
+                        if self.eval_condition(elif_cond_str, context)? {
                             self.render_nodes(elif_body, context, source_file, indent)?;
                             handled = true;
                             break;
@@ -212,16 +249,23 @@ impl<'a> Renderer<'a> {
             } => {
                 let coll_value = self.resolve_collection_path(&collection.path, context)?;
                 if let Some(items) = coll_value.as_list() {
+                    let scope_len = self.rhai_bridge.as_ref().unwrap().scope_len();
                     for item in items {
                         let child_ctx = context.child_with(variable, item.clone());
+                        // Push loop variable into Rhai scope
+                        self.rhai_bridge
+                            .as_mut()
+                            .unwrap()
+                            .push_or_set(variable, context_value_to_dynamic(item));
                         // Apply where filter if present
-                        if let Some(ref where_cond) = collection.where_filter {
-                            if !self.eval_condition(where_cond, &child_ctx)? {
+                        if let Some(ref where_cond_str) = collection.where_filter {
+                            if !self.eval_condition(where_cond_str, &child_ctx)? {
                                 continue;
                             }
                         }
                         self.render_nodes(body, &child_ctx, source_file, indent)?;
                     }
+                    self.rhai_bridge.as_mut().unwrap().rewind_scope(scope_len);
                 }
             }
 
@@ -244,6 +288,10 @@ impl<'a> Renderer<'a> {
 
             TemplateNode::LetSet { name, expr, .. } => {
                 let value = self.eval_let_expr(expr, context)?;
+                // Push into Rhai scope so %if can see it
+                if let Some(ref mut bridge) = self.rhai_bridge {
+                    bridge.push_or_set(name, context_value_to_dynamic(&value));
+                }
                 self.file_bindings.insert(name.clone(), value);
             }
 
@@ -269,22 +317,6 @@ impl<'a> Renderer<'a> {
             }
 
             TemplateNode::LogicBlock { line, body } => {
-                // Lazy-init the Rhai bridge with prelude scripts
-                if self.rhai_bridge.is_none() {
-                    let mut bridge = RhaiBridge::new();
-                    if self.config.enable_write_file {
-                        bridge.register_write_file(
-                            self.config.preview_mode,
-                            self.config.entry_template.clone(),
-                        );
-                    }
-                    if !self.config.rhai_prelude.is_empty() {
-                        bridge
-                            .load_prelude(&self.config.rhai_prelude)
-                            .map_err(|e| format!("{}:{}: {}", source_file, line, e))?;
-                    }
-                    self.rhai_bridge = Some(bridge);
-                }
                 let bridge = self.rhai_bridge.as_mut().unwrap();
                 // Merge context bindings + file_bindings (file_bindings take priority)
                 let mut combined = context.bindings().clone();
@@ -298,6 +330,12 @@ impl<'a> Renderer<'a> {
                 for (name, value) in new_bindings {
                     if context.get(&name).is_none() {
                         self.file_bindings.insert(name, value);
+                    }
+                }
+                // If set_output() was called, use its content as the template output
+                if let Some(output_content) = bridge.take_output() {
+                    for output_line in output_content.lines() {
+                        self.output_lines.push(output_line.to_string());
                     }
                 }
             }
@@ -411,9 +449,12 @@ impl<'a> Renderer<'a> {
         let saved_bridge = self.rhai_bridge.take();
         let saved_blocks = std::mem::take(&mut self.blocks);
 
-        // Render the included template's nodes
+        // Create a fresh bridge for the included template (with prelude loaded)
         let nodes = template.nodes.clone();
         let included_source = template.source_file.clone();
+        self.ensure_rhai_bridge(&included_source)?;
+
+        // Render the included template's nodes
         let result = self.render_nodes(&nodes, &child_ctx, &included_source, total_indent);
 
         // Restore file_bindings, rhai_bridge, blocks and pop include stack
@@ -454,43 +495,80 @@ impl<'a> Renderer<'a> {
         Ok(result)
     }
 
-    /// Evaluates a condition expression.
-    fn eval_condition(&self, cond: &CondExpr, context: &TemplateContext) -> Result<bool, String> {
-        match cond {
-            CondExpr::Property(path) => {
-                let value = self.resolve_path(path, context)?;
-                Ok(value.is_truthy())
-            }
-            CondExpr::PropertyWithFilter(path, filter) => {
-                let value = self.resolve_path(path, context)?;
-                let text = value.to_display_string();
-                let filtered = self.apply_filter(&text, filter, &value, context)?;
-                // For boolean-returning filters like is_embedded
-                Ok(filtered == "true" || (!filtered.is_empty() && filtered != "false"))
-            }
-            CondExpr::Not(inner) => {
-                let result = self.eval_condition(inner, context)?;
-                Ok(!result)
-            }
-            CondExpr::And(left, right) => {
-                let l = self.eval_condition(left, context)?;
-                let r = self.eval_condition(right, context)?;
-                Ok(l && r)
-            }
-            CondExpr::Or(left, right) => {
-                let l = self.eval_condition(left, context)?;
-                let r = self.eval_condition(right, context)?;
-                Ok(l || r)
-            }
-            CondExpr::Equals(path, literal) => {
-                let value = self.resolve_path(path, context)?;
-                Ok(value.to_display_string() == *literal)
-            }
-            CondExpr::NotEquals(path, literal) => {
-                let value = self.resolve_path(path, context)?;
-                Ok(value.to_display_string() != *literal)
+    /// Evaluates a condition expression string.
+    ///
+    /// Uses a hybrid strategy:
+    /// 1. First tries Rhai evaluation (supports `>`, `<`, `.len()`, method calls, etc.)
+    /// 2. On Rhai error, falls back to path-based resolution for simple property chains
+    ///    (e.g. `item.as_member.has_value` where intermediate steps may return Null)
+    fn eval_condition(&mut self, cond_str: &str, context: &TemplateContext) -> Result<bool, String> {
+        self.sync_context_to_rhai(context);
+        match self.rhai_bridge.as_mut().unwrap().eval_bool(cond_str) {
+            Ok(result) => Ok(result),
+            Err(_rhai_err) => {
+                // Fallback: resolve as property path expression
+                self.eval_condition_fallback(cond_str, context)
             }
         }
+    }
+
+    /// Fallback condition evaluator using path-based resolution.
+    ///
+    /// Handles patterns that Rhai can't evaluate directly:
+    /// - Property chains through `as_*` conversions: `item.as_member.has_value`
+    /// - Negation: `!field.is_optional`
+    /// - Logical operators: `a && b`, `a || b`
+    /// - Equality: `field.name == "id"`, `field.name != "id"`
+    fn eval_condition_fallback(
+        &self,
+        cond_str: &str,
+        context: &TemplateContext,
+    ) -> Result<bool, String> {
+        let cond_str = cond_str.trim();
+
+        // Handle OR (lowest precedence)
+        if let Some(pos) = find_logical_op(cond_str, "||") {
+            let left = self.eval_condition_fallback(&cond_str[..pos], context)?;
+            let right = self.eval_condition_fallback(&cond_str[pos + 2..], context)?;
+            return Ok(left || right);
+        }
+
+        // Handle AND
+        if let Some(pos) = find_logical_op(cond_str, "&&") {
+            let left = self.eval_condition_fallback(&cond_str[..pos], context)?;
+            let right = self.eval_condition_fallback(&cond_str[pos + 2..], context)?;
+            return Ok(left && right);
+        }
+
+        // Handle NOT
+        if let Some(rest) = cond_str.strip_prefix('!') {
+            return Ok(!self.eval_condition_fallback(rest, context)?);
+        }
+
+        // Handle equality/inequality
+        if let Some(pos) = find_logical_op(cond_str, "==") {
+            let left_str = cond_str[..pos].trim();
+            let right_str = cond_str[pos + 2..].trim();
+            let left_path: Vec<String> =
+                left_str.split('.').map(|s| s.trim().to_string()).collect();
+            let left_val = self.resolve_path(&left_path, context)?;
+            let literal = right_str.trim_matches('"');
+            return Ok(left_val.to_display_string() == literal);
+        }
+        if let Some(pos) = find_logical_op(cond_str, "!=") {
+            let left_str = cond_str[..pos].trim();
+            let right_str = cond_str[pos + 2..].trim();
+            let left_path: Vec<String> =
+                left_str.split('.').map(|s| s.trim().to_string()).collect();
+            let left_val = self.resolve_path(&left_path, context)?;
+            let literal = right_str.trim_matches('"');
+            return Ok(left_val.to_display_string() != literal);
+        }
+
+        // Simple property path
+        let path: Vec<String> = cond_str.split('.').map(|s| s.trim().to_string()).collect();
+        let value = self.resolve_path(&path, context)?;
+        Ok(value.is_truthy())
     }
 
     /// Resolves a property path against file_bindings first, then context.
@@ -540,9 +618,7 @@ impl<'a> Renderer<'a> {
             if self.match_pattern(&subject_value, &arm.pattern)? {
                 // Check guard if present
                 if let Some(ref guard) = arm.guard {
-                    let guard_cond = crate::template::expr::parse_condition(guard)
-                        .map_err(|e| format!("{}:{}: guard error: {}", source_file, arm.line, e))?;
-                    if !self.eval_condition(&guard_cond, context)? {
+                    if !self.eval_condition(guard, context)? {
                         continue;
                     }
                 }
@@ -964,6 +1040,38 @@ impl<'a> Renderer<'a> {
     pub fn set_ir_path(&mut self, path: Option<String>) {
         self.ir_path = path;
     }
+}
+
+/// Finds a logical/comparison operator at the top level (not inside strings).
+fn find_logical_op(input: &str, op: &str) -> Option<usize> {
+    let bytes = input.as_bytes();
+    let op_bytes = op.as_bytes();
+    if bytes.len() < op_bytes.len() {
+        return None;
+    }
+    let mut in_string = false;
+    let mut escape = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if b == b'\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if b == b'"' {
+            in_string = !in_string;
+            continue;
+        }
+        if !in_string
+            && i + op_bytes.len() <= bytes.len()
+            && &bytes[i..i + op_bytes.len()] == op_bytes
+        {
+            return Some(i);
+        }
+    }
+    None
 }
 
 /// Applies indentation to a line.

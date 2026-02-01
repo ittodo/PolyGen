@@ -4,7 +4,7 @@
 //! line becomes an [`OutputLine`] node, maintaining a 1:1 correspondence between
 //! template lines and output lines for source mapping.
 
-use crate::template::expr::{self, CollectionExpr, CondExpr, Expr};
+use crate::template::expr::{self, CollectionExpr, Expr};
 
 /// A parsed template ready for rendering.
 #[derive(Debug, Clone)]
@@ -28,9 +28,9 @@ pub enum TemplateNode {
     /// `%if condition` ... `%elif` ... `%else` ... `%endif`
     Conditional {
         line: usize,
-        condition: CondExpr,
+        condition: String,
         then_body: Vec<TemplateNode>,
-        elif_branches: Vec<(CondExpr, Vec<TemplateNode>)>,
+        elif_branches: Vec<(String, Vec<TemplateNode>)>,
         else_body: Option<Vec<TemplateNode>>,
     },
     /// `%for var in collection` ... `%endfor`
@@ -94,8 +94,8 @@ pub enum TemplateNode {
     /// `%while condition` ... `%endwhile` — loop while condition is true.
     While {
         line: usize,
-        /// Loop condition.
-        condition: CondExpr,
+        /// Loop condition (raw Rhai expression string).
+        condition: String,
         /// Loop body nodes.
         body: Vec<TemplateNode>,
     },
@@ -270,8 +270,7 @@ fn parse_conditional(
     let line_num = *pos + 1;
     let line = lines[*pos].trim();
     let cond_str = &line[1..].trim_start()[3..]; // Skip "%if "
-    let condition = expr::parse_condition(cond_str.trim())
-        .map_err(|e| format!("{}:{}: {}", source_file, line_num, e))?;
+    let condition = cond_str.trim().to_string();
 
     *pos += 1;
 
@@ -287,9 +286,7 @@ fn parse_conditional(
         let directive = trimmed.strip_prefix('%').unwrap_or(trimmed).trim_start();
 
         if let Some(elif_cond_str) = directive.strip_prefix("elif ") {
-            let elif_line = *pos + 1;
-            let elif_cond = expr::parse_condition(elif_cond_str.trim())
-                .map_err(|e| format!("{}:{}: {}", source_file, elif_line, e))?;
+            let elif_cond = elif_cond_str.trim().to_string();
             *pos += 1;
             let elif_body =
                 parse_block(lines, pos, source_file, Some(&["elif ", "else", "endif"]))?;
@@ -736,8 +733,7 @@ fn parse_while(lines: &[&str], pos: &mut usize, source_file: &str) -> Result<Tem
     let line_num = *pos + 1;
     let line = lines[*pos].trim();
     let cond_str = &line[1..].trim_start()[6..]; // Skip "%while "
-    let condition = expr::parse_condition(cond_str.trim())
-        .map_err(|e| format!("{}:{}: {}", source_file, line_num, e))?;
+    let condition = cond_str.trim().to_string();
 
     *pos += 1;
     let body = parse_block(lines, pos, source_file, Some(&["endwhile"]))?;
@@ -1106,7 +1102,7 @@ mod tests {
             TemplateNode::While {
                 condition, body, ..
             } => {
-                assert!(matches!(condition, CondExpr::Property(_)));
+                assert_eq!(condition, "counter.has_remaining");
                 assert_eq!(body.len(), 1);
             }
             _ => panic!("Expected While"),
