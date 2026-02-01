@@ -1,4 +1,5 @@
-// Rust Loaders file generator
+%logic
+// Rust Loaders file generator (PolyTemplate)
 // Generates JSON, CSV, and Binary I/O in a single module file
 
 import "templates/rust/rhai_utils/type_mapping" as rust_types;
@@ -10,18 +11,14 @@ fn csv_getter(f) {
 
     if t.is_option {
         if t.type_name == "string" { return "row.get_optional_string(\"" + n + "\")"; }
-        // Structs can't be parsed from CSV - use None
         if t.is_struct { return "None"; }
-        // Enums need special handling
         if t.is_enum { return "row.get_i32(\"" + n + "\").map(|v| unsafe { std::mem::transmute(v) }).ok()"; }
         return "row.get(\"" + n + "\").filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())";
     }
     if t.is_list {
-        // Struct arrays can't be parsed from CSV, use default
         if t.is_struct { return "Default::default()"; }
         return "row.get(\"" + n + "\").map(|s| s.split(',').filter_map(|v| v.trim().parse().ok()).collect()).unwrap_or_default()";
     }
-    // Non-optional struct fields use default
     if t.is_struct { return "Default::default()"; }
     if t.type_name == "string" { return "row.get_string(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "u32" { return "row.get_u32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
@@ -37,8 +34,6 @@ fn csv_getter(f) {
 }
 
 // Binary read helper - generates read expression for a type
-// For wrapped types (Option/Vec), uses closures with |r| parameter
-// For direct types, uses 'reader' variable name
 fn bin_read(t) {
     let n = t.type_name;
     if t.is_option {
@@ -52,7 +47,6 @@ fn bin_read(t) {
     return bin_read_direct(t) + "?";
 }
 
-// For use inside closures where variable is 'r'
 fn bin_read_closure(t) {
     let n = t.type_name;
     if n == "string" { return "r.read_string()"; }
@@ -73,7 +67,6 @@ fn bin_read_closure(t) {
     return n + "::read_binary(r)";
 }
 
-// For direct use where variable is 'reader'
 fn bin_read_direct(t) {
     let n = t.type_name;
     if n == "string" { return "reader.read_string()"; }
@@ -159,7 +152,6 @@ for f in schema.files {
 
     for ns in f.namespaces {
         ns_to_schema[ns.name] = mod_name;
-        // Also handle nested namespaces
         for item in ns.items {
             if item.is_namespace() {
                 let child = item.as_namespace();
@@ -180,7 +172,6 @@ for file in schema.files {
     output_filename.replace(".poly", "_loaders.rs");
     let final_path = output_dir + "/rust/" + output_filename;
 
-    // Get schema module name: "game_schema.poly" -> "game_schema"
     let schema_mod = filename;
     schema_mod.replace(".poly", "");
 
@@ -195,11 +186,9 @@ for file in schema.files {
         }
     }
 
-    // Collect all structs inline (not via function, since Rhai passes arrays by value)
-    // Also collect embedded structs recursively
+    // Collect all structs (including embedded) recursively
     let all_structs = [];
     for ns in file.namespaces {
-        // Convert namespace name: "game.item" -> "game_item"
         let ns_mod_path = ns.name;
         ns_mod_path.replace(".", "_");
 
@@ -211,7 +200,6 @@ for file in schema.files {
                     mod_path: "crate::" + schema_mod + "::" + ns_mod_path + "::" + s.name,
                     def: s
                 });
-                // Collect embedded structs from this struct
                 for si in s.items {
                     if si.is_embedded_struct() {
                         let es = si.as_embedded_struct();
@@ -220,7 +208,6 @@ for file in schema.files {
                             mod_path: "crate::" + schema_mod + "::" + ns_mod_path + "::" + es.name,
                             def: es
                         });
-                        // Check for nested embedded structs
                         for esi in es.items {
                             if esi.is_embedded_struct() {
                                 let nes = esi.as_embedded_struct();
@@ -234,7 +221,6 @@ for file in schema.files {
                     }
                 }
             } else if item.is_namespace() {
-                // Handle nested namespace
                 let child = item.as_namespace();
                 let child_name = child.name;
                 child_name.replace(".", "_");
@@ -247,7 +233,6 @@ for file in schema.files {
                             mod_path: "crate::" + schema_mod + "::" + child_mod_path + "::" + cs.name,
                             def: cs
                         });
-                        // Collect embedded structs from nested namespace struct
                         for csi in cs.items {
                             if csi.is_embedded_struct() {
                                 let ces = csi.as_embedded_struct();
@@ -273,7 +258,7 @@ for file in schema.files {
     c += "use std::path::Path;\n";
     c += "use crate::polygen_support::*;\n";
 
-    // Import types from all schemas (including current file) for BinaryIO usage
+    // Import types from all schemas for BinaryIO usage
     for other_file in schema.files {
         if other_file.path == () || other_file.path == "" { continue; }
         let other_parts = other_file.path.split("/");
@@ -286,7 +271,6 @@ for file in schema.files {
             ns_path.replace(".", "_");
             c += "use crate::" + other_mod + "::" + ns_path + "::*;\n";
 
-            // Also import nested namespaces
             for item in ns.items {
                 if item.is_namespace() {
                     let child = item.as_namespace();
@@ -371,5 +355,4 @@ for file in schema.files {
     print("Generating file: " + final_path);
     write_file(final_path, c);
 }
-
-""
+%endlogic

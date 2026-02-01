@@ -9,17 +9,50 @@ extension = ".rs"
 [static_files]
 "polygen_support.rs" = "static/rust/polygen_support.rs"
 
+# Type mapping: poly type -> Rust type
+[type_map]
+string = "String"
+bool = "bool"
+bytes = "Vec<u8>"
+u8 = "u8"
+u16 = "u16"
+u32 = "u32"
+u64 = "u64"
+i8 = "i8"
+i16 = "i16"
+i32 = "i32"
+i64 = "i64"
+f32 = "f32"
+f64 = "f64"
+timestamp = "chrono::DateTime<chrono::Utc>"
+
+[type_map.optional]
+format = "Option<{{type}}>"
+
+[type_map.list]
+format = "Vec<{{type}}>"
+
 # Template configuration
 [templates]
 # Main template for generating Rust modules (Level 1: Basic)
-main = "rust_file.rhai"
+main = "rust_file.ptpl"
 
 # Extra templates to run after the main template
-extra = [
-    # Level 2: Data Loaders (JSON, CSV, Binary)
-    "rust_loaders_file.rhai",
-    # Level 3: Container System (indexes, relations)
-    "rust_container_file.rhai",
-    # Level 4: SQLite Accessor (for @datasource("sqlite") tables)
-    "rust_sqlite_accessor_file.rhai",
-]
+# Level 2: Data Loaders (JSON, CSV, Binary)
+[[templates.extra]]
+template = "rust_loaders_file.ptpl"
+output = "{{stem}}_loaders.rs"
+
+# Level 3: Container System (indexes, relations)
+[[templates.extra]]
+template = "rust_container_file.ptpl"
+output = "{{stem}}_container.rs"
+
+# Level 4: SQLite Accessor (for @datasource("sqlite") tables)
+[[templates.extra]]
+template = "rust_sqlite_accessor_file.ptpl"
+# NOTE: per_file = false will be enabled after template is rewritten.
+
+# Rhai prelude scripts for %logic blocks in ptpl templates
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

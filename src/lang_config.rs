@@ -23,7 +23,7 @@
 //! ]
 //! ```
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -175,9 +175,80 @@ pub struct TemplateConfig {
     #[serde(default)]
     pub main: Option<String>,
 
-    /// Extra template files to run after the main template.
+    /// Custom output filename pattern for the main template.
+    ///
+    /// Supports `{{stem}}` and filter patterns like `{{stem | pascal_case}}`.
+    /// If not set, defaults to `{stem}{extension}`.
     #[serde(default)]
-    pub extra: Vec<String>,
+    pub main_output: Option<String>,
+
+    /// Whether the main template is rendered per-file (default: true).
+    ///
+    /// When `false`, the template is rendered once for the entire schema
+    /// with `schema` context instead of `file` context.
+    #[serde(default = "default_per_file")]
+    pub main_per_file: bool,
+
+    /// Extra template files to run after the main template.
+    #[serde(default, deserialize_with = "deserialize_extra_templates")]
+    pub extra: Vec<ExtraTemplateEntry>,
+}
+
+/// Default value for per_file fields (true).
+fn default_per_file() -> bool {
+    true
+}
+
+/// An entry in the extra templates list.
+///
+/// Supports both simple string format (backward compatible) and
+/// full object format with output pattern and per_file control.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExtraTemplateEntry {
+    /// Template filename (e.g., "rust_loaders_file.ptpl").
+    pub template: String,
+
+    /// Custom output filename pattern.
+    ///
+    /// Supports `{{stem}}` and filters like `{{stem | pascal_case}}`.
+    /// If not set, the output filename is derived from the template name.
+    #[serde(default)]
+    pub output: Option<String>,
+
+    /// Whether to render this template per-file (default: true).
+    ///
+    /// When `false`, the template is rendered once for the entire schema.
+    #[serde(default = "default_per_file")]
+    pub per_file: bool,
+}
+
+/// Raw enum for deserializing extra templates with backward compatibility.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ExtraTemplateRaw {
+    /// Simple string format: "file.ptpl"
+    Simple(String),
+    /// Full object format: { template = "...", output = "...", per_file = false }
+    Full(ExtraTemplateEntry),
+}
+
+/// Custom deserializer that supports both `["file.ptpl"]` and `[{ template = "..." }]` formats.
+fn deserialize_extra_templates<'de, D>(deserializer: D) -> Result<Vec<ExtraTemplateEntry>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw: Vec<ExtraTemplateRaw> = Vec::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .map(|r| match r {
+            ExtraTemplateRaw::Simple(s) => ExtraTemplateEntry {
+                template: s,
+                output: None,
+                per_file: true,
+            },
+            ExtraTemplateRaw::Full(entry) => entry,
+        })
+        .collect())
 }
 
 impl LanguageConfig {
@@ -224,6 +295,8 @@ impl LanguageConfig {
                 static_files: HashMap::new(),
                 templates: TemplateConfig {
                     main: Some(format!("{}_file.rhai", language)),
+                    main_output: None,
+                    main_per_file: true,
                     extra: Vec::new(),
                 },
                 type_map: TypeMapConfig::default(),
@@ -245,7 +318,7 @@ impl LanguageConfig {
     }
 
     /// Returns the list of extra templates to process.
-    pub fn extra_templates(&self) -> &[String] {
+    pub fn extra_templates(&self) -> &[ExtraTemplateEntry] {
         &self.templates.extra
     }
 
@@ -360,7 +433,10 @@ extra = ["csharp_readers.rhai"]
             Some(&"static/csharp/Utils.cs".to_string())
         );
         assert_eq!(config.templates.main, Some("csharp_file.rhai".to_string()));
-        assert_eq!(config.templates.extra, vec!["csharp_readers.rhai"]);
+        assert_eq!(config.templates.extra.len(), 1);
+        assert_eq!(config.templates.extra[0].template, "csharp_readers.rhai");
+        assert!(config.templates.extra[0].per_file);
+        assert!(config.templates.extra[0].output.is_none());
     }
 
     #[test]
@@ -490,5 +566,99 @@ extension = ".cs"
         let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp").unwrap();
 
         assert!(config.rhai.prelude.is_empty());
+    }
+
+    #[test]
+    fn test_extra_templates_simple_string_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_content = r#"
+extension = ".go"
+
+[templates]
+main = "go_file.ptpl"
+extra = ["go_container_file.ptpl", "go_loaders_file.ptpl"]
+"#;
+
+        create_config_file(temp_dir.path(), "go", config_content);
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+
+        assert_eq!(config.extra_templates().len(), 2);
+        assert_eq!(config.extra_templates()[0].template, "go_container_file.ptpl");
+        assert!(config.extra_templates()[0].per_file);
+        assert!(config.extra_templates()[0].output.is_none());
+        assert_eq!(config.extra_templates()[1].template, "go_loaders_file.ptpl");
+    }
+
+    #[test]
+    fn test_extra_templates_full_object_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_content = r#"
+extension = ".rs"
+
+[templates]
+main = "rust_file.ptpl"
+
+[[templates.extra]]
+template = "rust_loaders_file.ptpl"
+output = "{{stem}}_loaders.rs"
+
+[[templates.extra]]
+template = "rust_sqlite_accessor_file.ptpl"
+per_file = false
+"#;
+
+        create_config_file(temp_dir.path(), "rust", config_content);
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "rust").unwrap();
+
+        assert_eq!(config.extra_templates().len(), 2);
+
+        let loaders = &config.extra_templates()[0];
+        assert_eq!(loaders.template, "rust_loaders_file.ptpl");
+        assert_eq!(loaders.output, Some("{{stem}}_loaders.rs".to_string()));
+        assert!(loaders.per_file);
+
+        let sqlite = &config.extra_templates()[1];
+        assert_eq!(sqlite.template, "rust_sqlite_accessor_file.ptpl");
+        assert!(!sqlite.per_file);
+        assert!(sqlite.output.is_none());
+    }
+
+    #[test]
+    fn test_main_output_and_per_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_content = r#"
+extension = ".sql"
+
+[templates]
+main = "sqlite_file.ptpl"
+main_output = "schema.sql"
+main_per_file = false
+"#;
+
+        create_config_file(temp_dir.path(), "sqlite", config_content);
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "sqlite").unwrap();
+
+        assert_eq!(
+            config.templates.main_output,
+            Some("schema.sql".to_string())
+        );
+        assert!(!config.templates.main_per_file);
+    }
+
+    #[test]
+    fn test_main_per_file_defaults_to_true() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_content = r#"
+extension = ".go"
+
+[templates]
+main = "go_file.ptpl"
+"#;
+
+        create_config_file(temp_dir.path(), "go", config_content);
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+
+        assert!(config.templates.main_per_file);
+        assert!(config.templates.main_output.is_none());
     }
 }

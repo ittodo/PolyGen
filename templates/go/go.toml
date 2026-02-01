@@ -36,4 +36,5 @@ format = "[]{{type}}"
 main = "go_file.ptpl"
 
 # Extra templates to run after the main template (using PolyTemplate engine)
-extra = ["go_container_file.ptpl"]
+[[templates.extra]]
+template = "go_container_file.ptpl"

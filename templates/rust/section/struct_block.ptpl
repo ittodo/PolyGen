@@ -1,0 +1,36 @@
+%-- Rust struct definition. Context: struct
+%-- Generate embedded structs FIRST (must be declared before parent)
+%for item in struct.items
+%if item.is_embedded_struct
+%include "section/struct_block" with item.as_embedded_struct
+%endif
+%endfor
+%-- Generate inline enums (must be declared before field use)
+%for item in struct.items
+%if item.is_inline_enum
+%include "section/enum_block" with item.as_inline_enum
+%endif
+%endfor
+%-- Doc comments from header
+%for item in struct.header
+%if item.is_comment
+/// {{item.as_comment}}
+%endif
+%endfor
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct {{struct.name}} {
+%for item in struct.items
+%if item.is_field
+%include "detail/field_declaration" with item.as_field
+%elif item.is_comment
+    // {{item.as_comment}}
+%endif
+%endfor
+}
+%-- Pack/Unpack methods for @pack embeds
+%if struct.is_embed && struct.pack_separator
+%include "detail/pack_methods" with struct
+%endif
+%-- Auto-update timestamp methods
+%include "detail/auto_update_methods" with struct
+%blank

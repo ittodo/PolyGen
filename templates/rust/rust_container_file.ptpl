@@ -1,4 +1,5 @@
-// Rust Container file generator
+%logic
+// Rust Container file generator (PolyTemplate)
 // Generates Container module with DataTables, indexes, and relations
 
 import "templates/rust/rhai_utils/type_mapping" as rust_types;
@@ -14,14 +15,12 @@ for file in schema.files {
     output_filename.replace(".poly", "_container.rs");
     let final_path = output_dir + "/rust/" + output_filename;
 
-    // Get schema module name: "game_schema.poly" -> "game_schema"
     let schema_mod = filename;
     schema_mod.replace(".poly", "");
 
-    // Collect all tables inline (Rhai passes arrays by value)
+    // Collect all tables inline
     let all_tables = [];
     for ns in file.namespaces {
-        // Convert namespace name: "game.item" -> "game_item"
         let ns_mod_path = ns.name;
         ns_mod_path.replace(".", "_");
 
@@ -84,7 +83,6 @@ for file in schema.files {
         c += "    pub struct " + table_type + " {\n";
         c += "        rows: Vec<" + table.path + ">,\n";
 
-        // Generate index fields
         for idx in struct_def.indexes {
             let idx_field = "by_" + to_snake_case(idx.field_name);
             let key_type = rust_types::map_type(idx.field_type);
@@ -164,7 +162,6 @@ for file in schema.files {
         c += "        pub fn validate(&self) -> ValidationResult {\n";
         c += "            let mut result = ValidationResult::new();\n";
 
-        // Find primary key field for error messages
         let pk_field = "id";
         for idx in struct_def.indexes {
             if idx.name == "ById" || idx.field_name == "id" {
@@ -176,7 +173,6 @@ for file in schema.files {
         c += "            for row in &self.rows {\n";
         c += "                let row_key = row." + pk_field + ".to_string();\n";
 
-        // Generate validation for each field
         for item in struct_def.items {
             if item.is_field() {
                 let field = item.as_field();
@@ -250,7 +246,6 @@ for file in schema.files {
         c += "        pub fn validate_foreign_keys(&self, container: &" + container_name + ") -> ValidationResult {\n";
         c += "            let mut result = ValidationResult::new();\n";
 
-        // Check if any FK fields exist
         let has_fk = false;
         for item in struct_def.items {
             if item.is_field() {
@@ -273,7 +268,6 @@ for file in schema.files {
                     if field.foreign_key != () {
                         let fk = field.foreign_key;
                         let field_name = to_snake_case(field.name);
-                        // Get target table name from FQN
                         let target_parts = fk.target_table_fqn.split(".");
                         let target_table = "";
                         for part in target_parts {
@@ -329,7 +323,6 @@ for file in schema.files {
     }
     c += "        }\n\n";
 
-    // validate_all method
     c += "        /// Validates all tables and returns combined results.\n";
     c += "        pub fn validate_all(&self) -> ValidationResult {\n";
     c += "            let mut result = ValidationResult::new();\n";
@@ -344,7 +337,6 @@ for file in schema.files {
     c += "            result\n";
     c += "        }\n\n";
 
-    // validate_or_throw method
     c += "        /// Validates all tables and returns error if any validation fails.\n";
     c += "        pub fn validate_or_throw(&self) -> Result<(), ValidationException> {\n";
     c += "            let result = self.validate_all();\n";
@@ -357,7 +349,6 @@ for file in schema.files {
     c += "}\n";
 
     // ===== Relations Module =====
-    // Collect structs with relations inline
     let structs_with_relations = [];
     for ns in file.namespaces {
         let ns_mod_path2 = ns.name;
@@ -410,7 +401,6 @@ for file in schema.files {
                 let source_table = to_snake_case(rel.source_table_name) + "s";
                 let source_field = to_snake_case(rel.source_field);
 
-                // Find primary key field
                 let pk_field = "id";
                 for idx in struct_def.indexes {
                     if idx.name == "ById" || idx.field_name == "id" {
@@ -419,12 +409,9 @@ for file in schema.files {
                     }
                 }
 
-                // Extract namespace from FQN: "game.junction.PlayerSkill" -> "game.junction"
-                // Then convert to module path: "game.junction" -> "game_junction"
                 let fqn = rel.source_table_fqn;
                 let type_suffix = "." + rel.source_table_name;
                 let ns_fqn = fqn;
-                // Remove the type name suffix to get just namespace
                 if fqn.ends_with(type_suffix) {
                     ns_fqn = fqn.sub_string(0, fqn.len() - type_suffix.len());
                 }
@@ -446,5 +433,4 @@ for file in schema.files {
     print("Generating file: " + final_path);
     write_file(final_path, c);
 }
-
-""
+%endlogic

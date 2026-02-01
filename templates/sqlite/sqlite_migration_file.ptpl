@@ -1,3 +1,4 @@
+%logic
 // SQLite Migration Generator
 // Generates migration SQL from .renames file information
 //
@@ -113,8 +114,7 @@ if !has_migrations {
     migration_sql += "-- Column renames: " + field_renames.len() + "\n";
 }
 
-let out_path = "output/sqlite/migration.sql";
+let out_path = output_dir + "/sqlite/migration.sql";
 print("Generating file: " + out_path);
 write_file(out_path, migration_sql);
-
-""
+%endlogic

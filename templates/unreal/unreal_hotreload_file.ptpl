@@ -1,3 +1,4 @@
+%logic
 // Unreal Hot Reload Utility Template for PolyGen
 // Generates file watcher and auto-reload functionality
 
@@ -363,5 +364,4 @@ for entry in loadable_structs {
 
 print("Generating hot reload file: " + final_path);
 write_file(final_path, result);
-
-""
+%endlogic

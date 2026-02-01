@@ -1,0 +1,52 @@
+%-- Auto-update timestamp methods. Context: struct
+%logic
+let auto_update_fields = [];
+for item in struct.items {
+    if item.is_field() {
+        let f = item.as_field();
+        if f.auto_update != () {
+            auto_update_fields.push(f);
+        }
+    }
+}
+let has_auto_update = auto_update_fields.len > 0;
+let has_multi_auto_update = auto_update_fields.len > 1;
+
+// Check if we already have an impl block from @pack
+let need_impl = !(struct.is_embed && struct.pack_separator != ());
+
+let methods_code = "";
+if has_auto_update {
+    if need_impl {
+        methods_code += "\nimpl " + struct.name + " {\n";
+    }
+
+    for f in auto_update_fields {
+        let field_name = to_snake_case(f.name);
+        let datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+
+        methods_code += "    /// Updates " + field_name + " to the current timestamp.\n";
+        methods_code += "    pub fn on_update_" + field_name + "(&mut self) {\n";
+        methods_code += "        self." + field_name + " = " + datetime_expr + ";\n";
+        methods_code += "    }\n\n";
+    }
+
+    if has_multi_auto_update {
+        methods_code += "    /// Updates all auto-update timestamp fields.\n";
+        methods_code += "    pub fn on_update_all(&mut self) {\n";
+        for f in auto_update_fields {
+            let field_name = to_snake_case(f.name);
+            let datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+            methods_code += "        self." + field_name + " = " + datetime_expr + ";\n";
+        }
+        methods_code += "    }\n";
+    }
+
+    if need_impl {
+        methods_code += "}\n";
+    }
+}
+%endlogic
+%if has_auto_update
+{{methods_code}}
+%endif

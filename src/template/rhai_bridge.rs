@@ -153,10 +153,33 @@ impl RhaiBridge {
     /// Registers the `write_file(path, content)` function on the Rhai engine.
     ///
     /// This enables `%logic` blocks to write files directly (e.g., CSV schema files).
-    pub fn register_write_file(&mut self) {
+    /// When `preview_mode` is true and `entry_template` is set, wraps content
+    /// with `/*@source:template_name*/` markers for GUI preview hinting.
+    pub fn register_write_file(
+        &mut self,
+        preview_mode: bool,
+        entry_template: Option<String>,
+    ) {
+        let preview_write = preview_mode;
+        let entry_tmpl = entry_template;
         self.engine.register_fn(
             "write_file",
-            |path: &str, content: &str| -> Result<(), Box<EvalAltResult>> {
+            move |path: &str, content: &str| -> Result<(), Box<EvalAltResult>> {
+                // In preview mode, wrap unmarked content with the entry-point template name
+                let final_content = if preview_write {
+                    if let Some(ref tmpl_name) = entry_tmpl {
+                        if !content.contains("/*@source:") {
+                            format!("/*@source:{}*/\n{}/*@/source*/\n", tmpl_name, content)
+                        } else {
+                            content.to_string()
+                        }
+                    } else {
+                        content.to_string()
+                    }
+                } else {
+                    content.to_string()
+                };
+
                 if let Some(p) = Path::new(path).parent() {
                     if !p.exists() {
                         if let Err(e) = std::fs::create_dir_all(p) {
@@ -167,7 +190,7 @@ impl RhaiBridge {
                         }
                     }
                 }
-                match std::fs::write(path, content) {
+                match std::fs::write(path, &final_content) {
                     Ok(_) => Ok(()),
                     Err(e) => Err(Box::new(EvalAltResult::ErrorSystem(
                         "File Write Error".to_string(),

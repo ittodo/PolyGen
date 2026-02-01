@@ -1,0 +1,21 @@
+%-- TypeScript field declaration. Context: field (FieldDef)
+%-- 'namespace' binding inherited from parent context chain
+%logic
+let ns_fqn = "";
+try {
+    ns_fqn = namespace.name;
+} catch {
+    ns_fqn = "";
+}
+let field_name = to_camel_case(field.name);
+let ts_type = map_type_with_ns(field.field_type, ns_fqn);
+let optional_marker = "";
+if field.field_type.is_option {
+    optional_marker = "?";
+    ts_type = map_type(field.field_type);
+    if ts_type.ends_with(" | null") {
+        ts_type = ts_type.sub_string(0, ts_type.len() - 7);
+    }
+}
+%endlogic
+{{field_name}}{{optional_marker}}: {{ts_type}};

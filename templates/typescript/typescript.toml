@@ -9,15 +9,45 @@ extension = ".ts"
 # Validation support
 "validation.ts" = "static/typescript/validation.ts"
 
+# Type mapping from poly types to TypeScript types
+[type_map]
+string = "string"
+bool = "boolean"
+u8 = "number"
+u16 = "number"
+u32 = "number"
+u64 = "number"
+i8 = "number"
+i16 = "number"
+i32 = "number"
+i64 = "number"
+f32 = "number"
+f64 = "number"
+bytes = "Uint8Array"
+timestamp = "Date"
+
+[type_map.optional]
+format = "{{type}} | null"
+
+[type_map.list]
+format = "{{type}}[]"
+
 # Template configuration
 [templates]
 # Main template for generating TypeScript interfaces
-main = "typescript_file.rhai"
+main = "typescript_file.ptpl"
 
 # Extra templates to run after the main template
-extra = [
-    # Zod schema validation
-    "typescript_zod_file.rhai",
-    # SQLite Accessor (for @datasource("sqlite") tables)
-    "typescript_sqlite_accessor_file.rhai",
-]
+# Zod schema validation
+[[templates.extra]]
+template = "typescript_zod_file.ptpl"
+output = "{{stem}}.schema.ts"
+
+# SQLite Accessor (for @datasource("sqlite") tables)
+[[templates.extra]]
+template = "typescript_sqlite_accessor_file.ptpl"
+# NOTE: per_file = false will be enabled after template is rewritten.
+
+# Rhai scripting configuration
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

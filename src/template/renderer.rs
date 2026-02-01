@@ -58,6 +58,10 @@ pub struct RenderConfig {
     /// When true, registers `write_file(path, content)` on the Rhai bridge,
     /// allowing `%logic` blocks to write files directly.
     pub enable_write_file: bool,
+    /// When true, `write_file()` injects `/*@source:*/` markers for GUI preview hinting.
+    pub preview_mode: bool,
+    /// The entry-point template name used for source markers in preview mode.
+    pub entry_template: Option<String>,
 }
 
 /// Result of rendering a template: output lines + source map.
@@ -269,7 +273,10 @@ impl<'a> Renderer<'a> {
                 if self.rhai_bridge.is_none() {
                     let mut bridge = RhaiBridge::new();
                     if self.config.enable_write_file {
-                        bridge.register_write_file();
+                        bridge.register_write_file(
+                            self.config.preview_mode,
+                            self.config.entry_template.clone(),
+                        );
                     }
                     if !self.config.rhai_prelude.is_empty() {
                         bridge

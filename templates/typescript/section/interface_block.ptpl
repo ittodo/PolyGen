@@ -1,0 +1,26 @@
+%-- TypeScript interface block. Context: struct (StructDef)
+%-- 'namespace' binding inherited from parent namespace_block
+%for item in struct.header
+%if item.is_comment
+/** {{item.as_comment}} */
+%endif
+%endfor
+export interface {{struct.name}} {
+%for item in struct.items
+%if item.is_field
+%include "detail/field_declaration" with item.as_field, indent=1
+%elif item.is_comment
+    // {{item.as_comment}}
+%endif
+%endfor
+}
+%include "detail/auto_update_functions" with struct
+%for item in struct.items
+%if item.is_embedded_struct
+%blank
+%include "section/interface_block" with item.as_embedded_struct
+%elif item.is_inline_enum
+%blank
+%include "section/enum_block" with item.as_inline_enum
+%endif
+%endfor

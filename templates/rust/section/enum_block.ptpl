@@ -1,0 +1,23 @@
+%-- Rust enum definition. Context: enum
+%logic
+let first_member = true;
+%endlogic
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum {{enum.name}} {
+%for item in enum.items
+%if item.is_comment
+    // {{item.as_comment}}
+%elif item.is_member
+%if first_member
+%set first_member = false
+    #[default]
+%endif
+%if item.as_member.has_value
+    {{item.as_member.name}} = {{item.as_member.value}},
+%else
+    {{item.as_member.name}},
+%endif
+%endif
+%endfor
+}

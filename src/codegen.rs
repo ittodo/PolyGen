@@ -59,8 +59,10 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
+
 use crate::ir_model::SchemaContext;
-use crate::lang_config::{LanguageConfig, StaticFileEntry};
+use crate::lang_config::{ExtraTemplateEntry, LanguageConfig, StaticFileEntry};
 use crate::rhai_generator;
 use crate::template;
 
@@ -149,6 +151,8 @@ impl CodeGenerator {
     ///
     /// If the main template has a `.ptpl` extension, the new PolyTemplate engine
     /// is used instead of Rhai.
+    ///
+    /// Respects `main_per_file` and `main_output` settings from the language config.
     pub fn generate(&self, ir_context: &SchemaContext) -> Result<()> {
         let main_template = self
             .config
@@ -156,9 +160,28 @@ impl CodeGenerator {
             .map(|c| c.main_template(&self.language))
             .unwrap_or_else(|| format!("{}_file.rhai", self.language));
 
+        let main_per_file = self
+            .config
+            .as_ref()
+            .map(|c| c.templates.main_per_file)
+            .unwrap_or(true);
+
+        let main_output = self
+            .config
+            .as_ref()
+            .and_then(|c| c.templates.main_output.clone());
+
         if main_template.ends_with(".ptpl") {
             println!("Using PolyTemplate engine.");
-            self.generate_with_polytemplate(ir_context, &main_template)?;
+            if main_per_file {
+                self.generate_with_polytemplate(ir_context, &main_template, main_output.as_deref())?;
+            } else {
+                self.generate_schema_wide_polytemplate(
+                    ir_context,
+                    &main_template,
+                    main_output.as_deref(),
+                )?;
+            }
         } else {
             println!("Using Rhai template engine.");
             let template_path = self.template_dir().join(&main_template);
@@ -181,9 +204,10 @@ impl CodeGenerator {
         &self,
         ir_context: &SchemaContext,
         main_template: &str,
+        output_pattern: Option<&str>,
     ) -> Result<()> {
         // Build RenderConfig from language TOML
-        let render_config = self.build_render_config();
+        let render_config = self.build_render_config_for(main_template);
 
         let engine_config = template::EngineConfig { render_config };
 
@@ -223,7 +247,11 @@ impl CodeGenerator {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("output");
-            let output_filename = format!("{}{}", stem, extension);
+            let output_filename = if let Some(pattern) = output_pattern {
+                resolve_output_pattern(pattern, stem)
+            } else {
+                format!("{}{}", stem, extension)
+            };
 
             // Build context with file + extra variables
             let mut file_ctx = template::context::TemplateContext::with_file(file);
@@ -238,6 +266,12 @@ impl CodeGenerator {
             file_ctx.set(
                 "schema",
                 template::context::ContextValue::Schema(ir_context.clone()),
+            );
+            file_ctx.set(
+                "output_dir",
+                template::context::ContextValue::String(
+                    self.output_dir.to_string_lossy().to_string(),
+                ),
             );
 
             let result = engine
@@ -281,8 +315,102 @@ impl CodeGenerator {
         Ok(())
     }
 
+    /// Generates code using a PolyTemplate once for the entire schema (schema-wide).
+    ///
+    /// Unlike per-file rendering, this renders the template a single time with the
+    /// full `schema` context. Used for templates like SQLite DDL that produce a
+    /// single output file for all schema files combined.
+    fn generate_schema_wide_polytemplate(
+        &self,
+        ir_context: &SchemaContext,
+        template_name: &str,
+        output_pattern: Option<&str>,
+    ) -> Result<()> {
+        let render_config = self.build_render_config_for(template_name);
+        let engine_config = template::EngineConfig { render_config };
+
+        let engine = template::TemplateEngine::new(self.template_dir(), engine_config)
+            .map_err(|e| anyhow::anyhow!("Failed to load .ptpl templates: {}", e))?;
+
+        println!(
+            "Loaded {} .ptpl templates from {}",
+            engine.template_count(),
+            self.template_dir().display()
+        );
+
+        // Determine output filename
+        let output_filename = output_pattern
+            .map(|p| resolve_output_pattern(p, "schema"))
+            .unwrap_or_else(|| {
+                let ext = self
+                    .config
+                    .as_ref()
+                    .map(|c| c.extension.clone())
+                    .unwrap_or_default();
+                format!("output{}", ext)
+            });
+
+        // Build context with schema (no individual file)
+        let mut ctx = template::context::TemplateContext::new();
+        ctx.set(
+            "schema",
+            template::context::ContextValue::Schema(ir_context.clone()),
+        );
+        ctx.set(
+            "output_dir",
+            template::context::ContextValue::String(
+                self.output_dir.to_string_lossy().to_string(),
+            ),
+        );
+
+        let result = engine
+            .render(template_name, &ctx)
+            .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))?;
+
+        // Write output file
+        let output_path = self.lang_output_dir().join(&output_filename);
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut content = result.lines.join("\n");
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        fs::write(&output_path, &content)?;
+        println!("Generated: {}", output_path.display());
+
+        // Record in manifest
+        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
+        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
+            fs::read_to_string(&manifest_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        if let Ok(relative) = output_path.strip_prefix(&self.output_dir) {
+            let key = relative.to_string_lossy().replace('\\', "/");
+            manifest.insert(key, template_name.to_string());
+        }
+        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
+            let _ = fs::write(&manifest_path, json);
+        }
+
+        // Write source map if in preview mode
+        if self.preview_mode {
+            let map_filename = format!("{}.ptpl.map", output_path.display());
+            let map_path = PathBuf::from(&map_filename);
+            if let Ok(json) = result.source_map.to_json() {
+                fs::write(&map_path, json)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Builds a `RenderConfig` from the language TOML configuration.
-    fn build_render_config(&self) -> template::renderer::RenderConfig {
+    fn build_render_config_for(&self, template_name: &str) -> template::renderer::RenderConfig {
         let mut config = template::renderer::RenderConfig::default();
 
         if let Some(lang_config) = &self.config {
@@ -306,6 +434,12 @@ impl CodeGenerator {
 
         // Enable write_file for %logic blocks
         config.enable_write_file = true;
+
+        // Preview mode: inject source markers in write_file() output
+        config.preview_mode = self.preview_mode;
+        if self.preview_mode {
+            config.entry_template = Some(template_name.to_string());
+        }
 
         config
     }
@@ -358,12 +492,22 @@ impl CodeGenerator {
     ///
     /// Extra templates are processed after the main template.
     /// Supports both Rhai (`.rhai`) and PolyTemplate (`.ptpl`) extra templates.
+    /// Dispatches to per-file or schema-wide rendering based on `per_file` setting.
     pub fn generate_extras(&self, ir_context: &SchemaContext) -> Result<()> {
         if let Some(config) = &self.config {
-            for template_name in config.extra_templates() {
+            for entry in config.extra_templates() {
+                let template_name = &entry.template;
                 if template_name.ends_with(".ptpl") {
-                    println!("Processing extra ptpl template: {}", template_name);
-                    self.generate_extra_with_polytemplate(ir_context, template_name)?;
+                    if entry.per_file {
+                        println!("Processing extra ptpl template (per-file): {}", template_name);
+                        self.generate_extra_per_file_polytemplate(ir_context, entry)?;
+                    } else {
+                        println!(
+                            "Processing extra ptpl template (schema-wide): {}",
+                            template_name
+                        );
+                        self.generate_extra_schema_wide_polytemplate(ir_context, entry)?;
+                    }
                 } else if self.has_template(template_name) {
                     println!("Processing extra template: {}", template_name);
                     self.generate_with_template(ir_context, template_name)?;
@@ -373,16 +517,17 @@ impl CodeGenerator {
         Ok(())
     }
 
-    /// Generates code using an extra PolyTemplate (`.ptpl`) template.
+    /// Generates code using an extra PolyTemplate per-file.
     ///
-    /// Derives the output filename suffix from the template name:
-    /// e.g., `go_container_file.ptpl` → `_container` suffix.
-    fn generate_extra_with_polytemplate(
+    /// If the entry has an `output` pattern, uses `resolve_output_pattern()`.
+    /// Otherwise derives the output filename suffix from the template name.
+    fn generate_extra_per_file_polytemplate(
         &self,
         ir_context: &SchemaContext,
-        template_name: &str,
+        entry: &ExtraTemplateEntry,
     ) -> Result<()> {
-        let render_config = self.build_render_config();
+        let template_name = &entry.template;
+        let render_config = self.build_render_config_for(template_name);
         let engine_config = template::EngineConfig { render_config };
 
         let engine = template::TemplateEngine::new(self.template_dir(), engine_config)
@@ -394,7 +539,7 @@ impl CodeGenerator {
             .map(|c| c.extension.clone())
             .unwrap_or_default();
 
-        // Derive output suffix from template name
+        // Derive output suffix from template name (fallback when no output pattern)
         let output_suffix = derive_output_suffix(template_name, &self.language);
 
         // Load existing manifest
@@ -414,7 +559,12 @@ impl CodeGenerator {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("output");
-            let output_filename = format!("{}{}{}", stem, output_suffix, extension);
+
+            let output_filename = if let Some(pattern) = &entry.output {
+                resolve_output_pattern(pattern, stem)
+            } else {
+                format!("{}{}{}", stem, output_suffix, extension)
+            };
 
             // Build context
             let mut file_ctx = template::context::TemplateContext::with_file(file);
@@ -432,7 +582,6 @@ impl CodeGenerator {
             );
 
             // Compute container_name: PascalCase(stem) + "Container"
-            use heck::ToPascalCase;
             let container_name = format!("{}Container", stem.to_pascal_case());
             file_ctx.set(
                 "container_name",
@@ -479,6 +628,96 @@ impl CodeGenerator {
         // Write manifest
         if let Ok(json) = serde_json::to_string_pretty(&manifest) {
             let _ = fs::write(&manifest_path, json);
+        }
+
+        Ok(())
+    }
+
+    /// Generates code using an extra PolyTemplate once for the entire schema.
+    ///
+    /// The template is rendered a single time with the full `schema` context.
+    /// Output filename comes from `entry.output` (literal) or falls back to
+    /// a derived name from the template.
+    fn generate_extra_schema_wide_polytemplate(
+        &self,
+        ir_context: &SchemaContext,
+        entry: &ExtraTemplateEntry,
+    ) -> Result<()> {
+        let template_name = &entry.template;
+        let render_config = self.build_render_config_for(template_name);
+        let engine_config = template::EngineConfig { render_config };
+
+        let engine = template::TemplateEngine::new(self.template_dir(), engine_config)
+            .map_err(|e| anyhow::anyhow!("Failed to load .ptpl templates: {}", e))?;
+
+        // Determine output filename
+        let output_filename = if let Some(pattern) = &entry.output {
+            // For schema-wide, pattern is used as literal (no stem substitution)
+            pattern.clone()
+        } else {
+            let ext = self
+                .config
+                .as_ref()
+                .map(|c| c.extension.clone())
+                .unwrap_or_default();
+            let suffix = derive_output_suffix(template_name, &self.language);
+            format!("schema{}{}", suffix, ext)
+        };
+
+        // Build context with schema (no individual file)
+        let mut ctx = template::context::TemplateContext::new();
+        ctx.set(
+            "schema",
+            template::context::ContextValue::Schema(ir_context.clone()),
+        );
+        ctx.set(
+            "output_dir",
+            template::context::ContextValue::String(
+                self.output_dir.to_string_lossy().to_string(),
+            ),
+        );
+
+        let result = engine
+            .render(template_name, &ctx)
+            .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))?;
+
+        // Write output file
+        let output_path = self.lang_output_dir().join(&output_filename);
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut content = result.lines.join("\n");
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        fs::write(&output_path, &content)?;
+        println!("Generated: {}", output_path.display());
+
+        // Record in manifest
+        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
+        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
+            fs::read_to_string(&manifest_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        if let Ok(relative) = output_path.strip_prefix(&self.output_dir) {
+            let key = relative.to_string_lossy().replace('\\', "/");
+            manifest.insert(key, template_name.to_string());
+        }
+        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
+            let _ = fs::write(&manifest_path, json);
+        }
+
+        // Write source map if in preview mode
+        if self.preview_mode {
+            let map_filename = format!("{}.ptpl.map", output_path.display());
+            let map_path = PathBuf::from(&map_filename);
+            if let Ok(json) = result.source_map.to_json() {
+                fs::write(&map_path, json)?;
+            }
         }
 
         Ok(())
@@ -604,6 +843,38 @@ pub fn discover_languages(templates_dir: &Path) -> Vec<String> {
     languages
 }
 
+/// Resolves an output filename pattern by substituting `{{stem}}` with optional filters.
+///
+/// Supported patterns:
+/// - `{{stem}}` — raw stem (e.g., "game_schema")
+/// - `{{stem | pascal_case}}` — PascalCase (e.g., "GameSchema")
+/// - `{{stem | snake_case}}` — snake_case (e.g., "game_schema")
+/// - `{{stem | camel_case}}` — camelCase (e.g., "gameSchema")
+/// - No `{{stem}}` — treated as literal filename (e.g., "schema.sql")
+pub fn resolve_output_pattern(pattern: &str, stem: &str) -> String {
+    let mut result = pattern.to_string();
+
+    // Replace {{stem | filter}} patterns
+    let re_with_filter =
+        regex::Regex::new(r"\{\{\s*stem\s*\|\s*(\w+)\s*\}\}").expect("valid regex");
+    result = re_with_filter
+        .replace_all(&result, |caps: &regex::Captures| {
+            let filter = &caps[1];
+            match filter {
+                "pascal_case" => stem.to_pascal_case(),
+                "snake_case" => stem.to_snake_case(),
+                "camel_case" => stem.to_lower_camel_case(),
+                _ => stem.to_string(),
+            }
+        })
+        .to_string();
+
+    // Replace plain {{stem}}
+    result = result.replace("{{stem}}", stem);
+
+    result
+}
+
 /// Derives an output filename suffix from a template name.
 ///
 /// Examples:
@@ -623,7 +894,6 @@ fn derive_output_suffix(template_name: &str, language: &str) -> String {
 
     // Use PascalCase with dot prefix to match Rhai naming:
     // "container" → ".Container", "binary_readers" → ".BinaryReaders"
-    use heck::ToPascalCase;
     format!(".{}", core.to_pascal_case())
 }
 
@@ -704,5 +974,58 @@ pub fn load_manifest(output_dir: &Path) -> HashMap<String, String> {
             .unwrap_or_default()
     } else {
         HashMap::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_output_pattern_plain_stem() {
+        assert_eq!(
+            resolve_output_pattern("{{stem}}_loaders.rs", "game_schema"),
+            "game_schema_loaders.rs"
+        );
+    }
+
+    #[test]
+    fn test_resolve_output_pattern_pascal_case() {
+        assert_eq!(
+            resolve_output_pattern("Polygen{{stem | pascal_case}}.h", "game_schema"),
+            "PolygenGameSchema.h"
+        );
+    }
+
+    #[test]
+    fn test_resolve_output_pattern_snake_case() {
+        assert_eq!(
+            resolve_output_pattern("{{stem | snake_case}}_data.rs", "GameSchema"),
+            "game_schema_data.rs"
+        );
+    }
+
+    #[test]
+    fn test_resolve_output_pattern_camel_case() {
+        assert_eq!(
+            resolve_output_pattern("{{stem | camel_case}}.schema.ts", "game_schema"),
+            "gameSchema.schema.ts"
+        );
+    }
+
+    #[test]
+    fn test_resolve_output_pattern_literal() {
+        assert_eq!(
+            resolve_output_pattern("schema.sql", "game_schema"),
+            "schema.sql"
+        );
+    }
+
+    #[test]
+    fn test_resolve_output_pattern_multiple_substitutions() {
+        assert_eq!(
+            resolve_output_pattern("{{stem}}/{{stem | pascal_case}}.h", "game_schema"),
+            "game_schema/GameSchema.h"
+        );
     }
 }

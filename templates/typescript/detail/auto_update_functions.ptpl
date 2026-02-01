@@ -1,0 +1,42 @@
+%-- Auto-update timestamp helper functions for TypeScript
+%-- Context: struct (StructDef)
+%logic
+let auto_update_fields = [];
+for item in struct.items {
+    if item.is_field() {
+        let f = item.as_field();
+        if f.auto_update != () {
+            auto_update_fields.push(f);
+        }
+    }
+}
+%endlogic
+%if auto_update_fields.len > 0
+%blank
+// Auto-update timestamp helper functions for {{struct.name}}
+%for f in auto_update_fields
+%logic
+let field_name = to_camel_case(f.name);
+let pascal_name = to_pascal_case(f.name);
+let datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+%endlogic
+%blank
+/** Updates {{field_name}} to the current timestamp. */
+export function onUpdate{{struct.name}}{{pascal_name}}(obj: {{struct.name}}): void {
+    obj.{{field_name}} = {{datetime_expr}};
+}
+%endfor
+%if auto_update_fields.len > 1
+%blank
+/** Updates all auto-update timestamp fields. */
+export function onUpdate{{struct.name}}All(obj: {{struct.name}}): void {
+%for f in auto_update_fields
+%logic
+let au_field_name = to_camel_case(f.name);
+let au_datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+%endlogic
+    obj.{{au_field_name}} = {{au_datetime_expr}};
+%endfor
+}
+%endif
+%endif

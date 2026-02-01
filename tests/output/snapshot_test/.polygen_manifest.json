@@ -1,10 +1,10 @@
 {
-  "csharp/csv_test_schema.cs": "csharp_file.ptpl",
-  "csharp/csv_test_schema.Datacontext.cs": "csharp_datacontext_file.ptpl",
-  "csharp/csv_test_schema.CsvColumns.cs": "csharp_csv_columns_file.ptpl",
-  "csharp/csv_test_schema.BinaryReaders.cs": "csharp_binary_readers_file.ptpl",
   "csharp/csv_test_schema.BinaryWriters.cs": "csharp_binary_writers_file.ptpl",
-  "csharp/csv_test_schema.Container.cs": "csharp_container_file.ptpl",
   "csharp/csv_test_schema.CsvMappers.cs": "csharp_csv_mappers_file.ptpl",
+  "csharp/csv_test_schema.Datacontext.cs": "csharp_datacontext_file.ptpl",
+  "csharp/csv_test_schema.cs": "csharp_file.ptpl",
+  "csharp/csv_test_schema.CsvColumns.cs": "csharp_csv_columns_file.ptpl",
+  "csharp/csv_test_schema.Container.cs": "csharp_container_file.ptpl",
+  "csharp/csv_test_schema.BinaryReaders.cs": "csharp_binary_readers_file.ptpl",
   "csharp/csv_test_schema.SqliteAccessor.cs": "csharp_sqlite_accessor_file.ptpl"
 }
