@@ -215,9 +215,12 @@ fn generate_table_wrapper(s, namespace_fqn) {
             if field.range != () {
                 let min_val = field.range.min;
                 let max_val = field.range.max;
-                result += "            if (!polygen::validation::validate_range(row." + field_name + ", " + min_val + ", " + max_val + ")) {\n";
+                let cpp_type = get_field_cpp_type(field.field_type);
+                let cast_min = "static_cast<" + cpp_type + ">(" + min_val + ")";
+                let cast_max = "static_cast<" + cpp_type + ">(" + max_val + ")";
+                result += "            if (!polygen::validation::validate_range(row." + field_name + ", " + cast_min + ", " + cast_max + ")) {\n";
                 result += "                result.add_error(polygen::validation::range_error(\n";
-                result += "                    \"" + s.name + "\", \"" + field_name + "\", " + pk_expr + ", " + min_val + ", " + max_val + ", row." + field_name + "));\n";
+                result += "                    \"" + s.name + "\", \"" + field_name + "\", " + pk_expr + ", " + cast_min + ", " + cast_max + ", row." + field_name + "));\n";
                 result += "            }\n";
             }
 
@@ -282,22 +285,18 @@ fn generate_table_wrapper(s, namespace_fqn) {
                     if field.field_type.is_option {
                         result += "            if (row." + field.name + ".has_value()) {\n";
                         result += "                // Check FK reference to " + target_table + "\n";
-                        result += "                if constexpr (requires { container." + target_member + "; }) {\n";
-                        result += "                    if (container." + target_member + ".get_by_" + fk.target_field + "(row." + field.name + ".value()) == nullptr) {\n";
-                        result += "                        result.add_error(polygen::validation::foreign_key_error(\n";
-                        result += "                            \"" + s.name + "\", \"" + field.name + "\", " + pk_expr + ",\n";
-                        result += "                            \"" + target_table + "\", std::to_string(row." + field.name + ".value())));\n";
-                        result += "                    }\n";
+                        result += "                if (container." + target_member + ".get_by_" + fk.target_field + "(row." + field.name + ".value()) == nullptr) {\n";
+                        result += "                    result.add_error(polygen::validation::foreign_key_error(\n";
+                        result += "                        \"" + s.name + "\", \"" + field.name + "\", " + pk_expr + ",\n";
+                        result += "                        \"" + target_table + "\", std::to_string(row." + field.name + ".value())));\n";
                         result += "                }\n";
                         result += "            }\n";
                     } else {
                         result += "            // Check FK reference to " + target_table + "\n";
-                        result += "            if constexpr (requires { container." + target_member + "; }) {\n";
-                        result += "                if (container." + target_member + ".get_by_" + fk.target_field + "(row." + field.name + ") == nullptr) {\n";
-                        result += "                    result.add_error(polygen::validation::foreign_key_error(\n";
-                        result += "                        \"" + s.name + "\", \"" + field.name + "\", " + pk_expr + ",\n";
-                        result += "                        \"" + target_table + "\", std::to_string(row." + field.name + ")));\n";
-                        result += "                }\n";
+                        result += "            if (container." + target_member + ".get_by_" + fk.target_field + "(row." + field.name + ") == nullptr) {\n";
+                        result += "                result.add_error(polygen::validation::foreign_key_error(\n";
+                        result += "                    \"" + s.name + "\", \"" + field.name + "\", " + pk_expr + ",\n";
+                        result += "                    \"" + target_table + "\", std::to_string(row." + field.name + ")));\n";
                         result += "            }\n";
                     }
                 }
