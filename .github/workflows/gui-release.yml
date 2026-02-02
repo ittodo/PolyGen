@@ -130,7 +130,8 @@ jobs:
         shell: bash
         run: |
           TAG="${{ needs.create-release.outputs.tag_name }}"
-          STAGE="PolyGen-${{ matrix.platform }}"
+          VERSION="${TAG#gui-}"
+          STAGE="PolyGen-${VERSION}-${{ matrix.platform }}"
           mkdir -p "$STAGE"
 
           # Copy Tauri GUI binary (Cargo package name: polygen-gui)
