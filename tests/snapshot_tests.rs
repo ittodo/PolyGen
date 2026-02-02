@@ -8,7 +8,7 @@ fn test_ast_snapshots() -> Result<()> {
     for entry in WalkDir::new("tests/schemas")
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "poly"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "poly"))
     {
         let schema_path = entry.path();
         let schema_name = schema_path.file_stem().unwrap().to_str().unwrap();

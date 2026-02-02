@@ -901,7 +901,7 @@ mod tests {
 
         assert_eq!(cv.get_property("name").to_display_string(), "Player");
         assert_eq!(cv.get_property("fqn").to_display_string(), "game.Player");
-        assert_eq!(cv.get_property("is_embed").is_truthy(), false);
+        assert!(!cv.get_property("is_embed").is_truthy());
     }
 
     #[test]

@@ -1548,8 +1548,7 @@ mod tests {
     fn test_render_logic_with_prelude() {
         let source = "%logic\nlet result = double(21);\n%endlogic\n{{result}}";
         let templates = make_templates(&[("test.ptpl", source)]);
-        let mut config = RenderConfig::default();
-        config.rhai_prelude = vec!["fn double(x) { x * 2 }".to_string()];
+        let config = RenderConfig { rhai_prelude: vec!["fn double(x) { x * 2 }".to_string()], ..Default::default() };
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);

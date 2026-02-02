@@ -547,8 +547,8 @@ mod tests {
             .unwrap();
 
         // Child should not have parent's variables
-        assert!(child_result.get("parent_var").is_none());
-        assert!(child_result.get("child_var").is_some());
+        assert!(!child_result.contains_key("parent_var"));
+        assert!(child_result.contains_key("child_var"));
     }
 
     #[test]
