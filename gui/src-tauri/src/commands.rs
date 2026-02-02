@@ -17,15 +17,19 @@ fn get_polygen_path(app: &AppHandle) -> Result<PathBuf, String> {
         };
         Ok(PathBuf::from("../../target/release").join(bin_name))
     } else {
-        // Production: bundled binary in Tauri resource directory
-        let resource_dir = app.path().resource_dir()
-            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+        // Production: standalone package — CLI binary next to GUI executable
+        // On Windows, renamed to polygen-cli.exe to avoid case-insensitive name collision
+        let exe_dir = std::env::current_exe()
+            .map_err(|e| format!("Failed to get current exe path: {}", e))?
+            .parent()
+            .ok_or_else(|| "Failed to get exe directory".to_string())?
+            .to_path_buf();
         let bin_name = if cfg!(target_os = "windows") {
-            "polygen.exe"
+            "polygen-cli.exe"
         } else {
             "polygen"
         };
-        Ok(resource_dir.join(bin_name))
+        Ok(exe_dir.join(bin_name))
     }
 }
 
@@ -1262,14 +1266,17 @@ pub struct TemplateFileInfo {
 }
 
 /// Get the default templates directory
-fn get_default_templates_dir(app: &AppHandle) -> Result<PathBuf, String> {
+fn get_default_templates_dir(_app: &AppHandle) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
         Ok(PathBuf::from("../../templates"))
     } else {
-        // Production: bundled templates in Tauri resource directory
-        let resource_dir = app.path().resource_dir()
-            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
-        Ok(resource_dir.join("templates"))
+        // Production: standalone package — templates directory next to GUI executable
+        let exe_dir = std::env::current_exe()
+            .map_err(|e| format!("Failed to get current exe path: {}", e))?
+            .parent()
+            .ok_or_else(|| "Failed to get exe directory".to_string())?
+            .to_path_buf();
+        Ok(exe_dir.join("templates"))
     }
 }
 

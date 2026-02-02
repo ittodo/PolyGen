@@ -137,7 +137,8 @@ jobs:
           TAURI_OUT="gui/src-tauri/target/${{ matrix.target }}/release"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             cp "${TAURI_OUT}/polygen-gui.exe" "$STAGE/PolyGen.exe"
-            cp "target/release/polygen.exe" "$STAGE/"
+            # Rename to polygen-cli.exe to avoid Windows case-insensitive collision
+            cp "target/release/polygen.exe" "$STAGE/polygen-cli.exe"
           else
             cp "${TAURI_OUT}/polygen-gui" "$STAGE/PolyGen"
             cp "target/release/polygen" "$STAGE/"
