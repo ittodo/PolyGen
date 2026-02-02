@@ -176,9 +176,10 @@ PolyGen은 Tauri 기반 GUI를 제공합니다. **[최신 릴리즈 다운로드
 
 | 플랫폼 | 패키지 |
 |--------|--------|
-| Windows | `.msi` / `.exe` 인스톨러 |
-| macOS | `.dmg` |
-| Linux | `.deb` / `.AppImage` |
+| Windows | `.zip` (설치 불필요, 압축 해제 후 실행) |
+| macOS Intel | `.tar.gz` |
+| macOS ARM | `.tar.gz` |
+| Linux | `.tar.gz` |
 
 소스에서 직접 빌드:
 

@@ -126,35 +126,42 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
 
-      - name: Upload Linux artifacts
-        if: matrix.platform == 'linux'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.create-release.outputs.tag_name }}
-          files: |
-            gui/src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
-            gui/src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package standalone archive
+        shell: bash
+        run: |
+          TAG="${{ needs.create-release.outputs.tag_name }}"
+          STAGE="PolyGen-${{ matrix.platform }}"
+          mkdir -p "$STAGE"
 
-      - name: Upload macOS artifacts
-        if: startsWith(matrix.platform, 'macos')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.create-release.outputs.tag_name }}
-          files: |
-            gui/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Copy Tauri GUI binary (Cargo package name: polygen-gui)
+          TAURI_OUT="gui/src-tauri/target/${{ matrix.target }}/release"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp "${TAURI_OUT}/polygen-gui.exe" "$STAGE/PolyGen.exe"
+            cp "target/release/polygen.exe" "$STAGE/"
+          else
+            cp "${TAURI_OUT}/polygen-gui" "$STAGE/PolyGen"
+            cp "target/release/polygen" "$STAGE/"
+            chmod +x "$STAGE/PolyGen" "$STAGE/polygen"
+          fi
 
-      - name: Upload Windows artifacts
-        if: matrix.platform == 'windows'
+          # Copy templates and static files
+          cp -r templates "$STAGE/templates"
+          cp -r static "$STAGE/static"
+
+          # Create archive
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a "${STAGE}.zip" "$STAGE" >/dev/null
+            echo "ASSET=${STAGE}.zip" >> $GITHUB_ENV
+          else
+            tar -czf "${STAGE}.tar.gz" "$STAGE"
+            echo "ASSET=${STAGE}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload artifact
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.create-release.outputs.tag_name }}
-          files: |
-            gui/src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
-            gui/src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
+          files: ${{ env.ASSET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
