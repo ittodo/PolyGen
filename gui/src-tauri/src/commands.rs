@@ -7,31 +7,37 @@ use polygen::pipeline::parse_and_merge_schemas;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-fn get_polygen_path() -> String {
-    // In bundled app, the binary is in the resources folder
-    // During development, use the built binary from parent project
+fn get_polygen_path(app: &AppHandle) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
         // Development: use the binary built by cargo
-        // Path is relative from gui/src-tauri/ to project root
-        if cfg!(target_os = "windows") {
-            "../../target/release/polygen.exe".to_string()
+        let bin_name = if cfg!(target_os = "windows") {
+            "polygen.exe"
         } else {
-            "../../target/release/polygen".to_string()
-        }
+            "polygen"
+        };
+        Ok(PathBuf::from("../../target/release").join(bin_name))
     } else {
-        // Production: bundled binary (in resources folder)
-        "polygen".to_string()
+        // Production: bundled binary in Tauri resource directory
+        let resource_dir = app.path().resource_dir()
+            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+        let bin_name = if cfg!(target_os = "windows") {
+            "polygen.exe"
+        } else {
+            "polygen"
+        };
+        Ok(resource_dir.join(bin_name))
     }
 }
 
 #[tauri::command]
 pub fn run_generate(
+    app: AppHandle,
     schema_path: String,
     lang: String,
     output_dir: String,
     templates_dir: Option<String>,
 ) -> Result<String, String> {
-    let polygen = get_polygen_path();
+    let polygen = get_polygen_path(&app)?;
 
     let mut cmd = Command::new(&polygen);
     cmd.arg("generate")
@@ -60,11 +66,12 @@ pub fn run_generate(
 
 #[tauri::command]
 pub fn run_migrate(
+    app: AppHandle,
     baseline_path: String,
     schema_path: String,
     output_dir: String,
 ) -> Result<String, String> {
-    let polygen = get_polygen_path();
+    let polygen = get_polygen_path(&app)?;
 
     let output = Command::new(&polygen)
         .arg("migrate")
@@ -87,8 +94,8 @@ pub fn run_migrate(
 }
 
 #[tauri::command]
-pub fn get_polygen_version() -> Result<String, String> {
-    let polygen = get_polygen_path();
+pub fn get_polygen_version(app: AppHandle) -> Result<String, String> {
+    let polygen = get_polygen_path(&app)?;
 
     let output = Command::new(&polygen)
         .arg("--version")
@@ -1255,22 +1262,23 @@ pub struct TemplateFileInfo {
 }
 
 /// Get the default templates directory
-fn get_default_templates_dir() -> Result<PathBuf, String> {
-    // In development, use the templates directory from the project root
+fn get_default_templates_dir(app: &AppHandle) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
         Ok(PathBuf::from("../../templates"))
     } else {
-        // In production, templates should be bundled with the app
-        Ok(PathBuf::from("templates"))
+        // Production: bundled templates in Tauri resource directory
+        let resource_dir = app.path().resource_dir()
+            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+        Ok(resource_dir.join("templates"))
     }
 }
 
 /// List all template languages
 #[tauri::command]
-pub fn list_template_languages(templates_dir: Option<String>) -> Result<Vec<TemplateLanguageInfo>, String> {
+pub fn list_template_languages(app: AppHandle, templates_dir: Option<String>) -> Result<Vec<TemplateLanguageInfo>, String> {
     let templates_path = match templates_dir {
         Some(dir) => PathBuf::from(dir),
-        None => get_default_templates_dir()?,
+        None => get_default_templates_dir(&app)?,
     };
 
     if !templates_path.exists() {
@@ -1362,12 +1370,13 @@ fn count_template_files(path: &Path) -> usize {
 /// List template files for a specific language
 #[tauri::command]
 pub fn list_template_files(
+    app: AppHandle,
     lang: String,
     templates_dir: Option<String>,
 ) -> Result<Vec<TemplateFileInfo>, String> {
     let templates_path = match templates_dir {
         Some(dir) => PathBuf::from(dir),
-        None => get_default_templates_dir()?,
+        None => get_default_templates_dir(&app)?,
     };
 
     let lang_path = templates_path.join(&lang);
@@ -1435,13 +1444,14 @@ pub fn list_template_files(
 /// Read a template file
 #[tauri::command]
 pub fn read_template_file(
+    app: AppHandle,
     lang: String,
     relative_path: String,
     templates_dir: Option<String>,
 ) -> Result<String, String> {
     let templates_path = match templates_dir {
         Some(dir) => PathBuf::from(dir),
-        None => get_default_templates_dir()?,
+        None => get_default_templates_dir(&app)?,
     };
 
     let file_path = templates_path.join(&lang).join(&relative_path);
@@ -1463,6 +1473,7 @@ pub fn read_template_file(
 /// Write a template file
 #[tauri::command]
 pub fn write_template_file(
+    app: AppHandle,
     lang: String,
     relative_path: String,
     content: String,
@@ -1470,7 +1481,7 @@ pub fn write_template_file(
 ) -> Result<(), String> {
     let templates_path = match templates_dir {
         Some(dir) => PathBuf::from(dir),
-        None => get_default_templates_dir()?,
+        None => get_default_templates_dir(&app)?,
     };
 
     let file_path = templates_path.join(&lang).join(&relative_path);
@@ -1501,13 +1512,14 @@ pub fn write_template_file(
 /// Create a new language template
 #[tauri::command]
 pub fn create_new_language(
+    app: AppHandle,
     lang_id: String,
     lang_name: String,
     templates_dir: Option<String>,
 ) -> Result<(), String> {
     let templates_path = match templates_dir {
         Some(dir) => PathBuf::from(dir),
-        None => get_default_templates_dir()?,
+        None => get_default_templates_dir(&app)?,
     };
 
     let lang_path = templates_path.join(&lang_id);
@@ -1664,13 +1676,14 @@ fn get_default_value(type_ref) {
 /// Delete a template file or directory
 #[tauri::command]
 pub fn delete_template_file(
+    app: AppHandle,
     lang: String,
     relative_path: String,
     templates_dir: Option<String>,
 ) -> Result<(), String> {
     let templates_path = match templates_dir {
         Some(dir) => PathBuf::from(dir),
-        None => get_default_templates_dir()?,
+        None => get_default_templates_dir(&app)?,
     };
 
     let file_path = templates_path.join(&lang).join(&relative_path);
@@ -1703,17 +1716,18 @@ pub fn delete_template_file(
 /// Uses --preview flag to output generated files to stdout
 #[tauri::command]
 pub fn preview_template(
+    app: AppHandle,
     schema_path: String,
     lang: String,
     templates_dir: Option<String>,
 ) -> Result<String, String> {
-    let polygen = get_polygen_path();
+    let polygen = get_polygen_path(&app)?;
 
     // Resolve templates directory to absolute path so polygen can find it
     // regardless of the working directory
     let resolved_templates = match templates_dir {
         Some(dir) => PathBuf::from(dir),
-        None => get_default_templates_dir()?,
+        None => get_default_templates_dir(&app)?,
     };
     let resolved_templates = resolved_templates.canonicalize()
         .map_err(|e| format!("Templates directory not found: {}", e))?;

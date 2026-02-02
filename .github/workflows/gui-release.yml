@@ -108,14 +108,23 @@ jobs:
         run: npm ci
 
       - name: Build core polygen (release)
-        run: cargo build --release --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+          # Copy binary to target/release/ so tauri.conf.json resources can find it
+          mkdir -p target/release
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp "target/${{ matrix.target }}/release/polygen.exe" "target/release/polygen.exe"
+          else
+            cp "target/${{ matrix.target }}/release/polygen" "target/release/polygen"
+          fi
 
       - name: Build Tauri app
         working-directory: gui
         run: npm run tauri build -- --target ${{ matrix.target }}
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
 
       - name: Upload Linux artifacts
         if: matrix.platform == 'linux'

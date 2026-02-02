@@ -38,7 +38,11 @@
         "icons/icon.ico",
         "icons/icon.png"
       ],
-    "resources": ["../../target/release/polygen*"]
+    "resources": [
+      "../../target/release/polygen*",
+      "../../templates",
+      "../../static"
+    ]
   },
   "plugins": {
     "shell": {
