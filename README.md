@@ -1,6 +1,11 @@
 # PolyGen
 
+[![CI](https://github.com/ittodo/PolyGen/actions/workflows/ci.yml/badge.svg)](https://github.com/ittodo/PolyGen/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ittodo/PolyGen?label=GUI%20Download)](https://github.com/ittodo/PolyGen/releases/latest)
+
 PolyGen은 `.poly` 스키마를 단일 진실 공급원(SSOT)으로 삼아, 여러 프로그래밍 언어의 코드를 생성하는 **폴리글랏 코드 생성기**입니다.
+
+> **[GUI 앱 다운로드 (Windows / macOS / Linux)](https://github.com/ittodo/PolyGen/releases/latest)**
 
 ## 지원 언어
 
@@ -167,12 +172,20 @@ PolyGen/
 
 ## GUI
 
-PolyGen은 Tauri 기반 GUI를 제공합니다.
+PolyGen은 Tauri 기반 GUI를 제공합니다. **[최신 릴리즈 다운로드](https://github.com/ittodo/PolyGen/releases/latest)**
+
+| 플랫폼 | 패키지 |
+|--------|--------|
+| Windows | `.msi` / `.exe` 인스톨러 |
+| macOS | `.dmg` |
+| Linux | `.deb` / `.AppImage` |
+
+소스에서 직접 빌드:
 
 ```bash
 cd gui
 npm install
-npm run tauri:dev
+npm run tauri:build
 ```
 
 주요 기능:
