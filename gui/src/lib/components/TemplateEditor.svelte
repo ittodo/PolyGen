@@ -69,8 +69,8 @@
   }
   let availableLanguages = $state<TemplateLanguageInfo[]>([]);
 
-  // Tab state: "editor" or "preview"
-  let activeTab = $state<"editor" | "preview">("editor");
+  // Preview panel visibility (split layout)
+  let showPreviewPanel = $state(false);
 
   // Preview state
   let previewFiles = $state<PreviewFile[]>([]);
@@ -258,12 +258,18 @@
     selectedPreviewFile = 0;
     isModified = false;
     currentFile = null;
-    activeTab = "editor";
+    showPreviewPanel = false;
     log(`Selected language: ${lang}`);
   }
 
   async function handleSelectFile(file: TemplateFileInfo) {
     if (file.is_directory) return;
+
+    // Cancel pending preview debounce
+    if (previewDebounceTimer) {
+      clearTimeout(previewDebounceTimer);
+      previewDebounceTimer = null;
+    }
 
     if (isModified) {
       const shouldSave = confirm("Save changes to current file?");
@@ -283,16 +289,27 @@
       isModified = false;
       editorInitialPosition = null;
       currentFile = file;
-      activeTab = "editor";
       log(`Opened: ${file.name}`);
     } catch (e) {
       log(`ERROR: Failed to open file - ${e}`);
     }
   }
 
+  // Debounce timer for auto-preview
+  let previewDebounceTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+
   function handleEditorChange(value: string) {
     editorContent = value;
     isModified = value !== originalContent;
+
+    // Auto-refresh preview with debounce when preview panel is open
+    if (showPreviewPanel && !isGenerating) {
+      if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+      previewDebounceTimer = setTimeout(() => {
+        previewDebounceTimer = null;
+        generatePreview();
+      }, 1500);
+    }
   }
 
   async function saveFile() {
@@ -317,6 +334,18 @@
     }
   }
 
+  function togglePreviewPanel() {
+    if (showPreviewPanel) {
+      showPreviewPanel = false;
+      if (previewDebounceTimer) {
+        clearTimeout(previewDebounceTimer);
+        previewDebounceTimer = null;
+      }
+    } else {
+      generatePreview();
+    }
+  }
+
   async function generatePreview() {
     if (!schemaPath || !selectedLang) {
       log("ERROR: Please open a schema file and select a language");
@@ -333,14 +362,26 @@
         templatesDir: templatesDir || null,
       });
 
+      const previousFileName = previewFiles.length > 0 && selectedPreviewFile < previewFiles.length
+        ? previewFiles[selectedPreviewFile].name
+        : null;
+
       previewFiles = parsePreviewOutput(result);
-      selectedPreviewFile = 0;
-      activeTab = "preview";
+
+      // Restore previously selected file by name
+      if (previousFileName) {
+        const idx = previewFiles.findIndex(f => f.name === previousFileName);
+        selectedPreviewFile = idx >= 0 ? idx : 0;
+      } else {
+        selectedPreviewFile = 0;
+      }
+
+      showPreviewPanel = true;
       log(`Preview generated: ${previewFiles.length} files`);
     } catch (e) {
       previewFiles = [{ name: "Error", content: `Error generating preview:\n${e}` }];
       selectedPreviewFile = 0;
-      activeTab = "preview";
+      showPreviewPanel = true;
       log(`ERROR: Preview failed - ${e}`);
     } finally {
       isGenerating = false;
@@ -420,7 +461,6 @@
             is_directory: false,
             children: [],
           };
-          activeTab = "editor";
           const lineInfo = templateLine ? `:${templateLine}` : "";
           log(`Navigated to: ${templateName}${lineInfo}`);
           return;
@@ -499,63 +539,54 @@
 
   <!-- Main Panel: Tabbed Editor / Preview -->
   <div class="main-panel">
-    <!-- Tab bar -->
+    <!-- Header bar -->
     <div class="tab-bar">
       <div class="tab-buttons">
+        {#if currentFile}
+          <span class="header-file-name">
+            {currentFile.name}{#if isModified}<span class="modified">*</span>{/if}
+          </span>
+        {:else}
+          <span class="header-file-name placeholder">No file selected</span>
+        {/if}
+      </div>
+      <div class="tab-actions">
         <button
-          class="tab-btn"
-          class:active={activeTab === "editor"}
-          onclick={() => (activeTab = "editor")}
+          class="action-btn icon"
+          class:active={showRightPanel}
+          onclick={() => (showRightPanel = !showRightPanel)}
+          title={showRightPanel ? "Hide panel" : "Show panel"}
         >
-          Editor
-          {#if currentFile}
-            <span class="tab-file-name">
-              - {currentFile.name}{#if isModified}<span class="modified">*</span>{/if}
-            </span>
-          {/if}
+          <span class="panel-icon">&#9776;</span>
         </button>
         <button
-          class="tab-btn"
-          class:active={activeTab === "preview"}
-          onclick={() => (activeTab = "preview")}
+          class="action-btn secondary"
+          onclick={saveFile}
+          disabled={!isModified || isSaving}
         >
-          Preview
-          {#if previewFiles.length > 0}
+          {isSaving ? "Saving..." : "Save"}
+        </button>
+        <button
+          class="action-btn"
+          class:primary={!showPreviewPanel}
+          class:active-toggle={showPreviewPanel}
+          onclick={togglePreviewPanel}
+          disabled={!schemaPath || !selectedLang || isGenerating}
+          title={showPreviewPanel ? "Hide preview" : "Show preview"}
+        >
+          <span class="preview-toggle-icon">{showPreviewPanel ? "▼" : "▲"}</span>
+          {isGenerating ? "Generating..." : showPreviewPanel ? "Hide Preview" : "Preview"}
+          {#if previewFiles.length > 0 && !showPreviewPanel}
             <span class="tab-badge">{previewFiles.length}</span>
           {/if}
         </button>
       </div>
-      <div class="tab-actions">
-        {#if activeTab === "editor"}
-          <button
-            class="action-btn icon"
-            class:active={showRightPanel}
-            onclick={() => (showRightPanel = !showRightPanel)}
-            title={showRightPanel ? "Hide panel" : "Show panel"}
-          >
-            <span class="panel-icon">&#9776;</span>
-          </button>
-          <button
-            class="action-btn secondary"
-            onclick={saveFile}
-            disabled={!isModified || isSaving}
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </button>
-        {/if}
-        <button
-          class="action-btn primary"
-          onclick={generatePreview}
-          disabled={!schemaPath || !selectedLang || isGenerating}
-        >
-          {isGenerating ? "Generating..." : "Generate Preview"}
-        </button>
-      </div>
     </div>
 
-    <!-- Tab content -->
-    <div class="tab-content">
-      {#if activeTab === "editor"}
+    <!-- Split content: Editor (always visible) + Preview (toggle) -->
+    <div class="split-content" class:preview-open={showPreviewPanel}>
+      <!-- Editor area (always visible) -->
+      <div class="editor-area">
         <div class="editor-with-panel" class:panel-hidden={!showRightPanel}>
           <div class="editor-content">
             {#if currentFile}
@@ -618,97 +649,101 @@
             </div>
           {/if}
         </div>
-      {:else}
-        <!-- Preview tab -->
-        <div class="preview-container">
-          {#if previewFiles.length > 0}
-            <!-- File list sidebar -->
-            <div class="preview-file-list">
-              {#each previewFiles as file, i}
-                <button
-                  class="preview-file-item"
-                  class:active={selectedPreviewFile === i}
-                  onclick={() => { selectedPreviewFile = i; hoveredBlockIndex = null; hoveredLine = null; }}
-                  title={file.template ? `${file.name}\nTemplate: ${file.template}` : file.name}
-                >
-                  <span class="preview-file-ext">{getFileExtension(file.name)}</span>
-                  <span class="preview-file-name">{file.name}</span>
-                  {#if file.template}
-                    <span class="preview-file-template">{file.template}</span>
-                  {/if}
-                </button>
-              {/each}
-            </div>
-            <!-- File content with source blocks -->
-            <div class="preview-content">
-              <div class="preview-header">
-                <span class="preview-path">{previewFiles[selectedPreviewFile].name}</span>
-                {#if previewFiles[selectedPreviewFile].template}
-                  <span class="preview-template-badge">{previewFiles[selectedPreviewFile].template}</span>
-                {/if}
-                {#if usesPtplSourceMap}
-                  <span class="preview-template-badge ptpl">ptpl source map</span>
-                {/if}
-              </div>
-              <div class="preview-code-container">
-                {#if usesPtplSourceMap}
-                  <!-- Line-level source map rendering (ptpl engine) -->
-                  <table class="source-map-table">
-                    <tbody>
-                      {#each previewFiles[selectedPreviewFile].content.split("\n") as line, lineIdx}
-                        {@const entry = currentSourceMap && lineIdx < currentSourceMap.entries.length ? currentSourceMap.entries[lineIdx] : null}
-                        <!-- svelte-ignore a11y_no_static_element_interactions -->
-                        <tr
-                          class="source-map-line"
-                          class:hovered={hoveredLine === lineIdx}
-                          class:has-mapping={entry !== null}
-                          onmouseenter={() => (hoveredLine = lineIdx)}
-                          onmouseleave={() => (hoveredLine = null)}
-                          onclick={() => entry && handleLineClick(entry)}
-                          oncontextmenu={(e) => entry && handleLineContextMenu(e, entry)}
-                          title={entry ? getSourceMapTooltip(entry) : ""}
-                        >
-                          <td class="line-number">{lineIdx + 1}</td>
-                          <td class="line-content"><pre>{line}</pre></td>
-                          <td class="line-source">
-                            {#if entry && hoveredLine === lineIdx}
-                              <span class="source-tag">{entry.template_file}:{entry.template_line}</span>
-                            {/if}
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                {:else if currentSourceBlocks.length > 0 && currentSourceBlocks.some(b => b.template)}
-                  <!-- Source-block aware rendering (rhai engine) -->
-                  {#each currentSourceBlocks as block, i}
-                    {#if block.template}
-                      <!-- svelte-ignore a11y_no_static_element_interactions -->
-                      <pre
-                        class="preview-block"
-                        class:hovered={hoveredBlockIndex === i}
-                        onmouseenter={() => (hoveredBlockIndex = i)}
-                        onmouseleave={() => (hoveredBlockIndex = null)}
-                        oncontextmenu={(e) => handleBlockContextMenu(e, block.template!)}
-                      ><span class="block-source-tag">{block.template}</span>{block.content}</pre>
-                    {:else}
-                      <pre class="preview-block unmarked">{block.content}</pre>
+      </div>
+
+      <!-- Preview area (toggled) -->
+      {#if showPreviewPanel}
+        <div class="preview-area">
+          <div class="preview-container">
+            {#if previewFiles.length > 0}
+              <!-- File list sidebar -->
+              <div class="preview-file-list">
+                {#each previewFiles as file, i}
+                  <button
+                    class="preview-file-item"
+                    class:active={selectedPreviewFile === i}
+                    onclick={() => { selectedPreviewFile = i; hoveredBlockIndex = null; hoveredLine = null; }}
+                    title={file.template ? `${file.name}\nTemplate: ${file.template}` : file.name}
+                  >
+                    <span class="preview-file-ext">{getFileExtension(file.name)}</span>
+                    <span class="preview-file-name">{file.name}</span>
+                    {#if file.template}
+                      <span class="preview-file-template">{file.template}</span>
                     {/if}
-                  {/each}
-                {:else}
-                  <!-- No source markers - plain rendering -->
-                  <pre class="preview-block unmarked">{getCleanContent(previewFiles[selectedPreviewFile])}</pre>
+                  </button>
+                {/each}
+              </div>
+              <!-- File content with source blocks -->
+              <div class="preview-content">
+                <div class="preview-header">
+                  <span class="preview-path">{previewFiles[selectedPreviewFile].name}</span>
+                  {#if previewFiles[selectedPreviewFile].template}
+                    <span class="preview-template-badge">{previewFiles[selectedPreviewFile].template}</span>
+                  {/if}
+                  {#if usesPtplSourceMap}
+                    <span class="preview-template-badge ptpl">ptpl source map</span>
+                  {/if}
+                </div>
+                <div class="preview-code-container">
+                  {#if usesPtplSourceMap}
+                    <!-- Line-level source map rendering (ptpl engine) -->
+                    <table class="source-map-table">
+                      <tbody>
+                        {#each previewFiles[selectedPreviewFile].content.split("\n") as line, lineIdx}
+                          {@const entry = currentSourceMap && lineIdx < currentSourceMap.entries.length ? currentSourceMap.entries[lineIdx] : null}
+                          <!-- svelte-ignore a11y_no_static_element_interactions -->
+                          <tr
+                            class="source-map-line"
+                            class:hovered={hoveredLine === lineIdx}
+                            class:has-mapping={entry !== null}
+                            onmouseenter={() => (hoveredLine = lineIdx)}
+                            onmouseleave={() => (hoveredLine = null)}
+                            onclick={() => entry && handleLineClick(entry)}
+                            oncontextmenu={(e) => entry && handleLineContextMenu(e, entry)}
+                            title={entry ? getSourceMapTooltip(entry) : ""}
+                          >
+                            <td class="line-number">{lineIdx + 1}</td>
+                            <td class="line-content"><pre>{line}</pre></td>
+                            <td class="line-source">
+                              {#if entry && hoveredLine === lineIdx}
+                                <span class="source-tag">{entry.template_file}:{entry.template_line}</span>
+                              {/if}
+                            </td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  {:else if currentSourceBlocks.length > 0 && currentSourceBlocks.some(b => b.template)}
+                    <!-- Source-block aware rendering (rhai engine) -->
+                    {#each currentSourceBlocks as block, i}
+                      {#if block.template}
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <pre
+                          class="preview-block"
+                          class:hovered={hoveredBlockIndex === i}
+                          onmouseenter={() => (hoveredBlockIndex = i)}
+                          onmouseleave={() => (hoveredBlockIndex = null)}
+                          oncontextmenu={(e) => handleBlockContextMenu(e, block.template!)}
+                        ><span class="block-source-tag">{block.template}</span>{block.content}</pre>
+                      {:else}
+                        <pre class="preview-block unmarked">{block.content}</pre>
+                      {/if}
+                    {/each}
+                  {:else}
+                    <!-- No source markers - plain rendering -->
+                    <pre class="preview-block unmarked">{getCleanContent(previewFiles[selectedPreviewFile])}</pre>
+                  {/if}
+                </div>
+              </div>
+            {:else}
+              <div class="empty-state">
+                <p>{isGenerating ? "Generating preview..." : "Click \"Preview\" to see output"}</p>
+                {#if !schemaPath}
+                  <p class="hint">Open a schema file first</p>
                 {/if}
               </div>
-            </div>
-          {:else}
-            <div class="empty-state">
-              <p>Click "Generate Preview" to see output</p>
-              {#if !schemaPath}
-                <p class="hint">Open a schema file first</p>
-              {/if}
-            </div>
-          {/if}
+            {/if}
+          </div>
         </div>
       {/if}
     </div>
@@ -778,46 +813,24 @@
 
   .tab-buttons {
     display: flex;
-    gap: 0;
+    align-items: center;
     height: 100%;
   }
 
-  .tab-btn {
-    padding: 0 1rem;
-    height: 100%;
+  .header-file-name {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--text-secondary);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
+    color: var(--text-primary);
+    padding: 0 0.5rem;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .tab-btn:hover {
-    color: var(--text-primary);
-    background-color: var(--bg-hover);
-  }
-
-  .tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-  }
-
-  .tab-file-name {
-    font-weight: 400;
+  .header-file-name.placeholder {
     color: var(--text-muted);
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .tab-btn.active .tab-file-name {
-    color: var(--text-secondary);
+    font-weight: 400;
   }
 
   .modified {
@@ -841,11 +854,46 @@
     align-items: center;
   }
 
-  /* Tab content */
-  .tab-content {
+  /* Split content layout */
+  .split-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .editor-area {
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+
+  .split-content.preview-open .editor-area {
+    flex: 1 1 60%;
+  }
+
+  .preview-area {
+    flex: 0 0 40%;
+    min-height: 0;
+    border-top: 2px solid var(--border);
+    overflow: hidden;
+  }
+
+  /* Preview toggle button */
+  .action-btn.active-toggle {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+
+  .action-btn.active-toggle:hover:not(:disabled) {
+    background-color: var(--bg-primary);
+  }
+
+  .preview-toggle-icon {
+    font-size: 0.625rem;
+    margin-right: 0.125rem;
   }
 
   /* Editor with reference panel layout */

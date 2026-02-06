@@ -1,7 +1,0 @@
-        /// <summary>
-        /// Loads all tables using patterns from @load annotations.
-        /// Files are resolved relative to container.RootDirectory.
-        /// </summary>
-        public static void LoadAll({{file.container_name}}DataContainer container, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
-        {
-        }

@@ -1,8 +1,0 @@
-using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Polygen.Common;
-%for ns in file.namespaces
-%include "section/namespace_block" with ns
-%endfor

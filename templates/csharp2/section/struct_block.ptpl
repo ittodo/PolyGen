@@ -1,8 +1,0 @@
-%-- C# struct/class definition. Context: struct
-%include "detail/struct_header" with struct
-public class {{struct.name}} : IDataRow
-{
-%include "detail/struct_body" with struct
-}
-%blank
-%blank
