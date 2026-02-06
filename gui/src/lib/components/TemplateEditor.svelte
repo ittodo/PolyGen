@@ -509,6 +509,37 @@
     return tip;
   }
 
+  // Resize state for preview panel
+  let previewHeightPx = $state<number | null>(null);
+  let isResizing = $state(false);
+  let splitContainerRef = $state<HTMLElement | null>(null);
+
+  function handleResizeStart(e: MouseEvent) {
+    e.preventDefault();
+    isResizing = true;
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!splitContainerRef) return;
+      const rect = splitContainerRef.getBoundingClientRect();
+      const minPreview = 80;
+      const minEditor = 80;
+      const available = rect.height;
+      const mouseY = e.clientY - rect.top;
+      let newPreviewHeight = available - mouseY;
+      newPreviewHeight = Math.max(minPreview, Math.min(newPreviewHeight, available - minEditor));
+      previewHeightPx = newPreviewHeight;
+    };
+
+    const onMouseUp = () => {
+      isResizing = false;
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
   /** Close context menu when clicking elsewhere */
   function handleGlobalClick() {
     contextMenu = null;
@@ -584,7 +615,13 @@
     </div>
 
     <!-- Split content: Editor (always visible) + Preview (toggle) -->
-    <div class="split-content" class:preview-open={showPreviewPanel}>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="split-content"
+      class:preview-open={showPreviewPanel}
+      class:resizing={isResizing}
+      bind:this={splitContainerRef}
+    >
       <!-- Editor area (always visible) -->
       <div class="editor-area">
         <div class="editor-with-panel" class:panel-hidden={!showRightPanel}>
@@ -653,7 +690,11 @@
 
       <!-- Preview area (toggled) -->
       {#if showPreviewPanel}
-        <div class="preview-area">
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="resize-handle" onmousedown={handleResizeStart}>
+          <div class="resize-grip"></div>
+        </div>
+        <div class="preview-area" style={previewHeightPx ? `flex: 0 0 ${previewHeightPx}px` : ""}>
           <div class="preview-container">
             {#if previewFiles.length > 0}
               <!-- File list sidebar -->
@@ -876,8 +917,44 @@
   .preview-area {
     flex: 0 0 40%;
     min-height: 0;
-    border-top: 2px solid var(--border);
     overflow: hidden;
+  }
+
+  /* Resize handle */
+  .resize-handle {
+    flex-shrink: 0;
+    height: 6px;
+    cursor: row-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    transition: background-color 0.15s;
+  }
+
+  .resize-handle:hover,
+  .split-content.resizing .resize-handle {
+    background-color: var(--accent);
+  }
+
+  .resize-grip {
+    width: 32px;
+    height: 2px;
+    border-radius: 1px;
+    background-color: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  .resize-handle:hover .resize-grip,
+  .split-content.resizing .resize-grip {
+    background-color: white;
+    opacity: 0.9;
+  }
+
+  .split-content.resizing {
+    user-select: none;
   }
 
   /* Preview toggle button */
