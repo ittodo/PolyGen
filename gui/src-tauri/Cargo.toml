@@ -17,6 +17,8 @@ serde_json = "1"
 polygen = { path = "../.." }
 pest = "2.7"
 rhai = "1.22"
+regex = "1"
+toml = "0.8"
 
 [features]
 default = ["custom-protocol"]

@@ -3,6 +3,7 @@
   import * as monaco from "monaco-editor";
   import { invoke } from "@tauri-apps/api/core";
   import { registerRhaiLanguage, RHAI_LANGUAGE_ID } from "../monaco/rhai-language";
+  import { registerPtplLanguage, PTPL_LANGUAGE_ID } from "../monaco/ptpl-language";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 
   interface RhaiError {
@@ -17,6 +18,7 @@
   interface Props {
     value?: string;
     onChange?: (value: string) => void;
+    onInsertText?: (text: string) => void;
     readonly?: boolean;
     filePath?: string;
     initialPosition?: { line: number; column: number } | null;
@@ -25,6 +27,7 @@
   let {
     value = $bindable(""),
     onChange,
+    onInsertText,
     readonly = false,
     filePath = "",
     initialPosition = null,
@@ -34,8 +37,34 @@
   let editor: monaco.editor.IStandaloneCodeEditor | undefined;
   let isUpdating = false;
   let validateTimeout: ReturnType<typeof setTimeout> | null = null;
+  let currentLanguage = $state(RHAI_LANGUAGE_ID);
+
+  // Determine language from file path
+  function getLanguageFromPath(path: string): string {
+    if (!path) return RHAI_LANGUAGE_ID;
+    const lower = path.toLowerCase();
+    if (lower.endsWith(".ptpl")) return PTPL_LANGUAGE_ID;
+    if (lower.endsWith(".toml")) return "toml";
+    if (lower.endsWith(".rhai")) return RHAI_LANGUAGE_ID;
+    return RHAI_LANGUAGE_ID;
+  }
+
+  // Get theme from language
+  function getThemeFromLanguage(lang: string): string {
+    switch (lang) {
+      case PTPL_LANGUAGE_ID:
+        return "ptpl-dark";
+      case "toml":
+        return "vs-dark";
+      default:
+        return "rhai-dark";
+    }
+  }
 
   function scheduleValidation() {
+    // Only validate Rhai files
+    if (currentLanguage !== RHAI_LANGUAGE_ID) return;
+
     if (validateTimeout) {
       clearTimeout(validateTimeout);
     }
@@ -45,7 +74,7 @@
   }
 
   async function validateContent() {
-    if (!editor) return;
+    if (!editor || currentLanguage !== RHAI_LANGUAGE_ID) return;
 
     const content = editor.getValue();
     if (!content.trim()) {
@@ -92,14 +121,19 @@
       },
     };
 
-    // Register Rhai language
+    // Register languages
     registerRhaiLanguage();
+    registerPtplLanguage();
+
+    // Determine initial language
+    currentLanguage = getLanguageFromPath(filePath);
+    const theme = getThemeFromLanguage(currentLanguage);
 
     // Create editor
     editor = monaco.editor.create(editorContainer, {
       value: value,
-      language: RHAI_LANGUAGE_ID,
-      theme: "rhai-dark",
+      language: currentLanguage,
+      theme: theme,
       automaticLayout: true,
       minimap: { enabled: false },
       fontSize: 14,
@@ -133,8 +167,10 @@
       editor.focus();
     }
 
-    // Initial validation
-    scheduleValidation();
+    // Initial validation (only for Rhai)
+    if (currentLanguage === RHAI_LANGUAGE_ID) {
+      scheduleValidation();
+    }
   });
 
   onDestroy(() => {
@@ -154,12 +190,52 @@
     }
   });
 
+  // Update language when filePath changes
+  $effect(() => {
+    if (editor && filePath) {
+      const newLanguage = getLanguageFromPath(filePath);
+      if (newLanguage !== currentLanguage) {
+        currentLanguage = newLanguage;
+        const model = editor.getModel();
+        if (model) {
+          monaco.editor.setModelLanguage(model, newLanguage);
+        }
+        const theme = getThemeFromLanguage(newLanguage);
+        monaco.editor.setTheme(theme);
+
+        // Clear markers if not Rhai
+        if (newLanguage !== RHAI_LANGUAGE_ID && model) {
+          monaco.editor.setModelMarkers(model, "rhai", []);
+        } else {
+          scheduleValidation();
+        }
+      }
+    }
+  });
+
   export function focus() {
     editor?.focus();
   }
 
   export function getEditor() {
     return editor;
+  }
+
+  // Insert text at cursor position
+  export function insertAtCursor(text: string) {
+    if (!editor) return;
+
+    const selection = editor.getSelection();
+    if (selection) {
+      editor.executeEdits("insert", [
+        {
+          range: selection,
+          text: text,
+          forceMoveMarkers: true,
+        },
+      ]);
+      editor.focus();
+    }
   }
 </script>
 

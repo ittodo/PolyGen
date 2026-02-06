@@ -1,0 +1,110 @@
+%-- Pack/Unpack methods for @pack embeds. Context: struct
+%logic
+let sep = struct.pack_separator;
+let fields = [];
+for item in struct.items {
+    if item.is_field() {
+        fields.push(item.as_field());
+    }
+}
+
+let pack_body = "";
+let unpack_body = "";
+let sname = struct.name;
+
+if fields.len() > 0 {
+    // Pack method body
+    pack_body += "        return ";
+    for i in 0..fields.len() {
+        let f = fields[i];
+        let fname = f.name;
+        if i > 0 {
+            pack_body += " + \"" + sep + "\" + ";
+        }
+        let type_name = f.field_type.type_name;
+        if type_name == "string" {
+            pack_body += fname;
+        } else {
+            pack_body += fname + ".ToString()";
+        }
+    }
+    pack_body += ";";
+
+    // Unpack method body
+    unpack_body += "        var parts = value.Split('" + sep + "');\n";
+    unpack_body += "        if (parts.Length != " + fields.len() + ")\n";
+    unpack_body += "            throw new FormatException($\"Expected " + fields.len() + " parts but got {parts.Length} when unpacking " + sname + "\");\n";
+    unpack_body += "        return new " + sname + "\n";
+    unpack_body += "        {\n";
+
+    for i in 0..fields.len() {
+        let f = fields[i];
+        let fname = f.name;
+        let type_name = f.field_type.type_name;
+
+        let parse_expr = "";
+        if type_name == "string" {
+            parse_expr = "parts[" + i + "]";
+        } else if type_name == "bool" {
+            parse_expr = "parts[" + i + "] == \"true\" || parts[" + i + "] == \"1\"";
+        } else if type_name == "f32" {
+            parse_expr = "float.Parse(parts[" + i + "])";
+        } else if type_name == "f64" {
+            parse_expr = "double.Parse(parts[" + i + "])";
+        } else if type_name == "u8" {
+            parse_expr = "byte.Parse(parts[" + i + "])";
+        } else if type_name == "i8" {
+            parse_expr = "sbyte.Parse(parts[" + i + "])";
+        } else if type_name == "u16" {
+            parse_expr = "ushort.Parse(parts[" + i + "])";
+        } else if type_name == "i16" {
+            parse_expr = "short.Parse(parts[" + i + "])";
+        } else if type_name == "u32" {
+            parse_expr = "uint.Parse(parts[" + i + "])";
+        } else if type_name == "i32" {
+            parse_expr = "int.Parse(parts[" + i + "])";
+        } else if type_name == "u64" {
+            parse_expr = "ulong.Parse(parts[" + i + "])";
+        } else if type_name == "i64" {
+            parse_expr = "long.Parse(parts[" + i + "])";
+        } else {
+            parse_expr = "parts[" + i + "]";
+        }
+
+        let comma = if i < fields.len() - 1 { "," } else { "" };
+        unpack_body += "            " + fname + " = " + parse_expr + comma + "\n";
+    }
+
+    unpack_body += "        };";
+}
+let has_fields = fields.len() > 0;
+%endlogic
+%if has_fields
+
+    /// <summary>Packs all fields into a single string using '{{struct.pack_separator}}' as separator.</summary>
+    public string Pack()
+    {
+{{pack_body}}
+    }
+
+    /// <summary>Unpacks a string into a {{struct.name}} using '{{struct.pack_separator}}' as separator.</summary>
+    public static {{struct.name}} Unpack(string value)
+    {
+{{unpack_body}}
+    }
+
+    /// <summary>Tries to unpack a string. Returns true on success.</summary>
+    public static bool TryUnpack(string value, out {{struct.name}} result)
+    {
+        try
+        {
+            result = Unpack(value);
+            return true;
+        }
+        catch
+        {
+            result = default;
+            return false;
+        }
+    }
+%endif

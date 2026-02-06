@@ -1,0 +1,47 @@
+/// <summary>
+/// Data table for {{struct.name}} entities.
+/// </summary>
+public class {{struct.name}}Table : DataTableBase<{{struct.name}}>
+{
+%for idx in struct.indexes
+%if idx.is_unique
+    public UniqueIndex<{{idx.field_type | lang_type}}, {{struct.name}}> {{idx.name}} { get; } = new();
+%else
+    public GroupIndex<{{idx.field_type | lang_type}}, {{struct.name}}> {{idx.name}} { get; } = new();
+%endif
+%endfor
+%if struct.indexes
+%blank
+%endif
+    /// <summary>
+    /// Adds a row to the table.
+%if struct.auto_create_field
+    /// Sets the auto_create timestamp field automatically.
+%endif
+    /// </summary>
+    public void Add({{struct.name}} row)
+    {
+%if struct.auto_create_field
+%include "container/datatable_auto_create" with struct
+%endif
+        AddRowInternal(row);
+    }
+
+    protected override void OnRowAdded({{struct.name}} row)
+    {
+%for idx in struct.indexes
+        {{idx.name}}.Add(row.{{idx.field_name}}, row);
+%endfor
+    }
+
+    protected override void OnCleared()
+    {
+%for idx in struct.indexes
+        {{idx.name}}.Clear();
+%endfor
+    }
+
+%include "container/datatable_validate" with struct
+%blank
+%include "container/datatable_validate_fk" with struct
+}

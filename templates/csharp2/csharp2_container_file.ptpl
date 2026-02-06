@@ -1,0 +1,25 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Polygen.Common;
+using {{file.container_name}}.Container;
+
+%-- Namespace-level containers (DataTable + Container per namespace)
+%for ns in file.namespaces
+%include "container/namespace_container" with ns
+%endfor
+%blank
+%-- Root container namespace: interfaces + root container + data loader
+namespace {{file.container_name}}.Container
+{
+%for table in file.all_tables
+%include "container/table_interface" with table
+%endfor
+%blank
+%include "container/root_container"
+%blank
+%blank
+%include "container/data_loader"
+%blank
+}

@@ -2,6 +2,9 @@
   import { invoke } from "@tauri-apps/api/core";
   import TemplateFileTree from "./TemplateFileTree.svelte";
   import RhaiEditor from "./RhaiEditor.svelte";
+  import ContextReferencePanel from "./ContextReferencePanel.svelte";
+  import LanguageSettingsPanel from "./LanguageSettingsPanel.svelte";
+  import NewLanguageWizard from "./NewLanguageWizard.svelte";
 
   interface TemplateFileInfo {
     name: string;
@@ -54,9 +57,17 @@
   let isModified = $state(false);
   let isSaving = $state(false);
   let isGenerating = $state(false);
-  let showNewLangDialog = $state(false);
-  let newLangId = $state("");
-  let newLangName = $state("");
+  let showNewLangWizard = $state(false);
+  let languageRefreshKey = $state(0);
+
+  // Available languages for wizard
+  interface TemplateLanguageInfo {
+    id: string;
+    name: string;
+    path: string;
+    file_count: number;
+  }
+  let availableLanguages = $state<TemplateLanguageInfo[]>([]);
 
   // Tab state: "editor" or "preview"
   let activeTab = $state<"editor" | "preview">("editor");
@@ -81,6 +92,13 @@
 
   // Editor cursor position for navigation
   let editorInitialPosition = $state<{ line: number; column: number } | null>(null);
+
+  // Right panel state
+  let showRightPanel = $state(true);
+  let rightPanelTab = $state<"reference" | "settings">("reference");
+
+  // Editor reference for inserting text
+  let rhaiEditorRef: RhaiEditor | undefined = $state();
 
   function log(message: string) {
     onLog?.(`[Template] ${message}`);
@@ -329,33 +347,23 @@
     }
   }
 
-  function openNewLangDialog() {
-    showNewLangDialog = true;
-    newLangId = "";
-    newLangName = "";
-  }
-
-  async function createNewLanguage() {
-    if (!newLangId || !newLangName) return;
-
-    if (!/^[a-z][a-z0-9_]*$/.test(newLangId)) {
-      log("ERROR: Language ID must be lowercase letters, numbers, and underscores, starting with a letter");
-      return;
-    }
-
+  async function openNewLangWizard() {
+    // Fetch available languages for the wizard
     try {
-      await invoke("create_new_language", {
-        langId: newLangId,
-        langName: newLangName,
+      availableLanguages = await invoke<TemplateLanguageInfo[]>("list_template_languages", {
         templatesDir: templatesDir || null,
       });
-
-      log(`Created new language: ${newLangName} (${newLangId})`);
-      showNewLangDialog = false;
-      selectedLang = newLangId;
     } catch (e) {
-      log(`ERROR: Failed to create language - ${e}`);
+      log(`ERROR: Failed to fetch languages - ${e}`);
+      availableLanguages = [];
     }
+    showNewLangWizard = true;
+  }
+
+  function handleLanguageCreated(langId: string) {
+    // Refresh language list and select new language
+    languageRefreshKey++;
+    selectedLang = langId;
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -482,9 +490,10 @@
       {templatesDir}
       {selectedLang}
       {selectedFile}
+      refreshKey={languageRefreshKey}
       onSelectLang={handleSelectLang}
       onSelectFile={handleSelectFile}
-      onCreateLanguage={openNewLangDialog}
+      onCreateLanguage={openNewLangWizard}
     />
   </div>
 
@@ -519,6 +528,14 @@
       <div class="tab-actions">
         {#if activeTab === "editor"}
           <button
+            class="action-btn icon"
+            class:active={showRightPanel}
+            onclick={() => (showRightPanel = !showRightPanel)}
+            title={showRightPanel ? "Hide panel" : "Show panel"}
+          >
+            <span class="panel-icon">&#9776;</span>
+          </button>
+          <button
             class="action-btn secondary"
             onclick={saveFile}
             disabled={!isModified || isSaving}
@@ -539,20 +556,65 @@
     <!-- Tab content -->
     <div class="tab-content">
       {#if activeTab === "editor"}
-        <div class="editor-content">
-          {#if currentFile}
-            {#key selectedFile}
-              <RhaiEditor
-                value={editorContent}
-                onChange={handleEditorChange}
-                filePath={currentFile.path}
-                initialPosition={editorInitialPosition}
-              />
-            {/key}
-          {:else}
-            <div class="empty-state">
-              <p>Select a template file to edit</p>
-              <p class="hint">.rhai = Rhai scripts, .ptpl = PolyTemplate declarative templates</p>
+        <div class="editor-with-panel" class:panel-hidden={!showRightPanel}>
+          <div class="editor-content">
+            {#if currentFile}
+              {#key selectedFile}
+                <RhaiEditor
+                  bind:this={rhaiEditorRef}
+                  value={editorContent}
+                  onChange={handleEditorChange}
+                  filePath={currentFile.path}
+                  initialPosition={editorInitialPosition}
+                />
+              {/key}
+            {:else}
+              <div class="empty-state">
+                <p>Select a template file to edit</p>
+                <p class="hint">.rhai = Rhai scripts, .ptpl = PolyTemplate declarative templates</p>
+              </div>
+            {/if}
+          </div>
+          {#if showRightPanel}
+            <div class="right-panel">
+              <!-- Panel tabs -->
+              <div class="panel-tabs">
+                <button
+                  class="panel-tab"
+                  class:active={rightPanelTab === "reference"}
+                  onclick={() => (rightPanelTab = "reference")}
+                >
+                  Reference
+                </button>
+                <button
+                  class="panel-tab"
+                  class:active={rightPanelTab === "settings"}
+                  onclick={() => (rightPanelTab = "settings")}
+                >
+                  Settings
+                </button>
+              </div>
+              <!-- Panel content -->
+              <div class="panel-body">
+                {#if rightPanelTab === "reference"}
+                  {#if currentFile}
+                    <ContextReferencePanel
+                      filePath={currentFile.relative_path}
+                      onInsert={(text) => rhaiEditorRef?.insertAtCursor(text)}
+                    />
+                  {:else}
+                    <div class="panel-empty">
+                      <p>Select a file to see references</p>
+                    </div>
+                  {/if}
+                {:else if rightPanelTab === "settings"}
+                  <LanguageSettingsPanel
+                    lang={selectedLang}
+                    {templatesDir}
+                    {onLog}
+                  />
+                {/if}
+              </div>
             </div>
           {/if}
         </div>
@@ -670,50 +732,15 @@
   </div>
 {/if}
 
-<!-- New Language Dialog -->
-{#if showNewLangDialog}
-  <div class="dialog-overlay" onclick={() => (showNewLangDialog = false)} role="presentation">
-    <div
-      class="dialog"
-      onclick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-modal="true"
-    >
-      <h3>Create New Language</h3>
-      <div class="form-group">
-        <label for="lang-id">Language ID</label>
-        <input
-          id="lang-id"
-          type="text"
-          bind:value={newLangId}
-          placeholder="e.g., python, kotlin"
-        />
-        <span class="hint">Lowercase letters, numbers, underscores</span>
-      </div>
-      <div class="form-group">
-        <label for="lang-name">Display Name</label>
-        <input
-          id="lang-name"
-          type="text"
-          bind:value={newLangName}
-          placeholder="e.g., Python, Kotlin"
-        />
-      </div>
-      <div class="dialog-actions">
-        <button class="action-btn secondary" onclick={() => (showNewLangDialog = false)}>
-          Cancel
-        </button>
-        <button
-          class="action-btn primary"
-          onclick={createNewLanguage}
-          disabled={!newLangId || !newLangName}
-        >
-          Create
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+<!-- New Language Wizard -->
+<NewLanguageWizard
+  bind:show={showNewLangWizard}
+  {templatesDir}
+  existingLanguages={availableLanguages}
+  onClose={() => (showNewLangWizard = false)}
+  onCreated={handleLanguageCreated}
+  {onLog}
+/>
 
 <style>
   .template-editor {
@@ -821,9 +848,104 @@
     overflow: hidden;
   }
 
+  /* Editor with reference panel layout */
+  .editor-with-panel {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .editor-with-panel.panel-hidden {
+    grid-template-columns: 1fr;
+  }
+
   .editor-content {
     height: 100%;
     overflow: hidden;
+    min-width: 0;
+  }
+
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    min-width: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .panel-tabs {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-secondary);
+  }
+
+  .panel-tab {
+    flex: 1;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .panel-tab:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+  }
+
+  .panel-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .panel-body {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .panel-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    padding: 1rem;
+    text-align: center;
+  }
+
+  /* Panel toggle button */
+  .action-btn.icon {
+    padding: 0.25rem 0.5rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .action-btn.icon:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .action-btn.icon.active {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+
+  .panel-icon {
+    font-size: 0.875rem;
   }
 
   /* Preview layout */
@@ -1142,67 +1264,6 @@
   .action-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-
-  /* Dialog styles */
-  .dialog-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .dialog {
-    background-color: var(--bg-secondary);
-    border-radius: 8px;
-    padding: 1.5rem;
-    min-width: 320px;
-    max-width: 90%;
-  }
-
-  .dialog h3 {
-    margin: 0 0 1rem 0;
-    font-size: 1rem;
-    color: var(--text-primary);
-  }
-
-  .form-group {
-    margin-bottom: 1rem;
-  }
-
-  .form-group label {
-    display: block;
-    margin-bottom: 0.25rem;
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-  }
-
-  .form-group input {
-    width: 100%;
-    padding: 0.5rem;
-    font-size: 0.875rem;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-  }
-
-  .form-group .hint {
-    display: block;
-    margin-top: 0.25rem;
-  }
-
-  .dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
   }
 
   @media (max-width: 1024px) {

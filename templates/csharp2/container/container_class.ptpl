@@ -1,0 +1,76 @@
+%-- Container class name: remove dots from namespace name
+%-- e.g., "game.character" → "gamecharacter"
+/// <summary>
+/// Root data container for {{namespace.name}} entities.
+/// </summary>
+public class {{namespace.name | remove_dots}}DataContainer : IDataContainer
+{
+    /// <summary>
+    /// Gets or sets the root directory for resolving relative file paths.
+    /// </summary>
+    public string RootDirectory { get; set; } = ".";
+
+%for item in namespace.items
+%if item.is_struct
+    public {{item.as_struct.name}}Table {{item.as_struct.name}}s { get; } = new();
+%endif
+%endfor
+%blank
+    public {{namespace.name | remove_dots}}DataContainer(string rootDirectory = ".")
+    {
+        RootDirectory = rootDirectory;
+%for item in namespace.items
+%if item.is_struct
+        {{item.as_struct.name}}s.SetContainer(this);
+%endif
+%endfor
+    }
+
+    /// <summary>
+    /// Clears all data from all tables.
+    /// </summary>
+    public void Clear()
+    {
+%for item in namespace.items
+%if item.is_struct
+        {{item.as_struct.name}}s.Clear();
+%endif
+%endfor
+    }
+
+    /// <summary>
+    /// Validates all tables against field and foreign key constraints.
+    /// </summary>
+    /// <returns>A ValidationResult containing any validation errors.</returns>
+    public ValidationResult ValidateAll()
+    {
+        var result = new ValidationResult();
+
+        // Validate field constraints (MaxLength, Range, Regex)
+%for item in namespace.items
+%if item.is_struct
+        result.Merge({{item.as_struct.name}}s.Validate());
+%endif
+%endfor
+
+        // Validate foreign key references
+%for item in namespace.items
+%if item.is_struct
+        result.Merge({{item.as_struct.name}}s.ValidateForeignKeys(this));
+%endif
+%endfor
+
+        return result;
+    }
+
+    /// <summary>
+    /// Validates all tables and throws an exception if any errors are found.
+    /// </summary>
+    /// <exception cref="ValidationException">Thrown when validation fails.</exception>
+    public void ValidateOrThrow()
+    {
+        var result = ValidateAll();
+        if (!result.IsValid)
+            throw new ValidationException(result);
+    }
+}

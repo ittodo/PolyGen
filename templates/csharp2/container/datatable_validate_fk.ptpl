@@ -1,0 +1,46 @@
+    /// <summary>
+    /// Validates foreign key references exist in related tables.
+    /// </summary>
+    public ValidationResult ValidateForeignKeys(IDataContainer container)
+    {
+        var result = new ValidationResult();
+%if struct.has_foreign_keys
+        foreach (var row in _rows)
+        {
+%for field in struct.fk_fields
+%if field.field_type.is_option
+            if (row.{{field.name}}.HasValue)
+            {
+                // Check FK reference to {{field.foreign_key.target_table_name}}
+                // Note: Container must implement IHas{{field.foreign_key.target_table_name}}Table for FK validation
+                if (container is IHas{{field.foreign_key.target_table_name}}Table fkContainer{{field.name}})
+                {
+                    if (fkContainer{{field.name}}.{{field.foreign_key.target_table_name}}s.ById[row.{{field.name}}.Value] == null)
+%if struct.has_primary_key
+                        result.AddError(ValidationHelpers.ForeignKeyError("{{struct.name}}", "{{field.name}}", row.{{struct.pk_field_name}}, "{{field.foreign_key.target_table_name}}", row.{{field.name}}.Value));
+%else
+                        result.AddError(ValidationHelpers.ForeignKeyError("{{struct.name}}", "{{field.name}}", null, "{{field.foreign_key.target_table_name}}", row.{{field.name}}.Value));
+%endif
+                }
+            }
+%else
+            // Check FK reference to {{field.foreign_key.target_table_name}}
+            // Note: Container must implement IHas{{field.foreign_key.target_table_name}}Table for FK validation
+            if (container is IHas{{field.foreign_key.target_table_name}}Table fkContainer{{field.name}})
+            {
+                if (fkContainer{{field.name}}.{{field.foreign_key.target_table_name}}s.ById[row.{{field.name}}] == null)
+%if struct.has_primary_key
+                    result.AddError(ValidationHelpers.ForeignKeyError("{{struct.name}}", "{{field.name}}", row.{{struct.pk_field_name}}, "{{field.foreign_key.target_table_name}}", row.{{field.name}}));
+%else
+                    result.AddError(ValidationHelpers.ForeignKeyError("{{struct.name}}", "{{field.name}}", null, "{{field.foreign_key.target_table_name}}", row.{{field.name}}));
+%endif
+            }
+%endif
+%endfor
+        }
+%else
+        // No foreign key constraints to validate
+        _ = container; // Suppress unused variable warning
+%endif
+        return result;
+    }

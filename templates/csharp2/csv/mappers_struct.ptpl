@@ -1,0 +1,31 @@
+%logic
+// Check if this struct is used as an embedded struct anywhere in the schema
+let is_embedded_globally = false;
+for file in schema.files {
+    for ns in file.namespaces {
+        let ns_stack = [ns];
+        while ns_stack.len() > 0 {
+            let cur = ns_stack.pop();
+            for it in cur.items {
+                if it.is_namespace() {
+                    ns_stack.push(it.as_namespace());
+                } else if it.is_struct() {
+                    let ss = it.as_struct();
+                    for sit in ss.items {
+                        if sit.is_embedded_struct() {
+                            let es = sit.as_embedded_struct();
+                            if es.fqn == struct.fqn { is_embedded_globally = true; break; }
+                        }
+                    }
+                }
+            }
+            if is_embedded_globally { break; }
+        }
+        if is_embedded_globally { break; }
+    }
+    if is_embedded_globally { break; }
+}
+%endlogic
+%if !is_embedded_globally
+%include "csv/mappers_struct_class" with struct
+%endif

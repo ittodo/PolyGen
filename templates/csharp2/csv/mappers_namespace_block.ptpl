@@ -1,0 +1,19 @@
+namespace Csv.{{namespace.name}}
+{
+%for item in namespace.items
+%if item.is_struct
+%include "csv/mappers_struct" with item.as_struct indent=1
+%endif
+%endfor
+%for item in namespace.items
+%if item.is_comment
+    // {{item.as_comment}}
+%endif
+%endfor
+}
+%blank
+%for item in namespace.items
+%if item.is_namespace
+%include "csv/mappers_namespace_block" with item.as_namespace
+%endif
+%endfor

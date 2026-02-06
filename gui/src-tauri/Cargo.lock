@@ -2684,6 +2684,7 @@ version = "0.1.0"
 dependencies = [
  "pest",
  "polygen",
+ "regex",
  "rhai",
  "serde",
  "serde_json",
@@ -2691,6 +2692,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-shell",
+ "toml 0.8.2",
 ]
 
 [[package]]

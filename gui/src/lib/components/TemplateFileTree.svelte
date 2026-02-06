@@ -20,6 +20,7 @@
     templatesDir?: string;
     selectedLang: string;
     selectedFile: string;
+    refreshKey?: number;
     onSelectLang: (lang: string) => void;
     onSelectFile: (file: TemplateFileInfo) => void;
     onCreateLanguage: () => void;
@@ -29,6 +30,7 @@
     templatesDir,
     selectedLang,
     selectedFile,
+    refreshKey = 0,
     onSelectLang,
     onSelectFile,
     onCreateLanguage,
@@ -40,8 +42,10 @@
   let loading = $state(false);
   let error = $state("");
 
-  // Load languages on mount and when templatesDir changes
+  // Load languages on mount, when templatesDir changes, or when refreshKey changes
   $effect(() => {
+    // Track refreshKey to trigger reload
+    void refreshKey;
     loadLanguages();
   });
 

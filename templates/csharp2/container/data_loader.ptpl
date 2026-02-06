@@ -1,0 +1,19 @@
+    /// <summary>
+    /// Data loader for populating the {{file.container_name}}DataContainer from CSV/JSON files.
+    /// Supports pattern-based loading with wildcards (e.g., "data/*.csv", "data/players/").
+    /// </summary>
+    public static class {{file.container_name}}DataLoader
+    {
+%for table in file.all_tables
+%include "container/data_loader_struct" with table
+%endfor
+%include "container/data_loader_load_all"
+%blank
+%include "container/data_loader_load_all_validate"
+%blank
+%include "container/data_loader_load_all_and_validate"
+%blank
+%include "container/data_loader_load_csv_dir"
+%blank
+%include "container/data_loader_load_json_dir"
+    }

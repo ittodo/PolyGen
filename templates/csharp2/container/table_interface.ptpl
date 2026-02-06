@@ -1,0 +1,12 @@
+    /// <summary>
+    /// Interface for containers that have a {{struct.name}} table.
+    /// </summary>
+    public interface IHas{{struct.name}}Table
+    {
+%if struct.namespace_fqn
+        global::{{struct.namespace_fqn}}.Container.{{struct.name}}Table {{struct.name}}s { get; }
+%else
+        {{struct.name}}Table {{struct.name}}s { get; }
+%endif
+    }
+

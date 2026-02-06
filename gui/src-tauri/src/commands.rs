@@ -1680,6 +1680,303 @@ fn get_default_value(type_ref) {
     Ok(())
 }
 
+/// Create a new language template (v2 with more options)
+#[tauri::command]
+pub fn create_new_language_v2(
+    app: AppHandle,
+    lang_id: String,
+    lang_name: String,
+    extension: String,
+    template_type: String,  // "ptpl" or "rhai"
+    copy_from: Option<String>,
+    type_map: std::collections::HashMap<String, String>,
+    optional_format: String,
+    list_format: String,
+    templates_dir: Option<String>,
+) -> Result<(), String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir(&app)?,
+    };
+
+    let lang_path = templates_path.join(&lang_id);
+
+    if lang_path.exists() {
+        return Err(format!("Language '{}' already exists", lang_id));
+    }
+
+    // If copying from existing language
+    if let Some(source_lang) = copy_from {
+        let source_path = templates_path.join(&source_lang);
+        if !source_path.exists() {
+            return Err(format!("Source language '{}' not found", source_lang));
+        }
+
+        // Copy entire directory
+        copy_dir_recursive(&source_path, &lang_path)?;
+
+        // Rename main files
+        let source_toml = lang_path.join(format!("{}.toml", source_lang));
+        let target_toml = lang_path.join(format!("{}.toml", lang_id));
+        if source_toml.exists() {
+            fs::rename(&source_toml, &target_toml)
+                .map_err(|e| format!("Failed to rename toml file: {}", e))?;
+        }
+
+        // Update toml file content
+        if target_toml.exists() {
+            let content = fs::read_to_string(&target_toml)
+                .map_err(|e| format!("Failed to read toml file: {}", e))?;
+            let updated = content
+                .replace(&format!("id = \"{}\"", source_lang), &format!("id = \"{}\"", lang_id))
+                .replace(&format!("name = \"{}\"", source_lang), &format!("name = \"{}\"", lang_name));
+            // Also update extension if present
+            let ext_clean = extension.trim_start_matches('.');
+            let updated = if updated.contains("extension = ") {
+                let re = regex::Regex::new(r#"extension\s*=\s*"[^"]*""#)
+                    .map_err(|e| format!("Regex error: {}", e))?;
+                re.replace(&updated, &format!("extension = \"{}\"", ext_clean)).to_string()
+            } else {
+                updated
+            };
+            fs::write(&target_toml, updated)
+                .map_err(|e| format!("Failed to write toml file: {}", e))?;
+        }
+
+        // Rename main template files
+        for suffix in ["_file.ptpl", "_file.rhai"] {
+            let source_file = lang_path.join(format!("{}{}", source_lang, suffix));
+            let target_file = lang_path.join(format!("{}{}", lang_id, suffix));
+            if source_file.exists() {
+                fs::rename(&source_file, &target_file)
+                    .map_err(|e| format!("Failed to rename template file: {}", e))?;
+            }
+        }
+
+        // Rename other prefixed files
+        for suffix in [
+            "_loaders_file.ptpl", "_container_file.ptpl", "_sqlite_accessor_file.ptpl",
+            "_loaders_file.rhai", "_container_file.rhai", "_sqlite_accessor_file.rhai",
+            "_csv_columns_file.ptpl", "_hotreload_file.ptpl", "_zod_file.ptpl",
+        ] {
+            let source_file = lang_path.join(format!("{}{}", source_lang, suffix));
+            let target_file = lang_path.join(format!("{}{}", lang_id, suffix));
+            if source_file.exists() {
+                fs::rename(&source_file, &target_file)
+                    .map_err(|e| format!("Failed to rename extra template file: {}", e))?;
+            }
+        }
+
+        return Ok(());
+    }
+
+    // Create new language from scratch
+    fs::create_dir_all(&lang_path)
+        .map_err(|e| format!("Failed to create language directory: {}", e))?;
+
+    fs::create_dir_all(lang_path.join("rhai_utils"))
+        .map_err(|e| format!("Failed to create rhai_utils directory: {}", e))?;
+
+    let ext_clean = extension.trim_start_matches('.');
+
+    // Build type map entries for toml
+    let type_map_toml: String = type_map.iter()
+        .map(|(k, v)| format!("{} = \"{}\"", k, v))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Create .toml config file
+    let toml_content = format!(r#"[language]
+id = "{lang_id}"
+name = "{lang_name}"
+version = "1.0"
+
+[code_generation]
+extension = "{ext}"
+namespace_separator = "."
+indent = "    "
+optional_format = "{optional_fmt}"
+list_format = "{list_fmt}"
+
+[type_map]
+{type_map_entries}
+"#,
+        lang_id = lang_id,
+        lang_name = lang_name,
+        ext = ext_clean,
+        optional_fmt = optional_format,
+        list_fmt = list_format,
+        type_map_entries = type_map_toml,
+    );
+
+    fs::write(lang_path.join(format!("{}.toml", lang_id)), toml_content)
+        .map_err(|e| format!("Failed to create config file: {}", e))?;
+
+    // Create main template file based on template type
+    if template_type == "ptpl" {
+        let main_template = format!(r#"%-- {lang_name} Code Generator Template
+%-- Generated by PolyGen Language Wizard
+
+%-- File header
+// Generated by PolyGen - {lang_name}
+// Do not edit manually
+
+%for namespace in file.namespaces
+
+// Namespace: {{{{namespace.name}}}}
+
+%for struct in namespace.structs
+struct {{{{struct.name}}}} {{{{
+%for field in struct.fields
+    {{{{field.name}}}}: {{{{field.field_type | lang_type}}}};
+%endfor
+}}}}
+
+%endfor
+%for enum in namespace.enums
+enum {{{{enum.name}}}} {{{{
+%for variant in enum.variants
+    {{{{variant.name}}}} = {{{{variant.value}}}},
+%endfor
+}}}}
+
+%endfor
+%endfor
+"#, lang_name = lang_name);
+
+        fs::write(lang_path.join(format!("{}_file.ptpl", lang_id)), main_template)
+            .map_err(|e| format!("Failed to create main template: {}", e))?;
+
+        // Create prelude.rhai for type mapping
+        let prelude = format!(r#"// {lang_name} Prelude - Type Mapping Functions
+// This file is loaded automatically before template rendering
+
+fn lang_type(type_ref) {{
+    let base = type_ref.base_type;
+    let mapped = config.type_map.get(base);
+    if mapped == () {{
+        mapped = base;
+    }}
+
+    if type_ref.is_array {{
+        let fmt = config.list_format;
+        if fmt == () {{ fmt = "{{{{type}}}}[]"; }}
+        mapped = fmt.replace("{{{{type}}}}", mapped);
+    }}
+
+    if type_ref.is_optional {{
+        let fmt = config.optional_format;
+        if fmt == () {{ fmt = "{{{{type}}}}?"; }}
+        mapped = fmt.replace("{{{{type}}}}", mapped);
+    }}
+
+    mapped
+}}
+"#, lang_name = lang_name);
+
+        fs::write(lang_path.join("rhai_utils/prelude.rhai"), prelude)
+            .map_err(|e| format!("Failed to create prelude: {}", e))?;
+    } else {
+        // Rhai template (legacy)
+        let main_template = format!(r#"// {lang_name} Code Generator Template
+// This is the main entry point for code generation.
+//
+// Available variables:
+//   - file: FileDef with namespaces, imports
+//   - config: Language configuration from .toml
+//
+// See CUSTOMIZATION.md for full documentation.
+
+// File header
+`// Generated by PolyGen - {lang_name}`
+`// Do not edit manually`
+``
+
+// Process each namespace
+for ns in file.namespaces {{
+    let ns_name = ns.name;
+
+    `// Namespace: ${{ns_name}}`
+    ``
+
+    // Generate structs/classes
+    for struct_def in ns.structs {{
+        let name = struct_def.name;
+        let fields = struct_def.fields;
+
+        `struct ${{name}} {{`
+        for field in fields {{
+            let field_name = field.name;
+            let field_type = map_type(field.field_type);
+            `    ${{field_name}}: ${{field_type}};`
+        }}
+        `}}`
+        ``
+    }}
+
+    // Generate enums
+    for enum_def in ns.enums {{
+        let name = enum_def.name;
+        let variants = enum_def.variants;
+
+        `enum ${{name}} {{`
+        for variant in variants {{
+            `    ${{variant.name}} = ${{variant.value}},`
+        }}
+        `}}`
+        ``
+    }}
+}}
+
+fn map_type(type_ref) {{
+    let base = type_ref.base_type;
+    let mapped = config.type_map.get(base);
+    if mapped == () {{
+        mapped = base;
+    }}
+
+    if type_ref.is_array {{
+        mapped = `${{mapped}}[]`;
+    }}
+
+    if type_ref.is_optional {{
+        mapped = `${{mapped}}?`;
+    }}
+
+    mapped
+}}
+"#, lang_name = lang_name);
+
+        fs::write(lang_path.join(format!("{}_file.rhai", lang_id)), main_template)
+            .map_err(|e| format!("Failed to create main template: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Recursively copy a directory
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst)
+        .map_err(|e| format!("Failed to create directory {:?}: {}", dst, e))?;
+
+    for entry in fs::read_dir(src)
+        .map_err(|e| format!("Failed to read directory {:?}: {}", src, e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("Failed to copy {:?} to {:?}: {}", src_path, dst_path, e))?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Delete a template file or directory
 #[tauri::command]
 pub fn delete_template_file(
@@ -1800,4 +2097,164 @@ pub fn validate_rhai_script(content: String) -> Result<Vec<SchemaError>, String>
     }
 
     Ok(errors)
+}
+
+// ============================================================================
+// Language Configuration Commands
+// ============================================================================
+
+/// Language configuration data structure for GUI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanguageConfig {
+    pub extension: String,
+    pub type_map: std::collections::HashMap<String, String>,
+    pub optional_format: String,
+    pub list_format: String,
+    pub non_primitive_format: Option<String>,
+}
+
+/// Read language configuration from .toml file
+#[tauri::command]
+pub fn read_language_config(
+    app: AppHandle,
+    lang: String,
+    templates_dir: Option<String>,
+) -> Result<LanguageConfig, String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir(&app)?,
+    };
+
+    let toml_path = templates_path.join(&lang).join(format!("{}.toml", lang));
+
+    if !toml_path.exists() {
+        return Err(format!("Configuration file not found: {:?}", toml_path));
+    }
+
+    let content = fs::read_to_string(&toml_path)
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+
+    let toml_value: toml::Value = content.parse()
+        .map_err(|e| format!("Failed to parse TOML: {}", e))?;
+
+    // Extract extension
+    let extension = toml_value.get("extension")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".txt")
+        .to_string();
+
+    // Extract type_map
+    let mut type_map = std::collections::HashMap::new();
+    if let Some(tm) = toml_value.get("type_map").and_then(|v| v.as_table()) {
+        for (key, value) in tm {
+            // Skip nested tables like optional, list, non_primitive
+            if let Some(s) = value.as_str() {
+                type_map.insert(key.clone(), s.to_string());
+            }
+        }
+    }
+
+    // Extract optional_format
+    let optional_format = toml_value
+        .get("type_map")
+        .and_then(|tm| tm.get("optional"))
+        .and_then(|opt| opt.get("format"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{type}}?")
+        .to_string();
+
+    // Extract list_format
+    let list_format = toml_value
+        .get("type_map")
+        .and_then(|tm| tm.get("list"))
+        .and_then(|opt| opt.get("format"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{type}}[]")
+        .to_string();
+
+    // Extract non_primitive_format (optional)
+    let non_primitive_format = toml_value
+        .get("type_map")
+        .and_then(|tm| tm.get("non_primitive"))
+        .and_then(|opt| opt.get("format"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    Ok(LanguageConfig {
+        extension,
+        type_map,
+        optional_format,
+        list_format,
+        non_primitive_format,
+    })
+}
+
+/// Write language configuration to .toml file
+#[tauri::command]
+pub fn write_language_config(
+    app: AppHandle,
+    lang: String,
+    config: LanguageConfig,
+    templates_dir: Option<String>,
+) -> Result<(), String> {
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir(&app)?,
+    };
+
+    let toml_path = templates_path.join(&lang).join(format!("{}.toml", lang));
+
+    if !toml_path.exists() {
+        return Err(format!("Configuration file not found: {:?}", toml_path));
+    }
+
+    // Read existing content to preserve other settings
+    let content = fs::read_to_string(&toml_path)
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+
+    let mut toml_value: toml::Value = content.parse()
+        .map_err(|e| format!("Failed to parse TOML: {}", e))?;
+
+    // Update extension
+    if let Some(table) = toml_value.as_table_mut() {
+        table.insert("extension".to_string(), toml::Value::String(config.extension));
+    }
+
+    // Update type_map
+    if let Some(table) = toml_value.as_table_mut() {
+        let mut type_map_table = toml::value::Table::new();
+
+        // Add primitive type mappings
+        for (key, value) in &config.type_map {
+            type_map_table.insert(key.clone(), toml::Value::String(value.clone()));
+        }
+
+        // Add optional format
+        let mut optional_table = toml::value::Table::new();
+        optional_table.insert("format".to_string(), toml::Value::String(config.optional_format));
+        type_map_table.insert("optional".to_string(), toml::Value::Table(optional_table));
+
+        // Add list format
+        let mut list_table = toml::value::Table::new();
+        list_table.insert("format".to_string(), toml::Value::String(config.list_format));
+        type_map_table.insert("list".to_string(), toml::Value::Table(list_table));
+
+        // Add non_primitive format if present
+        if let Some(np_format) = config.non_primitive_format {
+            let mut np_table = toml::value::Table::new();
+            np_table.insert("format".to_string(), toml::Value::String(np_format));
+            type_map_table.insert("non_primitive".to_string(), toml::Value::Table(np_table));
+        }
+
+        table.insert("type_map".to_string(), toml::Value::Table(type_map_table));
+    }
+
+    // Write back to file
+    let output = toml::to_string_pretty(&toml_value)
+        .map_err(|e| format!("Failed to serialize TOML: {}", e))?;
+
+    fs::write(&toml_path, output)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    Ok(())
 }

@@ -1,0 +1,19 @@
+%-- Recursively render nested namespaces first
+%for item in namespace.items
+%if item.is_namespace
+%include "container/namespace_container" with item.as_namespace
+%endif
+%endfor
+%-- Only render this namespace if it has structs
+%if namespace.has_structs
+namespace {{namespace.name}}.Container
+{
+%for s in namespace.structs
+%include "container/datatable" with s indent 1
+%blank
+%endfor
+%include "container/container_class" with namespace indent 1
+%blank
+}
+
+%endif

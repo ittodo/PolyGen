@@ -1,0 +1,9 @@
+        /// <summary>
+        /// Loads all tables and validates data. Throws exception if validation fails.
+        /// </summary>
+        /// <exception cref="ValidationException">Thrown when validation fails after loading.</exception>
+        public static void LoadAllAndValidate({{file.container_name}}DataContainer container, char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+        {
+            LoadAll(container, separator, gapMode);
+            container.ValidateOrThrow();
+        }

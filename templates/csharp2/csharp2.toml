@@ -1,0 +1,77 @@
+# C# Language Configuration for PolyGen
+# This file configures the C# code generation settings.
+
+# File extension for generated C# files
+extension = "cs"
+
+# Static files to copy to the output directory
+# Format: "destination/path.ext" = "source/path.ext"
+[static_files]
+"Common/DataSource.cs" = "static/csharp/DataSource.cs"
+"Common/BinaryUtils.cs" = "static/csharp/BinaryUtils.cs"
+"Common/CsvUtils.cs" = "static/csharp/CsvUtils.cs"
+"Common/JsonCsvConverter.cs" = "static/csharp/JsonCsvConverter.cs"
+"Common/JsonUtils.cs" = "static/csharp/JsonUtils.cs"
+"Common/PolygenAttributes.cs" = "static/csharp/PolygenAttributes.cs"
+"Common/DataContainer.cs" = "static/csharp/DataContainer.cs"
+"Common/PatternLoader.cs" = "static/csharp/PatternLoader.cs"
+"Common/Validation.cs" = "static/csharp/Validation.cs"
+
+# Type mapping: poly type → C# type
+[type_map]
+u8 = "byte"
+i8 = "sbyte"
+u16 = "ushort"
+i16 = "short"
+u32 = "uint"
+i32 = "int"
+u64 = "ulong"
+i64 = "long"
+f32 = "float"
+f64 = "double"
+bool = "bool"
+string = "string"
+bytes = "byte[]"
+timestamp = "DateTime"
+
+[type_map.optional]
+format = "{{type}}?"
+
+[type_map.list]
+format = "List<{{type}}>"
+
+[type_map.non_primitive]
+format = "global::{{type}}"
+
+# Template configuration
+[templates]
+# Main template for generating entity classes
+main = "csharp_file.ptpl"
+
+# Extra templates to run after the main template
+[[templates.extra]]
+template = "csharp_binary_readers_file.ptpl"
+
+[[templates.extra]]
+template = "csharp_binary_writers_file.ptpl"
+
+[[templates.extra]]
+template = "csharp_csv_columns_file.ptpl"
+
+[[templates.extra]]
+template = "csharp_csv_mappers_file.ptpl"
+
+[[templates.extra]]
+template = "csharp_container_file.ptpl"
+
+[[templates.extra]]
+template = "csharp_datacontext_file.ptpl"
+
+[[templates.extra]]
+template = "csharp_sqlite_accessor_file.ptpl"
+output = "Data/SqliteDbContext.cs"
+per_file = false
+
+# Rhai prelude scripts for %logic blocks in ptpl templates
+[rhai]
+prelude = ["rhai_utils/binary_mapping.rhai", "rhai_utils/type_utils.rhai"]

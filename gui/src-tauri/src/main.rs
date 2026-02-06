@@ -33,9 +33,12 @@ fn main() {
             commands::read_template_file,
             commands::write_template_file,
             commands::create_new_language,
+            commands::create_new_language_v2,
             commands::delete_template_file,
             commands::preview_template,
             commands::validate_rhai_script,
+            commands::read_language_config,
+            commands::write_language_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
