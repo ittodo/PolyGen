@@ -51,6 +51,9 @@ tests/runners/rust/generated/
 # C++ test runner
 tests/runners/cpp/generated/
 
+# SQLite test runner
+tests/runners/sqlite/generated/
+
 # IDE files
 *.sln
 
