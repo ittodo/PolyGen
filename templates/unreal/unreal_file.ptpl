@@ -91,11 +91,11 @@ fn generate_struct(s, ns_fqn) {
                 if type_name == "string" { ue_type = "FString"; }
                 else if type_name == "bool" { ue_type = "bool"; }
                 else if type_name == "u8" { ue_type = "uint8"; }
-                else if type_name == "u16" { ue_type = "uint16"; }
-                else if type_name == "u32" { ue_type = "uint32"; }
-                else if type_name == "u64" { ue_type = "uint64"; }
-                else if type_name == "i8" { ue_type = "int8"; }
-                else if type_name == "i16" { ue_type = "int16"; }
+                else if type_name == "u16" { ue_type = "int32"; }
+                else if type_name == "u32" { ue_type = "int32"; }
+                else if type_name == "u64" { ue_type = "int64"; }
+                else if type_name == "i8" { ue_type = "int32"; }
+                else if type_name == "i16" { ue_type = "int32"; }
                 else if type_name == "i32" { ue_type = "int32"; }
                 else if type_name == "i64" { ue_type = "int64"; }
                 else if type_name == "f32" { ue_type = "float"; }
@@ -164,6 +164,114 @@ fn generate_struct(s, ns_fqn) {
     // Default constructor
     result += "    " + struct_name + "() = default;\n";
 
+    // Pack/Unpack for @pack embed types
+    if s.is_embed && s.pack_separator != () {
+        let sep = s.pack_separator;
+        let embed_fields = [];
+        for item in s.items {
+            if item.is_field() {
+                embed_fields.push(item.as_field());
+            }
+        }
+
+        if embed_fields.len() > 0 {
+            // Pack() method
+            result += "\n    /** Pack all fields into '" + sep + "'-separated string. */\n";
+            result += "    FString Pack() const\n";
+            result += "    {\n";
+
+            let fmt_parts = [];
+            let fmt_args = [];
+            for ef in embed_fields {
+                let tn = ef.field_type.type_name;
+                let is_enum_type = ef.field_type.is_enum;
+                if !is_enum_type {
+                    if tn.contains("Type") || tn.contains("Status") || tn.contains("Kind") ||
+                       tn.contains("Mode") || tn.contains("State") {
+                        is_enum_type = true;
+                    }
+                }
+
+                if tn == "string" {
+                    fmt_parts.push("%s");
+                    fmt_args.push("*" + ef.name);
+                } else if tn == "f32" || tn == "f64" {
+                    fmt_parts.push("%g");
+                    fmt_args.push(ef.name);
+                } else if tn == "bool" {
+                    fmt_parts.push("%s");
+                    fmt_args.push(ef.name + " ? TEXT(\"true\") : TEXT(\"false\")");
+                } else if is_enum_type {
+                    fmt_parts.push("%d");
+                    fmt_args.push("static_cast<int32>(" + ef.name + ")");
+                } else if tn == "u64" || tn == "i64" {
+                    fmt_parts.push("%lld");
+                    fmt_args.push("static_cast<int64>(" + ef.name + ")");
+                } else {
+                    fmt_parts.push("%d");
+                    fmt_args.push(ef.name);
+                }
+            }
+
+            let fmt_str = "";
+            for i in 0..fmt_parts.len() {
+                if i > 0 { fmt_str += sep; }
+                fmt_str += fmt_parts[i];
+            }
+
+            result += "        return FString::Printf(TEXT(\"" + fmt_str + "\")";
+            for arg in fmt_args {
+                result += ", " + arg;
+            }
+            result += ");\n";
+            result += "    }\n";
+
+            // Unpack() static method
+            result += "\n    /** Unpack a '" + sep + "'-separated string into fields. */\n";
+            result += "    static " + struct_name + " Unpack(const FString& Str)\n";
+            result += "    {\n";
+            result += "        " + struct_name + " Result;\n";
+            result += "        TArray<FString> Parts;\n";
+            result += "        Str.ParseIntoArray(Parts, TEXT(\"" + sep + "\"));\n";
+
+            for i in 0..embed_fields.len() {
+                let ef = embed_fields[i];
+                let idx_str = "" + i;
+                let tn = ef.field_type.type_name;
+                let is_enum_type = ef.field_type.is_enum;
+                if !is_enum_type {
+                    if tn.contains("Type") || tn.contains("Status") || tn.contains("Kind") ||
+                       tn.contains("Mode") || tn.contains("State") {
+                        is_enum_type = true;
+                    }
+                }
+
+                result += "        if (Parts.IsValidIndex(" + idx_str + "))\n";
+                result += "        {\n";
+
+                if tn == "string" {
+                    result += "            Result." + ef.name + " = Parts[" + idx_str + "];\n";
+                } else if tn == "bool" {
+                    result += "            Result." + ef.name + " = Parts[" + idx_str + "].ToBool();\n";
+                } else if tn == "f32" || tn == "f64" {
+                    result += "            Result." + ef.name + " = FCString::Atof(*Parts[" + idx_str + "]);\n";
+                } else if is_enum_type {
+                    let enum_name = "E" + tn;
+                    result += "            Result." + ef.name + " = static_cast<" + enum_name + ">(FCString::Atoi(*Parts[" + idx_str + "]));\n";
+                } else if tn == "u64" || tn == "i64" {
+                    result += "            Result." + ef.name + " = FCString::Atoi64(*Parts[" + idx_str + "]);\n";
+                } else {
+                    result += "            Result." + ef.name + " = FCString::Atoi(*Parts[" + idx_str + "]);\n";
+                }
+
+                result += "        }\n";
+            }
+
+            result += "        return Result;\n";
+            result += "    }\n";
+        }
+    }
+
     result += "};\n";
 
     return result;
@@ -218,6 +326,7 @@ let has_file = file.path != () && file.path != "";
 
 let pascal_name = "";
 let ns_bodies = "";
+let is_common = false;
 
 if has_file {
     let parts = file.path.split("/");
@@ -229,6 +338,7 @@ if has_file {
     let first_char = base_name.sub_string(0, 1);
     let rest = base_name.sub_string(1, base_name.len() - 1);
     pascal_name = first_char.to_upper() + rest;
+    is_common = pascal_name == "Common";
 
     for ns in file.namespaces {
         ns_bodies += generate_namespace(ns);
@@ -242,6 +352,9 @@ if has_file {
 #pragma once
 %blank
 #include "CoreMinimal.h"
+%if !is_common
+#include "PolygenCommon.h"
+%endif
 #include "Polygen{{pascal_name}}.generated.h"
 %blank
 {{ns_bodies}}

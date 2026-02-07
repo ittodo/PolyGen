@@ -91,11 +91,13 @@ fn generate_csv_writer(s, namespace_fqn) {
     result += "    CsvContent += TEXT(\"";
 
     let field_names = [];
+    let field_defs = #{};
     for item in s.items {
         if item.is_field() {
             let f = item.as_field();
-            if !f.field_type.is_list && !f.field_type.is_option {
+            if !f.field_type.is_list {
                 field_names.push(f.name);
+                field_defs[f.name] = f;
             }
         }
     }
@@ -106,7 +108,7 @@ fn generate_csv_writer(s, namespace_fqn) {
         }
         result += field_names[i];
     }
-    result += "\") + LINE_TERMINATOR;\n";
+    result += "\");\n    CsvContent += LINE_TERMINATOR;\n";
     result += "    \n";
 
     // Write data rows
@@ -120,35 +122,30 @@ fn generate_csv_writer(s, namespace_fqn) {
             result += "        CsvContent += TEXT(\",\");\n";
         }
 
-        for item in s.items {
-            if item.is_field() {
-                let f = item.as_field();
-                if f.name == field_name {
-                    let n = f.field_type.type_name;
-                    if n == "string" {
-                        result += "        {\n";
-                        result += "            FString EscapedValue = Row." + field_name + ".Replace(TEXT(\"\\\"\"), TEXT(\"\\\"\\\"\"));\n";
-                        result += "            if (EscapedValue.Contains(TEXT(\",\")) || EscapedValue.Contains(TEXT(\"\\\"\")))\n";
-                        result += "            {\n";
-                        result += "                CsvContent += TEXT(\"\\\"\") + EscapedValue + TEXT(\"\\\"\");\n";
-                        result += "            }\n";
-                        result += "            else\n";
-                        result += "            {\n";
-                        result += "                CsvContent += EscapedValue;\n";
-                        result += "            }\n";
-                        result += "        }\n";
-                    } else if n == "bool" {
-                        result += "        CsvContent += Row." + field_name + " ? TEXT(\"true\") : TEXT(\"false\");\n";
-                    } else if n == "f32" || n == "f64" {
-                        result += "        CsvContent += FString::SanitizeFloat(Row." + field_name + ");\n";
-                    } else if f.field_type.is_enum || is_likely_enum(n) {
-                        result += "        CsvContent += FString::FromInt(static_cast<int32>(Row." + field_name + "));\n";
-                    } else {
-                        result += "        CsvContent += FString::FromInt(Row." + field_name + ");\n";
-                    }
-                    break;
-                }
-            }
+        let f = field_defs[field_name];
+        let n = f.field_type.type_name;
+        if n == "string" {
+            result += "        {\n";
+            result += "            FString EscapedValue = Row." + field_name + ".Replace(TEXT(\"\\\"\"), TEXT(\"\\\"\\\"\"));\n";
+            result += "            if (EscapedValue.Contains(TEXT(\",\")) || EscapedValue.Contains(TEXT(\"\\\"\")))\n";
+            result += "            {\n";
+            result += "                CsvContent += TEXT(\"\\\"\") + EscapedValue + TEXT(\"\\\"\");\n";
+            result += "            }\n";
+            result += "            else\n";
+            result += "            {\n";
+            result += "                CsvContent += EscapedValue;\n";
+            result += "            }\n";
+            result += "        }\n";
+        } else if n == "bool" {
+            result += "        CsvContent += Row." + field_name + " ? TEXT(\"true\") : TEXT(\"false\");\n";
+        } else if n == "f32" || n == "f64" {
+            result += "        CsvContent += FString::SanitizeFloat(Row." + field_name + ");\n";
+        } else if f.field_type.is_enum || is_likely_enum(n) {
+            result += "        CsvContent += FString::FromInt(static_cast<int32>(Row." + field_name + "));\n";
+        } else if f.field_type.is_struct && !ue_types::is_primitive_name(n) && !f.field_type.is_enum {
+            result += "        CsvContent += Row." + field_name + ".Pack();\n";
+        } else {
+            result += "        CsvContent += FString::FromInt(Row." + field_name + ");\n";
         }
     }
 
@@ -211,12 +208,21 @@ fn generate_csv_loader(s, namespace_fqn) {
             let f = item.as_field();
             let field_name = f.name;
 
-            if !f.field_type.is_list && !f.field_type.is_option {
+            if !f.field_type.is_list {
                 result += "        if (const int32* ColIdx = ColumnMap.Find(TEXT(\"" + field_name + "\")))\n";
                 result += "        {\n";
-                result += "            if (*ColIdx < Columns.Num())\n";
+                if f.field_type.is_option {
+                    result += "            if (*ColIdx < Columns.Num() && !Columns[*ColIdx].IsEmpty())\n";
+                } else {
+                    result += "            if (*ColIdx < Columns.Num())\n";
+                }
                 result += "            {\n";
-                result += "                Row." + field_name + " = " + csv_parse_expr(f.field_type, "Columns[*ColIdx]") + ";\n";
+                if f.field_type.is_struct && !ue_types::is_primitive_name(f.field_type.type_name) && !f.field_type.is_enum {
+                    let ue_struct_name = ue_types::get_struct_name(f.field_type.type_name);
+                    result += "                Row." + field_name + " = " + ue_struct_name + "::Unpack(Columns[*ColIdx]);\n";
+                } else {
+                    result += "                Row." + field_name + " = " + csv_parse_expr(f.field_type, "Columns[*ColIdx]") + ";\n";
+                }
                 result += "            }\n";
                 result += "        }\n";
             }

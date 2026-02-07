@@ -308,7 +308,7 @@ public:
 %blank
 {{last_modified_fields}}
 #if WITH_EDITOR
-    FDelegateHandle TickDelegateHandle;
+    FTSTicker::FDelegateHandle TickDelegateHandle;
     float TimeSinceLastCheck = 0.0f;
     static constexpr float CheckInterval = 1.0f; // Check every second
 %blank
