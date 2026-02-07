@@ -183,7 +183,7 @@ fn generate_csv_loader(s, namespace_fqn) {
     result += "    \n";
     result += "    // Parse header to get column indices\n";
     result += "    TArray<FString> Headers;\n";
-    result += "    Lines[0].ParseIntoArray(Headers, TEXT(\",\"));\n";
+    result += "    Lines[0].ParseIntoArray(Headers, TEXT(\",\"), false);\n";
     result += "    \n";
 
     result += "    TMap<FString, int32> ColumnMap;\n";
@@ -199,7 +199,7 @@ fn generate_csv_loader(s, namespace_fqn) {
     result += "        if (Lines[RowIdx].IsEmpty()) continue;\n";
     result += "        \n";
     result += "        TArray<FString> Columns;\n";
-    result += "        Lines[RowIdx].ParseIntoArray(Columns, TEXT(\",\"));\n";
+    result += "        Lines[RowIdx].ParseIntoArray(Columns, TEXT(\",\"), false);\n";
     result += "        \n";
     result += "        " + struct_name + " Row;\n";
 

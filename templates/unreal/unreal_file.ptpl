@@ -256,7 +256,7 @@ fn generate_struct(s, ns_fqn) {
             result += "    {\n";
             result += "        " + struct_name + " Result;\n";
             result += "        TArray<FString> Parts;\n";
-            result += "        Str.ParseIntoArray(Parts, TEXT(\"" + sep + "\"));\n";
+            result += "        Str.ParseIntoArray(Parts, TEXT(\"" + sep + "\"), false);\n";
 
             for i in 0..embed_fields.len() {
                 let ef = embed_fields[i];
