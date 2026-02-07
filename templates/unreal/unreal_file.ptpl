@@ -77,8 +77,9 @@ fn generate_struct(s, ns_fqn) {
             let ue_type = "";
             let type_name = t.type_name;
 
-            // Check if primitive
+            // Check if primitive or enum
             let is_prim = false;
+            let is_enum_type = false;
             if type_name == "string" || type_name == "bool" || type_name == "bytes" ||
                type_name == "u8" || type_name == "u16" || type_name == "u32" || type_name == "u64" ||
                type_name == "i8" || type_name == "i16" || type_name == "i32" || type_name == "i64" ||
@@ -109,9 +110,11 @@ fn generate_struct(s, ns_fqn) {
                 if t.is_enum || type_name == "Element" || type_name == "Status" || type_name == "ItemType" ||
                    type_name == "PlayerClass" || type_name == "Status__Enum" {
                     ue_type = "E" + type_name;
+                    is_enum_type = true;
                 } else if type_name.contains("Type") || type_name.contains("Status") || type_name.contains("Kind") ||
                           type_name.contains("Mode") || type_name.contains("State") {
                     ue_type = "E" + type_name;
+                    is_enum_type = true;
                 } else {
                     // Struct type - add F prefix if not already present
                     if type_first == "F" {
@@ -138,10 +141,29 @@ fn generate_struct(s, ns_fqn) {
             result += "    UPROPERTY(" + uprop_spec + ")\n";
             result += "    " + ue_type + " " + f.name;
 
-            // Default value (only for primitives, arrays auto-initialize)
-            if !t.is_list && !t.is_option {
+            // Default value - UE5 requires all UPROPERTY to be initialized
+            if !t.is_list {
                 let default_val = "";
-                if t.is_primitive || is_prim {
+                // Use schema default() if specified
+                let schema_default = f.default_value;
+                if schema_default != () {
+                    if type_name == "string" {
+                        default_val = "TEXT(\"" + schema_default + "\")";
+                    } else if type_name == "bool" {
+                        default_val = if schema_default == "true" || schema_default == "1" { "true" } else { "false" };
+                    } else if type_name == "f32" || type_name == "f64" {
+                        // Ensure valid C++ float literal (e.g. "1" -> "1.0f", "1.5" -> "1.5f")
+                        if !schema_default.contains(".") {
+                            default_val = schema_default + ".0f";
+                        } else {
+                            default_val = schema_default + "f";
+                        }
+                    } else if is_enum_type {
+                        default_val = "static_cast<" + ue_type + ">(" + schema_default + ")";
+                    } else {
+                        default_val = schema_default;
+                    }
+                } else if t.is_primitive || is_prim {
                     if type_name == "string" { default_val = "TEXT(\"\")"; }
                     else if type_name == "bool" { default_val = "false"; }
                     else if type_name == "u8" || type_name == "u16" || type_name == "u32" || type_name == "u64" ||
@@ -149,6 +171,8 @@ fn generate_struct(s, ns_fqn) {
                         default_val = "0";
                     }
                     else if type_name == "f32" || type_name == "f64" { default_val = "0.0f"; }
+                } else if is_enum_type {
+                    default_val = "static_cast<" + ue_type + ">(0)";
                 }
                 if default_val != "" {
                     result += " = " + default_val;

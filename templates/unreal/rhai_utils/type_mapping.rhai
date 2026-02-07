@@ -135,6 +135,8 @@ fn get_default_value(type_ref) {
             "bytes" => "",
             _ => ""
         }
+    } else if type_ref.is_enum || is_likely_enum_name(type_ref.type_name) {
+        "static_cast<" + get_enum_name(type_ref.type_name) + ">(0)"
     } else {
         ""
     }
