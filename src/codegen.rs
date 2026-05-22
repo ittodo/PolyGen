@@ -799,19 +799,19 @@ pub fn resolve_output_pattern(pattern: &str, stem: &str) -> String {
     let mut result = pattern.to_string();
 
     // Replace {{stem | filter}} patterns
-    let re_with_filter =
-        regex::Regex::new(r"\{\{\s*stem\s*\|\s*(\w+)\s*\}\}").expect("valid regex");
-    result = re_with_filter
-        .replace_all(&result, |caps: &regex::Captures| {
-            let filter = &caps[1];
-            match filter {
-                "pascal_case" => stem.to_pascal_case(),
-                "snake_case" => stem.to_snake_case(),
-                "camel_case" => stem.to_lower_camel_case(),
-                _ => stem.to_string(),
-            }
-        })
-        .to_string();
+    if let Ok(re_with_filter) = regex::Regex::new(r"\{\{\s*stem\s*\|\s*(\w+)\s*\}\}") {
+        result = re_with_filter
+            .replace_all(&result, |caps: &regex::Captures| {
+                let filter = &caps[1];
+                match filter {
+                    "pascal_case" => stem.to_pascal_case(),
+                    "snake_case" => stem.to_snake_case(),
+                    "camel_case" => stem.to_lower_camel_case(),
+                    _ => stem.to_string(),
+                }
+            })
+            .to_string();
+    }
 
     // Replace plain {{stem}}
     result = result.replace("{{stem}}", stem);
