@@ -463,128 +463,133 @@ pub fn dynamic_to_context_value(value: Dynamic) -> Result<ContextValue, String> 
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_execute_logic_simple_variable() {
-        let mut bridge = RhaiBridge::new();
-        let bindings = HashMap::new();
-        let result = bridge.execute_logic("let x = 42;", &bindings).unwrap();
-        assert_eq!(result.get("x").unwrap().to_display_string(), "42");
+    type TestResult = std::result::Result<(), String>;
+
+    fn binding<'a>(
+        bindings: &'a HashMap<String, ContextValue>,
+        name: &str,
+    ) -> Result<&'a ContextValue, String> {
+        bindings
+            .get(name)
+            .ok_or_else(|| format!("missing binding `{name}`"))
     }
 
     #[test]
-    fn test_execute_logic_string_variable() {
+    fn test_execute_logic_simple_variable() -> TestResult {
         let mut bridge = RhaiBridge::new();
         let bindings = HashMap::new();
-        let result = bridge
-            .execute_logic("let name = \"hello\";", &bindings)
-            .unwrap();
-        assert_eq!(result.get("name").unwrap().to_display_string(), "hello");
+        let result = bridge.execute_logic("let x = 42;", &bindings)?;
+        assert_eq!(binding(&result, "x")?.to_display_string(), "42");
+        Ok(())
     }
 
     #[test]
-    fn test_execute_logic_reads_file_bindings() {
+    fn test_execute_logic_string_variable() -> TestResult {
+        let mut bridge = RhaiBridge::new();
+        let bindings = HashMap::new();
+        let result = bridge.execute_logic("let name = \"hello\";", &bindings)?;
+        assert_eq!(binding(&result, "name")?.to_display_string(), "hello");
+        Ok(())
+    }
+
+    #[test]
+    fn test_execute_logic_reads_file_bindings() -> TestResult {
         let mut bridge = RhaiBridge::new();
         let mut bindings = HashMap::new();
         bindings.insert("base".to_string(), ContextValue::Int(10));
 
-        let result = bridge
-            .execute_logic("let doubled = base * 2;", &bindings)
-            .unwrap();
-        assert_eq!(result.get("doubled").unwrap().to_display_string(), "20");
+        let result = bridge.execute_logic("let doubled = base * 2;", &bindings)?;
+        assert_eq!(binding(&result, "doubled")?.to_display_string(), "20");
+        Ok(())
     }
 
     #[test]
-    fn test_execute_logic_multiline_string() {
+    fn test_execute_logic_multiline_string() -> TestResult {
         let mut bridge = RhaiBridge::new();
         let bindings = HashMap::new();
-        let result = bridge
-            .execute_logic("let multiline = \"line1\\nline2\";", &bindings)
-            .unwrap();
+        let result = bridge.execute_logic("let multiline = \"line1\\nline2\";", &bindings)?;
         assert_eq!(
-            result.get("multiline").unwrap().to_display_string(),
+            binding(&result, "multiline")?.to_display_string(),
             "line1\nline2"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_execute_logic_case_functions() {
+    fn test_execute_logic_case_functions() -> TestResult {
         let mut bridge = RhaiBridge::new();
         let bindings = HashMap::new();
-        let result = bridge
-            .execute_logic("let s = to_pascal_case(\"hello_world\");", &bindings)
-            .unwrap();
-        assert_eq!(result.get("s").unwrap().to_display_string(), "HelloWorld");
+        let result = bridge.execute_logic("let s = to_pascal_case(\"hello_world\");", &bindings)?;
+        assert_eq!(binding(&result, "s")?.to_display_string(), "HelloWorld");
+        Ok(())
     }
 
     #[test]
-    fn test_execute_logic_function_definition() {
+    fn test_execute_logic_function_definition() -> TestResult {
         let mut bridge = RhaiBridge::new();
         let bindings = HashMap::new();
-        let result = bridge
-            .execute_logic("fn add(a, b) { a + b }\nlet result = add(3, 4);", &bindings)
-            .unwrap();
-        assert_eq!(result.get("result").unwrap().to_display_string(), "7");
+        let result =
+            bridge.execute_logic("fn add(a, b) { a + b }\nlet result = add(3, 4);", &bindings)?;
+        assert_eq!(binding(&result, "result")?.to_display_string(), "7");
+        Ok(())
     }
 
     #[test]
-    fn test_context_value_roundtrip() {
+    fn test_context_value_roundtrip() -> TestResult {
         // String
         let cv = ContextValue::String("hello".to_string());
         let dyn_val = context_value_to_dynamic(&cv);
-        let back = dynamic_to_context_value(dyn_val).unwrap();
+        let back = dynamic_to_context_value(dyn_val)?;
         assert_eq!(back.to_display_string(), "hello");
 
         // Int
         let cv = ContextValue::Int(42);
         let dyn_val = context_value_to_dynamic(&cv);
-        let back = dynamic_to_context_value(dyn_val).unwrap();
+        let back = dynamic_to_context_value(dyn_val)?;
         assert_eq!(back.to_display_string(), "42");
 
         // Bool
         let cv = ContextValue::Bool(true);
         let dyn_val = context_value_to_dynamic(&cv);
-        let back = dynamic_to_context_value(dyn_val).unwrap();
+        let back = dynamic_to_context_value(dyn_val)?;
         assert!(back.is_truthy());
+        Ok(())
     }
 
     #[test]
-    fn test_child_isolation() {
+    fn test_child_isolation() -> TestResult {
         let mut bridge = RhaiBridge::new();
         let bindings = HashMap::new();
-        bridge
-            .execute_logic("let parent_var = 1;", &bindings)
-            .unwrap();
+        bridge.execute_logic("let parent_var = 1;", &bindings)?;
 
         let mut child = bridge.child();
-        let child_result = child
-            .execute_logic("let child_var = 2;", &HashMap::new())
-            .unwrap();
+        let child_result = child.execute_logic("let child_var = 2;", &HashMap::new())?;
 
         // Child should not have parent's variables
         assert!(!child_result.contains_key("parent_var"));
         assert!(child_result.contains_key("child_var"));
+        Ok(())
     }
 
     #[test]
-    fn test_load_prelude() {
+    fn test_load_prelude() -> TestResult {
         let mut bridge = RhaiBridge::new();
-        bridge
-            .load_prelude(&["fn triple(x) { x * 3 }".to_string()])
-            .unwrap();
+        bridge.load_prelude(&["fn triple(x) { x * 3 }".to_string()])?;
 
         let bindings = HashMap::new();
-        let result = bridge
-            .execute_logic("let val = triple(7);", &bindings)
-            .unwrap();
-        assert_eq!(result.get("val").unwrap().to_display_string(), "21");
+        let result = bridge.execute_logic("let val = triple(7);", &bindings)?;
+        assert_eq!(binding(&result, "val")?.to_display_string(), "21");
+        Ok(())
     }
 
     #[test]
     fn test_load_prelude_error() {
         let mut bridge = RhaiBridge::new();
         let result = bridge.load_prelude(&["invalid rhai {{{{".to_string()]);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("prelude script #1"));
+        match result {
+            Ok(()) => panic!("expected prelude load to fail"),
+            Err(err) => assert!(err.contains("prelude script #1")),
+        }
     }
 
     #[test]
@@ -592,7 +597,10 @@ mod tests {
         let mut bridge = RhaiBridge::new();
         let buffer = bridge.output_buffer.clone();
         let _ = std::panic::catch_unwind(|| {
-            let mut guard = buffer.lock().unwrap();
+            let mut guard = match buffer.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
             *guard = Some("partial output".to_string());
             panic!("poison output buffer");
         });
