@@ -63,6 +63,15 @@ pub fn unwrap_option(t: &str) -> &str {
     }
 }
 
+fn split_qualified_type(type_name: &str) -> Option<(&str, &str)> {
+    let (namespace, name) = type_name.rsplit_once('.')?;
+    if namespace.is_empty() || name.is_empty() {
+        None
+    } else {
+        Some((namespace, name))
+    }
+}
+
 /// Finds a struct by name within a single namespace (non-recursive).
 ///
 /// English: Searches only the direct items of the namespace.
@@ -276,10 +285,7 @@ pub fn resolve_struct<'a>(
         core = inner;
     }
     if core.contains('.') {
-        let mut parts = core.split('.').collect::<Vec<_>>();
-        let name = parts.pop().unwrap();
-        let ns = parts.join(".");
-        get_struct_at(files, &ns, name)
+        split_qualified_type(core).and_then(|(ns, name)| get_struct_at(files, ns, name))
     } else {
         if !current_ns_name.is_empty() {
             if let Some(s) = get_struct_at(files, current_ns_name, core) {
@@ -305,10 +311,7 @@ pub fn resolve_enum<'a>(
         core = inner;
     }
     if core.contains('.') {
-        let mut parts = core.split('.').collect::<Vec<_>>();
-        let name = parts.pop().unwrap();
-        let ns = parts.join(".");
-        get_enum_at(files, &ns, name)
+        split_qualified_type(core).and_then(|(ns, name)| get_enum_at(files, ns, name))
     } else {
         if !current_ns_name.is_empty() {
             if let Some(e) = get_enum_at(files, current_ns_name, core) {
@@ -429,10 +432,7 @@ pub fn resolve_struct_with_ns<'a>(
         core = inner;
     }
     if core.contains('.') {
-        let mut parts = core.split('.').collect::<Vec<_>>();
-        let name = parts.pop().unwrap();
-        let ns = parts.join(".");
-        get_struct_with_ns_at(files, &ns, name)
+        split_qualified_type(core).and_then(|(ns, name)| get_struct_with_ns_at(files, ns, name))
     } else {
         if !current_ns_name.is_empty() {
             if let Some(res) = get_struct_with_ns_at(files, current_ns_name, core) {
