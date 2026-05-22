@@ -97,7 +97,17 @@ pub fn build_ast_from_pairs(
 
                 match item_pair.as_rule() {
                     Rule::file_import => {
-                        let path_literal = item_pair.into_inner().next().unwrap();
+                        let (line, col) = item_pair.line_col();
+                        let path_literal =
+                            item_pair
+                                .into_inner()
+                                .next()
+                                .ok_or(AstBuildError::MissingElement {
+                                    rule: Rule::file_import,
+                                    element: "path literal".to_string(),
+                                    line,
+                                    col,
+                                })?;
                         let path_str = path_literal.as_str();
                         let path = path_str[1..path_str.len() - 1].to_string();
                         ast_root.file_imports.push(path);
