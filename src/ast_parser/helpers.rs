@@ -12,16 +12,12 @@ pub fn parse_path(pair: Pair<Rule>) -> Vec<String> {
 /// Extract the content from a comment pair, removing comment markers
 pub fn extract_comment_content(comment_pair: Pair<Rule>) -> String {
     let s = comment_pair.as_str();
-    if s.starts_with("///") {
-        s.strip_prefix("///").unwrap().trim().to_string()
-    } else if s.starts_with("//") {
-        s.strip_prefix("//").unwrap().trim().to_string()
-    } else if s.starts_with("/*") {
-        s.strip_prefix("/*")
-            .unwrap()
-            .trim_end_matches("*/")
-            .trim()
-            .to_string()
+    if let Some(content) = s.strip_prefix("///") {
+        content.trim().to_string()
+    } else if let Some(content) = s.strip_prefix("//") {
+        content.trim().to_string()
+    } else if let Some(content) = s.strip_prefix("/*") {
+        content.trim_end_matches("*/").trim().to_string()
     } else {
         s.trim().to_string()
     }
