@@ -1343,6 +1343,8 @@ mod tests {
     use crate::ast_model::*;
     use std::path::PathBuf;
 
+    type TestResult = std::result::Result<(), String>;
+
     /// Helper to create a minimal AstRoot
     fn make_ast(definitions: Vec<Definition>) -> AstRoot {
         AstRoot {
@@ -1453,6 +1455,37 @@ mod tests {
         })
     }
 
+    fn require_namespace<'a>(
+        ctx: &'a SchemaContext,
+        name: &str,
+    ) -> std::result::Result<&'a NamespaceDef, String> {
+        ctx.files
+            .first()
+            .and_then(|file| file.namespaces.iter().find(|ns| ns.name == name))
+            .ok_or_else(|| format!("missing namespace `{name}`"))
+    }
+
+    fn require_struct<'a>(
+        ns: &'a NamespaceDef,
+        name: &str,
+    ) -> std::result::Result<&'a StructDef, String> {
+        find_struct(ns, name).ok_or_else(|| format!("missing struct `{name}`"))
+    }
+
+    fn require_enum<'a>(
+        ns: &'a NamespaceDef,
+        name: &str,
+    ) -> std::result::Result<&'a EnumDef, String> {
+        find_enum(ns, name).ok_or_else(|| format!("missing enum `{name}`"))
+    }
+
+    fn require_field<'a>(
+        struct_def: &'a StructDef,
+        name: &str,
+    ) -> std::result::Result<&'a FieldDef, String> {
+        find_field(struct_def, name).ok_or_else(|| format!("missing field `{name}`"))
+    }
+
     // ========== Helper Function Tests ==========
 
     #[test]
@@ -1510,7 +1543,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_ir_single_table() {
+    fn test_build_ir_single_table() -> TestResult {
         let asts = vec![make_ast(vec![make_table("User", vec![])])];
         let ctx = build_ir(&asts);
 
@@ -1519,13 +1552,13 @@ mod tests {
         let ns = &ctx.files[0].namespaces[0];
         assert_eq!(ns.name, ""); // Global namespace has empty name
 
-        let user_struct = find_struct(ns, "User");
-        assert!(user_struct.is_some());
-        assert_eq!(user_struct.unwrap().fqn, "User");
+        let user_struct = require_struct(ns, "User")?;
+        assert_eq!(user_struct.fqn, "User");
+        Ok(())
     }
 
     #[test]
-    fn test_build_ir_single_enum() {
+    fn test_build_ir_single_enum() -> TestResult {
         let asts = vec![make_ast(vec![make_enum(
             "Status",
             vec!["Active", "Inactive"],
@@ -1533,16 +1566,14 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let status_enum = find_enum(ns, "Status");
-        assert!(status_enum.is_some());
-
-        let e = status_enum.unwrap();
+        let e = require_enum(ns, "Status")?;
         assert_eq!(e.fqn, "Status");
         assert_eq!(e.items.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_build_ir_namespaced_types() {
+    fn test_build_ir_namespaced_types() -> TestResult {
         let asts = vec![make_ast(vec![make_namespace(
             vec!["game", "common"],
             vec![
@@ -1556,19 +1587,18 @@ mod tests {
         let ns = &ctx.files[0].namespaces[0];
         assert_eq!(ns.name, "game.common");
 
-        let user = find_struct(ns, "User");
-        assert!(user.is_some());
-        assert_eq!(user.unwrap().fqn, "game.common.User");
+        let user = require_struct(ns, "User")?;
+        assert_eq!(user.fqn, "game.common.User");
 
-        let status = find_enum(ns, "Status");
-        assert!(status.is_some());
-        assert_eq!(status.unwrap().fqn, "game.common.Status");
+        let status = require_enum(ns, "Status")?;
+        assert_eq!(status.fqn, "game.common.Status");
+        Ok(())
     }
 
     // ========== Type Resolution Tests ==========
 
     #[test]
-    fn test_primitive_type_stays_primitive() {
+    fn test_primitive_type_stays_primitive() -> TestResult {
         let asts = vec![make_ast(vec![make_table(
             "User",
             vec![make_field_basic("name", BasicType::String)],
@@ -1576,16 +1606,17 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let user = find_struct(ns, "User").unwrap();
-        let name_field = find_field(user, "name").unwrap();
+        let user = require_struct(ns, "User")?;
+        let name_field = require_field(user, "name")?;
 
         assert!(name_field.field_type.is_primitive);
         assert!(!name_field.field_type.is_enum);
         assert!(!name_field.field_type.is_struct);
+        Ok(())
     }
 
     #[test]
-    fn test_enum_type_is_resolved() {
+    fn test_enum_type_is_resolved() -> TestResult {
         let asts = vec![make_ast(vec![
             make_enum("Status", vec!["Active", "Inactive"]),
             make_table("User", vec![make_field_path("status", vec!["Status"])]),
@@ -1593,16 +1624,17 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let user = find_struct(ns, "User").unwrap();
-        let status_field = find_field(user, "status").unwrap();
+        let user = require_struct(ns, "User")?;
+        let status_field = require_field(user, "status")?;
 
         assert!(!status_field.field_type.is_primitive);
         assert!(status_field.field_type.is_enum);
         assert!(!status_field.field_type.is_struct);
+        Ok(())
     }
 
     #[test]
-    fn test_struct_type_is_resolved() {
+    fn test_struct_type_is_resolved() -> TestResult {
         let asts = vec![make_ast(vec![
             make_table("Address", vec![]),
             make_table("User", vec![make_field_path("address", vec!["Address"])]),
@@ -1610,16 +1642,17 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let user = find_struct(ns, "User").unwrap();
-        let address_field = find_field(user, "address").unwrap();
+        let user = require_struct(ns, "User")?;
+        let address_field = require_field(user, "address")?;
 
         assert!(!address_field.field_type.is_primitive);
         assert!(!address_field.field_type.is_enum);
         assert!(address_field.field_type.is_struct);
+        Ok(())
     }
 
     #[test]
-    fn test_namespaced_enum_resolution() {
+    fn test_namespaced_enum_resolution() -> TestResult {
         let asts = vec![make_ast(vec![make_namespace(
             vec!["game"],
             vec![
@@ -1630,15 +1663,16 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let user = find_struct(ns, "User").unwrap();
-        let status_field = find_field(user, "status").unwrap();
+        let user = require_struct(ns, "User")?;
+        let status_field = require_field(user, "status")?;
 
         assert!(status_field.field_type.is_enum);
         assert_eq!(status_field.field_type.fqn, "game.Status");
+        Ok(())
     }
 
     #[test]
-    fn test_cross_namespace_enum_resolution_with_fqn() {
+    fn test_cross_namespace_enum_resolution_with_fqn() -> TestResult {
         let asts = vec![make_ast(vec![
             make_namespace(vec!["common"], vec![make_enum("Status", vec!["Active"])]),
             make_namespace(
@@ -1652,20 +1686,17 @@ mod tests {
         let ctx = build_ir(&asts);
 
         // Find user namespace
-        let user_ns = ctx.files[0]
-            .namespaces
-            .iter()
-            .find(|ns| ns.name == "user")
-            .unwrap();
-        let user = find_struct(user_ns, "User").unwrap();
-        let status_field = find_field(user, "status").unwrap();
+        let user_ns = require_namespace(&ctx, "user")?;
+        let user = require_struct(user_ns, "User")?;
+        let status_field = require_field(user, "status")?;
 
         assert!(status_field.field_type.is_enum);
         assert_eq!(status_field.field_type.fqn, "common.Status");
+        Ok(())
     }
 
     #[test]
-    fn test_unique_enum_name_resolution() {
+    fn test_unique_enum_name_resolution() -> TestResult {
         // If an enum name is unique across all namespaces, it should resolve
         let asts = vec![make_ast(vec![
             make_namespace(
@@ -1682,22 +1713,19 @@ mod tests {
         ])];
         let ctx = build_ir(&asts);
 
-        let user_ns = ctx.files[0]
-            .namespaces
-            .iter()
-            .find(|ns| ns.name == "user")
-            .unwrap();
-        let user = find_struct(user_ns, "User").unwrap();
-        let status_field = find_field(user, "status").unwrap();
+        let user_ns = require_namespace(&ctx, "user")?;
+        let user = require_struct(user_ns, "User")?;
+        let status_field = require_field(user, "status")?;
 
         // Since UniqueStatus is unique, it should be resolved as enum
         assert!(status_field.field_type.is_enum);
+        Ok(())
     }
 
     // ========== Inline Enum Tests ==========
 
     #[test]
-    fn test_inline_enum_in_struct() {
+    fn test_inline_enum_in_struct() -> TestResult {
         let inline_enum_field = TableMember::Field(FieldDefinition::InlineEnum(InlineEnumField {
             metadata: vec![],
             name: Some("role".to_string()),
@@ -1726,7 +1754,7 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let account = find_struct(ns, "Account").unwrap();
+        let account = require_struct(ns, "Account")?;
 
         // Find the inline enum (uses double underscore in the name: Role__Enum)
         let has_inline_enum = account
@@ -1736,14 +1764,15 @@ mod tests {
         assert!(has_inline_enum);
 
         // The field should reference the inline enum
-        let role_field = find_field(account, "role").unwrap();
+        let role_field = require_field(account, "role")?;
         assert!(role_field.field_type.is_enum);
+        Ok(())
     }
 
     // ========== Cardinality Tests ==========
 
     #[test]
-    fn test_optional_type() {
+    fn test_optional_type() -> TestResult {
         let optional_field = TableMember::Field(FieldDefinition::Regular(RegularField {
             metadata: vec![],
             name: Some("nickname".to_string()),
@@ -1759,16 +1788,17 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let user = find_struct(ns, "User").unwrap();
-        let nickname_field = find_field(user, "nickname").unwrap();
+        let user = require_struct(ns, "User")?;
+        let nickname_field = require_field(user, "nickname")?;
 
         assert!(nickname_field.field_type.is_option);
         assert!(!nickname_field.field_type.is_list);
         assert!(nickname_field.field_type.inner_type.is_some());
+        Ok(())
     }
 
     #[test]
-    fn test_array_type() {
+    fn test_array_type() -> TestResult {
         let array_field = TableMember::Field(FieldDefinition::Regular(RegularField {
             metadata: vec![],
             name: Some("tags".to_string()),
@@ -1784,12 +1814,13 @@ mod tests {
         let ctx = build_ir(&asts);
 
         let ns = &ctx.files[0].namespaces[0];
-        let item = find_struct(ns, "Item").unwrap();
-        let tags_field = find_field(item, "tags").unwrap();
+        let item = require_struct(ns, "Item")?;
+        let tags_field = require_field(item, "tags")?;
 
         assert!(!tags_field.field_type.is_option);
         assert!(tags_field.field_type.is_list);
         assert!(tags_field.field_type.inner_type.is_some());
+        Ok(())
     }
 
     // ========== Constraint to Attribute Tests ==========
