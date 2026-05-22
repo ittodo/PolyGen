@@ -113,10 +113,11 @@ impl MigrationDiff {
 
         // Find column changes in existing tables
         for name in baseline_names.intersection(&current_names) {
-            let baseline_table = baseline_tables.get(*name).unwrap();
-            let current_table = current_tables.get(*name).unwrap();
-
-            compare_columns(&mut diff, baseline_table, current_table);
+            if let (Some(baseline_table), Some(current_table)) =
+                (baseline_tables.get(*name), current_tables.get(*name))
+            {
+                compare_columns(&mut diff, baseline_table, current_table);
+            }
         }
 
         diff
@@ -346,10 +347,11 @@ impl MigrationDiff {
 
         // Find column changes in tables that exist in both
         for name in db_table_names.intersection(&poly_table_names) {
-            let db_table = db_schema.tables.get(name).unwrap();
-            let poly_table = poly_tables.get(name).unwrap();
-
-            compare_db_columns(&mut diff, db_table, poly_table);
+            if let (Some(db_table), Some(poly_table)) =
+                (db_schema.tables.get(name), poly_tables.get(name))
+            {
+                compare_db_columns(&mut diff, db_table, poly_table);
+            }
         }
 
         diff
@@ -412,24 +414,25 @@ fn compare_db_columns(diff: &mut MigrationDiff, db_table: &DbTable, poly_table: 
 
     // Check for type changes in columns that exist in both
     for name in db_col_names.intersection(&poly_col_names) {
-        let db_col = db_table.columns.get(name).unwrap();
-        let poly_col = poly_table.columns.get(name).unwrap();
+        if let (Some(db_col), Some(poly_col)) =
+            (db_table.columns.get(name), poly_table.columns.get(name))
+        {
+            let db_type_normalized = normalize_sqlite_type(&db_col.db_type);
+            let poly_type_sqlite = map_to_sqlite_type(&poly_col.type_name);
 
-        let db_type_normalized = normalize_sqlite_type(&db_col.db_type);
-        let poly_type_sqlite = map_to_sqlite_type(&poly_col.type_name);
-
-        if db_type_normalized != poly_type_sqlite {
-            diff.changes.push(SchemaChange::ColumnTypeChanged {
-                table_name: poly_table.name.clone(),
-                namespace: poly_table.namespace.clone(),
-                column_name: name.clone(),
-                old_type: db_col.db_type.clone(),
-                new_type: poly_type_sqlite,
-            });
-            diff.warnings.push(format!(
-                "Column '{}' type mismatch in '{}': DB has '{}', schema wants '{}'",
-                name, poly_table.full_name, db_col.db_type, poly_col.type_name
-            ));
+            if db_type_normalized != poly_type_sqlite {
+                diff.changes.push(SchemaChange::ColumnTypeChanged {
+                    table_name: poly_table.name.clone(),
+                    namespace: poly_table.namespace.clone(),
+                    column_name: name.clone(),
+                    old_type: db_col.db_type.clone(),
+                    new_type: poly_type_sqlite,
+                });
+                diff.warnings.push(format!(
+                    "Column '{}' type mismatch in '{}': DB has '{}', schema wants '{}'",
+                    name, poly_table.full_name, db_col.db_type, poly_col.type_name
+                ));
+            }
         }
     }
 }
@@ -533,21 +536,22 @@ fn compare_columns(diff: &mut MigrationDiff, baseline: &TableInfo, current: &Tab
 
     // Find type changes
     for name in baseline_cols.intersection(&current_cols) {
-        let baseline_col = baseline.columns.get(*name).unwrap();
-        let current_col = current.columns.get(*name).unwrap();
-
-        if baseline_col.type_name != current_col.type_name {
-            diff.changes.push(SchemaChange::ColumnTypeChanged {
-                table_name: baseline.name.clone(),
-                namespace: baseline.namespace.clone(),
-                column_name: baseline_col.name.clone(),
-                old_type: map_to_sqlite_type(&baseline_col.type_name),
-                new_type: map_to_sqlite_type(&current_col.type_name),
-            });
-            diff.warnings.push(format!(
-                "Column '{}' type changed in '{}'. This requires table recreation in SQLite!",
-                baseline_col.name, baseline.full_name
-            ));
+        if let (Some(baseline_col), Some(current_col)) =
+            (baseline.columns.get(*name), current.columns.get(*name))
+        {
+            if baseline_col.type_name != current_col.type_name {
+                diff.changes.push(SchemaChange::ColumnTypeChanged {
+                    table_name: baseline.name.clone(),
+                    namespace: baseline.namespace.clone(),
+                    column_name: baseline_col.name.clone(),
+                    old_type: map_to_sqlite_type(&baseline_col.type_name),
+                    new_type: map_to_sqlite_type(&current_col.type_name),
+                });
+                diff.warnings.push(format!(
+                    "Column '{}' type changed in '{}'. This requires table recreation in SQLite!",
+                    baseline_col.name, baseline.full_name
+                ));
+            }
         }
     }
 }
