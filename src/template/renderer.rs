@@ -1191,10 +1191,24 @@ mod tests {
     fn make_templates(entries: &[(&str, &str)]) -> HashMap<String, ParsedTemplate> {
         let mut map = HashMap::new();
         for (name, source) in entries {
-            let parsed = parse_template(source, name).unwrap();
+            let parsed = match parse_template(source, name) {
+                Ok(parsed) => parsed,
+                Err(err) => panic!("failed to parse test template `{name}`: {err}"),
+            };
             map.insert(name.to_string(), parsed);
         }
         map
+    }
+
+    fn render_template(
+        renderer: Renderer<'_>,
+        template_name: &str,
+        ctx: &TemplateContext,
+    ) -> RenderResult {
+        match renderer.render(template_name, ctx) {
+            Ok(result) => result,
+            Err(err) => panic!("failed to render test template `{template_name}`: {err}"),
+        }
     }
 
     #[test]
@@ -1204,7 +1218,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
 
         assert_eq!(result.lines, vec!["Hello, World!"]);
         assert_eq!(result.source_map.len(), 1);
@@ -1219,7 +1233,7 @@ mod tests {
         ctx.set("name", ContextValue::String("PolyGen".to_string()));
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
 
         assert_eq!(result.lines, vec!["Hello, PolyGen!"]);
     }
@@ -1239,7 +1253,7 @@ mod tests {
         );
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
 
         assert_eq!(result.lines, vec!["  - alpha", "  - beta"]);
     }
@@ -1254,14 +1268,14 @@ mod tests {
         let mut ctx = TemplateContext::new();
         ctx.set("show", ContextValue::Bool(true));
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["visible"]);
 
         // Test false branch
         let mut ctx = TemplateContext::new();
         ctx.set("show", ContextValue::Bool(false));
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["hidden"]);
     }
 
@@ -1273,7 +1287,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
 
         assert_eq!(result.lines, vec!["line1", "", "line2"]);
     }
@@ -1288,7 +1302,7 @@ mod tests {
         ctx.set("name", ContextValue::String("World".to_string()));
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("main.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "main.ptpl", &ctx);
 
         assert_eq!(result.lines, vec!["Hello from child: World"]);
         // Check include stack in source map
@@ -1304,7 +1318,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("main.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "main.ptpl", &ctx);
 
         assert_eq!(result.lines, vec!["root", "    indented line"]);
     }
@@ -1318,7 +1332,7 @@ mod tests {
         ctx.set("name", ContextValue::String("hello".to_string()));
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
 
         assert_eq!(result.lines, vec!["HELLO"]);
     }
@@ -1335,7 +1349,7 @@ mod tests {
         ctx.set("b", ContextValue::Bool(false));
         ctx.set("c", ContextValue::Bool(true));
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["C"]);
     }
 
@@ -1347,7 +1361,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["hello"]);
     }
 
@@ -1359,7 +1373,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["42"]);
     }
 
@@ -1372,7 +1386,7 @@ mod tests {
         ctx.set("name", ContextValue::String("World".to_string()));
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["World"]);
     }
 
@@ -1384,7 +1398,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["first", "second"]);
     }
 
@@ -1396,7 +1410,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["yes"]);
     }
 
@@ -1429,7 +1443,7 @@ mod tests {
         );
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["A", "C"]);
     }
 
@@ -1442,7 +1456,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("main.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "main.ptpl", &ctx);
         // child sets x="child" but main's x should still be "main" after include
         assert_eq!(result.lines, vec!["child", "main"]);
     }
@@ -1455,7 +1469,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["42"]);
     }
 
@@ -1467,7 +1481,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["20"]);
     }
 
@@ -1480,7 +1494,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["Hello World"]);
     }
 
@@ -1493,7 +1507,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("main.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "main.ptpl", &ctx);
         // child outputs 99, then main's x is still 1
         assert_eq!(result.lines, vec!["99", "1"]);
     }
@@ -1506,7 +1520,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["uint"]);
     }
 
@@ -1518,7 +1532,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["other"]);
     }
 
@@ -1530,7 +1544,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["caught"]);
     }
 
@@ -1543,7 +1557,7 @@ mod tests {
         ctx.set("greeting", ContextValue::String("World".to_string()));
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["Hello World!"]);
     }
 
@@ -1555,7 +1569,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["// Generated code"]);
     }
 
@@ -1568,7 +1582,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["A"]);
     }
 
@@ -1583,7 +1597,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["42"]);
     }
 
@@ -1597,7 +1611,7 @@ mod tests {
         ctx.set("name", ContextValue::String("FromContext".to_string()));
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         assert_eq!(result.lines, vec!["FromContext"]);
     }
 
@@ -1611,7 +1625,7 @@ mod tests {
         ctx.set("name", ContextValue::String("Original".to_string()));
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
         // name should remain "Original" (from context, not overwritten)
         // new_var should be accessible (new variable created in logic)
         assert_eq!(result.lines, vec!["Original 42"]);
@@ -1625,7 +1639,7 @@ mod tests {
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
-        let result = renderer.render("test.ptpl", &ctx).unwrap();
+        let result = render_template(renderer, "test.ptpl", &ctx);
 
         assert_eq!(result.source_map.len(), 3);
         assert_eq!(result.source_map.entries[0].template_line, 1);
