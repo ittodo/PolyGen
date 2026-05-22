@@ -409,7 +409,13 @@ pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstB
                 let mut variant_value: Option<i64> = None;
                 if let Some(value_pair) = variant_inner.peek() {
                     if value_pair.as_rule() == Rule::INTEGER {
-                        let consumed_value_pair = variant_inner.next().unwrap();
+                        let consumed_value_pair =
+                            variant_inner.next().ok_or(AstBuildError::MissingElement {
+                                rule: Rule::enum_variant,
+                                element: "value".to_string(),
+                                line: p_line,
+                                col: p_col,
+                            })?;
                         variant_value =
                             Some(consumed_value_pair.as_str().parse().map_err(|_| {
                                 AstBuildError::InvalidValue {
@@ -426,7 +432,14 @@ pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstB
                 let mut inline_comment: Option<String> = None;
                 if let Some(end_pair) = variant_inner.peek() {
                     if end_pair.as_rule() == Rule::enum_variant_end {
-                        let end_text = variant_inner.next().unwrap().as_str();
+                        let end_pair =
+                            variant_inner.next().ok_or(AstBuildError::MissingElement {
+                                rule: Rule::enum_variant,
+                                element: "end".to_string(),
+                                line: p_line,
+                                col: p_col,
+                            })?;
+                        let end_text = end_pair.as_str();
                         if let Some(comment_start) = end_text.find("//") {
                             let comment_text = &end_text[comment_start..];
                             let cleaned = comment_text.trim_start_matches("//").trim();

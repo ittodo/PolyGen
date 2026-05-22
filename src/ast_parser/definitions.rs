@@ -176,7 +176,13 @@ pub fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
             let mut variant_value: Option<i64> = None;
             if let Some(value_pair) = variant_inner.peek() {
                 if value_pair.as_rule() == Rule::INTEGER {
-                    let consumed_value_pair = variant_inner.next().unwrap();
+                    let consumed_value_pair =
+                        variant_inner.next().ok_or(AstBuildError::MissingElement {
+                            rule: Rule::enum_variant,
+                            element: "value".to_string(),
+                            line: p_line,
+                            col: p_col,
+                        })?;
                     variant_value = Some(consumed_value_pair.as_str().parse().map_err(|_| {
                         AstBuildError::InvalidValue {
                             element: "enum variant value".to_string(),
@@ -192,7 +198,13 @@ pub fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
             let mut inline_comment: Option<String> = None;
             if let Some(end_pair) = variant_inner.peek() {
                 if end_pair.as_rule() == Rule::enum_variant_end {
-                    let end_text = variant_inner.next().unwrap().as_str();
+                    let end_pair = variant_inner.next().ok_or(AstBuildError::MissingElement {
+                        rule: Rule::enum_variant,
+                        element: "end".to_string(),
+                        line: p_line,
+                        col: p_col,
+                    })?;
+                    let end_text = end_pair.as_str();
                     // enum_variant_end contains: (";" | ",") ~ spaces ~ inline_comment?
                     // Extract inline comment if present (starts with //)
                     if let Some(comment_start) = end_text.find("//") {
