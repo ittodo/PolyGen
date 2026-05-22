@@ -60,7 +60,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_source_map_basic() {
+    fn test_source_map_basic() -> Result<(), serde_json::Error> {
         let mut map = SourceMap::new();
         assert!(map.is_empty());
 
@@ -77,13 +77,14 @@ mod tests {
         assert_eq!(map.len(), 1);
         assert!(!map.is_empty());
 
-        let json = map.to_json().unwrap();
+        let json = map.to_json()?;
         assert!(json.contains("detail/field.ptpl"));
         assert!(json.contains("game.Player.hp"));
+        Ok(())
     }
 
     #[test]
-    fn test_source_map_no_ir_path() {
+    fn test_source_map_no_ir_path() -> Result<(), serde_json::Error> {
         let mut map = SourceMap::new();
         map.push(SourceMapEntry {
             template_file: "_header.ptpl".to_string(),
@@ -92,8 +93,9 @@ mod tests {
             ir_path: None,
         });
 
-        let json = map.to_json().unwrap();
+        let json = map.to_json()?;
         // ir_path should be omitted when None
         assert!(!json.contains("ir_path"));
+        Ok(())
     }
 }
