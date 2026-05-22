@@ -335,7 +335,10 @@ impl LanguageConfig {
                 let (dest_subdir, filename) = if let Some(parent) = dest_path.parent() {
                     (
                         parent.to_path_buf(),
-                        dest_path.file_name().unwrap().to_string_lossy().to_string(),
+                        dest_path
+                            .file_name()
+                            .map(|name| name.to_string_lossy().to_string())
+                            .unwrap_or_else(|| dest.clone()),
                     )
                 } else {
                     (PathBuf::new(), dest.clone())
