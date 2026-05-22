@@ -922,8 +922,8 @@ mod tests {
     }
 
     #[test]
-    fn test_write_manifest_uses_stable_key_order() {
-        let temp_dir = tempfile::tempdir().unwrap();
+    fn test_write_manifest_uses_stable_key_order() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
         let mut manifest = TemplateManifest::new();
         manifest.insert(
             "csharp/csv_test_schema.CsvColumns.cs".to_string(),
@@ -936,11 +936,14 @@ mod tests {
 
         write_manifest(temp_dir.path(), &manifest);
 
-        let content = fs::read_to_string(temp_dir.path().join(MANIFEST_FILENAME)).unwrap();
-        let data_entry = content.find("\"csharp/Data/SqliteDbContext.cs\"").unwrap();
+        let content = fs::read_to_string(temp_dir.path().join(MANIFEST_FILENAME))?;
+        let data_entry = content
+            .find("\"csharp/Data/SqliteDbContext.cs\"")
+            .ok_or_else(|| anyhow::anyhow!("manifest is missing sqlite entry"))?;
         let csv_entry = content
             .find("\"csharp/csv_test_schema.CsvColumns.cs\"")
-            .unwrap();
+            .ok_or_else(|| anyhow::anyhow!("manifest is missing CSV columns entry"))?;
         assert!(data_entry < csv_entry);
+        Ok(())
     }
 }
