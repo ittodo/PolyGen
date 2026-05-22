@@ -792,63 +792,80 @@ fn parse_line_segments(line: &str) -> Result<Vec<LineSegment>, String> {
 mod tests {
     use super::*;
 
+    type TestResult = Result<(), String>;
+
+    fn parse_test(template: &str) -> Result<ParsedTemplate, String> {
+        parse_template(template, "test.ptpl")
+    }
+
+    fn first_node(parsed: &ParsedTemplate) -> Result<&TemplateNode, String> {
+        parsed
+            .nodes
+            .first()
+            .ok_or_else(|| "missing first template node".to_string())
+    }
+
     #[test]
-    fn test_parse_simple_output() {
+    fn test_parse_simple_output() -> TestResult {
         let template = "using System;\nusing System.IO;";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 2);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::OutputLine { line, segments } => {
                 assert_eq!(*line, 1);
                 assert_eq!(segments.len(), 1);
             }
-            _ => panic!("Expected OutputLine"),
+            node => return Err(format!("Expected OutputLine, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_interpolation() {
+    fn test_parse_interpolation() -> TestResult {
         let template = "public class {{struct.name}} : IDataRow";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::OutputLine { segments, .. } => {
                 assert_eq!(segments.len(), 3); // "public class " + expr + " : IDataRow"
                 match &segments[1] {
                     LineSegment::Expression(expr) => {
                         assert_eq!(expr.path, vec!["struct", "name"]);
                     }
-                    _ => panic!("Expected Expression"),
+                    segment => return Err(format!("Expected Expression, got {segment:?}")),
                 }
             }
-            _ => panic!("Expected OutputLine"),
+            node => return Err(format!("Expected OutputLine, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_comment() {
+    fn test_parse_comment() -> TestResult {
         let template = "%-- This is a comment\noutput line";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1); // Comment is skipped
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::OutputLine { line, .. } => assert_eq!(*line, 2),
-            _ => panic!("Expected OutputLine"),
+            node => return Err(format!("Expected OutputLine, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_blank() {
+    fn test_parse_blank() -> TestResult {
         let template = "%blank";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
         assert!(matches!(parsed.nodes[0], TemplateNode::BlankLine { .. }));
+        Ok(())
     }
 
     #[test]
-    fn test_parse_for_loop() {
+    fn test_parse_for_loop() -> TestResult {
         let template = "%for field in struct.fields\n    public {{field.name}};\n%endfor";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::ForLoop {
                 variable,
                 collection,
@@ -859,35 +876,39 @@ mod tests {
                 assert_eq!(collection.path, vec!["struct", "fields"]);
                 assert_eq!(body.len(), 1);
             }
-            _ => panic!("Expected ForLoop"),
+            node => return Err(format!("Expected ForLoop, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_conditional() {
+    fn test_parse_conditional() -> TestResult {
         let template = "%if field.is_primary_key\n    [Key]\n%else\n    // normal\n%endif";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::Conditional {
                 then_body,
                 else_body,
                 ..
             } => {
                 assert_eq!(then_body.len(), 1);
-                assert!(else_body.is_some());
-                assert_eq!(else_body.as_ref().unwrap().len(), 1);
+                let else_body = else_body
+                    .as_ref()
+                    .ok_or_else(|| "missing conditional else body".to_string())?;
+                assert_eq!(else_body.len(), 1);
             }
-            _ => panic!("Expected Conditional"),
+            node => return Err(format!("Expected Conditional, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_include() {
+    fn test_parse_include() -> TestResult {
         let template = "%include \"section/class_body\" with struct, indent=1";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::Include {
                 template_path,
                 context_bindings,
@@ -898,81 +919,87 @@ mod tests {
                 assert_eq!(context_bindings.len(), 1);
                 assert_eq!(*indent, Some(1));
             }
-            _ => panic!("Expected Include"),
+            node => return Err(format!("Expected Include, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_let_set() {
+    fn test_parse_let_set() -> TestResult {
         let template = "%let count = 10";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::LetSet { name, expr, .. } => {
                 assert_eq!(name, "count");
                 assert_eq!(expr, "10");
             }
-            _ => panic!("Expected LetSet"),
+            node => return Err(format!("Expected LetSet, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_set() {
+    fn test_parse_set() -> TestResult {
         let template = "%set name = struct.name";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::LetSet { name, expr, .. } => {
                 assert_eq!(name, "name");
                 assert_eq!(expr, "struct.name");
             }
-            _ => panic!("Expected LetSet"),
+            node => return Err(format!("Expected LetSet, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_let_string_literal() {
+    fn test_parse_let_string_literal() -> TestResult {
         let template = "%let greeting = \"hello world\"";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::LetSet { name, expr, .. } => {
                 assert_eq!(name, "greeting");
                 assert_eq!(expr, "\"hello world\"");
             }
-            _ => panic!("Expected LetSet"),
+            node => return Err(format!("Expected LetSet, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_logic_block() {
+    fn test_parse_logic_block() -> TestResult {
         let template = "%logic\nlet x = 1;\nlet y = x + 2;\n%endlogic";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::LogicBlock { body, .. } => {
                 assert_eq!(body, "let x = 1;\nlet y = x + 2;");
             }
-            _ => panic!("Expected LogicBlock"),
+            node => return Err(format!("Expected LogicBlock, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_logic_block_empty() {
+    fn test_parse_logic_block_empty() -> TestResult {
         let template = "%logic\n%endlogic";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::LogicBlock { body, .. } => {
                 assert_eq!(body, "");
             }
-            _ => panic!("Expected LogicBlock"),
+            node => return Err(format!("Expected LogicBlock, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_match_simple() {
+    fn test_parse_match_simple() -> TestResult {
         let template = "%match field.field_type.type_name\n%when \"u32\"\n    uint\n%when \"string\"\n    string\n%else\n    object\n%endmatch";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::Match {
                 subject,
                 arms,
@@ -985,43 +1012,46 @@ mod tests {
                 assert_eq!(arms[1].pattern, "\"string\"");
                 assert!(else_body.is_some());
             }
-            _ => panic!("Expected Match"),
+            node => return Err(format!("Expected Match, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_match_with_guard() {
+    fn test_parse_match_with_guard() -> TestResult {
         let template = "%match field.field_type.type_name\n%when \"u32\" if field.is_optional\n    nullable_uint\n%endmatch";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::Match { arms, .. } => {
                 assert_eq!(arms.len(), 1);
                 assert_eq!(arms[0].pattern, "\"u32\"");
                 assert_eq!(arms[0].guard, Some("field.is_optional".to_string()));
             }
-            _ => panic!("Expected Match"),
+            node => return Err(format!("Expected Match, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_match_wildcard() {
+    fn test_parse_match_wildcard() -> TestResult {
         let template = "%match value\n%when _\n    default\n%endmatch";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::Match { arms, .. } => {
                 assert_eq!(arms.len(), 1);
                 assert_eq!(arms[0].pattern, "_");
             }
-            _ => panic!("Expected Match"),
+            node => return Err(format!("Expected Match, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_block_def() {
+    fn test_parse_block_def() -> TestResult {
         let template = "%block field_line(f)\n    public {{f.name}};\n%endblock";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::BlockDef {
                 name, params, body, ..
             } => {
@@ -1029,91 +1059,97 @@ mod tests {
                 assert_eq!(params, &vec!["f".to_string()]);
                 assert_eq!(body.len(), 1);
             }
-            _ => panic!("Expected BlockDef"),
+            node => return Err(format!("Expected BlockDef, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_block_no_params() {
+    fn test_parse_block_no_params() -> TestResult {
         let template = "%block header\n    // Header\n%endblock";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::BlockDef { name, params, .. } => {
                 assert_eq!(name, "header");
                 assert!(params.is_empty());
             }
-            _ => panic!("Expected BlockDef"),
+            node => return Err(format!("Expected BlockDef, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_render() {
+    fn test_parse_render() -> TestResult {
         let template = "%render field_line with field";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::Render {
                 target, binding, ..
             } => {
                 assert_eq!(target, "field_line");
                 assert_eq!(*binding, Some("field".to_string()));
             }
-            _ => panic!("Expected Render"),
+            node => return Err(format!("Expected Render, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_render_no_binding() {
+    fn test_parse_render_no_binding() -> TestResult {
         let template = "%render header";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::Render {
                 target, binding, ..
             } => {
                 assert_eq!(target, "header");
                 assert!(binding.is_none());
             }
-            _ => panic!("Expected Render"),
+            node => return Err(format!("Expected Render, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_render_dynamic() {
+    fn test_parse_render_dynamic() -> TestResult {
         let template = "%render $block_name with item";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::Render {
                 target, binding, ..
             } => {
                 assert_eq!(target, "$block_name");
                 assert_eq!(*binding, Some("item".to_string()));
             }
-            _ => panic!("Expected Render"),
+            node => return Err(format!("Expected Render, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_while() {
+    fn test_parse_while() -> TestResult {
         let template = "%while counter.has_remaining\n    line\n%endwhile";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
+        let parsed = parse_test(template)?;
         assert_eq!(parsed.nodes.len(), 1);
-        match &parsed.nodes[0] {
+        match first_node(&parsed)? {
             TemplateNode::While {
                 condition, body, ..
             } => {
                 assert_eq!(condition, "counter.has_remaining");
                 assert_eq!(body.len(), 1);
             }
-            _ => panic!("Expected While"),
+            node => return Err(format!("Expected While, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_for_with_where() {
+    fn test_parse_for_with_where() -> TestResult {
         let template =
             "%for field in struct.fields | where field.is_primary_key\n    {{field.name}}\n%endfor";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::ForLoop {
                 variable,
                 collection,
@@ -1125,8 +1161,9 @@ mod tests {
                 assert!(collection.where_filter.is_some());
                 assert_eq!(body.len(), 1);
             }
-            _ => panic!("Expected ForLoop"),
+            node => return Err(format!("Expected ForLoop, got {node:?}")),
         }
+        Ok(())
     }
 
     #[test]
@@ -1142,10 +1179,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_elif() {
+    fn test_parse_elif() -> TestResult {
         let template = "%if item.is_struct\n  struct\n%elif item.is_enum\n  enum\n%elif item.is_namespace\n  ns\n%else\n  other\n%endif";
-        let parsed = parse_template(template, "test.ptpl").unwrap();
-        match &parsed.nodes[0] {
+        let parsed = parse_test(template)?;
+        match first_node(&parsed)? {
             TemplateNode::Conditional {
                 then_body,
                 elif_branches,
@@ -1156,7 +1193,8 @@ mod tests {
                 assert_eq!(elif_branches.len(), 2);
                 assert!(else_body.is_some());
             }
-            _ => panic!("Expected Conditional"),
+            node => return Err(format!("Expected Conditional, got {node:?}")),
         }
+        Ok(())
     }
 }
