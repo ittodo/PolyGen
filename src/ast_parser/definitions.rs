@@ -10,11 +10,16 @@ use super::helpers::{extract_comment_content, parse_path};
 use super::metadata::parse_metadata;
 
 pub fn parse_definition(pair: Pair<Rule>) -> Result<Definition, AstBuildError> {
-    let (_line, _col) = pair.line_col();
+    let (line, col) = pair.line_col();
     let mut inner_pairs = pair.into_inner().peekable();
     let metadata = parse_metadata(&mut inner_pairs)?;
 
-    let def_pair = inner_pairs.next().unwrap();
+    let def_pair = inner_pairs.next().ok_or(AstBuildError::MissingElement {
+        rule: Rule::definition,
+        element: "definition body".to_string(),
+        line,
+        col,
+    })?;
     let (inner_line, inner_col) = def_pair.line_col();
 
     let definition = match def_pair.as_rule() {
@@ -66,7 +71,13 @@ pub fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, AstBuildError> {
 
     for p in inner {
         if p.as_rule() == Rule::namespace_body_item {
-            let item_pair = p.into_inner().next().unwrap();
+            let (p_line, p_col) = p.line_col();
+            let item_pair = p.into_inner().next().ok_or(AstBuildError::MissingElement {
+                rule: Rule::namespace_body_item,
+                element: "item".to_string(),
+                line: p_line,
+                col: p_col,
+            })?;
             match item_pair.as_rule() {
                 Rule::namespace_import => {
                     imports.push(parse_namespace_import(item_pair)?);
@@ -90,8 +101,14 @@ pub fn parse_namespace(pair: Pair<Rule>) -> Result<Namespace, AstBuildError> {
 }
 
 pub fn parse_namespace_import(pair: Pair<Rule>) -> Result<NamespaceImport, AstBuildError> {
+    let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
-    let path = parse_path(inner.next().unwrap());
+    let path = parse_path(inner.next().ok_or(AstBuildError::MissingElement {
+        rule: Rule::namespace_import,
+        element: "path".to_string(),
+        line,
+        col,
+    })?);
     let all = inner.next().is_some();
     Ok(NamespaceImport { path, all })
 }
@@ -134,7 +151,8 @@ pub fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
     let mut enum_name: Option<String> = None;
     if let Some(p) = inner.peek() {
         if p.as_rule() == Rule::IDENT {
-            enum_name = Some(inner.next().unwrap().as_str().to_string());
+            enum_name = Some(p.as_str().to_string());
+            inner.next();
         }
     }
 
