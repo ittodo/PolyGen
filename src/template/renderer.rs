@@ -161,17 +161,41 @@ impl<'a> Renderer<'a> {
         Ok(())
     }
 
+    fn rhai_bridge_mut(&mut self) -> Result<&mut RhaiBridge, String> {
+        self.rhai_bridge
+            .as_mut()
+            .ok_or_else(|| "Rhai bridge has not been initialized".to_string())
+    }
+
+    fn rhai_bridge_ref(&self) -> Result<&RhaiBridge, String> {
+        self.rhai_bridge
+            .as_ref()
+            .ok_or_else(|| "Rhai bridge has not been initialized".to_string())
+    }
+
     /// Synchronizes context bindings + file_bindings into the Rhai scope.
-    fn sync_context_to_rhai(&mut self, context: &TemplateContext) {
-        let bridge = self.rhai_bridge.as_mut().unwrap();
+    fn sync_context_to_rhai(&mut self, context: &TemplateContext) -> Result<(), String> {
+        let context_bindings = context
+            .bindings()
+            .iter()
+            .map(|(name, value)| (name.clone(), context_value_to_dynamic(value)))
+            .collect::<Vec<_>>();
+        let file_bindings = self
+            .file_bindings
+            .iter()
+            .map(|(name, value)| (name.clone(), context_value_to_dynamic(value)))
+            .collect::<Vec<_>>();
+
+        let bridge = self.rhai_bridge_mut()?;
         // Push context bindings
-        for (name, value) in context.bindings() {
-            bridge.push_or_set(name, context_value_to_dynamic(value));
+        for (name, value) in context_bindings {
+            bridge.push_or_set(&name, value);
         }
         // Push file_bindings (higher priority)
-        for (name, value) in &self.file_bindings {
-            bridge.push_or_set(name, context_value_to_dynamic(value));
+        for (name, value) in file_bindings {
+            bridge.push_or_set(&name, value);
         }
+        Ok(())
     }
 
     /// Renders a list of template nodes.
@@ -249,13 +273,11 @@ impl<'a> Renderer<'a> {
             } => {
                 let coll_value = self.resolve_collection_path(&collection.path, context)?;
                 if let Some(items) = coll_value.as_list() {
-                    let scope_len = self.rhai_bridge.as_ref().unwrap().scope_len();
+                    let scope_len = self.rhai_bridge_ref()?.scope_len();
                     for item in items {
                         let child_ctx = context.child_with(variable, item.clone());
                         // Push loop variable into Rhai scope
-                        self.rhai_bridge
-                            .as_mut()
-                            .unwrap()
+                        self.rhai_bridge_mut()?
                             .push_or_set(variable, context_value_to_dynamic(item));
                         // Apply where filter if present
                         if let Some(ref where_cond_str) = collection.where_filter {
@@ -265,7 +287,7 @@ impl<'a> Renderer<'a> {
                         }
                         self.render_nodes(body, &child_ctx, source_file, indent)?;
                     }
-                    self.rhai_bridge.as_mut().unwrap().rewind_scope(scope_len);
+                    self.rhai_bridge_mut()?.rewind_scope(scope_len);
                 }
             }
 
@@ -289,9 +311,8 @@ impl<'a> Renderer<'a> {
             TemplateNode::LetSet { name, expr, .. } => {
                 let value = self.eval_let_expr(expr, context)?;
                 // Push into Rhai scope so %if can see it
-                if let Some(ref mut bridge) = self.rhai_bridge {
-                    bridge.push_or_set(name, context_value_to_dynamic(&value));
-                }
+                self.rhai_bridge_mut()?
+                    .push_or_set(name, context_value_to_dynamic(&value));
                 self.file_bindings.insert(name.clone(), value);
             }
 
@@ -317,15 +338,18 @@ impl<'a> Renderer<'a> {
             }
 
             TemplateNode::LogicBlock { line, body } => {
-                let bridge = self.rhai_bridge.as_mut().unwrap();
                 // Merge context bindings + file_bindings (file_bindings take priority)
                 let mut combined = context.bindings().clone();
                 for (k, v) in &self.file_bindings {
                     combined.insert(k.clone(), v.clone());
                 }
-                let new_bindings = bridge
-                    .execute_logic(body, &combined)
-                    .map_err(|e| format!("{}:{}: {}", source_file, line, e))?;
+                let (new_bindings, output_content) = {
+                    let bridge = self.rhai_bridge_mut()?;
+                    let new_bindings = bridge
+                        .execute_logic(body, &combined)
+                        .map_err(|e| format!("{}:{}: {}", source_file, line, e))?;
+                    (new_bindings, bridge.take_output())
+                };
                 // Only merge NEW variables back (not context originals)
                 for (name, value) in new_bindings {
                     if context.get(&name).is_none() {
@@ -333,7 +357,7 @@ impl<'a> Renderer<'a> {
                     }
                 }
                 // If set_output() was called, use its content as the template output
-                if let Some(output_content) = bridge.take_output() {
+                if let Some(output_content) = output_content {
                     for output_line in output_content.lines() {
                         self.output_lines.push(output_line.to_string());
                     }
@@ -501,9 +525,13 @@ impl<'a> Renderer<'a> {
     /// 1. First tries Rhai evaluation (supports `>`, `<`, `.len()`, method calls, etc.)
     /// 2. On Rhai error, falls back to path-based resolution for simple property chains
     ///    (e.g. `item.as_member.has_value` where intermediate steps may return Null)
-    fn eval_condition(&mut self, cond_str: &str, context: &TemplateContext) -> Result<bool, String> {
-        self.sync_context_to_rhai(context);
-        match self.rhai_bridge.as_mut().unwrap().eval_bool(cond_str) {
+    fn eval_condition(
+        &mut self,
+        cond_str: &str,
+        context: &TemplateContext,
+    ) -> Result<bool, String> {
+        self.sync_context_to_rhai(context)?;
+        match self.rhai_bridge_mut()?.eval_bool(cond_str) {
             Ok(result) => Ok(result),
             Err(_rhai_err) => {
                 // Fallback: resolve as property path expression
@@ -1548,7 +1576,10 @@ mod tests {
     fn test_render_logic_with_prelude() {
         let source = "%logic\nlet result = double(21);\n%endlogic\n{{result}}";
         let templates = make_templates(&[("test.ptpl", source)]);
-        let config = RenderConfig { rhai_prelude: vec!["fn double(x) { x * 2 }".to_string()], ..Default::default() };
+        let config = RenderConfig {
+            rhai_prelude: vec!["fn double(x) { x * 2 }".to_string()],
+            ..Default::default()
+        };
         let ctx = TemplateContext::new();
 
         let renderer = Renderer::new(&templates, &config);
