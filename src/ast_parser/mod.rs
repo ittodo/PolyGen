@@ -153,20 +153,27 @@ mod tests {
     use pest::Parser;
 
     /// Helper to parse a schema string and build AST
-    fn parse_schema(input: &str) -> Result<AstRoot, AstBuildError> {
+    fn parse_schema(input: &str) -> AstRoot {
         let input = input.replace("\r\n", "\n");
-        let main_pair = Polygen::parse(Rule::main, &input)
-            .expect("Failed to parse")
-            .next()
-            .expect("No main pair");
-        build_ast_from_pairs(main_pair, PathBuf::from("test.schema"))
+        let mut pairs = match Polygen::parse(Rule::main, &input) {
+            Ok(pairs) => pairs,
+            Err(err) => panic!("failed to parse test schema: {err}"),
+        };
+        let main_pair = match pairs.next() {
+            Some(pair) => pair,
+            None => panic!("missing main pair for test schema"),
+        };
+        match build_ast_from_pairs(main_pair, PathBuf::from("test.schema")) {
+            Ok(ast) => ast,
+            Err(err) => panic!("failed to build test AST: {err}"),
+        }
     }
 
     // ========== File Import Tests ==========
 
     #[test]
     fn test_parse_file_import() {
-        let ast = parse_schema(r#"import "common/types.poly";"#).unwrap();
+        let ast = parse_schema(r#"import "common/types.poly";"#);
         assert_eq!(ast.file_imports.len(), 1);
         assert_eq!(ast.file_imports[0], "common/types.poly");
     }
@@ -178,8 +185,7 @@ mod tests {
             import "common/types.poly";
             import "game/items.poly";
             "#,
-        )
-        .unwrap();
+        );
         assert_eq!(ast.file_imports.len(), 2);
         assert_eq!(ast.file_imports[0], "common/types.poly");
         assert_eq!(ast.file_imports[1], "game/items.poly");
@@ -189,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_parse_empty_table() {
-        let ast = parse_schema("table User {}").unwrap();
+        let ast = parse_schema("table User {}");
         assert_eq!(ast.definitions.len(), 1);
         if let Definition::Table(table) = &ast.definitions[0] {
             assert_eq!(table.name, Some("User".to_string()));
@@ -209,8 +215,7 @@ mod tests {
                 active: bool;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             assert_eq!(table.name, Some("User".to_string()));
@@ -236,8 +241,7 @@ mod tests {
                 nickname: string?;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -258,8 +262,7 @@ mod tests {
                 tags: string[];
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -280,8 +283,7 @@ mod tests {
                 address: game.common.Address;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -308,8 +310,7 @@ mod tests {
                 id: i32 primary_key;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -330,8 +331,7 @@ mod tests {
                 name: string max_length(100);
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -352,8 +352,7 @@ mod tests {
                 email: string unique max_length(255);
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -378,8 +377,7 @@ mod tests {
                 Inactive
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Enum(e) = &ast.definitions[0] {
             assert_eq!(e.name, Some("Status".to_string()));
@@ -401,8 +399,7 @@ mod tests {
                 High = 10
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Enum(e) = &ast.definitions[0] {
             assert_eq!(e.variants[0].value, Some(0));
@@ -423,8 +420,7 @@ mod tests {
                 table Item {}
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Namespace(ns) = &ast.definitions[0] {
             assert_eq!(ns.path, vec!["game", "common"]);
@@ -444,8 +440,7 @@ mod tests {
                 }
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Namespace(outer_ns) = &ast.definitions[0] {
             assert_eq!(outer_ns.path, vec!["game"]);
@@ -468,8 +463,7 @@ mod tests {
             @deprecated
             table OldUser {}
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             assert_eq!(table.metadata.len(), 1);
@@ -491,8 +485,7 @@ mod tests {
             @csv(name: "users", delimiter: ",")
             table User {}
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let Metadata::Annotation(ann) = &table.metadata[0] {
@@ -524,8 +517,7 @@ mod tests {
             @index(name, level)
             table User {}
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let Metadata::Annotation(ann) = &table.metadata[0] {
@@ -557,8 +549,7 @@ mod tests {
             @index(name, level, unique: true)
             table User {}
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let Metadata::Annotation(ann) = &table.metadata[0] {
@@ -592,8 +583,7 @@ mod tests {
                 city: string;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Embed(embed) = &ast.definitions[0] {
             assert_eq!(embed.name, Some("Address".to_string()));
@@ -614,8 +604,7 @@ mod tests {
                 };
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::InlineEmbed(ief)) = &table.members[0] {
@@ -643,8 +632,7 @@ mod tests {
                 };
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::InlineEnum(ief)) = &table.members[0] {
@@ -667,8 +655,7 @@ mod tests {
             // This is a user table
             table User {}
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             assert_eq!(table.metadata.len(), 1);
@@ -690,8 +677,7 @@ mod tests {
                multi-line comment */
             table User {}
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             assert_eq!(table.metadata.len(), 1);
@@ -716,8 +702,7 @@ mod tests {
                 name: string = 2;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -757,8 +742,7 @@ mod tests {
                 m: bytes;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             assert_eq!(table.members.len(), 13);
@@ -819,8 +803,7 @@ mod tests {
                 }
             }
             "#,
-        )
-        .unwrap();
+        );
 
         assert_eq!(ast.file_imports.len(), 1);
         assert_eq!(ast.definitions.len(), 1);
@@ -847,12 +830,19 @@ User.user_name -> name;
 game.Player.hp -> health;
 "#;
         let input = input.replace("\r\n", "\n");
-        let renames_pair = Polygen::parse(Rule::renames_file, &input)
-            .expect("Failed to parse renames file")
-            .next()
-            .expect("No renames_file pair");
+        let mut pairs = match Polygen::parse(Rule::renames_file, &input) {
+            Ok(pairs) => pairs,
+            Err(err) => panic!("failed to parse renames file: {err}"),
+        };
+        let renames_pair = match pairs.next() {
+            Some(pair) => pair,
+            None => panic!("missing renames_file pair"),
+        };
 
-        let renames = super::parse_renames_file(renames_pair).expect("Failed to build renames");
+        let renames = match super::parse_renames_file(renames_pair) {
+            Ok(renames) => renames,
+            Err(err) => panic!("failed to build renames: {err}"),
+        };
 
         assert_eq!(renames.len(), 3);
 
@@ -879,8 +869,7 @@ game.Player.hp -> health;
                 created_at: timestamp;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -904,8 +893,7 @@ game.Player.hp -> health;
                 created_at: timestamp auto_create;
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -927,8 +915,7 @@ game.Player.hp -> health;
                 updated_at: timestamp auto_update(utc);
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -956,8 +943,7 @@ game.Player.hp -> health;
                 ny_time: timestamp auto_create(-5);
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             // Korea time: +9
@@ -1008,8 +994,7 @@ game.Player.hp -> health;
                 korea_time: timestamp auto_create("Korea Standard Time");
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
@@ -1034,8 +1019,7 @@ game.Player.hp -> health;
                 local_time: timestamp auto_update(local);
             }
             "#,
-        )
-        .unwrap();
+        );
 
         if let Definition::Table(table) = &ast.definitions[0] {
             if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
