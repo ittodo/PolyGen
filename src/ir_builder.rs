@@ -1,13 +1,14 @@
 use crate::ast_model::{self, Definition, Metadata, TableMember};
 use crate::ir_model::{
     self, EnumDef, EnumItem, FieldDef, FileDef, IndexDef, NamespaceDef, NamespaceItem, RelationDef,
-    RenameInfo, RenameKind, SchemaContext, StructDef, StructItem, TypeRef,
+    SchemaContext, StructDef, StructItem, TypeRef,
 };
 use crate::type_registry::{TypeKind, TypeRegistry};
 use heck::ToPascalCase;
 
 mod constraints;
 mod metadata;
+mod renames;
 mod type_names;
 
 use constraints::{convert_constraints_to_attributes, extract_constraint_info};
@@ -15,27 +16,10 @@ use metadata::{
     convert_annotation_to_ir, extract_cache_strategy, extract_datasource, extract_pack_separator,
     extract_soft_delete_field, is_readonly,
 };
+use renames::convert_rename;
 use type_names::{
     basic_name, last_segment_owned, namespace_of_owned, parent_type_path_of, qualify,
 };
-
-/// Converts an AST RenameRule to an IR RenameInfo.
-fn convert_rename(rename: &ast_model::RenameRule) -> RenameInfo {
-    // Determine the kind based on path length:
-    // - Length 2: Table rename (e.g., game.Player -> User)
-    // - Length 3+: Field rename (e.g., game.User.hp -> health)
-    let kind = if rename.from_path.len() <= 2 {
-        RenameKind::Table
-    } else {
-        RenameKind::Field
-    };
-
-    RenameInfo {
-        kind,
-        from_path: rename.from_path.clone(),
-        to_name: rename.to_name.clone(),
-    }
-}
 
 /// Builds the template-friendly Intermediate Representation (IR) from the AST definitions.
 pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {

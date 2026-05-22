@@ -13,6 +13,7 @@ src/
 ├── ir_builder/           # IR 빌더 하위 헬퍼 모듈
 │   ├── constraints.rs    # constraint/attribute/timezone IR 변환 헬퍼
 │   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
+│   ├── renames.rs        # rename rule IR 변환 헬퍼
 │   └── type_names.rs     # 타입/FQN 이름 헬퍼
 ├── validation.rs         # AST 유효성 검사
 ├── error.rs              # 에러 타입 정의
@@ -76,6 +77,10 @@ src/
 - **ir_builder/constraints.rs**: IR 빌더 constraint 헬퍼
   - AST constraint를 IR constraint info로 정규화
   - C# attribute 문자열, foreign key, range, timezone 값을 변환
+
+- **ir_builder/renames.rs**: IR 빌더 rename 헬퍼
+  - AST rename rule을 IR `RenameInfo`로 변환
+  - table/field rename kind 판별
 
 ### Validation & Error Handling
 - **validation.rs**: AST 유효성 검사 (8.8KB)
