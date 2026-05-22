@@ -286,20 +286,28 @@ pub fn dynamic_is_truthy(value: &Dynamic) -> bool {
     if value.is_unit() {
         return false;
     }
-    if value.is_bool() {
-        return value.as_bool().unwrap();
+    if let Ok(value) = value.as_bool() {
+        return value;
     }
-    if value.is_int() {
-        return value.as_int().unwrap() != 0;
+    if let Ok(value) = value.as_int() {
+        return value != 0;
     }
-    if value.is_float() {
-        return value.as_float().unwrap() != 0.0;
+    if let Ok(value) = value.as_float() {
+        return value != 0.0;
     }
     if value.is_string() {
-        return !value.clone().into_string().unwrap().is_empty();
+        return value
+            .clone()
+            .into_string()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
     }
     if value.is_array() {
-        return !value.clone().into_array().unwrap().is_empty();
+        return value
+            .clone()
+            .into_array()
+            .map(|arr| !arr.is_empty())
+            .unwrap_or(false);
     }
     true
 }
@@ -353,21 +361,25 @@ pub fn dynamic_to_context_value(value: Dynamic) -> Result<ContextValue, String> 
     if value.is_unit() {
         return Ok(ContextValue::Null);
     }
-    if value.is_bool() {
-        return Ok(ContextValue::Bool(value.as_bool().unwrap()));
+    if let Ok(value) = value.as_bool() {
+        return Ok(ContextValue::Bool(value));
     }
-    if value.is_int() {
-        return Ok(ContextValue::Int(value.as_int().unwrap()));
+    if let Ok(value) = value.as_int() {
+        return Ok(ContextValue::Int(value));
     }
-    if value.is_float() {
-        return Ok(ContextValue::Float(value.as_float().unwrap()));
+    if let Ok(value) = value.as_float() {
+        return Ok(ContextValue::Float(value));
     }
     if value.is_string() {
-        let s = value.into_string().unwrap();
+        let s = value
+            .into_string()
+            .map_err(|_| "Failed to convert Rhai value to string".to_string())?;
         return Ok(ContextValue::String(s));
     }
     if value.is_array() {
-        let arr = value.into_array().unwrap();
+        let arr = value
+            .into_array()
+            .map_err(|_| "Failed to convert Rhai value to array".to_string())?;
         let mut items = Vec::new();
         for item in arr {
             items.push(dynamic_to_context_value(item)?);
