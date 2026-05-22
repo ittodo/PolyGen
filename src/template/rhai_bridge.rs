@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rhai::{Dynamic, Engine, EvalAltResult, Scope, AST};
 
@@ -205,11 +205,7 @@ impl RhaiBridge {
     /// This enables `%logic` blocks to write files directly (e.g., CSV schema files).
     /// When `preview_mode` is true and `entry_template` is set, wraps content
     /// with `/*@source:template_name*/` markers for GUI preview hinting.
-    pub fn register_write_file(
-        &mut self,
-        preview_mode: bool,
-        entry_template: Option<String>,
-    ) {
+    pub fn register_write_file(&mut self, preview_mode: bool, entry_template: Option<String>) {
         let preview_write = preview_mode;
         let entry_tmpl = entry_template;
         self.engine.register_fn(
@@ -258,10 +254,9 @@ impl RhaiBridge {
     /// allowing the codegen engine to handle file writing based on TOML configuration.
     pub fn register_set_output(&mut self) {
         let buffer = self.output_buffer.clone();
-        self.engine
-            .register_fn("set_output", move |content: &str| {
-                *buffer.lock().unwrap() = Some(content.to_string());
-            });
+        self.engine.register_fn("set_output", move |content: &str| {
+            *lock_output_buffer(&buffer) = Some(content.to_string());
+        });
     }
 
     /// Takes the output content set by `set_output()`, if any.
@@ -269,7 +264,14 @@ impl RhaiBridge {
     /// Returns `Some(content)` if `set_output()` was called during the last
     /// `execute_logic()` invocation, consuming the buffer.
     pub fn take_output(&mut self) -> Option<String> {
-        self.output_buffer.lock().unwrap().take()
+        lock_output_buffer(&self.output_buffer).take()
+    }
+}
+
+fn lock_output_buffer(buffer: &Mutex<Option<String>>) -> MutexGuard<'_, Option<String>> {
+    match buffer.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
     }
 }
 
@@ -583,5 +585,18 @@ mod tests {
         let result = bridge.load_prelude(&["invalid rhai {{{{".to_string()]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("prelude script #1"));
+    }
+
+    #[test]
+    fn test_take_output_recovers_from_poisoned_lock() {
+        let mut bridge = RhaiBridge::new();
+        let buffer = bridge.output_buffer.clone();
+        let _ = std::panic::catch_unwind(|| {
+            let mut guard = buffer.lock().unwrap();
+            *guard = Some("partial output".to_string());
+            panic!("poison output buffer");
+        });
+
+        assert_eq!(bridge.take_output(), Some("partial output".to_string()));
     }
 }
