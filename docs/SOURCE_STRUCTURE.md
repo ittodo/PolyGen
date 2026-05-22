@@ -8,8 +8,8 @@
 
 PolyGen은 `.poly` 스키마 파일을 파싱하여 여러 언어의 코드를 생성하는 폴리글랏 코드 생성기입니다.
 
-- **총 파일**: 44개 `.rs`
-- **총 코드**: ~12,500줄
+- **총 파일**: 45개 `.rs`
+- **총 코드**: ~17,600줄
 
 ---
 
@@ -113,11 +113,12 @@ Generated Code
 | 파일 | 줄 수 | 역할 |
 |------|-------|------|
 | `ir_model.rs` | 366 | IR 데이터 구조 |
-| `ir_builder.rs` | 1,304 | AST → IR 변환 |
+| `ir_builder.rs` | 1,179 | AST → IR 변환 |
 | `ir_builder/constraints.rs` | 138 | constraint/attribute/timezone IR 변환 헬퍼 |
 | `ir_builder/metadata.rs` | 92 | metadata/annotation IR 변환 헬퍼 |
 | `ir_builder/renames.rs` | 18 | rename rule IR 변환 헬퍼 |
 | `ir_builder/relations.rs` | 99 | foreign key reverse relation 후처리 |
+| `ir_builder/type_resolution.rs` | 127 | TypeRef enum/struct flag 후처리 |
 | `ir_builder/type_names.rs` | 58 | IR 타입/FQN 이름 헬퍼 |
 | `type_registry.rs` | 390 | 타입 등록/조회 (FQN 관리) |
 
@@ -166,21 +167,22 @@ Generated Code
 ## 파일 크기 분포
 
 ```
-~100줄 이하:  8개 (25%)  - 작은 유틸리티
-~300줄:      10개 (31%)  - 일반 모듈
-~500줄:       6개 (19%)  - 중간 크기
-~1000줄:      5개 (16%)  - 큰 모듈
-1000줄 이상:  3개 (9%)   - 핵심 모듈
+~100줄 이하: 14개 (31%)  - 작은 유틸리티
+~300줄:       9개 (20%)  - 일반 모듈
+~500줄:       9개 (20%)  - 중간 크기
+~1000줄:      8개 (18%)  - 큰 모듈
+1000줄 이상:  5개 (11%)  - 핵심 모듈
 ```
 
 ### 큰 파일 (1000줄 이상)
 
 | 파일 | 줄 수 | 상태 |
 |------|-------|------|
-| `ir_builder.rs` | 1,304 | 타입 이름/metadata/constraint/rename/relation 헬퍼 분리 진행 |
-| `rhai/csharp/loaders/csv.rs` | 1,120 | 분리 고려 가능 |
-| `symbol_table.rs` | 1,093 | 내부 구조화됨 |
-| `ast_parser/mod.rs` | 1,035 | 역할별 분리 완료 |
+| `template/renderer.rs` | 1,470 | 렌더링 단계 분리 고려 가능 |
+| `ir_builder.rs` | 1,179 | 타입 이름/metadata/constraint/rename/relation/type resolution 헬퍼 분리 진행 |
+| `template/parser.rs` | 1,093 | 파서 단계 분리 고려 가능 |
+| `rhai/csharp/loaders/csv.rs` | 1,091 | 분리 고려 가능 |
+| `symbol_table.rs` | 1,019 | 내부 구조화됨 |
 
 ---
 
@@ -197,6 +199,7 @@ main.rs
               │      ├── ir_builder/metadata.rs
               │      ├── ir_builder/renames.rs
               │      ├── ir_builder/relations.rs
+              │      ├── ir_builder/type_resolution.rs
               │      ├── ir_builder/type_names.rs
               │      └── type_registry.rs
               ├── codegen.rs ──→ rhai_generator.rs

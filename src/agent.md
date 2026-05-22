@@ -15,6 +15,7 @@ src/
 │   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
 │   ├── renames.rs        # rename rule IR 변환 헬퍼
 │   ├── relations.rs      # foreign key reverse relation 후처리
+│   ├── type_resolution.rs # TypeRef enum/struct flag 후처리
 │   └── type_names.rs     # 타입/FQN 이름 헬퍼
 ├── validation.rs         # AST 유효성 검사
 ├── error.rs              # 에러 타입 정의
@@ -86,6 +87,11 @@ src/
 - **ir_builder/relations.rs**: IR 빌더 relation 후처리
   - `foreign_key(... as ...)`에서 reverse relation 수집
   - 대상 table에 `RelationDef` 추가
+
+- **ir_builder/type_resolution.rs**: IR 빌더 타입 종류 후처리
+  - `TypeRegistry`에 struct/embed/enum 정의 수집
+  - `TypeRef`의 `is_enum`/`is_struct` flag 및 FQN 보정
+  - inline embedded struct와 namespace 기반 타입 참조 해석
 
 ### Validation & Error Handling
 - **validation.rs**: AST 유효성 검사 (8.8KB)
