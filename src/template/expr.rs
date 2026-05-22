@@ -177,57 +177,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_simple_expr() {
-        let expr = parse_expr("struct.name").unwrap();
+    fn test_parse_simple_expr() -> Result<(), String> {
+        let expr = parse_expr("struct.name")?;
         assert_eq!(expr.path, vec!["struct", "name"]);
         assert!(expr.filters.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_expr_with_filter() {
-        let expr = parse_expr("field.name | pascal_case").unwrap();
+    fn test_parse_expr_with_filter() -> Result<(), String> {
+        let expr = parse_expr("field.name | pascal_case")?;
         assert_eq!(expr.path, vec!["field", "name"]);
         assert_eq!(expr.filters, vec![Filter::PascalCase]);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_expr_with_multiple_filters() {
-        let expr = parse_expr("field.type | lang_type | upper").unwrap();
+    fn test_parse_expr_with_multiple_filters() -> Result<(), String> {
+        let expr = parse_expr("field.type | lang_type | upper")?;
         assert_eq!(expr.path, vec!["field", "type"]);
         assert_eq!(expr.filters, vec![Filter::LangType, Filter::Upper]);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_expr_join_filter() {
-        let expr = parse_expr("items | join(\", \")").unwrap();
+    fn test_parse_expr_join_filter() -> Result<(), String> {
+        let expr = parse_expr("items | join(\", \")")?;
         assert_eq!(expr.filters, vec![Filter::Join(", ".to_string())]);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_collection() {
-        let coll = parse_collection("namespace.items").unwrap();
+    fn test_parse_collection() -> Result<(), String> {
+        let coll = parse_collection("namespace.items")?;
         assert_eq!(coll.path, vec!["namespace", "items"]);
         assert!(coll.where_filter.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_collection_with_where() {
-        let coll = parse_collection("struct.fields | where field.is_primary_key").unwrap();
+    fn test_parse_collection_with_where() -> Result<(), String> {
+        let coll = parse_collection("struct.fields | where field.is_primary_key")?;
         assert_eq!(coll.path, vec!["struct", "fields"]);
-        assert_eq!(
-            coll.where_filter,
-            Some("field.is_primary_key".to_string())
-        );
+        assert_eq!(coll.where_filter, Some("field.is_primary_key".to_string()));
+        Ok(())
     }
 
     #[test]
-    fn test_parse_collection_where_with_not() {
-        let coll = parse_collection("struct.fields | where !field.is_optional").unwrap();
+    fn test_parse_collection_where_with_not() -> Result<(), String> {
+        let coll = parse_collection("struct.fields | where !field.is_optional")?;
         assert_eq!(coll.path, vec!["struct", "fields"]);
-        assert_eq!(
-            coll.where_filter,
-            Some("!field.is_optional".to_string())
-        );
+        assert_eq!(coll.where_filter, Some("!field.is_optional".to_string()));
+        Ok(())
     }
 
     #[test]
