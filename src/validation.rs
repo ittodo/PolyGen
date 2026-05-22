@@ -12,6 +12,27 @@ pub fn validate_ast(definitions: &[Definition]) -> Result<(), ValidationError> {
     Ok(())
 }
 
+fn required_name<'a>(name: &'a Option<String>, kind: &str) -> Result<&'a str, ValidationError> {
+    name.as_deref().ok_or_else(|| ValidationError::MissingName {
+        kind: kind.to_string(),
+    })
+}
+
+fn push_required_name(
+    path: &mut Vec<String>,
+    name: &Option<String>,
+    kind: &str,
+) -> Result<(), ValidationError> {
+    path.push(required_name(name, kind)?.to_string());
+    Ok(())
+}
+
+fn qualified_name(path: &[String], name: &str) -> String {
+    let mut parts = path.to_vec();
+    parts.push(name.to_string());
+    parts.join(".")
+}
+
 fn collect_from_members(
     members: &[TableMember],
     path: &mut Vec<String>,
@@ -20,7 +41,7 @@ fn collect_from_members(
     for member in members {
         match member {
             TableMember::Embed(e) => {
-                path.push(e.name.clone().expect("Embed name should be present"));
+                push_required_name(path, &e.name, "embed")?;
                 let embed_fqn = path.join(".");
                 if !registry.register(&embed_fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(embed_fqn));
@@ -40,11 +61,7 @@ fn collect_from_members(
                 }
             }
             TableMember::Field(FieldDefinition::InlineEmbed(ief)) => {
-                path.push(
-                    ief.name
-                        .clone()
-                        .expect("Inline embed name should be present"),
-                );
+                push_required_name(path, &ief.name, "inline embed")?;
                 let embed_fqn = path.join(".");
                 if !registry.register(&embed_fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(embed_fqn));
@@ -75,24 +92,13 @@ fn collect_all_types(
                 }
             }
             Definition::Table(t) => {
-                let fqn = path
-                    .iter()
-                    .chain(std::iter::once(
-                        t.name.as_ref().expect("Table name should be present"),
-                    ))
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(".");
+                let table_name = required_name(&t.name, "table")?;
+                let fqn = qualified_name(path, table_name);
                 if !registry.register(&fqn, TypeKind::Struct) {
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
 
-                path.push(
-                    t.name
-                        .as_ref()
-                        .expect("Table name should be present")
-                        .clone(),
-                );
+                path.push(table_name.to_string());
                 collect_from_members(&t.members, path, registry)?;
                 path.pop();
             }
@@ -110,23 +116,12 @@ fn collect_all_types(
                 }
             }
             Definition::Embed(e) => {
-                let fqn = path
-                    .iter()
-                    .chain(std::iter::once(
-                        e.name.as_ref().expect("Embed name should be present"),
-                    ))
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(".");
+                let embed_name = required_name(&e.name, "embed")?;
+                let fqn = qualified_name(path, embed_name);
                 if !registry.register(&fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
-                path.push(
-                    e.name
-                        .as_ref()
-                        .expect("Embed name should be present")
-                        .clone(),
-                );
+                path.push(embed_name.to_string());
                 collect_from_members(&e.members, path, registry)?;
                 path.pop();
             }
@@ -195,14 +190,14 @@ fn validate_table_members(
                     validate_timestamp_constraints(rf)?;
                 }
                 FieldDefinition::InlineEmbed(ief) => {
-                    path.push(ief.name.clone().expect("Inline embed must have a name"));
+                    push_required_name(path, &ief.name, "inline embed")?;
                     validate_table_members(&ief.members, path, registry)?;
                     path.pop();
                 }
                 FieldDefinition::InlineEnum(_) => {}
             },
             TableMember::Embed(embed) => {
-                path.push(embed.name.clone().expect("Embed must have a name"));
+                push_required_name(path, &embed.name, "embed")?;
                 validate_table_members(&embed.members, path, registry)?;
                 path.pop();
             }
@@ -302,14 +297,14 @@ fn validate_all_types(
                 }
             }
             Definition::Table(t) => {
-                path.push(t.name.clone().expect("Table name should be present"));
+                push_required_name(path, &t.name, "table")?;
                 validate_table_members(&t.members, path, registry)?;
                 path.pop();
             }
             Definition::Enum(_) => { /* Enums do not reference other types */ }
             Definition::Embed(e) => {
                 // Validate types used within the embed's fields.
-                path.push(e.name.clone().expect("Embed name should be present"));
+                push_required_name(path, &e.name, "embed")?;
                 validate_table_members(&e.members, path, registry)?;
                 path.pop();
             }
@@ -452,6 +447,45 @@ mod tests {
             vec![make_field_basic("name", BasicType::String)],
         )];
         assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_missing_table_name_fails() {
+        let definitions = vec![Definition::Table(Table {
+            metadata: vec![],
+            name: None,
+            members: vec![],
+        })];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::MissingName {
+                kind: "table".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_missing_inline_embed_name_fails() {
+        let definitions = vec![make_table(
+            "User",
+            vec![TableMember::Field(FieldDefinition::InlineEmbed(
+                InlineEmbedField {
+                    metadata: vec![],
+                    name: None,
+                    members: vec![],
+                    cardinality: None,
+                    field_number: None,
+                },
+            ))],
+        )];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::MissingName {
+                kind: "inline embed".to_string(),
+            })
+        );
     }
 
     // ========== Duplicate Definition Tests ==========
