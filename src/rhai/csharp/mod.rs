@@ -81,16 +81,16 @@ fn cs_write_csv_expr(field: &mut FieldDef, obj_var: &str) -> String {
 
 fn generate_write_logic(t: &TypeRef, access: &str) -> String {
     if t.is_list {
-        let inner = t.inner_type.as_ref().unwrap();
-        let inner_access = format!("{}[0]", access);
-        let inner_write = generate_value_write(inner, &inner_access);
+        if let Some(inner) = t.inner_type.as_ref() {
+            let inner_access = format!("{}[0]", access);
+            let inner_write = generate_value_write(inner, &inner_access);
 
-        format!(
-            "if ({access} != null && {access}.Count > 0) {{ {inner_write} }} else {{ cols.Add(string.Empty); }}"
-        )
-    } else if t.is_option {
-        let _inner = t.inner_type.as_ref().unwrap();
-        generate_value_write(t, access)
+            format!(
+                "if ({access} != null && {access}.Count > 0) {{ {inner_write} }} else {{ cols.Add(string.Empty); }}"
+            )
+        } else {
+            "cols.Add(string.Empty);".to_string()
+        }
     } else {
         generate_value_write(t, access)
     }
