@@ -402,18 +402,20 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn create_config_file(dir: &Path, lang: &str, content: &str) -> PathBuf {
+    type TestResult<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+    fn create_config_file(dir: &Path, lang: &str, content: &str) -> TestResult<PathBuf> {
         let lang_dir = dir.join(lang);
-        fs::create_dir_all(&lang_dir).unwrap();
+        fs::create_dir_all(&lang_dir)?;
         let config_path = lang_dir.join(format!("{}.toml", lang));
-        let mut file = fs::File::create(&config_path).unwrap();
-        file.write_all(content.as_bytes()).unwrap();
-        config_path
+        let mut file = fs::File::create(&config_path)?;
+        file.write_all(content.as_bytes())?;
+        Ok(config_path)
     }
 
     #[test]
-    fn test_load_basic_config() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_load_basic_config() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".cs"
 
@@ -425,9 +427,9 @@ main = "csharp_file.rhai"
 extra = ["csharp_readers.rhai"]
 "#;
 
-        create_config_file(temp_dir.path(), "csharp", config_content);
+        create_config_file(temp_dir.path(), "csharp", config_content)?;
 
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp").unwrap();
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp")?;
 
         assert_eq!(config.extension, ".cs");
         assert_eq!(config.static_files.len(), 1);
@@ -440,19 +442,21 @@ extra = ["csharp_readers.rhai"]
         assert_eq!(config.templates.extra[0].template, "csharp_readers.rhai");
         assert!(config.templates.extra[0].per_file);
         assert!(config.templates.extra[0].output.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_load_missing_config_returns_default() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_load_missing_config_returns_default() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let lang_dir = temp_dir.path().join("rust");
-        fs::create_dir_all(&lang_dir).unwrap();
+        fs::create_dir_all(&lang_dir)?;
 
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "rust").unwrap();
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "rust")?;
 
         assert_eq!(config.main_template("rust"), "rust_file.rhai");
         assert!(config.static_files.is_empty());
         assert!(config.templates.extra.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -462,29 +466,35 @@ extra = ["csharp_readers.rhai"]
     }
 
     #[test]
-    fn test_static_file_configs() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_static_file_configs() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 [static_files]
 "Common/Utils.cs" = "static/csharp/Utils.cs"
 "Helpers/Helper.cs" = "static/csharp/Helper.cs"
 "#;
 
-        create_config_file(temp_dir.path(), "csharp", config_content);
+        create_config_file(temp_dir.path(), "csharp", config_content)?;
 
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp").unwrap();
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp")?;
         let entries = config.static_file_configs(temp_dir.path());
 
         assert_eq!(entries.len(), 2);
 
         // Find the Utils.cs entry
-        let utils_entry = entries.iter().find(|e| e.filename == "Utils.cs").unwrap();
+        let utils_entry = entries
+            .iter()
+            .find(|e| e.filename == "Utils.cs")
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "missing Utils.cs entry")
+            })?;
         assert_eq!(utils_entry.dest_subdir, PathBuf::from("Common"));
+        Ok(())
     }
 
     #[test]
-    fn test_type_map_config() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_type_map_config() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".go"
 
@@ -504,8 +514,8 @@ format = "[]{{type}}"
 main = "go_file.ptpl"
 "#;
 
-        create_config_file(temp_dir.path(), "go", config_content);
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+        create_config_file(temp_dir.path(), "go", config_content)?;
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go")?;
 
         let tm = config.type_map.type_map();
         assert_eq!(tm.get("u32"), Some(&"uint32".to_string()));
@@ -518,28 +528,30 @@ main = "go_file.ptpl"
             config.type_map.list_format(),
             Some("[]{{type}}".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn test_partial_config() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_partial_config() -> TestResult {
+        let temp_dir = TempDir::new()?;
         // Only extension specified, rest should use defaults
         let config_content = r#"
 extension = ".py"
 "#;
 
-        create_config_file(temp_dir.path(), "python", config_content);
+        create_config_file(temp_dir.path(), "python", config_content)?;
 
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "python").unwrap();
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "python")?;
 
         assert_eq!(config.extension, ".py");
         assert!(config.static_files.is_empty());
         assert_eq!(config.main_template("python"), "python_file.rhai");
+        Ok(())
     }
 
     #[test]
-    fn test_rhai_config_prelude() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_rhai_config_prelude() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".go"
 
@@ -550,30 +562,32 @@ prelude = ["rhai_utils/helpers.rhai", "rhai_utils/types.rhai"]
 main = "go_file.ptpl"
 "#;
 
-        create_config_file(temp_dir.path(), "go", config_content);
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+        create_config_file(temp_dir.path(), "go", config_content)?;
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go")?;
 
         assert_eq!(config.rhai.prelude.len(), 2);
         assert_eq!(config.rhai.prelude[0], "rhai_utils/helpers.rhai");
         assert_eq!(config.rhai.prelude[1], "rhai_utils/types.rhai");
+        Ok(())
     }
 
     #[test]
-    fn test_rhai_config_default_empty() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_rhai_config_default_empty() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".cs"
 "#;
 
-        create_config_file(temp_dir.path(), "csharp", config_content);
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp").unwrap();
+        create_config_file(temp_dir.path(), "csharp", config_content)?;
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "csharp")?;
 
         assert!(config.rhai.prelude.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_extra_templates_simple_string_format() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_extra_templates_simple_string_format() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".go"
 
@@ -582,19 +596,23 @@ main = "go_file.ptpl"
 extra = ["go_container_file.ptpl", "go_loaders_file.ptpl"]
 "#;
 
-        create_config_file(temp_dir.path(), "go", config_content);
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+        create_config_file(temp_dir.path(), "go", config_content)?;
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go")?;
 
         assert_eq!(config.extra_templates().len(), 2);
-        assert_eq!(config.extra_templates()[0].template, "go_container_file.ptpl");
+        assert_eq!(
+            config.extra_templates()[0].template,
+            "go_container_file.ptpl"
+        );
         assert!(config.extra_templates()[0].per_file);
         assert!(config.extra_templates()[0].output.is_none());
         assert_eq!(config.extra_templates()[1].template, "go_loaders_file.ptpl");
+        Ok(())
     }
 
     #[test]
-    fn test_extra_templates_full_object_format() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_extra_templates_full_object_format() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".rs"
 
@@ -610,8 +628,8 @@ template = "rust_sqlite_accessor_file.ptpl"
 per_file = false
 "#;
 
-        create_config_file(temp_dir.path(), "rust", config_content);
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "rust").unwrap();
+        create_config_file(temp_dir.path(), "rust", config_content)?;
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "rust")?;
 
         assert_eq!(config.extra_templates().len(), 2);
 
@@ -624,11 +642,12 @@ per_file = false
         assert_eq!(sqlite.template, "rust_sqlite_accessor_file.ptpl");
         assert!(!sqlite.per_file);
         assert!(sqlite.output.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_main_output_and_per_file() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_main_output_and_per_file() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".sql"
 
@@ -638,19 +657,17 @@ main_output = "schema.sql"
 main_per_file = false
 "#;
 
-        create_config_file(temp_dir.path(), "sqlite", config_content);
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "sqlite").unwrap();
+        create_config_file(temp_dir.path(), "sqlite", config_content)?;
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "sqlite")?;
 
-        assert_eq!(
-            config.templates.main_output,
-            Some("schema.sql".to_string())
-        );
+        assert_eq!(config.templates.main_output, Some("schema.sql".to_string()));
         assert!(!config.templates.main_per_file);
+        Ok(())
     }
 
     #[test]
-    fn test_main_per_file_defaults_to_true() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_main_per_file_defaults_to_true() -> TestResult {
+        let temp_dir = TempDir::new()?;
         let config_content = r#"
 extension = ".go"
 
@@ -658,10 +675,11 @@ extension = ".go"
 main = "go_file.ptpl"
 "#;
 
-        create_config_file(temp_dir.path(), "go", config_content);
-        let config = LanguageConfig::load_for_language(temp_dir.path(), "go").unwrap();
+        create_config_file(temp_dir.path(), "go", config_content)?;
+        let config = LanguageConfig::load_for_language(temp_dir.path(), "go")?;
 
         assert!(config.templates.main_per_file);
         assert!(config.templates.main_output.is_none());
+        Ok(())
     }
 }
