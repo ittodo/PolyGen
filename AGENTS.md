@@ -53,7 +53,7 @@ Generated Code + Static Utilities
 |--------|----------|------|
 | **파싱** | `ast_parser/mod.rs` | Pest → AST 변환 |
 | **검증** | `validation.rs` | AST 유효성 검사 |
-| **IR 변환** | `ir_builder.rs` | AST → IR 변환 (1,742줄) |
+| **IR 변환** | `ir_builder.rs` + `ir_builder/` | AST → IR 변환 |
 | **코드 생성** | `template/renderer.rs` | PolyTemplate (.ptpl) 렌더링 |
 | **템플릿 파서** | `template/parser.rs` | .ptpl 파일 파싱 (디렉티브, 인터폴레이션) |
 | **Rhai 브릿지** | `template/rhai_bridge.rs` | %logic 블록, %if 조건 Rhai 평가 |
@@ -84,7 +84,9 @@ PolyGen/
 │   │   └── macros.rs         # 파싱 매크로
 │   ├── validation.rs         # AST 유효성 검사
 │   ├── ir_model.rs           # IR 데이터 구조
-│   ├── ir_builder.rs         # AST → IR 변환 (가장 큰 모듈)
+│   ├── ir_builder.rs         # AST → IR 변환
+│   ├── ir_builder/           # IR 빌더 하위 헬퍼
+│   │   └── type_names.rs     # 타입/FQN 이름 헬퍼
 │   ├── type_registry.rs      # 타입 레지스트리 (Phase 4)
 │   ├── pipeline.rs           # 컴파일 파이프라인
 │   ├── codegen.rs            # 코드 생성 유틸리티
@@ -630,4 +632,4 @@ tests\runners\rust\run_tests.bat
 
 ---
 
-*최종 업데이트: 2026-02-02*
+*최종 업데이트: 2026-05-22*

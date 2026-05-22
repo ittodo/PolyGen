@@ -10,6 +10,8 @@ src/
 ├── ast_parser.rs         # Pest 기반 파서 구현
 ├── ir_model.rs           # IR 데이터 모델 정의
 ├── ir_builder.rs         # AST → IR 변환 로직
+├── ir_builder/           # IR 빌더 하위 헬퍼 모듈
+│   └── type_names.rs     # 타입/FQN 이름 헬퍼
 ├── validation.rs         # AST 유효성 검사
 ├── error.rs              # 에러 타입 정의
 ├── polygen.pest          # Pest 문법 정의
@@ -59,6 +61,11 @@ src/
   - 열거형 처리 및 타입 추론
   - 관계 필드 생성 (`foreign_key` → 역참조)
   - 필드 번호 자동 할당
+
+- **ir_builder/type_names.rs**: IR 빌더 타입 이름 헬퍼
+  - FQN qualification 및 namespace/last segment 추출
+  - 중첩 타입의 parent type path 계산
+  - AST 기본 타입명을 IR/템플릿용 문자열로 매핑
 
 ### Validation & Error Handling
 - **validation.rs**: AST 유효성 검사 (8.8KB)
@@ -155,7 +162,7 @@ src/
 
 ### 내부 의존성
 - `ast_parser.rs` → `ast_model.rs`, `error.rs`
-- `ir_builder.rs` → `ast_model.rs`, `ir_model.rs`, `error.rs`
+- `ir_builder.rs` → `ast_model.rs`, `ir_model.rs`, `type_registry.rs`, `ir_builder/*`
 - `validation.rs` → `ast_model.rs`, `error.rs`
 - `template/` → `ir_model.rs`, `rhai/*`
 - `lib.rs` → 모든 모듈
