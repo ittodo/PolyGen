@@ -12,6 +12,7 @@ src/
 ├── ir_builder.rs         # AST → IR 변환 로직
 ├── ir_builder/           # IR 빌더 하위 헬퍼 모듈
 │   ├── constraints.rs    # constraint/attribute/timezone IR 변환 헬퍼
+│   ├── indexes.rs        # index IR 생성 헬퍼
 │   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
 │   ├── renames.rs        # rename rule IR 변환 헬퍼
 │   ├── relations.rs      # foreign key reverse relation 후처리
@@ -79,6 +80,10 @@ src/
 - **ir_builder/constraints.rs**: IR 빌더 constraint 헬퍼
   - AST constraint를 IR constraint info로 정규화
   - C# attribute 문자열, foreign key, range, timezone 값을 변환
+
+- **ir_builder/indexes.rs**: IR 빌더 index 헬퍼
+  - primary key, unique, index constraint에서 `IndexDef` 생성
+  - `@index` annotation의 field 목록과 unique option을 `IndexDef`로 변환
 
 - **ir_builder/renames.rs**: IR 빌더 rename 헬퍼
   - AST rename rule을 IR `RenameInfo`로 변환

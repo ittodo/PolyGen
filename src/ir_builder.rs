@@ -1,11 +1,12 @@
 use crate::ast_model::{self, Definition, Metadata, TableMember};
 use crate::ir_model::{
-    self, EnumDef, EnumItem, FieldDef, FileDef, IndexDef, NamespaceDef, NamespaceItem,
-    SchemaContext, StructDef, StructItem, TypeRef,
+    self, EnumDef, EnumItem, FieldDef, FileDef, NamespaceDef, NamespaceItem, SchemaContext,
+    StructDef, StructItem, TypeRef,
 };
 use heck::ToPascalCase;
 
 mod constraints;
+mod indexes;
 mod metadata;
 mod relations;
 mod renames;
@@ -13,6 +14,7 @@ mod type_names;
 mod type_resolution;
 
 use constraints::{convert_constraints_to_attributes, extract_constraint_info};
+use indexes::{build_indexes_from_annotations, build_indexes_from_items};
 use metadata::{
     convert_annotation_to_ir, extract_cache_strategy, extract_datasource, extract_pack_separator,
     extract_soft_delete_field, is_readonly,
@@ -270,106 +272,6 @@ fn convert_table_to_struct(
         indexes,
         relations: Vec::new(), // Relations are populated in post-processing
     }
-}
-
-/// Builds index definitions from struct items by examining field constraints.
-fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
-    let mut indexes = Vec::new();
-
-    for item in items {
-        if let StructItem::Field(field) = item {
-            // Primary key or unique constraint creates a unique index
-            if field.is_primary_key || field.is_unique {
-                indexes.push(IndexDef {
-                    name: format!("By{}", field.name.to_pascal_case()),
-                    fields: vec![ir_model::IndexFieldDef {
-                        name: field.name.clone(),
-                        field_type: field.field_type.clone(),
-                    }],
-                    is_unique: true,
-                    source: "constraint".to_string(),
-                });
-            }
-            // Index constraint or foreign key creates a group index
-            else if field.is_index {
-                indexes.push(IndexDef {
-                    name: format!("By{}", field.name.to_pascal_case()),
-                    fields: vec![ir_model::IndexFieldDef {
-                        name: field.name.clone(),
-                        field_type: field.field_type.clone(),
-                    }],
-                    is_unique: false,
-                    source: "constraint".to_string(),
-                });
-            }
-        }
-    }
-
-    indexes
-}
-
-/// Builds index definitions from @index annotations on a table.
-fn build_indexes_from_annotations(header: &[StructItem], items: &[StructItem]) -> Vec<IndexDef> {
-    let mut indexes = Vec::new();
-
-    // Build a map of field names to their types for lookup
-    let field_types: std::collections::HashMap<String, TypeRef> = items
-        .iter()
-        .filter_map(|item| {
-            if let StructItem::Field(field) = item {
-                Some((field.name.clone(), field.field_type.clone()))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    for item in header {
-        if let StructItem::Annotation(ann) = item {
-            if ann.name == "index" && !ann.positional_args.is_empty() {
-                // Check if "unique: true" is specified in params
-                let is_unique = ann
-                    .params
-                    .iter()
-                    .any(|p| p.key == "unique" && (p.value == "true" || p.value == "1"));
-
-                // Build field definitions from positional args
-                let fields: Vec<ir_model::IndexFieldDef> = ann
-                    .positional_args
-                    .iter()
-                    .filter_map(|field_name| {
-                        field_types
-                            .get(field_name)
-                            .map(|field_type| ir_model::IndexFieldDef {
-                                name: field_name.clone(),
-                                field_type: field_type.clone(),
-                            })
-                    })
-                    .collect();
-
-                if !fields.is_empty() {
-                    // Generate index name from field names
-                    let name = format!(
-                        "By{}",
-                        fields
-                            .iter()
-                            .map(|f| f.name.to_pascal_case())
-                            .collect::<Vec<_>>()
-                            .join("")
-                    );
-
-                    indexes.push(IndexDef {
-                        name,
-                        fields,
-                        is_unique,
-                        source: "annotation".to_string(),
-                    });
-                }
-            }
-        }
-    }
-
-    indexes
 }
 
 /// Converts an `ast_model::FieldDefinition` into an `ir_model::FieldDef` and potential nested types (from inline embeds).

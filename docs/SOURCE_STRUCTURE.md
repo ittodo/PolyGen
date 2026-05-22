@@ -8,7 +8,7 @@
 
 PolyGen은 `.poly` 스키마 파일을 파싱하여 여러 언어의 코드를 생성하는 폴리글랏 코드 생성기입니다.
 
-- **총 파일**: 45개 `.rs`
+- **총 파일**: 46개 `.rs`
 - **총 코드**: ~17,600줄
 
 ---
@@ -113,8 +113,9 @@ Generated Code
 | 파일 | 줄 수 | 역할 |
 |------|-------|------|
 | `ir_model.rs` | 366 | IR 데이터 구조 |
-| `ir_builder.rs` | 1,179 | AST → IR 변환 |
+| `ir_builder.rs` | 1,093 | AST → IR 변환 |
 | `ir_builder/constraints.rs` | 138 | constraint/attribute/timezone IR 변환 헬퍼 |
+| `ir_builder/indexes.rs` | 94 | index IR 생성 헬퍼 |
 | `ir_builder/metadata.rs` | 92 | metadata/annotation IR 변환 헬퍼 |
 | `ir_builder/renames.rs` | 18 | rename rule IR 변환 헬퍼 |
 | `ir_builder/relations.rs` | 99 | foreign key reverse relation 후처리 |
@@ -167,10 +168,10 @@ Generated Code
 ## 파일 크기 분포
 
 ```
-~100줄 이하: 14개 (31%)  - 작은 유틸리티
+~100줄 이하: 15개 (33%)  - 작은 유틸리티
 ~300줄:       9개 (20%)  - 일반 모듈
 ~500줄:       9개 (20%)  - 중간 크기
-~1000줄:      8개 (18%)  - 큰 모듈
+~1000줄:      8개 (17%)  - 큰 모듈
 1000줄 이상:  5개 (11%)  - 핵심 모듈
 ```
 
@@ -179,7 +180,7 @@ Generated Code
 | 파일 | 줄 수 | 상태 |
 |------|-------|------|
 | `template/renderer.rs` | 1,470 | 렌더링 단계 분리 고려 가능 |
-| `ir_builder.rs` | 1,179 | 타입 이름/metadata/constraint/rename/relation/type resolution 헬퍼 분리 진행 |
+| `ir_builder.rs` | 1,093 | 타입 이름/metadata/constraint/index/rename/relation/type resolution 헬퍼 분리 진행 |
 | `template/parser.rs` | 1,093 | 파서 단계 분리 고려 가능 |
 | `rhai/csharp/loaders/csv.rs` | 1,091 | 분리 고려 가능 |
 | `symbol_table.rs` | 1,019 | 내부 구조화됨 |
@@ -196,6 +197,7 @@ main.rs
               ├── validation.rs ──→ symbol_table.rs
               ├── ir_builder.rs ──→ ir_model.rs
               │      ├── ir_builder/constraints.rs
+              │      ├── ir_builder/indexes.rs
               │      ├── ir_builder/metadata.rs
               │      ├── ir_builder/renames.rs
               │      ├── ir_builder/relations.rs

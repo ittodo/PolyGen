@@ -87,6 +87,7 @@ PolyGen/
 │   ├── ir_builder.rs         # AST → IR 변환
 │   ├── ir_builder/           # IR 빌더 하위 헬퍼
 │   │   ├── constraints.rs    # constraint/attribute/timezone IR 변환 헬퍼
+│   │   ├── indexes.rs        # index IR 생성 헬퍼
 │   │   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
 │   │   ├── renames.rs        # rename rule IR 변환 헬퍼
 │   │   ├── relations.rs      # foreign key reverse relation 후처리
