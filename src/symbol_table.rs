@@ -824,6 +824,8 @@ fn resolve_single_reference(
 mod tests {
     use super::*;
 
+    type TestResult = std::result::Result<(), String>;
+
     #[test]
     fn test_span_contains() {
         let span = Span::new(1, 5, 1, 10);
@@ -836,7 +838,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_table_definition() {
+    fn test_simple_table_definition() -> TestResult {
         let content = r#"
 namespace game {
     table Player {
@@ -844,18 +846,21 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         assert!(table.definitions.contains_key("game"));
         assert!(table.definitions.contains_key("game.Player"));
 
-        let player = table.get_definition("game.Player").unwrap();
+        let player = table
+            .get_definition("game.Player")
+            .ok_or_else(|| "missing game.Player definition".to_string())?;
         assert_eq!(player.name, "Player");
         assert_eq!(player.kind, DefinitionKind::Table);
+        Ok(())
     }
 
     #[test]
-    fn test_enum_definition() {
+    fn test_enum_definition() -> TestResult {
         let content = r#"
 namespace game {
     enum Status {
@@ -864,16 +869,19 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         assert!(table.definitions.contains_key("game.Status"));
-        let status = table.get_definition("game.Status").unwrap();
+        let status = table
+            .get_definition("game.Status")
+            .ok_or_else(|| "missing game.Status definition".to_string())?;
         assert_eq!(status.name, "Status");
         assert_eq!(status.kind, DefinitionKind::Enum);
+        Ok(())
     }
 
     #[test]
-    fn test_type_reference_collection() {
+    fn test_type_reference_collection() -> TestResult {
         let content = r#"
 namespace game {
     enum Status {
@@ -886,7 +894,7 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         // Should have one type reference to Status
         assert_eq!(table.references.len(), 1);
@@ -894,10 +902,11 @@ namespace game {
         assert_eq!(reference.path, "Status");
         assert_eq!(reference.context_namespace, "game");
         assert_eq!(reference.resolved_fqn, Some("game.Status".to_string()));
+        Ok(())
     }
 
     #[test]
-    fn test_cross_namespace_reference() {
+    fn test_cross_namespace_reference() -> TestResult {
         let content = r#"
 namespace game.common {
     embed Position {
@@ -913,23 +922,24 @@ namespace game.entity {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         // Find the reference to Position
         let pos_ref = table
             .references
             .iter()
             .find(|r| r.path.contains("Position"))
-            .unwrap();
+            .ok_or_else(|| "missing Position reference".to_string())?;
 
         assert_eq!(
             pos_ref.resolved_fqn,
             Some("game.common.Position".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn test_nested_namespace() {
+    fn test_nested_namespace() -> TestResult {
         let content = r#"
 namespace game {
     namespace character {
@@ -939,15 +949,16 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         assert!(table.definitions.contains_key("game"));
         assert!(table.definitions.contains_key("game.character"));
         assert!(table.definitions.contains_key("game.character.Hero"));
+        Ok(())
     }
 
     #[test]
-    fn test_field_definitions() {
+    fn test_field_definitions() -> TestResult {
         let content = r#"
 namespace game {
     table Player {
@@ -956,19 +967,22 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         // Fields should be registered with their FQN
         assert!(table.definitions.contains_key("game.Player.id"));
         assert!(table.definitions.contains_key("game.Player.name"));
 
-        let id_field = table.get_definition("game.Player.id").unwrap();
+        let id_field = table
+            .get_definition("game.Player.id")
+            .ok_or_else(|| "missing game.Player.id definition".to_string())?;
         assert_eq!(id_field.name, "id");
         assert_eq!(id_field.kind, DefinitionKind::Field);
+        Ok(())
     }
 
     #[test]
-    fn test_foreign_key_field_reference() {
+    fn test_foreign_key_field_reference() -> TestResult {
         let content = r#"
 namespace game {
     table Item {
@@ -982,25 +996,30 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         // Should have references to both Item (table) and Item.id (field)
-        let item_ref = table.references.iter().find(|r| r.path == "Item").unwrap();
+        let item_ref = table
+            .references
+            .iter()
+            .find(|r| r.path == "Item")
+            .ok_or_else(|| "missing Item reference".to_string())?;
         assert_eq!(item_ref.resolved_fqn, Some("game.Item".to_string()));
 
         let field_ref = table
             .references
             .iter()
             .find(|r| r.path == "Item.id")
-            .unwrap();
+            .ok_or_else(|| "missing Item.id reference".to_string())?;
         assert_eq!(field_ref.resolved_fqn, Some("game.Item.id".to_string()));
 
         // The field definition should exist
         assert!(table.definitions.contains_key("game.Item.id"));
+        Ok(())
     }
 
     #[test]
-    fn test_foreign_key_full_path() {
+    fn test_foreign_key_full_path() -> TestResult {
         let content = r#"
 namespace game.character {
     table Player {
@@ -1016,16 +1035,16 @@ namespace game.junction {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         // Should have reference to game.character.Player (table path)
         let table_ref = table
             .references
             .iter()
-            .find(|r| r.path == "game.character.Player");
-        assert!(table_ref.is_some(), "Should have table reference");
+            .find(|r| r.path == "game.character.Player")
+            .ok_or_else(|| "missing game.character.Player reference".to_string())?;
         assert_eq!(
-            table_ref.unwrap().resolved_fqn,
+            table_ref.resolved_fqn,
             Some("game.character.Player".to_string())
         );
 
@@ -1033,16 +1052,17 @@ namespace game.junction {
         let field_ref = table
             .references
             .iter()
-            .find(|r| r.path == "game.character.Player.id");
-        assert!(field_ref.is_some(), "Should have field reference");
+            .find(|r| r.path == "game.character.Player.id")
+            .ok_or_else(|| "missing game.character.Player.id reference".to_string())?;
         assert_eq!(
-            field_ref.unwrap().resolved_fqn,
+            field_ref.resolved_fqn,
             Some("game.character.Player.id".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn test_get_all_type_names() {
+    fn test_get_all_type_names() -> TestResult {
         let content = r#"
 namespace game {
     table Player {
@@ -1056,7 +1076,7 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
         let types = table.get_all_type_names();
 
         assert_eq!(types.len(), 3);
@@ -1069,10 +1089,11 @@ namespace game {
         assert!(types
             .iter()
             .any(|(name, _, kind)| *name == "Stats" && *kind == &DefinitionKind::Embed));
+        Ok(())
     }
 
     #[test]
-    fn test_get_fields_of() {
+    fn test_get_fields_of() -> TestResult {
         let content = r#"
 namespace game {
     table Player {
@@ -1082,7 +1103,7 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
         let fields = table.get_fields_of("game.Player");
 
         assert_eq!(fields.len(), 3);
@@ -1090,10 +1111,11 @@ namespace game {
         assert!(field_names.contains(&"id"));
         assert!(field_names.contains(&"name"));
         assert!(field_names.contains(&"level"));
+        Ok(())
     }
 
     #[test]
-    fn test_symbol_at() {
+    fn test_symbol_at() -> TestResult {
         let content = r#"
 namespace game {
     enum Status {
@@ -1105,16 +1127,19 @@ namespace game {
     }
 }
 "#;
-        let table = build_symbol_table(content).unwrap();
+        let table = build_symbol_table(content)?;
 
         // On definition
-        let def = table.symbol_at(3, 10); // "Status" in enum definition
-        assert!(def.is_some());
-        assert_eq!(def.unwrap().name, "Status");
+        let def = table
+            .symbol_at(3, 10)
+            .ok_or_else(|| "missing Status definition at position".to_string())?;
+        assert_eq!(def.name, "Status");
 
         // On reference
-        let ref_def = table.symbol_at(8, 17); // "Status" in field type
-        assert!(ref_def.is_some());
-        assert_eq!(ref_def.unwrap().fqn, "game.Status");
+        let ref_def = table
+            .symbol_at(8, 17)
+            .ok_or_else(|| "missing Status reference at position".to_string())?;
+        assert_eq!(ref_def.fqn, "game.Status");
+        Ok(())
     }
 }
