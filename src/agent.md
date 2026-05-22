@@ -11,6 +11,7 @@ src/
 ├── ir_model.rs           # IR 데이터 모델 정의
 ├── ir_builder.rs         # AST → IR 변환 로직
 ├── ir_builder/           # IR 빌더 하위 헬퍼 모듈
+│   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
 │   └── type_names.rs     # 타입/FQN 이름 헬퍼
 ├── validation.rs         # AST 유효성 검사
 ├── error.rs              # 에러 타입 정의
@@ -66,6 +67,10 @@ src/
   - FQN qualification 및 namespace/last segment 추출
   - 중첩 타입의 parent type path 계산
   - AST 기본 타입명을 IR/템플릿용 문자열로 매핑
+
+- **ir_builder/metadata.rs**: IR 빌더 metadata/annotation 헬퍼
+  - `@datasource`, `@cache`, `@soft_delete`, `@readonly`, `@pack` 값 추출
+  - AST annotation을 IR `AnnotationDef`로 변환
 
 ### Validation & Error Handling
 - **validation.rs**: AST 유효성 검사 (8.8KB)
