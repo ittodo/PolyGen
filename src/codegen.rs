@@ -55,7 +55,7 @@
 //! - Main and extra templates
 
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -214,15 +214,7 @@ impl CodeGenerator {
             .unwrap_or_default();
 
         // Load existing manifest for recording ptpl outputs
-        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
-        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
-            fs::read_to_string(&manifest_path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
+        let mut manifest = load_manifest(&self.output_dir);
 
         // Render each file in the schema
         for file in &ir_context.files {
@@ -293,9 +285,7 @@ impl CodeGenerator {
         }
 
         // Write manifest
-        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
-            let _ = fs::write(&manifest_path, json);
-        }
+        write_manifest(&self.output_dir, &manifest);
 
         Ok(())
     }
@@ -359,9 +349,7 @@ impl CodeGenerator {
         );
         ctx.set(
             "output_dir",
-            template::context::ContextValue::String(
-                self.output_dir.to_string_lossy().to_string(),
-            ),
+            template::context::ContextValue::String(self.output_dir.to_string_lossy().to_string()),
         );
 
         let result = engine
@@ -381,22 +369,12 @@ impl CodeGenerator {
         println!("Generated: {}", output_path.display());
 
         // Record in manifest
-        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
-        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
-            fs::read_to_string(&manifest_path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
+        let mut manifest = load_manifest(&self.output_dir);
         if let Ok(relative) = output_path.strip_prefix(&self.output_dir) {
             let key = relative.to_string_lossy().replace('\\', "/");
             manifest.insert(key, template_name.to_string());
         }
-        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
-            let _ = fs::write(&manifest_path, json);
-        }
+        write_manifest(&self.output_dir, &manifest);
 
         // Write source map if in preview mode
         if self.preview_mode {
@@ -473,7 +451,10 @@ impl CodeGenerator {
             for entry in config.extra_templates() {
                 let template_name = &entry.template;
                 if entry.per_file {
-                    println!("Processing extra ptpl template (per-file): {}", template_name);
+                    println!(
+                        "Processing extra ptpl template (per-file): {}",
+                        template_name
+                    );
                     self.generate_extra_per_file_polytemplate(ir_context, entry)?;
                 } else {
                     println!(
@@ -513,15 +494,7 @@ impl CodeGenerator {
         let output_suffix = derive_output_suffix(template_name, &self.language);
 
         // Load existing manifest
-        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
-        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
-            fs::read_to_string(&manifest_path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
+        let mut manifest = load_manifest(&self.output_dir);
 
         for file in &ir_context.files {
             let poly_path = Path::new(&file.path);
@@ -596,9 +569,7 @@ impl CodeGenerator {
         }
 
         // Write manifest
-        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
-            let _ = fs::write(&manifest_path, json);
-        }
+        write_manifest(&self.output_dir, &manifest);
 
         Ok(())
     }
@@ -657,9 +628,7 @@ impl CodeGenerator {
         );
         ctx.set(
             "output_dir",
-            template::context::ContextValue::String(
-                self.output_dir.to_string_lossy().to_string(),
-            ),
+            template::context::ContextValue::String(self.output_dir.to_string_lossy().to_string()),
         );
 
         let result = engine
@@ -679,22 +648,12 @@ impl CodeGenerator {
         println!("Generated: {}", output_path.display());
 
         // Record in manifest
-        let manifest_path = self.output_dir.join(MANIFEST_FILENAME);
-        let mut manifest: HashMap<String, String> = if manifest_path.exists() {
-            fs::read_to_string(&manifest_path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
+        let mut manifest = load_manifest(&self.output_dir);
         if let Ok(relative) = output_path.strip_prefix(&self.output_dir) {
             let key = relative.to_string_lossy().replace('\\', "/");
             manifest.insert(key, template_name.to_string());
         }
-        if let Ok(json) = serde_json::to_string_pretty(&manifest) {
-            let _ = fs::write(&manifest_path, json);
-        }
+        write_manifest(&self.output_dir, &manifest);
 
         // Write source map if in preview mode
         if self.preview_mode {
@@ -885,11 +844,13 @@ fn derive_output_suffix(template_name: &str, language: &str) -> String {
 /// The manifest file name used to track which template generated each output file.
 pub const MANIFEST_FILENAME: &str = ".polygen_manifest.json";
 
+/// Stable manifest map used to track which template generated each output file.
+pub type TemplateManifest = BTreeMap<String, String>;
 
 /// Load the template manifest from an output directory.
 ///
 /// Returns a map of `relative_file_path -> template_name`.
-pub fn load_manifest(output_dir: &Path) -> HashMap<String, String> {
+pub fn load_manifest(output_dir: &Path) -> TemplateManifest {
     let manifest_path = output_dir.join(MANIFEST_FILENAME);
     if manifest_path.exists() {
         fs::read_to_string(&manifest_path)
@@ -897,7 +858,14 @@ pub fn load_manifest(output_dir: &Path) -> HashMap<String, String> {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()
     } else {
-        HashMap::new()
+        TemplateManifest::new()
+    }
+}
+
+fn write_manifest(output_dir: &Path, manifest: &TemplateManifest) {
+    let manifest_path = output_dir.join(MANIFEST_FILENAME);
+    if let Ok(json) = serde_json::to_string_pretty(manifest) {
+        let _ = fs::write(&manifest_path, json);
     }
 }
 
@@ -951,5 +919,28 @@ mod tests {
             resolve_output_pattern("{{stem}}/{{stem | pascal_case}}.h", "game_schema"),
             "game_schema/GameSchema.h"
         );
+    }
+
+    #[test]
+    fn test_write_manifest_uses_stable_key_order() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut manifest = TemplateManifest::new();
+        manifest.insert(
+            "csharp/csv_test_schema.CsvColumns.cs".to_string(),
+            "csharp_csv_columns_file.ptpl".to_string(),
+        );
+        manifest.insert(
+            "csharp/Data/SqliteDbContext.cs".to_string(),
+            "csharp_sqlite_accessor_file.ptpl".to_string(),
+        );
+
+        write_manifest(temp_dir.path(), &manifest);
+
+        let content = fs::read_to_string(temp_dir.path().join(MANIFEST_FILENAME)).unwrap();
+        let data_entry = content.find("\"csharp/Data/SqliteDbContext.cs\"").unwrap();
+        let csv_entry = content
+            .find("\"csharp/csv_test_schema.CsvColumns.cs\"")
+            .unwrap();
+        assert!(data_entry < csv_entry);
     }
 }

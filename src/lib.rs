@@ -278,7 +278,7 @@ fn run_generate_preview(
 fn print_directory_contents(
     dir: &std::path::Path,
     base: &std::path::Path,
-    manifest: &std::collections::HashMap<String, String>,
+    manifest: &codegen::TemplateManifest,
 ) -> Result<()> {
     if !dir.is_dir() {
         return Ok(());
