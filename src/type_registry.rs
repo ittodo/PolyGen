@@ -235,28 +235,36 @@ fn last_segment(fqn: &str) -> &str {
 mod tests {
     use super::*;
 
+    type TestResult<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
+
     #[test]
-    fn test_register_and_get() {
+    fn test_register_and_get() -> TestResult {
         let mut registry = TypeRegistry::new();
 
         assert!(registry.register("game.common.Status", TypeKind::Enum));
         assert!(!registry.register("game.common.Status", TypeKind::Enum)); // duplicate
 
-        let info = registry.get("game.common.Status").unwrap();
+        let info = registry.get("game.common.Status").ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "missing game.common.Status")
+        })?;
         assert_eq!(info.fqn, "game.common.Status");
         assert_eq!(info.namespace, "game.common");
         assert_eq!(info.name, "Status");
         assert_eq!(info.kind, TypeKind::Enum);
+        Ok(())
     }
 
     #[test]
-    fn test_global_namespace() {
+    fn test_global_namespace() -> TestResult {
         let mut registry = TypeRegistry::new();
         registry.register("GlobalEnum", TypeKind::Enum);
 
-        let info = registry.get("GlobalEnum").unwrap();
+        let info = registry.get("GlobalEnum").ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "missing GlobalEnum")
+        })?;
         assert_eq!(info.namespace, "");
         assert_eq!(info.name, "GlobalEnum");
+        Ok(())
     }
 
     #[test]
