@@ -86,6 +86,7 @@ PolyGen/
 │   ├── ir_model.rs           # IR 데이터 구조
 │   ├── ir_builder.rs         # AST → IR 변환
 │   ├── ir_builder/           # IR 빌더 하위 헬퍼
+│   │   ├── constraints.rs    # constraint/attribute/timezone IR 변환 헬퍼
 │   │   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
 │   │   └── type_names.rs     # 타입/FQN 이름 헬퍼
 │   ├── type_registry.rs      # 타입 레지스트리 (Phase 4)

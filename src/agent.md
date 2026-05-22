@@ -11,6 +11,7 @@ src/
 ├── ir_model.rs           # IR 데이터 모델 정의
 ├── ir_builder.rs         # AST → IR 변환 로직
 ├── ir_builder/           # IR 빌더 하위 헬퍼 모듈
+│   ├── constraints.rs    # constraint/attribute/timezone IR 변환 헬퍼
 │   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
 │   └── type_names.rs     # 타입/FQN 이름 헬퍼
 ├── validation.rs         # AST 유효성 검사
@@ -71,6 +72,10 @@ src/
 - **ir_builder/metadata.rs**: IR 빌더 metadata/annotation 헬퍼
   - `@datasource`, `@cache`, `@soft_delete`, `@readonly`, `@pack` 값 추출
   - AST annotation을 IR `AnnotationDef`로 변환
+
+- **ir_builder/constraints.rs**: IR 빌더 constraint 헬퍼
+  - AST constraint를 IR constraint info로 정규화
+  - C# attribute 문자열, foreign key, range, timezone 값을 변환
 
 ### Validation & Error Handling
 - **validation.rs**: AST 유효성 검사 (8.8KB)
