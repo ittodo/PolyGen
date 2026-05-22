@@ -850,6 +850,8 @@ fn collect_tables_from_namespaces(namespaces: &[NamespaceDef], out: &mut Vec<Con
 mod tests {
     use super::*;
 
+    type TestResult<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
+
     fn make_test_struct() -> StructDef {
         StructDef {
             name: "Player".to_string(),
@@ -905,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_path() {
+    fn test_resolve_path() -> TestResult {
         let s = make_test_struct();
         let cv = ContextValue::Struct(s);
 
@@ -915,22 +917,52 @@ mod tests {
 
         // struct.doc_comments (filtered from header)
         let result = cv.resolve_path(&["doc_comments".to_string()]);
-        let list = result.as_list().unwrap();
+        let list = result.as_list().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "doc_comments is not a list",
+            )
+        })?;
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].to_display_string(), "A player");
+        Ok(())
     }
 
     #[test]
-    fn test_context_bindings() {
+    fn test_context_bindings() -> TestResult {
         let mut ctx = TemplateContext::new();
         ctx.set("name", ContextValue::String("Test".to_string()));
 
-        assert_eq!(ctx.get("name").unwrap().to_display_string(), "Test");
+        assert_eq!(
+            ctx.get("name")
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "missing name binding")
+                })?
+                .to_display_string(),
+            "Test"
+        );
         assert!(ctx.get("missing").is_none());
 
         let child = ctx.child_with("age", ContextValue::Int(42));
-        assert_eq!(child.get("name").unwrap().to_display_string(), "Test");
-        assert_eq!(child.get("age").unwrap().to_display_string(), "42");
+        assert_eq!(
+            child
+                .get("name")
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "missing child name binding")
+                })?
+                .to_display_string(),
+            "Test"
+        );
+        assert_eq!(
+            child
+                .get("age")
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "missing child age binding")
+                })?
+                .to_display_string(),
+            "42"
+        );
+        Ok(())
     }
 
     #[test]
