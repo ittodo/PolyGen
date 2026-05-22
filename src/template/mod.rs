@@ -150,6 +150,8 @@ mod tests {
     use super::*;
     use context::ContextValue;
 
+    type TestResult = anyhow::Result<()>;
+
     #[test]
     fn test_normalize_template_name() {
         assert_eq!(normalize_template_name("test"), "test.ptpl");
@@ -161,13 +163,14 @@ mod tests {
     }
 
     #[test]
-    fn test_engine_render_inline() {
+    fn test_engine_render_inline() -> TestResult {
         // Create a temporary directory with a test template
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir()?;
         let template_path = temp_dir.path().join("test.ptpl");
-        std::fs::write(&template_path, "Hello, {{name}}!").unwrap();
+        std::fs::write(&template_path, "Hello, {{name}}!")?;
 
-        let engine = TemplateEngine::new(temp_dir.path(), EngineConfig::default()).unwrap();
+        let engine = TemplateEngine::new(temp_dir.path(), EngineConfig::default())
+            .map_err(anyhow::Error::msg)?;
         assert_eq!(engine.template_count(), 1);
         assert!(engine.has_template("test"));
         assert!(engine.has_template("test.ptpl"));
@@ -175,30 +178,36 @@ mod tests {
         let mut ctx = TemplateContext::new();
         ctx.set("name", ContextValue::String("World".to_string()));
 
-        let output = engine.render_to_string("test", &ctx).unwrap();
+        let output = engine
+            .render_to_string("test", &ctx)
+            .map_err(anyhow::Error::msg)?;
         assert_eq!(output, "Hello, World!");
+        Ok(())
     }
 
     #[test]
-    fn test_engine_with_subdirectories() {
-        let temp_dir = tempfile::tempdir().unwrap();
+    fn test_engine_with_subdirectories() -> TestResult {
+        let temp_dir = tempfile::tempdir()?;
 
         // Create subdirectory structure
         let section_dir = temp_dir.path().join("section");
-        std::fs::create_dir(&section_dir).unwrap();
+        std::fs::create_dir(&section_dir)?;
 
         std::fs::write(
             temp_dir.path().join("main.ptpl"),
             "%include \"section/body.ptpl\"",
-        )
-        .unwrap();
-        std::fs::write(section_dir.join("body.ptpl"), "Body content here").unwrap();
+        )?;
+        std::fs::write(section_dir.join("body.ptpl"), "Body content here")?;
 
-        let engine = TemplateEngine::new(temp_dir.path(), EngineConfig::default()).unwrap();
+        let engine = TemplateEngine::new(temp_dir.path(), EngineConfig::default())
+            .map_err(anyhow::Error::msg)?;
         assert_eq!(engine.template_count(), 2);
 
         let ctx = TemplateContext::new();
-        let output = engine.render_to_string("main", &ctx).unwrap();
+        let output = engine
+            .render_to_string("main", &ctx)
+            .map_err(anyhow::Error::msg)?;
         assert_eq!(output, "Body content here");
+        Ok(())
     }
 }
