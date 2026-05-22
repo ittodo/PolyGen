@@ -420,10 +420,9 @@ fn parse_include(directive: &str, line_num: usize) -> Result<TemplateNode, Strin
                     Some(val.parse::<usize>().map_err(|_| {
                         format!("Line {}: Invalid indent value: {}", line_num, val)
                     })?);
-            } else if token.contains('=') {
-                let mut kv = token.splitn(2, '=');
-                let key = kv.next().unwrap().trim().to_string();
-                let value = kv.next().unwrap().trim().trim_matches('"').to_string();
+            } else if let Some((key, value)) = token.split_once('=') {
+                let key = key.trim().to_string();
+                let value = value.trim().trim_matches('"').to_string();
                 bindings.push(IncludeBinding::KeyValue(key, value));
             } else {
                 bindings.push(IncludeBinding::Focus(token.to_string()));
