@@ -8,7 +8,7 @@
 
 PolyGen은 `.poly` 스키마 파일을 파싱하여 여러 언어의 코드를 생성하는 폴리글랏 코드 생성기입니다.
 
-- **총 파일**: 43개 `.rs`
+- **총 파일**: 44개 `.rs`
 - **총 코드**: ~12,500줄
 
 ---
@@ -113,10 +113,11 @@ Generated Code
 | 파일 | 줄 수 | 역할 |
 |------|-------|------|
 | `ir_model.rs` | 366 | IR 데이터 구조 |
-| `ir_builder.rs` | 1,397 | AST → IR 변환 |
+| `ir_builder.rs` | 1,304 | AST → IR 변환 |
 | `ir_builder/constraints.rs` | 138 | constraint/attribute/timezone IR 변환 헬퍼 |
 | `ir_builder/metadata.rs` | 92 | metadata/annotation IR 변환 헬퍼 |
 | `ir_builder/renames.rs` | 18 | rename rule IR 변환 헬퍼 |
+| `ir_builder/relations.rs` | 99 | foreign key reverse relation 후처리 |
 | `ir_builder/type_names.rs` | 58 | IR 타입/FQN 이름 헬퍼 |
 | `type_registry.rs` | 390 | 타입 등록/조회 (FQN 관리) |
 
@@ -176,7 +177,7 @@ Generated Code
 
 | 파일 | 줄 수 | 상태 |
 |------|-------|------|
-| `ir_builder.rs` | 1,397 | 타입 이름/metadata/constraint/rename 헬퍼 분리 진행 |
+| `ir_builder.rs` | 1,304 | 타입 이름/metadata/constraint/rename/relation 헬퍼 분리 진행 |
 | `rhai/csharp/loaders/csv.rs` | 1,120 | 분리 고려 가능 |
 | `symbol_table.rs` | 1,093 | 내부 구조화됨 |
 | `ast_parser/mod.rs` | 1,035 | 역할별 분리 완료 |
@@ -195,6 +196,7 @@ main.rs
               │      ├── ir_builder/constraints.rs
               │      ├── ir_builder/metadata.rs
               │      ├── ir_builder/renames.rs
+              │      ├── ir_builder/relations.rs
               │      ├── ir_builder/type_names.rs
               │      └── type_registry.rs
               ├── codegen.rs ──→ rhai_generator.rs

@@ -14,6 +14,7 @@ src/
 │   ├── constraints.rs    # constraint/attribute/timezone IR 변환 헬퍼
 │   ├── metadata.rs       # metadata/annotation IR 변환 헬퍼
 │   ├── renames.rs        # rename rule IR 변환 헬퍼
+│   ├── relations.rs      # foreign key reverse relation 후처리
 │   └── type_names.rs     # 타입/FQN 이름 헬퍼
 ├── validation.rs         # AST 유효성 검사
 ├── error.rs              # 에러 타입 정의
@@ -81,6 +82,10 @@ src/
 - **ir_builder/renames.rs**: IR 빌더 rename 헬퍼
   - AST rename rule을 IR `RenameInfo`로 변환
   - table/field rename kind 판별
+
+- **ir_builder/relations.rs**: IR 빌더 relation 후처리
+  - `foreign_key(... as ...)`에서 reverse relation 수집
+  - 대상 table에 `RelationDef` 추가
 
 ### Validation & Error Handling
 - **validation.rs**: AST 유효성 검사 (8.8KB)
