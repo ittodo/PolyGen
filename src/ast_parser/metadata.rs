@@ -17,11 +17,23 @@ pub fn parse_metadata(
     while let Some(p) = inner_pairs.peek() {
         match p.as_rule() {
             Rule::doc_comment => {
-                let comment_pair = inner_pairs.next().unwrap();
+                let (line, col) = p.line_col();
+                let comment_pair = inner_pairs.next().ok_or(AstBuildError::MissingElement {
+                    rule: Rule::doc_comment,
+                    element: "comment".to_string(),
+                    line,
+                    col,
+                })?;
                 metadata.push(Metadata::DocComment(extract_comment_content(comment_pair)));
             }
             Rule::annotation => {
-                let annotation_pair = inner_pairs.next().unwrap();
+                let (line, col) = p.line_col();
+                let annotation_pair = inner_pairs.next().ok_or(AstBuildError::MissingElement {
+                    rule: Rule::annotation,
+                    element: "annotation".to_string(),
+                    line,
+                    col,
+                })?;
                 metadata.push(Metadata::Annotation(parse_annotation(annotation_pair)?));
             }
             _ => {
@@ -61,7 +73,17 @@ pub fn parse_annotation(pair: Pair<Rule>) -> Result<Annotation, AstBuildError> {
             match arg_pair.as_rule() {
                 Rule::annotation_arg => {
                     // annotation_arg = { annotation_param | literal }
-                    let inner_pair = arg_pair.into_inner().next().unwrap();
+                    let (arg_line, arg_col) = arg_pair.line_col();
+                    let inner_pair =
+                        arg_pair
+                            .into_inner()
+                            .next()
+                            .ok_or(AstBuildError::MissingElement {
+                                rule: Rule::annotation_arg,
+                                element: "argument".to_string(),
+                                line: arg_line,
+                                col: arg_col,
+                            })?;
                     match inner_pair.as_rule() {
                         Rule::annotation_param => {
                             let (p_line, p_col) = inner_pair.line_col();
