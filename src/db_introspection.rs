@@ -277,22 +277,31 @@ mod tests {
         assert_eq!(schema.table_count(), 1);
         assert!(schema.tables.contains_key("Player"));
 
-        let player = &schema.tables["Player"];
+        let player = schema
+            .tables
+            .get("Player")
+            .context("missing Player table")?;
         assert_eq!(player.columns.len(), 3);
         assert!(player.has_column("id"));
         assert!(player.has_column("name"));
         assert!(player.has_column("level"));
 
         // Check column properties
-        let id_col = player.get_column("id").unwrap();
+        let id_col = player
+            .get_column("id")
+            .context("missing Player.id column")?;
         assert!(id_col.is_primary_key);
         assert_eq!(id_col.db_type, "INTEGER");
 
-        let name_col = player.get_column("name").unwrap();
+        let name_col = player
+            .get_column("name")
+            .context("missing Player.name column")?;
         assert!(!name_col.is_nullable); // NOT NULL
         assert_eq!(name_col.db_type, "TEXT");
 
-        let level_col = player.get_column("level").unwrap();
+        let level_col = player
+            .get_column("level")
+            .context("missing Player.level column")?;
         assert!(level_col.is_nullable); // no NOT NULL constraint
         assert_eq!(level_col.default_value, Some("1".to_string()));
 
@@ -320,14 +329,14 @@ mod tests {
         let introspector = SqliteIntrospector::open(file.path())?;
         let schema = introspector.read_schema()?;
 
-        let item = &schema.tables["Item"];
+        let item = schema.tables.get("Item").context("missing Item table")?;
         assert_eq!(item.indexes.len(), 2);
 
         let name_idx = item
             .indexes
             .iter()
             .find(|i| i.name == "idx_item_name")
-            .unwrap();
+            .context("missing idx_item_name index")?;
         assert!(!name_idx.is_unique);
         assert_eq!(name_idx.columns, vec!["name"]);
 
@@ -335,7 +344,7 @@ mod tests {
             .indexes
             .iter()
             .find(|i| i.name == "idx_item_category")
-            .unwrap();
+            .context("missing idx_item_category index")?;
         assert!(cat_idx.is_unique);
         assert_eq!(cat_idx.columns, vec!["category"]);
 
