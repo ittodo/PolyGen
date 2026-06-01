@@ -734,7 +734,7 @@ namespace Polygen.Data
 | Go | 0 | 6+ | **전체 ptpl 마이그레이션 완료** |
 | Unreal | 6 | 0 | 전체 Rhai |
 | SQLite | 2 | 0 | 전체 Rhai |
-| MySQL | 4 | 0 | 전체 Rhai (미완성) |
+| MySQL | 0 | 1+ | ptpl 기반 DDL 생성 완료 |
 
 ### Rhai에서 제거할 패턴 (ptpl이 대체)
 

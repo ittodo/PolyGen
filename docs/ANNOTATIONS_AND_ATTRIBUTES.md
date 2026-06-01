@@ -42,6 +42,11 @@ annotation_param       = { IDENT ~ ":" ~ literal }
 | `@taggable` | 없음 | table | 태그 지원 표시 |
 | `@link_rows` | `(TypeName)` | table | 행 연결 (Cross-reference) |
 | `@index` | `(field1, field2, ...)` | table | 인덱스 생성 (단일/복합) |
+| `@pack` | `separator: ","` | embed | embed 필드를 단일 문자열로 직렬화 |
+| `@datasource` | `"sqlite"` 또는 `value: sqlite` | namespace/table | datasource별 산출물 생성 |
+| `@cache` | `strategy`, `ttl` | table | Redis cache descriptor/key helper 생성 |
+| `@readonly` | 없음 | table | 읽기 전용 테이블 표시 |
+| `@soft_delete` | `"deleted_at"` 또는 `field: deleted_at` | table | 논리 삭제 필드 지정 |
 
 **사용 예제:**
 ```poly
@@ -57,25 +62,63 @@ table Player {
 }
 ```
 
-### 1.3 계획된 어노테이션
+`@load`, `@taggable`, `@link_rows`는 table 정의에만 사용할 수 있습니다. `@load`는
+`csv`/`json` named string parameter 중 하나 이상을 요구하며, 같은 parameter를 중복 지정할 수 없습니다.
+`@taggable`은 인자를 받지 않습니다. `@link_rows`는 positional target type 1개만 허용합니다.
+
+#### @pack - embed 직렬화
+
+```poly
+@pack
+embed Position {
+    x: f32;
+    y: f32;
+}
+
+@pack(separator: "|")
+embed ColorAlpha {
+    r: u8;
+    g: u8;
+    b: u8;
+    a: u8;
+}
+```
+
+`@pack`은 named/nested `embed` 정의에만 사용할 수 있습니다. `separator`를 생략하면
+기본값은 `;`입니다. `separator`를 지정할 때는 named parameter `separator`만 허용되며,
+값은 한 글자 문자열이어야 합니다. 코드 생성 대상 언어들이 char delimiter를 사용하므로
+빈 문자열, 여러 글자 문자열, 작은따옴표, 백슬래시는 검증 단계에서 오류로 처리됩니다.
+Go 생성물은 `Pack`, `Unpack<Type>`, `TryUnpack<Type>` 함수를 만들며, 숫자 unpack은
+범위 오류와 `NaN`/`Inf`를 실패로 처리합니다.
 
 #### @datasource - 데이터소스 지정
 
 ```poly
-@datasource("static")
+@datasource("sqlite")
 namespace data {
     @datasource("cache")
     table HotData { ... }
+
+    @datasource(value: postgres)
+    table AuditLog { ... }
 }
 ```
 
 | 파라미터 | 설명 |
 |---------|------|
-| `"main"` | 기본 DB (MySQL 등) |
-| `"static"` | 정적 데이터 (SQLite 등) |
-| `"cache"` | 캐시 (Redis 등) |
+| `sqlite` | SQLite DDL/Accessor 대상 |
+| `mysql` | MySQL DDL 대상 |
+| `mariadb` | MariaDB DDL 대상 (`mysql` 템플릿 사용) |
+| `postgresql` | PostgreSQL DDL 대상 |
+| `postgres` | PostgreSQL alias |
+| `redis` | Redis cache schema descriptor 대상 |
+| `cache` | Redis cache schema descriptor alias |
 
 **우선순위:** 테이블 직접 지정 > 가장 가까운 namespace > 상위 namespace > 기본값
+`@datasource`는 namespace/table에만 사용할 수 있습니다. positional 값 1개 또는
+`value: ...` named parameter 1개만 허용되며, 값은 식별자 또는 문자열이어야 합니다.
+
+### 1.3 데이터/캐시 어노테이션
 
 #### @cache - 캐시 전략
 
@@ -85,6 +128,9 @@ table ItemTable { ... }
 
 @cache(strategy: on_demand, ttl: 300)
 table Player { ... }
+
+@cache("write_through")
+table Account { ... }
 ```
 
 | 전략 | 설명 | 용도 |
@@ -96,8 +142,13 @@ table Player { ... }
 
 | 파라미터 | 타입 | 설명 |
 |---------|------|------|
-| `strategy` | 식별자 | 캐시 전략 |
-| `ttl` | 정수 | 만료 시간 (초) |
+| `strategy` | 식별자 또는 문자열 | 캐시 전략 |
+| `ttl` | 0 이상의 정수 | 만료 시간 (초) |
+
+Redis descriptor 생성 시 `ttl`은 `ttlSeconds`로 출력됩니다. `strategy` 없이
+`@cache(ttl: 300)`만 지정하면 Redis descriptor의 기본 전략은 `on_demand`입니다.
+검증 단계에서 지원하지 않는 전략, 음수/비정수 TTL, 중복 strategy/ttl, 알 수 없는
+파라미터는 오류로 처리됩니다.
 
 #### @readonly - 읽기 전용
 
@@ -105,6 +156,8 @@ table Player { ... }
 @readonly
 table ItemTable { ... }
 ```
+
+`@readonly`는 table 정의에만 사용할 수 있으며 인자를 받지 않습니다.
 
 - `SaveChanges()`에서 무시
 - 수정 시도시 예외 발생
@@ -117,6 +170,10 @@ table Player {
     deleted_at: timestamp?;
 }
 ```
+
+`@soft_delete`는 table 정의에만 사용할 수 있습니다. 지정한 필드는 같은 table의 regular field여야 하며
+타입은 `timestamp?`이어야 합니다. positional field name 또는 `field: deleted_at` named parameter를
+허용합니다.
 
 - DELETE → `UPDATE deleted_at = NOW()`
 - SELECT시 자동으로 `deleted_at IS NULL` 조건 추가
@@ -167,6 +224,21 @@ foreign_key_val = { "foreign_key" ~ "(" ~ path ~ ")" ~ ("as" ~ IDENT)? }
 | `range` | `range(min, max)` | 리터럴 2개 | 값 범위 제한 |
 | `regex` | `regex("pattern")` | 문자열 | 정규식 검증 |
 | `foreign_key` | `foreign_key(Table.field) [as alias]` | 경로, 별칭(선택) | 외래 키 참조 |
+| `index` | `index` | 없음 | 단일 필드 인덱스 (deprecated, `@index` 권장) |
+| `auto_create` | `auto_create[(timezone)]` | timezone(선택) | 생성 시각 자동 설정 |
+| `auto_update` | `auto_update[(timezone)]` | timezone(선택) | 갱신 시각 자동 설정 |
+
+**검증 규칙:**
+- `primary_key`는 table당 하나만 허용됩니다. optional/array 필드, `bytes`, struct/embed 필드에는 사용할 수 없습니다.
+- `unique`는 optional scalar 필드에는 사용할 수 있지만, array 필드, `bytes`, struct/embed 필드에는 사용할 수 없습니다.
+- `index`는 deprecated field-level 단일 인덱스 제약조건입니다. `@index`와 동일하게 array/bytes/struct/embed 필드에는 사용할 수 없고, scalar 또는 enum 필드만 허용됩니다.
+- `max_length`는 `string`/`bytes` 필드에만 사용할 수 있으며 값은 1 이상이어야 합니다.
+- `default`는 배열 필드에는 사용할 수 없습니다. 기본 타입은 타입에 맞는 리터럴만 허용하고, 정수 기본값은 해당 정수 타입의 범위 안에 있어야 합니다. `range`와 함께 쓰는 경우 기본값도 범위 안에 있어야 합니다.
+- `range`는 숫자 필드에만 사용할 수 있습니다. 정수 필드는 정수 bound만 허용하며, unsigned 정수의 최소값은 0 이상이어야 합니다.
+- `regex`는 `string` 필드에만 사용할 수 있고, 패턴은 Rust `regex` 문법으로 컴파일 가능해야 합니다.
+- `foreign_key`는 `Table.field` 형태여야 하며, 대상은 실제 table의 `primary_key` 또는 `unique` regular field여야 합니다. FK 필드와 대상 필드는 배열이 아니어야 하고, optional 여부를 제외한 타입이 같아야 합니다.
+- `auto_create`와 `auto_update`는 `timestamp` 필드에만 사용할 수 있습니다. table당 `auto_create`는 하나만 허용하고, `auto_update`는 여러 필드에 사용할 수 있습니다.
+- timezone 인자는 생략 시 UTC이며, `utc`, `local`, UTC offset(`+9`, `-5`, `+5:30`), 문자열 timezone name을 지원합니다.
 
 **사용 예제:**
 ```poly
@@ -179,16 +251,20 @@ table Player {
 }
 ```
 
-### 2.3 계획된 어트리뷰트
-
 #### auto_create / auto_update - 자동 타임스탬프
 
 ```poly
 table Player {
     created_at: timestamp auto_create;   // INSERT시 자동 설정
     updated_at: timestamp auto_update;   // UPDATE시 자동 갱신
+    synced_at: timestamp auto_update(+9);
 }
 ```
+
+파싱/AST/IR/검증은 구현되어 있습니다. 코드 생성은 타겟별로 차이가 있으며, 예를 들어 C# DataTable은
+timezone 설정을 반영해 `auto_create` 값을 `Add()` 시점에 설정하고, C#/Rust/C++/TypeScript 계열 템플릿은 `auto_update`
+helper를 생성합니다. DB DDL은 MySQL/MariaDB에서 `auto_create`/`auto_update`를 반영하고,
+PostgreSQL/SQLite에서도 `auto_create` 기본값과 `auto_update` 기본값/trigger를 생성합니다.
 
 ---
 
@@ -211,6 +287,11 @@ table Player {
     level: u16;
 }
 ```
+
+`@index`는 table 정의에만 사용할 수 있습니다. positional 인자는 같은 table의 regular field를
+참조해야 하며, 한 annotation 안에서 같은 필드를 중복 지정할 수 없습니다. 인덱스 필드는
+array/bytes/struct/embed 타입일 수 없고, scalar 또는 enum 타입이어야 합니다. named parameter는
+`unique`만 허용되며 값은 boolean 또는 `true`, `false`, `1`, `0`입니다.
 
 ### 3.2 타겟별 인덱스 지원 정책
 
@@ -317,12 +398,12 @@ table Item {
 | `unique` on `code` | `ByCode` |
 | `foreign_key` on `player_id` | `ByPlayerId` |
 
-### 3.6 기존 `index` 제약조건 제거
+### 3.6 기존 `index` 제약조건
 
 **변경 전 (deprecated):**
 ```poly
 table Player {
-    name: string index;  // ❌ 제거 예정
+    name: string index;  // ⚠️ 유지되지만 @index 권장
 }
 ```
 
@@ -337,6 +418,7 @@ table Player {
 **이유:**
 - 복합 인덱스 지원 불가 문제 해결
 - 테이블 레벨에서 인덱스 관리 일원화
+- 기존 `index` 제약조건은 하위 호환을 위해 유지되며, `@index`와 같은 indexable 타입 검증을 적용합니다.
 - 어노테이션/어트리뷰트 역할 명확화
 - 타겟별 지원 정책 적용 가능
 
@@ -409,11 +491,12 @@ CREATE TABLE Player (
 | `@load` | ✅ | ✅ | ✅ | ✅ |
 | `@taggable` | ✅ | ✅ | ✅ | ✅ |
 | `@link_rows` | ✅ | ✅ | ✅ | ✅ |
-| `@index` | 🚧 | 🚧 | 🚧 | 🚧 |
-| `@datasource` | ❌ | ❌ | ❌ | ❌ |
-| `@cache` | ❌ | ❌ | ❌ | ❌ |
-| `@readonly` | ❌ | ❌ | ❌ | ❌ |
-| `@soft_delete` | ❌ | ❌ | ❌ | ❌ |
+| `@index` | ✅ | ✅ | ✅ | ✅ |
+| `@datasource` | ✅ | ✅ | ✅ | ✅ |
+| `@cache` | ✅ | ✅ | ✅ | ✅ |
+| `@pack` | ✅ | ✅ | ✅ | ✅ |
+| `@readonly` | ✅ | ✅ | ✅ | ✅ |
+| `@soft_delete` | ✅ | ✅ | ✅ | ✅ |
 | `@renamed_from` | ❌ | ❌ | ❌ | ❌ |
 
 ### 5.2 어트리뷰트
@@ -423,13 +506,13 @@ CREATE TABLE Player (
 | `primary_key` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `unique` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `max_length` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `default` | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `range` | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `regex` | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `foreign_key` | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `default` | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
+| `range` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `regex` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `foreign_key` | ✅ | ✅ | ✅ | ✅ | ⚠️ |
 | `index` | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
-| `auto_create` | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `auto_update` | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `auto_create` | ✅ | ✅ | ✅ | ⚠️ | ✅ |
+| `auto_update` | ✅ | ✅ | ✅ | ⚠️ | ✅ |
 
 **범례:** ✅ 완료 | 🚧 진행중 | ⚠️ 부분 구현 | ❌ 미구현
 

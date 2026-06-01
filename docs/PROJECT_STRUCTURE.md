@@ -57,14 +57,21 @@ Rhai 스크립트로 작성된 코드 생성 템플릿입니다.
 ```
 templates/
 ├── csharp/               # C# 템플릿
-├── cpp/                  # C++ 템플릿
+├── cpp/                  # C++ 템플릿 + Redis key helper
 ├── rust/                 # Rust 템플릿
 ├── typescript/           # TypeScript 템플릿
-├── go/                   # Go 템플릿
+├── go/                   # Go 템플릿 + Redis key helper
+├── python/               # Python dataclass/Pydantic/SQLAlchemy 템플릿 + Redis key helper
+├── kotlin/               # Kotlin data class/kotlinx.serialization 템플릿 + Redis key helper
+├── swift/                # Swift Codable/SwiftData 템플릿 + Redis key helper
 ├── mysql/                # MySQL DDL 템플릿
+├── postgresql/           # PostgreSQL DDL 템플릿
+├── redis/                # Redis cache key schema descriptor + ttlSeconds
 ├── sqlite/               # SQLite 템플릿
+├── protobuf/             # Protocol Buffers proto3 템플릿
+├── messagepack/          # MessagePack array encoding schema descriptor
 ├── mermaid/              # Mermaid 다이어그램
-├── unreal/               # Unreal Engine 템플릿
+├── unreal/               # Unreal Engine 템플릿 + Redis key helper
 └── rhai_utils/           # 공용 유틸리티
 ```
 
@@ -85,7 +92,7 @@ static/
 
 ```
 tests/
-├── integration/          # 통합 테스트 스키마 (8개 케이스)
+├── integration/          # 통합 테스트 스키마 (10개 케이스)
 │   ├── 01_basic_types/
 │   ├── 02_imports/
 │   ├── 03_nested_namespaces/
@@ -93,13 +100,30 @@ tests/
 │   ├── 05_embedded_structs/
 │   ├── 06_arrays_and_optionals/
 │   ├── 07_indexes/
-│   └── 08_complex_schema/
-├── runners/              # 언어별 테스트 러너
+│   ├── 08_complex_schema/
+│   ├── 09_sqlite/
+│   └── 10_pack_embed/
+├── runners/              # 언어별/DB/descriptor 통합 테스트 러너
+│   ├── run_all.bat       # Windows 전체/부분 runner 실행
+│   ├── run_all.sh        # POSIX 전체/부분 runner 실행
+│   ├── verify_runner_matrix.py      # Windows/POSIX runner 목록 동기화 검증
+│   ├── test_verify_runner_matrix.py # runner matrix 검증 회귀 테스트
 │   ├── csharp/           # C# 테스트 러너 + 테스트 코드
 │   ├── rust/             # Rust 테스트 러너
 │   ├── typescript/       # TypeScript 테스트 러너
 │   ├── go/               # Go 테스트 러너
-│   └── cpp/              # C++ 테스트 러너
+│   ├── cpp/              # C++ 테스트 러너
+│   ├── sqlite/           # SQLite DDL 테스트 러너
+│   ├── mysql/            # MySQL/MariaDB DDL 테스트 러너
+│   ├── postgresql/       # PostgreSQL DDL 테스트 러너
+│   ├── mermaid/          # Mermaid ER diagram 테스트 러너
+│   ├── redis/            # Redis descriptor/Lua 테스트 러너
+│   ├── python/           # Python 생성물 테스트 러너
+│   ├── messagepack/      # MessagePack descriptor 테스트 러너
+│   ├── protobuf/         # Protobuf schema 테스트 러너
+│   ├── kotlin/           # Kotlin 생성물 테스트 러너
+│   ├── swift/            # Swift 생성물 테스트 러너
+│   └── unreal/           # Unreal header 테스트 러너
 ├── schemas/              # 스냅샷 테스트용 스키마
 ├── snapshots/            # Insta 스냅샷
 ├── output/               # 스냅샷 테스트 출력

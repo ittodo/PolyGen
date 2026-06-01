@@ -37,6 +37,11 @@ namespace game.data {
 namespace game.user {
     table Player { ... }       // → MySQL DDL 생성
 }
+
+@datasource("postgresql")
+namespace game.analytics {
+    table Event { ... }        // → PostgreSQL DDL 생성
+}
 ```
 
 ### 생성 결과
@@ -51,8 +56,11 @@ output/
 ├── sqlite/                     # @datasource("sqlite") 테이블만
 │   └── game_data.sql
 │
-└── mysql/                      # @datasource("mysql") 테이블만
-    └── game_user.sql
+├── mysql/                      # @datasource("mysql") 테이블만
+│   └── game_user.sql
+│
+└── postgresql/                 # @datasource("postgresql") 테이블만
+    └── schema.sql
 ```
 
 ### 장점
@@ -76,7 +84,7 @@ output/
 - [x] 네임스페이스 접두사 처리 (`game.data` → `game_data_`)
 - [x] @datasource 기반 자동 DDL 생성 연동
   - C#, C++, Rust, TypeScript 모두 지원
-  - SQLite/MySQL datasource 필터링
+  - SQLite/MySQL/PostgreSQL datasource 필터링
 
 ### ✅ 추가 완료
 - [x] 마이그레이션 diff 로직 (`--baseline` 옵션으로 스키마 비교)
@@ -89,9 +97,9 @@ output/
 ## 우선순위
 
 1. **SQLite** (현재) - 단순, 테스트 쉬움, 임베디드/게임에 적합
-2. **MySQL/MariaDB** (나중) - SQLite 기반 확장
-3. **PostgreSQL** (옵션) - 필요시
-4. **Redis** (옵션) - 캐시 전용
+2. **MySQL/MariaDB** (DDL 지원) - 서버 DB용 schema.sql 생성
+3. **PostgreSQL** (DDL 지원) - 서버 DB용 schema.sql 생성
+4. **Redis** (캐시 schema descriptor 지원) - 키 패턴 JSON + Lua helper 생성
 
 ---
 
@@ -117,11 +125,11 @@ namespace game {
         table SkillTable { ... }   // → static (상속)
 
         @datasource("cache")
-        table HotData { ... }      // → cache (오버라이드)
+        table HotData { ... }      // → Redis cache descriptor (오버라이드)
     }
 
     @datasource("cache")
-    table Session { ... }          // → cache (오버라이드)
+    table Session { ... }          // → Redis cache descriptor (오버라이드)
 }
 ```
 
@@ -156,11 +164,12 @@ data.SaveChanges();  // 각 DB에 맞게 저장
 | 기능 | SQLite | MySQL | Redis |
 |------|--------|-------|-------|
 | DDL 생성 | ✅ | ✅ | ❌ |
+| 키 schema 생성 | ❌ | ❌ | ✅ |
 | 마이그레이션 | ✅ | ✅ | ❌ |
-| CRUD | ✅ | ✅ | ✅ (Key-Value) |
-| 트랜잭션 | ✅ | ✅ | MULTI/EXEC |
-| 캐시 전략 | 전체 로드 | 온디맨드 | 네이티브 |
-| TTL/만료 | 수동 | 수동 | 네이티브 |
+| CRUD | ✅ | ❌ | ❌ |
+| 트랜잭션 | ✅ | ✅ | ❌ |
+| 캐시 전략 | 전체 로드 | 온디맨드 | descriptor |
+| TTL/만료 | 수동 | 수동 | descriptor (`ttlSeconds`) |
 
 ---
 
@@ -191,12 +200,28 @@ CREATE INDEX idx_player_level ON Player(level);
 
 ### 1.2 마이그레이션 테이블
 
+`_polygen_schema`는 현재 `.poly` 스키마 IR의 compact JSON과 안정 해시를 저장한다.
+DDL과 migration SQL은 이 테이블을 생성하고 `id = 1` row를 upsert한다.
+`_polygen_migrations`는 실행된 DDL/migration script 이력을 version row로 누적한다.
+
+```sql
+CREATE TABLE _polygen_schema (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    schema_hash TEXT,
+    schema_json TEXT,
+    generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ```sql
 CREATE TABLE _polygen_migrations (
     version INTEGER PRIMARY KEY AUTOINCREMENT,
-    poly_schema TEXT NOT NULL,
+    schema_hash TEXT,
+    schema_json TEXT,
     checksum TEXT,
-    applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+    description TEXT,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -284,10 +309,12 @@ ALTER TABLE game_User RENAME COLUMN hp TO health;
 @cache(strategy: full_load)     // 시작시 전체 로드 (정적 데이터)
 table ItemTable { ... }
 
-@cache(strategy: on_demand)     // 필요시 로드
-@cache(ttl: 300)                // 5분 후 만료
+@cache(strategy: on_demand, ttl: 300)  // 필요시 로드, 5분 후 만료
 table Player { ... }
 ```
+
+Redis schema descriptor는 `@cache(..., ttl: N)`을 `ttlSeconds: N`으로 출력합니다.
+`@cache(ttl: N)`만 지정한 경우 cache strategy는 `on_demand`로 간주합니다.
 
 | 전략 | 설명 | 용도 |
 |------|------|------|
@@ -330,6 +357,12 @@ table Player {
 
 - `auto_create`: INSERT시 현재 시간
 - `auto_update`: UPDATE시 현재 시간
+- MySQL/MariaDB DDL은 `auto_create`를 `DEFAULT CURRENT_TIMESTAMP`, `auto_update`를
+  `ON UPDATE CURRENT_TIMESTAMP`로 생성한다.
+- PostgreSQL DDL은 `auto_create`/`auto_update`를 `DEFAULT CURRENT_TIMESTAMP`로 생성하고,
+  `auto_update`는 `BEFORE UPDATE` trigger 함수도 생성한다.
+- SQLite DDL은 `auto_create`/`auto_update`를 `DEFAULT CURRENT_TIMESTAMP`로 생성하고,
+  `auto_update`는 `AFTER UPDATE` trigger도 생성한다.
 
 ---
 
@@ -422,6 +455,11 @@ game.sql.poly    -- SQL 전용 확장
   - `@cache` (full_load, on_demand, write_through)
   - `@readonly` (읽기 전용 테이블)
   - `@soft_delete` (소프트 삭제 필드 지정)
+- [x] `_polygen_schema` 메타데이터 테이블 자동 생성
+- [x] DDL/migration SQL에서 `schema_hash`, `schema_json` upsert 생성
+- [x] `migrate --db`에서 DB 저장 hash와 현재 IR hash 비교 출력
+- [x] `--schema-hash-policy warn|fail|force` 옵션으로 hash 불일치 처리 정책 지정
+- [x] DDL/migration SQL에서 `_polygen_migrations` version row insert 생성
 
 ### Phase 5: DB 기반 마이그레이션 ✅ 완료 (2026-01-26)
 - [x] SQLite DB introspection 모듈 (`src/db_introspection.rs`)
@@ -445,6 +483,15 @@ polygen migrate --baseline old.poly --schema-path new.poly
 
 # 새 방식: DB 파일에서 직접 스키마 읽기
 polygen migrate --db game.db --schema-path schema.poly
+
+# DB 저장 schema_hash 불일치 시 실패
+polygen migrate --db game.db --schema-path schema.poly --schema-hash-policy fail
+
+# DROP TABLE / DROP COLUMN 같은 파괴적 변경 감지 시 실패
+polygen migrate --db game.db --schema-path schema.poly --destructive-policy fail
+
+# 파괴적 변경 SQL을 실제 실행 가능한 SQL로 생성
+polygen migrate --db game.db --schema-path schema.poly --destructive-policy allow
 ```
 
 ### 장점
@@ -464,6 +511,8 @@ polygen migrate --db game.db --schema-path schema.poly
 | 컬럼 추가 | ✅ | `ALTER TABLE ADD COLUMN` |
 | 컬럼 삭제 | ✅ | `DROP COLUMN` (경고) |
 | 타입 변경 | ✅ | 테이블 재생성 (경고) |
+| 스키마 해시 비교 | ✅ | `warn`, `fail`, `force` 정책 |
+| 파괴적 변경 정책 | ✅ | `warn`, `fail`, `allow` 정책 |
 
 ### 모듈 구조
 
@@ -473,11 +522,14 @@ src/
 │   ├── SqliteIntrospector  # SQLite 연결 및 introspection
 │   ├── DbSchema            # DB 스키마 구조체
 │   ├── DbTable             # 테이블 정보
-│   └── DbColumn            # 컬럼 정보
+│   ├── DbColumn            # 컬럼 정보
+│   └── StoredSchemaMetadata # _polygen_schema row
 │
-└── migration.rs          # 마이그레이션 diff
+├── migration.rs          # 마이그레이션 diff
     ├── MigrationDiff::compare()     # 스키마-투-스키마
-    └── MigrationDiff::compare_db()  # DB-투-스키마 (NEW)
+    └── MigrationDiff::compare_db()  # DB-투-스키마
+
+└── schema_metadata.rs    # SchemaContext JSON/hash 생성
 ```
 
 ### 테스트
@@ -502,9 +554,13 @@ cargo test db_introspection
 ## 결정 필요 사항
 
 - [ ] 쿼리/뷰 지원 범위
-- [ ] 파괴적 변경 처리 정책 (DROP TABLE 경고 등)
+- [x] 파괴적 변경 처리 정책 (`--destructive-policy warn|fail|allow`)
+- [x] MySQL/MariaDB DDL 템플릿 지원 (`templates/mysql/`, @datasource 자동 생성)
+- [x] PostgreSQL DDL 템플릿 지원 (`templates/postgresql/`, @datasource 자동 생성)
+- [x] DB DDL auto timestamp 지원 (MySQL/MariaDB `auto_create`/`auto_update`, PostgreSQL/SQLite `auto_create`/`auto_update` trigger)
+- [x] Redis 캐시 schema descriptor + Lua/C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal key helper 템플릿 지원 (`templates/redis/`, `templates/csharp/csharp_redis_keys_file.ptpl`, `templates/cpp/cpp_redis_keys_file.ptpl`, `templates/rust/rust_redis_keys_file.ptpl`, `templates/typescript/typescript_redis_keys_file.ptpl`, `templates/go/go_redis_keys_file.ptpl`, `templates/python/python_redis_keys_file.ptpl`, `templates/kotlin/kotlin_redis_keys_file.ptpl`, `templates/swift/swift_redis_keys_file.ptpl`, `templates/unreal/unreal_redis_keys_file.ptpl`, @datasource("redis"/"cache") 자동 생성, `ttlSeconds` 출력)
 - [ ] MySQL DB introspection 지원
 
 ---
 
-*최종 업데이트: 2026-01-26*
+*최종 업데이트: 2026-05-23*

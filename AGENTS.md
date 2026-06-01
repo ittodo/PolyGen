@@ -11,7 +11,7 @@
 ### 핵심 개념
 
 - **입력**: `.poly` 스키마 파일 (선언적 데이터 모델 정의)
-- **출력**: 타겟 언어 코드 (C#, C++, Rust, TypeScript, Go, Unreal, SQLite)
+- **출력**: 타겟 언어 코드 (C#, C++, Rust, TypeScript, Go, Python, Unreal, SQLite)
 - **템플릿 엔진**: PolyTemplate (.ptpl) — 선언적 코드 생성 DSL + Rhai 스크립팅
 - **목적**: 데이터 모델을 한 번 정의하고 모든 플랫폼에서 일관된 코드 생성
 
@@ -58,7 +58,7 @@ Generated Code + Static Utilities
 | **템플릿 파서** | `template/parser.rs` | .ptpl 파일 파싱 (디렉티브, 인터폴레이션) |
 | **Rhai 브릿지** | `template/rhai_bridge.rs` | %logic 블록, %if 조건 Rhai 평가 |
 | **함수 등록** | `rhai/registry.rs` | Rhai 헬퍼 함수 등록 |
-| **마이그레이션** | `migration.rs` | 스키마 diff, ALTER 생성 |
+| **마이그레이션** | `migration.rs` + `db_introspection.rs` + `schema_metadata.rs` | 스키마 diff, DB 읽기, 스키마 해시 |
 
 > 상세 구조: [docs/SOURCE_STRUCTURE.md](docs/SOURCE_STRUCTURE.md)
 
@@ -104,18 +104,23 @@ PolyGen/
 │   │   └── expr.rs           # 표현식/필터 파싱
 │   ├── migration.rs          # 마이그레이션 diff 생성
 │   ├── db_introspection.rs   # DB 스키마 introspection (SQLite)
+│   ├── schema_diff.rs        # 스키마 diff 요약 리포트 생성
+│   ├── schema_lint.rs        # 미사용 import, 순환 타입 참조 등 스키마 lint 경고
+│   ├── schema_metadata.rs    # IR 기반 스키마 JSON/해시 생성
+│   ├── schema_stats.rs       # 스키마 통계 집계
 │   ├── error.rs              # 에러 타입 정의
 │   └── rhai/                 # Rhai 함수 모듈
 │       ├── registry.rs       # 함수 등록
 │       ├── common/           # 공통 함수
 │       └── csharp/           # C# 전용 함수
 │
-├── templates/                # PolyTemplate (.ptpl) 템플릿 (83+ 파일)
+├── templates/                # PolyTemplate (.ptpl) 템플릿 (100+ 파일)
 │   ├── csharp/               # C# 템플릿 (51 파일)
 │   │   ├── csharp.toml       # 언어 설정 + 타입 매핑
 │   │   ├── csharp_file.ptpl  # 메인 클래스 생성
 │   │   ├── csharp_csv_columns_file.ptpl  # CSV 컬럼 매핑
 │   │   ├── csharp_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── csharp_redis_keys_file.ptpl  # Redis key helper
 │   │   ├── class/            # 클래스 상세 템플릿
 │   │   ├── container/        # Container 템플릿
 │   │   ├── csv/              # CSV 관련 템플릿
@@ -127,6 +132,7 @@ PolyGen/
 │   │   ├── cpp_loaders_file.ptpl      # CSV/JSON/Binary 로더
 │   │   ├── cpp_container_file.ptpl    # Container + 인덱스
 │   │   ├── cpp_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── cpp_redis_keys_file.ptpl   # Redis key helper
 │   │   ├── detail/           # 상세 템플릿 (pack, auto_update)
 │   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
 │   ├── rust/                 # Rust 템플릿
@@ -135,6 +141,7 @@ PolyGen/
 │   │   ├── rust_loaders_file.ptpl     # CSV/Binary 로더
 │   │   ├── rust_container_file.ptpl   # Container
 │   │   ├── rust_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── rust_redis_keys_file.ptpl  # Redis key helper
 │   │   ├── detail/           # 상세 템플릿 (pack, auto_update)
 │   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
 │   ├── typescript/           # TypeScript 템플릿
@@ -142,24 +149,69 @@ PolyGen/
 │   │   ├── typescript_file.ptpl       # 인터페이스 생성
 │   │   ├── typescript_zod_file.ptpl   # Zod 스키마 생성
 │   │   ├── typescript_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   │   ├── typescript_redis_keys_file.ptpl  # Redis key helper
 │   │   ├── detail/           # 상세 템플릿
 │   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
 │   ├── go/                   # Go 템플릿
 │   │   ├── go.toml           # 언어 설정
 │   │   ├── go_file.ptpl      # 메인 패키지 생성
-│   │   └── go_container_file.ptpl     # Container
+│   │   ├── go_container_file.ptpl     # Container
+│   │   ├── go_redis_keys_file.ptpl    # Redis key helper
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── python/               # Python 템플릿
+│   │   ├── python.toml       # 언어 설정
+│   │   ├── python_file.ptpl          # dataclass 모델 생성
+│   │   ├── python_pydantic_file.ptpl # Pydantic 모델 생성
+│   │   ├── python_sqlalchemy_file.ptpl # SQLAlchemy 모델 생성
+│   │   ├── python_redis_keys_file.ptpl # Redis key helper
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── kotlin/               # Kotlin 템플릿
+│   │   ├── kotlin.toml       # 언어 설정
+│   │   ├── kotlin_file.ptpl          # kotlinx.serialization data class/enum 생성
+│   │   ├── kotlin_redis_keys_file.ptpl # Redis key helper
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
+│   ├── swift/                # Swift 템플릿
+│   │   ├── swift.toml        # 언어 설정
+│   │   ├── swift_file.ptpl           # Codable struct/enum 생성
+│   │   ├── swift_swiftdata_file.ptpl # SwiftData @Model 생성
+│   │   ├── swift_redis_keys_file.ptpl # Redis key helper
+│   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
 │   ├── unreal/               # Unreal Engine 템플릿
 │   │   ├── unreal.toml       # 언어 설정
 │   │   ├── unreal_file.ptpl           # USTRUCT/UENUM 생성
 │   │   ├── unreal_loaders_file.ptpl   # CSV/JSON 로더
 │   │   ├── unreal_hotreload_file.ptpl # Hot Reload
+│   │   ├── unreal_redis_keys_file.ptpl # Redis key helper
 │   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
 │   ├── sqlite/               # SQLite 템플릿
 │   │   ├── sqlite.toml       # 언어 설정
 │   │   ├── sqlite_file.ptpl           # DDL 생성
 │   │   ├── sqlite_migration_file.ptpl # 마이그레이션
 │   │   └── rhai_utils/       # Rhai 유틸리티 (prelude)
-│   ├── mermaid/              # Mermaid 다이어그램 (예정)
+│   ├── mysql/                # MySQL/MariaDB DDL 템플릿
+│   │   ├── mysql.toml
+│   │   ├── mysql_file.ptpl
+│   │   └── rhai_utils/
+│   ├── postgresql/           # PostgreSQL DDL 템플릿
+│   │   ├── postgresql.toml
+│   │   ├── postgresql_file.ptpl
+│   │   └── rhai_utils/
+│   ├── redis/                # Redis cache schema descriptor 템플릿
+│   │   ├── redis.toml
+│   │   ├── redis_file.ptpl
+│   │   ├── redis_lua_file.ptpl
+│   │   └── rhai_utils/
+│   ├── protobuf/             # Protocol Buffers 템플릿
+│   │   ├── protobuf.toml
+│   │   ├── protobuf_file.ptpl
+│   │   └── rhai_utils/
+│   ├── messagepack/          # MessagePack schema descriptor 템플릿
+│   │   ├── messagepack.toml
+│   │   ├── messagepack_file.ptpl
+│   │   └── rhai_utils/
+│   ├── mermaid/              # Mermaid ER 다이어그램 템플릿
+│   │   ├── mermaid.toml
+│   │   └── mermaid_file.ptpl
 │   └── rhai_utils/           # 공유 Rhai 유틸리티 (indent 등)
 │
 ├── static/                   # 런타임 정적 파일
@@ -185,13 +237,28 @@ PolyGen/
 │   │   ├── 07_indexes/       # 인덱스 + 외래 키
 │   │   ├── 08_complex_schema/     # 종합 테스트 (RPG 시스템)
 │   │   ├── 09_sqlite/        # SQLite DDL + Accessor
-│   │   └── 10_pack_embed/    # @pack 직렬화 (테스트 파일 미작성)
-│   └── runners/              # 언어별 테스트 러너
-│       ├── cpp/              # C++ 테스트 (MSVC)
+│   │   └── 10_pack_embed/    # @pack 직렬화
+│   └── runners/              # 언어별/DB/descriptor 통합 테스트 러너
+│       ├── run_all.bat       # Windows 전체/부분 runner 실행
+│       ├── run_all.sh        # POSIX 전체/부분 runner 실행
+│       ├── verify_runner_matrix.py      # runner 목록 동기화 검증
+│       ├── test_verify_runner_matrix.py # runner matrix 검증 회귀 테스트
+│       ├── cpp/              # C++ 테스트 (MSVC/g++)
 │       ├── csharp/           # C# 테스트 (.NET 8.0)
 │       ├── rust/             # Rust 테스트 (Cargo)
-│       ├── typescript/       # TypeScript 테스트 (tsc --noEmit)
-│       └── sqlite/           # SQLite DDL 검증
+│       ├── typescript/       # TypeScript type/runtime 테스트
+│       ├── go/               # Go 테스트
+│       ├── sqlite/           # SQLite DDL 검증
+│       ├── mysql/            # MySQL/MariaDB DDL 검증
+│       ├── postgresql/       # PostgreSQL DDL 검증
+│       ├── mermaid/          # Mermaid ER diagram 검증
+│       ├── redis/            # Redis descriptor/Lua 검증
+│       ├── python/           # Python 생성물 검증
+│       ├── messagepack/      # MessagePack descriptor 검증
+│       ├── protobuf/         # Protocol Buffers 검증
+│       ├── kotlin/           # Kotlin 생성물 검증
+│       ├── swift/            # Swift 생성물 검증
+│       └── unreal/           # Unreal header 검증
 │
 ├── examples/                 # 예제 스키마
 │   └── game_schema.poly      # 게임 데이터 예제
@@ -211,7 +278,8 @@ PolyGen/
 | 타입 해석/IR 구조 | `src/ir_builder.rs` → `src/ir_model.rs` |
 | 생성 코드 변경 | `templates/<lang>/` (PolyTemplate .ptpl) |
 | 런타임 유틸리티 | `static/<lang>/` |
-| DB 마이그레이션 | `src/migration.rs` → `src/db_introspection.rs` |
+| DB 마이그레이션 | `src/migration.rs` → `src/db_introspection.rs` → `src/schema_metadata.rs` |
+| 스키마 분석/통계 | `src/visualize.rs` → `src/schema_diff.rs` → `src/schema_lint.rs` → `src/schema_stats.rs` |
 | 회귀 테스트 | `tests/` |
 
 ---
@@ -233,6 +301,24 @@ cargo run -- \
   --lang <LANGUAGE> \
   --templates-dir <TEMPLATES_DIR> \
   --output-dir <OUTPUT_DIR>
+
+# Watch 모드 (스키마/템플릿 변경 시 자동 재생성)
+cargo run -- watch --schema examples/game_schema.poly --lang csharp
+
+# Markdown 스키마 문서 생성
+cargo run -- docs --schema-path examples/game_schema.poly --output docs/schema.md
+
+# 스키마 통계 출력
+cargo run -- stats --schema-path examples/game_schema.poly
+cargo run -- stats --schema-path examples/game_schema.poly --format json
+
+# 스키마 변경 요약 출력
+cargo run -- diff --old old.poly --new new.poly
+cargo run -- diff --old old.poly --new new.poly --format json
+
+# 스키마 lint 경고 출력
+cargo run -- lint --schema-path examples/game_schema.poly
+cargo run -- lint --schema-path examples/game_schema.poly --format json
 ```
 
 ### 마이그레이션
@@ -243,6 +329,9 @@ cargo run -- migrate --baseline old.poly --schema-path new.poly
 
 # DB 비교 방식 (SQLite 파일에서 직접 스키마 읽기)
 cargo run -- migrate --db game.db --schema-path schema.poly
+
+# 파괴적 변경 처리 정책: warn(기본, DROP 주석 처리), fail(중단), allow(DROP SQL 생성)
+cargo run -- migrate --db game.db --schema-path schema.poly --destructive-policy fail
 
 # 출력 디렉토리 지정
 cargo run -- migrate --db game.db --schema-path schema.poly --output-dir migrations/
@@ -372,18 +461,20 @@ table Player {
 
 | 어노테이션 | 적용 대상 | 설명 | 예시 |
 |-----------|----------|------|------|
-| `@load` | table | CSV/JSON 데이터 로드 경로 | `@load(csv: "data.csv")` |
-| `@taggable` | table | 행 태깅 활성화 | `@taggable` |
-| `@link_rows` | table | 다른 테이블과 행 연결 | `@link_rows(Character)` |
+| `@load` | table | CSV/JSON 데이터 로드 경로 (`csv`/`json` named string) | `@load(csv: "data.csv")` |
+| `@taggable` | table | 행 태깅 활성화 (인자 없음) | `@taggable` |
+| `@link_rows` | table | 다른 테이블과 행 연결 (target 1개) | `@link_rows(Character)` |
+| `@index` | table | 단일/복합 인덱스 생성 | `@index(guild_id, level, unique: true)` |
 | `@readonly` | table | 읽기 전용 테이블 | `@readonly` |
-| `@cache` | table | 캐시 전략 설정 | `@cache("full_load")` |
-| `@datasource` | namespace/table | 데이터 소스 지정 | `@datasource("sqlite")` |
-| `@soft_delete` | table | 소프트 삭제 필드 지정 | `@soft_delete("deleted_at")` |
+| `@cache` | table | 캐시 전략/TTL 설정 | `@cache(strategy: "write_through", ttl: 300)` |
+| `@datasource` | namespace/table | 데이터 소스 지정 (`sqlite/mysql/mariadb/postgresql/postgres/redis/cache`) | `@datasource("sqlite")` |
+| `@soft_delete` | table | `timestamp?` 소프트 삭제 필드 지정 | `@soft_delete("deleted_at")` |
 | `@pack` | embed | 필드를 단일 문자열로 직렬화 | `@pack` 또는 `@pack(separator: ",")` |
 
 ### @pack 어노테이션
 
 `embed` 타입에 `@pack`을 붙이면 모든 필드를 단일 문자열로 직렬화/역직렬화하는 메서드가 생성됩니다.
+`separator`는 `separator: ","` 형식의 named parameter로만 지정하며, 한 글자 문자열만 허용됩니다.
 
 ```poly
 // 기본 구분자: ;
@@ -412,6 +503,7 @@ table Player {
 - C#: `Pack()`, `Unpack(string)`, `TryUnpack(string, out T)`
 - C++: `pack()`, `unpack(string)`, `try_unpack(string, T&)`
 - Rust: `pack()`, `unpack(&str) -> Result<Self, String>`
+- Go: `Pack()`, `UnpackX(string)`, `TryUnpackX(string)`
 - TypeScript: `packX()`, `unpackX()`, `tryUnpackX()`
 
 ---
@@ -473,12 +565,24 @@ table Player {
 
 ```bash
 # Windows (.bat)
+tests\runners\run_all.bat
+tests\runners\run_all.bat sqlite rust
+tests\runners\run_all.bat --list
+tests\runners\run_all.bat --verify
 tests\runners\sqlite\run_tests.bat
 tests\runners\typescript\run_tests.bat
 tests\runners\csharp\run_tests.bat
 tests\runners\cpp\run_tests.bat
 tests\runners\rust\run_tests.bat
+
+# POSIX (.sh)
+bash tests/runners/run_all.sh
+bash tests/runners/run_all.sh sqlite rust
+bash tests/runners/run_all.sh --list
+bash tests/runners/run_all.sh --verify
 ```
+
+`run_all`은 C#/C++/Rust/TypeScript/Go/SQLite/MySQL/PostgreSQL/Mermaid/Redis/Python/MessagePack/Protobuf/Kotlin/Swift/Unreal runner를 순차 실행하며, 인자를 주면 지정한 runner만 실행합니다. `--verify`는 Windows/POSIX runner 목록, 실제 runner 디렉터리, 중복 이름, 한쪽만 있는 runner script를 검사하고 verifier 회귀 테스트도 실행합니다.
 
 | 테스트 케이스 | 검증 내용 |
 |--------------|----------|
@@ -491,7 +595,7 @@ tests\runners\rust\run_tests.bat
 | 07_indexes | 인덱스, 외래 키, Container 검증 |
 | 08_complex_schema | 게임 데이터 종합 테스트 (RPG 시스템) |
 | 09_sqlite | SQLite DDL 생성 + Accessor 컴파일 |
-| 10_pack_embed | @pack 직렬화 (테스트 파일 미작성) |
+| 10_pack_embed | @pack 직렬화 |
 
 ---
 
@@ -559,14 +663,22 @@ tests\runners\rust\run_tests.bat
 
 | 언어 | 상태 | 기능 |
 |------|------|------|
-| C# | ✅ 완료 | 클래스, Enum, CSV/JSON/Binary 로더, Container, SQLite Accessor |
-| C++ | ✅ 완료 | 헤더 전용, 구조체, Enum, CSV/JSON/Binary 로더, Container, SQLite Accessor |
-| Rust | ✅ 완료 | 모듈, Struct, Enum, CSV/Binary 로더, Container, SQLite Accessor |
-| TypeScript | ✅ 완료 | 인터페이스, Enum, Zod 스키마 검증, SQLite Accessor |
-| Go | ✅ 완료 | 패키지, Struct, Enum, Container |
-| Unreal | ✅ 완료 | USTRUCT/UENUM 매크로, CSV/JSON 로더, Hot Reload |
+| C# | ✅ 완료 | 클래스, Enum, CSV/JSON/Binary 로더, Container, SQLite Accessor, Redis key helper |
+| C++ | ✅ 완료 | 헤더 전용, 구조체, Enum, CSV/JSON/Binary 로더, Container, SQLite Accessor, Redis key helper |
+| Rust | ✅ 완료 | 모듈, Struct, Enum, CSV/Binary 로더, Container, SQLite Accessor, Redis key helper |
+| TypeScript | ✅ 완료 | 인터페이스, Enum, Zod 스키마 검증, SQLite Accessor, Redis key helper |
+| Go | ✅ 완료 | 패키지, Struct, Enum, Container, Redis key helper |
+| Python | ✅ 완료 | dataclass, Pydantic, SQLAlchemy 모델, Redis key helper |
+| Kotlin | ✅ 완료 | data class, kotlinx.serialization Enum, Redis key helper |
+| Swift | ✅ 완료 | Codable struct/enum, SwiftData @Model, Redis key helper |
+| Unreal | ✅ 완료 | USTRUCT/UENUM 매크로, CSV/JSON 로더, Hot Reload, Redis key helper |
 | SQLite | ✅ 완료 | DDL 생성, Migration 스크립트 |
-| Mermaid | 📝 예정 | 빈 디렉토리 (다이어그램 생성 예정) |
+| MySQL/MariaDB | ✅ 완료 | DDL 생성, @datasource 자동 연동 |
+| PostgreSQL | ✅ 완료 | DDL 생성, @datasource 자동 연동 |
+| Redis | ✅ 완료 | cache key schema descriptor, `ttlSeconds`, Lua/C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal key helper, `@datasource("cache")` alias |
+| Protocol Buffers | ✅ 완료 | proto3 `.proto` 파일 생성 |
+| MessagePack | ✅ 완료 | array encoding schema descriptor 생성 |
+| Mermaid | ✅ 완료 | ER 다이어그램(.mmd) 생성 |
 
 ---
 
@@ -634,8 +746,9 @@ tests\runners\rust\run_tests.bat
 | heck | 0.5 | 케이스 변환 |
 | clap | 4.5 | CLI 인자 파싱 |
 | rusqlite | 0.31 | SQLite DB introspection |
+| notify | 6.1 | Watch 모드 파일 시스템 감시 |
 | insta | 1.34 | 스냅샷 테스트 (dev) |
 
 ---
 
-*최종 업데이트: 2026-05-22*
+*최종 업데이트: 2026-05-23*

@@ -408,11 +408,21 @@ impl GameContainer {
 
 | 언어 | Level 1 | Level 2 | Level 3 | 상태 |
 |------|---------|---------|---------|------|
-| **C#** | ✅ | ✅ | ✅ | 완전 지원 |
-| **Rust** | ✅ | ✅ | ✅ | 완전 지원 |
+| **C#** | ✅ | ✅ | ✅ | 완전 지원 + Redis key helper |
+| **C++** | ✅ | ✅ | ✅ | 헤더/로더/컨테이너 + Redis key helper |
+| **Rust** | ✅ | ✅ | ✅ | 완전 지원 + Redis key helper |
+| **TypeScript** | ✅ | ✅ | ✅ | 인터페이스/Zod/SQLite + Redis key helper |
+| **Go** | ✅ | ✅ | ✅ | Struct/Enum/Container + Redis key helper |
+| **Python** | ✅ | ✅ | ✅ | dataclass/Pydantic/SQLAlchemy + Redis key helper |
+| **Kotlin** | ✅ | ✅ | ✅ | data class/kotlinx.serialization + Redis key helper |
+| **Swift** | ✅ | ✅ | ✅ | Codable/SwiftData + Redis key helper |
 | **MySQL** | ✅ | - | - | DDL만 |
-| **TypeScript** | ❌ | ❌ | ❌ | 미구현 |
-| **C++** | ❌ | ❌ | ❌ | 미구현 |
+| **PostgreSQL** | ✅ | - | - | DDL만 |
+| **Unreal** | ✅ | ✅ | ✅ | USTRUCT/UENUM/Loaders + Redis key helper |
+| **Redis** | ✅ | - | - | cache key schema descriptor + ttlSeconds + Lua/C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal key helpers |
+| **Protocol Buffers** | ✅ | - | - | proto3 `.proto` |
+| **MessagePack** | ✅ | - | - | array encoding schema descriptor |
+| **Mermaid** | ✅ | - | - | ER 다이어그램 |
 
 ---
 
