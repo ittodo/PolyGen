@@ -135,6 +135,128 @@ class Program
         passed++;
     }
 
+    static Schema.BinaryRefs.test_indexes_UserRef OpenUserRefAfterContextScope(string path)
+    {
+        var ctx = Schema.BinaryRefs.SchemaBinaryRefContext.OpenBinary(path);
+        var userRef = ctx.Users.GetById(1);
+        if (userRef == null)
+        {
+            throw new InvalidOperationException("User ref was not found after OpenBinary.");
+        }
+        return userRef;
+    }
+
+    static void TestBinaryRefLoad()
+    {
+        Console.WriteLine("  Testing indexed binary ref load...");
+
+        var container = new Schema.Container.SchemaDataContainer();
+        container.Users.Add(new test.indexes.User
+        {
+            id = 1,
+            username = "alice",
+            email = "alice@example.com",
+            display_name = "Alice"
+        });
+        container.Users.Add(new test.indexes.User
+        {
+            id = 2,
+            username = "bob",
+            email = "bob@example.com",
+            display_name = "Bob"
+        });
+        container.Categorys.Add(new test.indexes.Category
+        {
+            id = 10,
+            name = "Tech",
+            description = "Technology"
+        });
+        container.Posts.Add(new test.indexes.Post
+        {
+            id = 100,
+            title = "Binary refs",
+            content = "Lazy row access",
+            author_id = 1,
+            category_id = 10
+        });
+        container.Posts.Add(new test.indexes.Post
+        {
+            id = 101,
+            title = "Indexes",
+            content = "Lookup by author",
+            author_id = 1,
+            category_id = 10
+        });
+        container.Comments.Add(new test.indexes.Comment
+        {
+            id = 1000,
+            post_id = 100,
+            author_id = 2,
+            content = "Looks good",
+            parent_id = null
+        });
+        container.Tags.Add(new test.indexes.Tag
+        {
+            id = 50,
+            name = "csharp"
+        });
+        container.PostTags.Add(new test.indexes.PostTag
+        {
+            post_id = 100,
+            tag_id = 50
+        });
+
+        var path = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "polygen-csharp-binary-ref-" + Guid.NewGuid().ToString("N") + ".bin");
+
+        try
+        {
+            Schema.BinaryRefs.SchemaBinaryRefContext.SaveBinary(path, container);
+            var ctx = Schema.BinaryRefs.SchemaBinaryRefContext.OpenBinary(path);
+
+            var aliceById = ctx.Users.GetById(1);
+            Assert(aliceById != null, "GetById should find alice");
+            Assert(aliceById!.username == "alice", "alice username");
+            Assert(aliceById.email == "alice@example.com", "alice email");
+
+            var aliceByUsername = ctx.Users.GetByUsername("alice");
+            Assert(aliceByUsername != null, "GetByUsername should find alice");
+            Assert(aliceByUsername!.id == 1, "alice id by username");
+
+            var ownedAlice = aliceById.ToOwned();
+            Assert(ownedAlice.display_name == "Alice", "ToOwned display_name");
+
+            var tech = ctx.Categorys.GetByName("Tech");
+            Assert(tech != null, "GetByName should find category");
+            Assert(tech!.description == "Technology", "optional category description");
+
+            var postsByAlice = ctx.Posts.FindByAuthorId(1);
+            Assert(postsByAlice.Count == 2, "FindByAuthorId should return two posts");
+            Assert(postsByAlice[0].title == "Binary refs", "first post title");
+
+            var postTags = ctx.PostTags.FindByPostId(100);
+            Assert(postTags.Count == 1, "FindByPostId should return one post tag");
+            Assert(postTags[0].tag_id == 50, "post tag id");
+
+            Assert(ctx.Users.GetById(999) == null, "missing unique index should return null");
+            Assert(ctx.Posts.FindByAuthorId(999).Count == 0, "missing group index should return empty list");
+
+            var detachedRef = OpenUserRefAfterContextScope(path);
+            Assert(detachedRef.username == "alice", "ref should keep binary owner alive after context scope");
+        }
+        finally
+        {
+            if (System.IO.File.Exists(path))
+            {
+                System.IO.File.Delete(path);
+            }
+        }
+
+        Console.WriteLine("    PASS");
+        passed++;
+    }
+
     static void Main()
     {
         Console.WriteLine("=== Test Case 07: Indexes ===");
@@ -144,6 +266,7 @@ class Program
         TestPostWithForeignKeys();
         TestJunctionTable();
         TestBinarySerialization();
+        TestBinaryRefLoad();
 
         if (failed > 0)
         {
