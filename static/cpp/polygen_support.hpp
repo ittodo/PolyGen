@@ -4,8 +4,11 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <optional>
 #include <stdexcept>
@@ -18,6 +21,7 @@
 #include <unordered_map>
 #include <map>
 #include <deque>
+#include <iterator>
 #include <regex>
 #include <chrono>
 
@@ -86,6 +90,19 @@ public:
     }
 
     bool read_bool() { return read_u8() != 0; }
+
+    size_t position() {
+        auto pos = stream_.tellg();
+        if (pos < 0) {
+            throw std::runtime_error("Binary reader position is unavailable");
+        }
+        return static_cast<size_t>(pos);
+    }
+
+    void skip(size_t count) {
+        stream_.seekg(static_cast<std::streamoff>(count), std::ios::cur);
+        check_read();
+    }
 
     // String: u32 length + UTF-8 bytes
     std::string read_string() {
@@ -759,6 +776,186 @@ inline void write_binary_file(const std::string& path, const std::vector<uint8_t
     }
     file.write(reinterpret_cast<const char*>(data.data()), data.size());
 }
+
+inline std::chrono::system_clock::time_point ticks_to_time_point(int64_t ticks) {
+    constexpr int64_t TICKS_PER_SECOND = 10000000LL;
+    constexpr int64_t UNIX_EPOCH_TICKS = 621355968000000000LL;
+    int64_t unix_ticks = ticks - UNIX_EPOCH_TICKS;
+    auto duration = std::chrono::duration<int64_t, std::ratio<1, TICKS_PER_SECOND>>(unix_ticks);
+    return std::chrono::system_clock::time_point(
+        std::chrono::duration_cast<std::chrono::system_clock::duration>(duration));
+}
+
+// ============================================================================
+// Indexed Binary Ref Utilities
+// ============================================================================
+
+class BinaryDocument {
+public:
+    explicit BinaryDocument(std::vector<uint8_t> data)
+        : data_(std::make_shared<const std::vector<uint8_t>>(std::move(data))) {}
+
+    explicit BinaryDocument(std::shared_ptr<const std::vector<uint8_t>> data)
+        : data_(std::move(data)) {
+        if (!data_) {
+            throw std::invalid_argument("BinaryDocument data cannot be null");
+        }
+    }
+
+    static std::shared_ptr<const BinaryDocument> open(const std::string& path) {
+        return std::make_shared<BinaryDocument>(read_binary_file(path));
+    }
+
+    const uint8_t* data() const { return data_->data(); }
+    const std::vector<uint8_t>& bytes() const { return *data_; }
+    size_t size() const { return data_->size(); }
+
+    void check_range(size_t offset, size_t length) const {
+        if (offset > size() || length > size() - offset) {
+            throw std::runtime_error("Binary ref offset is outside the document");
+        }
+    }
+
+    uint8_t read_u8(size_t offset) const {
+        check_range(offset, 1);
+        return (*data_)[offset];
+    }
+
+    int8_t read_i8(size_t offset) const {
+        return static_cast<int8_t>(read_u8(offset));
+    }
+
+    uint16_t read_u16(size_t offset) const {
+        check_range(offset, sizeof(uint16_t));
+        uint16_t value;
+        std::memcpy(&value, data() + offset, sizeof(value));
+        return value;
+    }
+
+    int16_t read_i16(size_t offset) const {
+        return static_cast<int16_t>(read_u16(offset));
+    }
+
+    uint32_t read_u32(size_t offset) const {
+        check_range(offset, sizeof(uint32_t));
+        uint32_t value;
+        std::memcpy(&value, data() + offset, sizeof(value));
+        return value;
+    }
+
+    int32_t read_i32(size_t offset) const {
+        return static_cast<int32_t>(read_u32(offset));
+    }
+
+    uint64_t read_u64(size_t offset) const {
+        check_range(offset, sizeof(uint64_t));
+        uint64_t value;
+        std::memcpy(&value, data() + offset, sizeof(value));
+        return value;
+    }
+
+    int64_t read_i64(size_t offset) const {
+        return static_cast<int64_t>(read_u64(offset));
+    }
+
+    float read_f32(size_t offset) const {
+        uint32_t bits = read_u32(offset);
+        float value;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
+
+    double read_f64(size_t offset) const {
+        uint64_t bits = read_u64(offset);
+        double value;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
+
+    bool read_bool(size_t offset) const {
+        return read_u8(offset) != 0;
+    }
+
+    std::string_view read_length_prefixed_bytes(size_t offset) const {
+        int32_t length = read_i32(offset);
+        if (length < 0) {
+            throw std::runtime_error("Negative binary payload length");
+        }
+        const size_t payload_offset = offset + sizeof(int32_t);
+        check_range(payload_offset, static_cast<size_t>(length));
+        return std::string_view(
+            reinterpret_cast<const char*>(data() + payload_offset),
+            static_cast<size_t>(length));
+    }
+
+    std::string read_string(size_t offset) const {
+        auto view = read_length_prefixed_bytes(offset);
+        return std::string(view.data(), view.size());
+    }
+
+private:
+    std::shared_ptr<const std::vector<uint8_t>> data_;
+};
+
+class BinaryRefFormat {
+public:
+    static void read_header(BinaryReader& reader) {
+        static constexpr std::array<uint8_t, 8> magic = {'P', 'G', 'B', 'R', 'E', 'F', '1', 0};
+        for (uint8_t expected : magic) {
+            if (reader.read_u8() != expected) {
+                throw std::runtime_error("Invalid PolyGen binary ref header");
+            }
+        }
+        const int32_t version = reader.read_i32();
+        if (version != 1) {
+            throw std::runtime_error("Unsupported PolyGen binary ref version: " + std::to_string(version));
+        }
+    }
+
+    static std::string read_string(BinaryReader& reader) {
+        int32_t length = reader.read_i32();
+        if (length < 0) {
+            throw std::runtime_error("Negative string length");
+        }
+        std::string value(static_cast<size_t>(length), '\0');
+        for (int32_t i = 0; i < length; ++i) {
+            value[static_cast<size_t>(i)] = static_cast<char>(reader.read_u8());
+        }
+        return value;
+    }
+
+    static size_t required_field_offset(const BinaryDocument& doc, size_t row_offset, int field_index) {
+        size_t offset = field_offset(doc, row_offset, field_index);
+        if (offset == npos) {
+            throw std::runtime_error("Missing required binary field at index " + std::to_string(field_index));
+        }
+        return offset;
+    }
+
+    static size_t field_offset(const BinaryDocument& doc, size_t row_offset, int field_index) {
+        if (field_index < 0) {
+            return npos;
+        }
+        const int32_t field_count = doc.read_i32(row_offset);
+        if (field_count < 0) {
+            throw std::runtime_error("Negative binary field count");
+        }
+        if (field_index >= field_count) {
+            return npos;
+        }
+        const size_t table_offset = row_offset + sizeof(int32_t);
+        doc.check_range(table_offset, static_cast<size_t>(field_count) * sizeof(int32_t));
+        const int32_t relative = doc.read_i32(table_offset + static_cast<size_t>(field_index) * sizeof(int32_t));
+        if (relative < 0) {
+            return npos;
+        }
+        const size_t absolute = row_offset + static_cast<size_t>(relative);
+        doc.check_range(absolute, 0);
+        return absolute;
+    }
+
+    static constexpr size_t npos = static_cast<size_t>(-1);
+};
 
 // ============================================================================
 // Validation System

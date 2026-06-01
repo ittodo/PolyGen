@@ -2,7 +2,9 @@
 // {{container_name}} is the root container aggregating all data tables.
 type {{container_name}} struct {
 %for table in file.all_tables
+%if !table.is_embed
 	{{table.name | pascal_case | suffix("s")}} *{{table.name | suffix("Table")}}
+%endif
 %endfor
 }
 %blank
@@ -10,7 +12,9 @@ type {{container_name}} struct {
 func New{{container_name}}() *{{container_name}} {
 	return &{{container_name}}{
 %for table in file.all_tables
+%if !table.is_embed
 		{{table.name | pascal_case | suffix("s")}}: New{{table.name | suffix("Table")}}(),
+%endif
 %endfor
 	}
 }
@@ -18,7 +22,9 @@ func New{{container_name}}() *{{container_name}} {
 // Clear clears all tables.
 func (c *{{container_name}}) Clear() {
 %for table in file.all_tables
+%if !table.is_embed
 	c.{{table.name | pascal_case | suffix("s")}}.Clear()
+%endif
 %endfor
 }
 %blank
@@ -27,11 +33,15 @@ func (c *{{container_name}}) ValidateAll() *ValidationResult {
 	result := NewValidationResult()
 	// Field constraint validation
 %for table in file.all_tables
+%if !table.is_embed
 	result.Merge(c.{{table.name | pascal_case | suffix("s")}}.Validate())
+%endif
 %endfor
 	// Foreign key validation
 %for table in file.all_tables
+%if !table.is_embed
 	result.Merge(c.{{table.name | pascal_case | suffix("s")}}.ValidateForeignKeys(c))
+%endif
 %endfor
 	return result
 }

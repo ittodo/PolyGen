@@ -3,7 +3,12 @@
 func (t *{{struct.name | suffix("Table")}}) Validate() *ValidationResult {
 	result := NewValidationResult()
 	for _, row := range t.rows {
-		rowKey := fmt.Sprintf("%v", row.{{struct.pk_field_name | pascal_case}})
+		_ = row
+%logic
+let row_key_expr = go_row_key_expr(struct);
+%endlogic
+		rowKey := fmt.Sprintf("%v", {{row_key_expr}})
+		_ = rowKey
 %for field in struct.fields
 %if field.has_max_length
 %if field.field_type.is_option

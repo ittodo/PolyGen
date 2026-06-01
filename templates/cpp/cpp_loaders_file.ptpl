@@ -51,6 +51,106 @@ fn get_type_fqn(type_ref) {
     return get_full_cpp_type(clean_ns, type_ref.type_name);
 }
 
+fn enum_validator_specialization(enum_def, enum_type) {
+    let result = "template<>\n";
+    result += "struct enum_validator<" + enum_type + "> {\n";
+    result += "    static bool is_valid(" + enum_type + " value) {\n";
+    result += "        switch (static_cast<int32_t>(value)) {\n";
+
+    let next_value = 0;
+    for item in enum_def.items {
+        if item.is_member() {
+            let member = item.as_member();
+            if member.value != () {
+                next_value = member.value;
+            }
+            result += "            case " + next_value + ":\n";
+            next_value += 1;
+        }
+    }
+
+    result += "                return true;\n";
+    result += "            default:\n";
+    result += "                return false;\n";
+    result += "        }\n";
+    result += "    }\n";
+    result += "};";
+    return result;
+}
+
+fn enum_validators_from_struct(s, namespace_name) {
+    let validators = [];
+    for si in s.items {
+        if si.is_inline_enum() {
+            let e = si.as_inline_enum();
+            validators.push(enum_validator_specialization(e, get_full_cpp_type(namespace_name + "." + s.name, e.name)));
+        } else if si.is_embedded_struct() {
+            let es = si.as_embedded_struct();
+            for nested_validator in enum_validators_from_struct(es, namespace_name + "." + es.name) {
+                validators.push(nested_validator);
+            }
+        }
+    }
+    return validators;
+}
+
+fn enum_validators_from_namespace(ns) {
+    let validators = [];
+    for item in ns.items {
+        if item.is_enum() {
+            let e = item.as_enum();
+            validators.push(enum_validator_specialization(e, get_full_cpp_type(ns.name, e.name)));
+        } else if item.is_struct() {
+            let s = item.as_struct();
+            for struct_validator in enum_validators_from_struct(s, ns.name) {
+                validators.push(struct_validator);
+            }
+        } else if item.is_namespace() {
+            let child_ns = item.as_namespace();
+            for child_validator in enum_validators_from_namespace(child_ns) {
+                validators.push(child_validator);
+            }
+        }
+    }
+    return validators;
+}
+
+fn collect_struct_entries_from_struct(s, namespace_name) {
+    let entries = [];
+    entries.push(#{ struct_def: s, namespace_name: namespace_name });
+
+    for item in s.items {
+        if item.is_embedded_struct() {
+            let embedded_entries = collect_struct_entries_from_struct(item.as_embedded_struct(), namespace_name);
+            for entry in embedded_entries {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries
+}
+
+fn collect_struct_entries_from_namespace(ns) {
+    let entries = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let struct_entries = collect_struct_entries_from_struct(item.as_struct(), ns.name);
+            for entry in struct_entries {
+                entries.push(entry);
+            }
+        } else if item.is_namespace() {
+            let child_entries = collect_struct_entries_from_namespace(item.as_namespace());
+            for entry in child_entries {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries
+}
+
 fn get_primitive_reader(type_name) {
     switch type_name {
         "string" => "read_string",
@@ -110,7 +210,7 @@ fn bin_read_expr(type_ref) {
     if n == "timestamp" { return "reader.read_timestamp()"; }
     let full_type = get_type_fqn(type_ref);
     if type_ref.is_enum {
-        return "reader.read_enum<" + full_type + ">()";
+        return "read_checked_enum<" + full_type + ">(reader)";
     }
     return "read_" + n + "(reader)";
 }
@@ -133,7 +233,7 @@ fn bin_write_expr(type_ref, value_expr) {
     if n == "bytes" { return "writer.write_bytes(" + value_expr + ")"; }
     if n == "timestamp" { return "writer.write_timestamp(" + value_expr + ")"; }
     if type_ref.is_enum {
-        return "writer.write_enum(" + value_expr + ")";
+        return "write_checked_enum(writer, " + value_expr + ")";
     }
     return "write_" + n + "(writer, " + value_expr + ")";
 }
@@ -154,7 +254,9 @@ fn generate_binary_read(s, namespace_fqn) {
             let elem_type = get_type_fqn(t);
 
             if t.is_list {
-                if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+                if t.is_enum {
+                    result += "    obj." + n + " = reader.read_vector<" + elem_type + ">([](polygen::BinaryReader& r) { return read_checked_enum<" + elem_type + ">(r); });\n";
+                } else if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
                     result += "    obj." + n + " = reader.read_vector<" + elem_type + ">([](polygen::BinaryReader& r) { return r." + get_primitive_reader(t.type_name) + "(); });\n";
                 } else {
                     result += "    obj." + n + " = reader.read_vector<" + elem_type + ">([](polygen::BinaryReader& r) { return read_" + t.type_name + "(r); });\n";
@@ -162,6 +264,8 @@ fn generate_binary_read(s, namespace_fqn) {
             } else if t.is_option {
                 if t.type_name == "string" {
                     result += "    obj." + n + " = reader.read_optional_string();\n";
+                } else if t.is_enum {
+                    result += "    obj." + n + " = reader.read_optional<" + elem_type + ">([](polygen::BinaryReader& r) { return read_checked_enum<" + elem_type + ">(r); });\n";
                 } else if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
                     result += "    obj." + n + " = reader.read_optional<" + elem_type + ">([](polygen::BinaryReader& r) { return r." + get_primitive_reader(t.type_name) + "(); });\n";
                 } else {
@@ -194,7 +298,9 @@ fn generate_binary_write(s, namespace_fqn) {
             let elem_type = get_type_fqn(t);
 
             if t.is_list {
-                if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+                if t.is_enum {
+                    result += "    writer.write_vector(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { write_checked_enum(w, v); });\n";
+                } else if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
                     result += "    writer.write_vector(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { w." + get_primitive_writer(t.type_name) + "(v); });\n";
                 } else {
                     result += "    writer.write_vector(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { write_" + t.type_name + "(w, v); });\n";
@@ -202,6 +308,8 @@ fn generate_binary_write(s, namespace_fqn) {
             } else if t.is_option {
                 if t.type_name == "string" {
                     result += "    writer.write_optional_string(obj." + n + ");\n";
+                } else if t.is_enum {
+                    result += "    writer.write_optional(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { write_checked_enum(w, v); });\n";
                 } else if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
                     result += "    writer.write_optional(obj." + n + ", [](polygen::BinaryWriter& w, const " + elem_type + "& v) { w." + get_primitive_writer(t.type_name) + "(v); });\n";
                 } else {
@@ -261,42 +369,24 @@ if has_file {
 let all_structs = [];
 if has_file {
     for ns in file.namespaces {
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                all_structs.push(#{ struct_def: s, namespace_name: ns.name });
-                for si in s.items {
-                    if si.is_embedded_struct() {
-                        let es = si.as_embedded_struct();
-                        all_structs.push(#{ struct_def: es, namespace_name: ns.name });
-                        for esi in es.items {
-                            if esi.is_embedded_struct() {
-                                let nes = esi.as_embedded_struct();
-                                all_structs.push(#{ struct_def: nes, namespace_name: ns.name });
-                            }
-                        }
-                    }
-                }
-            } else if item.is_namespace() {
-                let child_ns = item.as_namespace();
-                for child_item in child_ns.items {
-                    if child_item.is_struct() {
-                        let cs = child_item.as_struct();
-                        all_structs.push(#{ struct_def: cs, namespace_name: child_ns.name });
-                        for csi in cs.items {
-                            if csi.is_embedded_struct() {
-                                let ces = csi.as_embedded_struct();
-                                all_structs.push(#{ struct_def: ces, namespace_name: child_ns.name });
-                            }
-                        }
-                    }
-                }
-            }
+        let entries = collect_struct_entries_from_namespace(ns);
+        for entry in entries {
+            all_structs.push(entry);
         }
     }
 }
 
 let has_structs = all_structs.len() > 0;
+
+let all_enum_validators = [];
+if has_file {
+    for ns in file.namespaces {
+        for validator in enum_validators_from_namespace(ns) {
+            all_enum_validators.push(validator);
+        }
+    }
+}
+let has_enums = all_enum_validators.len() > 0;
 
 // Pre-compute per-entry: full_type, read_fwd, write_fwd, read_body, write_body
 let idx = 0;
@@ -328,6 +418,41 @@ for entry in all_structs {
 %blank
 namespace polygen_loaders {
 %blank
+%if has_enums
+#ifndef POLYGEN_CPP_CHECKED_ENUM_HELPERS
+#define POLYGEN_CPP_CHECKED_ENUM_HELPERS
+template<typename E>
+struct enum_validator {
+    static bool is_valid(E) { return true; }
+};
+
+template<typename E>
+E read_checked_enum(polygen::BinaryReader& reader) {
+    static_assert(std::is_enum_v<E>, "Type must be an enum");
+    int32_t raw = reader.read_i32();
+    E value = static_cast<E>(raw);
+    if (!enum_validator<E>::is_valid(value)) {
+        throw std::runtime_error("invalid enum value: " + std::to_string(raw));
+    }
+    return value;
+}
+
+template<typename E>
+void write_checked_enum(polygen::BinaryWriter& writer, E value) {
+    static_assert(std::is_enum_v<E>, "Type must be an enum");
+    int32_t raw = static_cast<int32_t>(value);
+    if (!enum_validator<E>::is_valid(value)) {
+        throw std::runtime_error("invalid enum value: " + std::to_string(raw));
+    }
+    writer.write_i32(raw);
+}
+#endif
+
+%for enum_validator in all_enum_validators
+{{enum_validator}}
+%blank
+%endfor
+%endif
 // ============================================================================
 // Binary Readers
 // ============================================================================

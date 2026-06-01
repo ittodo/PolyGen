@@ -4,20 +4,74 @@
 
 import "templates/rust/rhai_utils/type_mapping" as rust_types;
 
+let ns_to_rust_path = #{};
+
+fn enum_type_path(t, rust_paths) {
+    if t.namespace_fqn != () && t.namespace_fqn != "" && rust_paths[t.namespace_fqn] != () {
+        return rust_paths[t.namespace_fqn] + "::" + t.type_name;
+    }
+    t.type_name
+}
+
+fn enum_parse_expr(type_name, value_expr, label) {
+    type_name + "::try_from(" + value_expr + ").map_err(|_| LoadError::Parse(format!(\"invalid enum value for " + label + ": {}\", " + value_expr + ")))"
+}
+
+fn enum_list_parse_expr(type_name, field_name) {
+    "row.get(\"" + field_name + "\").map(|s| s.split(',').filter(|v| !v.trim().is_empty()).map(|v| v.trim().parse::<i32>().map_err(|_| LoadError::Parse(format!(\"invalid enum value for " + field_name + ": {}\", v.trim()))).and_then(|raw| " + enum_parse_expr(type_name, "raw", field_name) + ")).collect::<Result<Vec<_>, LoadError>>()).transpose()?.unwrap_or_default()"
+}
+
+fn optional_enum_parse_expr(type_name, field_name) {
+    "row.get_optional(\"" + field_name + "\").map(|s| s.parse::<i32>().map_err(|_| LoadError::Parse(format!(\"invalid enum value for " + field_name + ": {}\", s))).and_then(|raw| " + enum_parse_expr(type_name, "raw", field_name) + ")).transpose()?"
+}
+
+fn primitive_list_parse_expr(type_name, field_name) {
+    if type_name == "string" {
+        return "row.get(\"" + field_name + "\").map(|s| s.split(',').map(|v| v.trim().to_string()).collect()).unwrap_or_default()";
+    }
+    if type_name == "bool" {
+        return "row.get(\"" + field_name + "\").map(|s| s.split(',').filter(|v| !v.trim().is_empty()).map(|v| match v.trim().to_lowercase().as_str() { \"true\" | \"1\" | \"yes\" => Ok(true), \"false\" | \"0\" | \"no\" => Ok(false), _ => Err(LoadError::Parse(format!(\"invalid value for " + field_name + ": {}\", v.trim()))) }).collect::<Result<Vec<_>, LoadError>>()).transpose()?.unwrap_or_default()";
+    }
+
+    let rust_type = rust_types::map_primitive(type_name);
+    "row.get(\"" + field_name + "\").map(|s| s.split(',').filter(|v| !v.trim().is_empty()).map(|v| v.trim().parse::<" + rust_type + ">().map_err(|_| LoadError::Parse(format!(\"invalid value for " + field_name + ": {}\", v.trim())))).collect::<Result<Vec<_>, LoadError>>()).transpose()?.unwrap_or_default()"
+}
+
+fn optional_primitive_parse_expr(type_name, field_name) {
+    if type_name == "bytes" {
+        return "row.get_optional(\"" + field_name + "\").map(|s| s.as_bytes().to_vec())";
+    }
+    if type_name == "bool" {
+        return "row.get_optional(\"" + field_name + "\").map(|_| row.get_bool(\"" + field_name + "\").ok_or_else(|| LoadError::Parse(format!(\"invalid value for " + field_name + ": {}\", row.get(\"" + field_name + "\").unwrap_or(\"\"))))).transpose()?";
+    }
+    if type_name == "timestamp" {
+        return "row.get_optional(\"" + field_name + "\").map(|_| row.get_timestamp(\"" + field_name + "\").ok_or_else(|| LoadError::Parse(format!(\"invalid value for " + field_name + ": {}\", row.get(\"" + field_name + "\").unwrap_or(\"\"))))).transpose()?";
+    }
+
+    let rust_type = rust_types::map_primitive(type_name);
+    "row.get_optional(\"" + field_name + "\").map(|s| s.parse::<" + rust_type + ">().map_err(|_| LoadError::Parse(format!(\"invalid value for " + field_name + ": {}\", s)))).transpose()?"
+}
+
+fn enum_read_expr(type_name, reader_expr) {
+    reader_expr + ".read_i32().and_then(|v| " + type_name + "::try_from(v).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, format!(\"invalid enum value for " + type_name + ": {}\", v))))"
+}
+
 // CSV getter helper
-fn csv_getter(f) {
+fn csv_getter(f, rust_paths) {
     let t = f.field_type;
     let n = f.name;
 
     if t.is_option {
         if t.type_name == "string" { return "row.get_optional_string(\"" + n + "\")"; }
+        if t.is_enum { return optional_enum_parse_expr(enum_type_path(t, rust_paths), n); }
+        if rust_types::is_primitive_name(t.type_name) { return optional_primitive_parse_expr(t.type_name, n); }
         if t.is_struct { return "None"; }
-        if t.is_enum { return "row.get_i32(\"" + n + "\").map(|v| unsafe { std::mem::transmute(v) }).ok()"; }
-        return "row.get(\"" + n + "\").filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())";
+        return "None";
     }
     if t.is_list {
-        if t.is_struct { return "Default::default()"; }
-        return "row.get(\"" + n + "\").map(|s| s.split(',').filter_map(|v| v.trim().parse().ok()).collect()).unwrap_or_default()";
+        if t.is_enum { return enum_list_parse_expr(enum_type_path(t, rust_paths), n); }
+        if rust_types::is_primitive_name(t.type_name) { return primitive_list_parse_expr(t.type_name, n); }
+        return "Default::default()";
     }
     if t.is_struct { return "Default::default()"; }
     if t.type_name == "string" { return "row.get_string(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
@@ -29,25 +83,25 @@ fn csv_getter(f) {
     if t.type_name == "f64" { return "row.get_f64(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "bool" { return "row.get_bool(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "timestamp" { return "row.get_timestamp(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
-    if t.is_enum { return "row.get_i32(\"" + n + "\").map(|v| unsafe { std::mem::transmute(v) }).ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
+    if t.is_enum { return "row.get_i32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into())).and_then(|v| " + enum_parse_expr(enum_type_path(t, rust_paths), "v", n) + ")?"; }
     return "Default::default()";
 }
 
 // Binary read helper - generates read expression for a type
-fn bin_read(t) {
+fn bin_read(t, rust_paths) {
     let n = t.type_name;
     if t.is_option {
-        let inner = bin_read_closure(t);
+        let inner = bin_read_closure(t, rust_paths);
         return "reader.read_optional(|r| " + inner + ")?";
     }
     if t.is_list {
-        let inner = bin_read_closure(t);
+        let inner = bin_read_closure(t, rust_paths);
         return "reader.read_vec(|r| " + inner + ")?";
     }
-    return bin_read_direct(t) + "?";
+    return bin_read_direct(t, rust_paths) + "?";
 }
 
-fn bin_read_closure(t) {
+fn bin_read_closure(t, rust_paths) {
     let n = t.type_name;
     if n == "string" { return "r.read_string()"; }
     if n == "bool" { return "r.read_bool()"; }
@@ -63,11 +117,11 @@ fn bin_read_closure(t) {
     if n == "f64" { return "r.read_f64()"; }
     if n == "bytes" { return "r.read_bytes()"; }
     if n == "timestamp" { return "r.read_timestamp()"; }
-    if t.is_enum { return "r.read_i32().map(|v| unsafe { std::mem::transmute(v) })"; }
+    if t.is_enum { return enum_read_expr(enum_type_path(t, rust_paths), "r"); }
     return n + "::read_binary(r)";
 }
 
-fn bin_read_direct(t) {
+fn bin_read_direct(t, rust_paths) {
     let n = t.type_name;
     if n == "string" { return "reader.read_string()"; }
     if n == "bool" { return "reader.read_bool()"; }
@@ -83,7 +137,7 @@ fn bin_read_direct(t) {
     if n == "f64" { return "reader.read_f64()"; }
     if n == "bytes" { return "reader.read_bytes()"; }
     if n == "timestamp" { return "reader.read_timestamp()"; }
-    if t.is_enum { return "reader.read_i32().map(|v| unsafe { std::mem::transmute(v) })"; }
+    if t.is_enum { return enum_read_expr(enum_type_path(t, rust_paths), "reader"); }
     return n + "::read_binary(reader)";
 }
 
@@ -152,6 +206,80 @@ fn join_with(arr, sep) {
     result
 }
 
+fn collect_namespace_paths(ns, schema_mod, rust_path) {
+    let paths = [];
+    paths.push(#{ name: ns.name, schema_mod: schema_mod, rust_path: rust_path });
+
+    for item in ns.items {
+        if item.is_namespace() {
+            let child = item.as_namespace();
+            let child_path = rust_path + "::" + rust_types::ns_to_module_name(child.name);
+            let child_paths = collect_namespace_paths(child, schema_mod, child_path);
+            for path in child_paths {
+                paths.push(path);
+            }
+        }
+    }
+
+    paths
+}
+
+fn collect_struct_entries_from_struct(s, namespace_path) {
+    let entries = [];
+    entries.push(#{ name: s.name, mod_path: namespace_path + "::" + s.name, def: s });
+
+    for item in s.items {
+        if item.is_embedded_struct() {
+            let embedded_entries = collect_struct_entries_from_struct(item.as_embedded_struct(), namespace_path);
+            for entry in embedded_entries {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries
+}
+
+fn collect_struct_entries_from_namespace(ns, namespace_path) {
+    let entries = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let struct_entries = collect_struct_entries_from_struct(item.as_struct(), namespace_path);
+            for entry in struct_entries {
+                entries.push(entry);
+            }
+        } else if item.is_namespace() {
+            let child = item.as_namespace();
+            let child_path = namespace_path + "::" + rust_types::ns_to_module_name(child.name);
+            let child_entries = collect_struct_entries_from_namespace(child, child_path);
+            for entry in child_entries {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries
+}
+
+fn collect_use_lines_from_namespace(ns, schema_mod, namespace_path) {
+    let lines = [];
+    lines.push("use crate::" + schema_mod + "::" + namespace_path + "::*;");
+
+    for item in ns.items {
+        if item.is_namespace() {
+            let child = item.as_namespace();
+            let child_path = namespace_path + "::" + rust_types::ns_to_module_name(child.name);
+            let child_lines = collect_use_lines_from_namespace(child, schema_mod, child_path);
+            for line in child_lines {
+                lines.push(line);
+            }
+        }
+    }
+
+    lines
+}
+
 // First pass: build namespace -> schema_mod mapping for all files
 let ns_to_schema = #{};
 for f in schema.files {
@@ -162,12 +290,12 @@ for f in schema.files {
     mod_name.replace(".poly", "");
 
     for ns in f.namespaces {
-        ns_to_schema[ns.name] = mod_name;
-        for item in ns.items {
-            if item.is_namespace() {
-                let child = item.as_namespace();
-                ns_to_schema[child.name] = mod_name;
-            }
+        let ns_mod = rust_types::ns_to_module_name(ns.name);
+        let ns_path = "crate::" + mod_name + "::" + ns_mod;
+        let namespace_paths = collect_namespace_paths(ns, mod_name, ns_path);
+        for path in namespace_paths {
+            ns_to_schema[path.name] = path.schema_mod;
+            ns_to_rust_path[path.name] = path.rust_path;
         }
     }
 }
@@ -183,61 +311,15 @@ if !skip_file {
     let schema_mod = filename;
     schema_mod.replace(".poly", "");
 
-    // Collect current file's namespaces
-    let current_namespaces = [];
-    for ns in file.namespaces {
-        current_namespaces.push(ns.name);
-        for item in ns.items {
-            if item.is_namespace() {
-                current_namespaces.push(item.as_namespace().name);
-            }
-        }
-    }
-
     // Collect all structs (including embedded) recursively
     for ns in file.namespaces {
         let ns_mod_path = ns.name;
         ns_mod_path.replace(".", "_");
 
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                let mp = "crate::" + schema_mod + "::" + ns_mod_path + "::" + s.name;
-                all_structs.push(#{ name: s.name, mod_path: mp, def: s });
-                for si in s.items {
-                    if si.is_embedded_struct() {
-                        let es = si.as_embedded_struct();
-                        let emp = "crate::" + schema_mod + "::" + ns_mod_path + "::" + es.name;
-                        all_structs.push(#{ name: es.name, mod_path: emp, def: es });
-                        for esi in es.items {
-                            if esi.is_embedded_struct() {
-                                let nes = esi.as_embedded_struct();
-                                let nmp = "crate::" + schema_mod + "::" + ns_mod_path + "::" + nes.name;
-                                all_structs.push(#{ name: nes.name, mod_path: nmp, def: nes });
-                            }
-                        }
-                    }
-                }
-            } else if item.is_namespace() {
-                let child = item.as_namespace();
-                let child_name = child.name;
-                child_name.replace(".", "_");
-                let child_mod_path = ns_mod_path + "::" + child_name;
-                for child_item in child.items {
-                    if child_item.is_struct() {
-                        let cs = child_item.as_struct();
-                        let cmp = "crate::" + schema_mod + "::" + child_mod_path + "::" + cs.name;
-                        all_structs.push(#{ name: cs.name, mod_path: cmp, def: cs });
-                        for csi in cs.items {
-                            if csi.is_embedded_struct() {
-                                let ces = csi.as_embedded_struct();
-                                let cemp = "crate::" + schema_mod + "::" + child_mod_path + "::" + ces.name;
-                                all_structs.push(#{ name: ces.name, mod_path: cemp, def: ces });
-                            }
-                        }
-                    }
-                }
-            }
+        let namespace_path = "crate::" + schema_mod + "::" + ns_mod_path;
+        let struct_entries = collect_struct_entries_from_namespace(ns, namespace_path);
+        for entry in struct_entries {
+            all_structs.push(entry);
         }
     }
 
@@ -252,15 +334,9 @@ if !skip_file {
         for ns in other_file.namespaces {
             let ns_path = ns.name;
             ns_path.replace(".", "_");
-            use_lines.push("use crate::" + other_mod + "::" + ns_path + "::*;");
-
-            for item in ns.items {
-                if item.is_namespace() {
-                    let child = item.as_namespace();
-                    let child_path = child.name;
-                    child_path.replace(".", "_");
-                    use_lines.push("use crate::" + other_mod + "::" + ns_path + "::" + child_path + "::*;");
-                }
+            let lines = collect_use_lines_from_namespace(ns, other_mod, ns_path);
+            for line in lines {
+                use_lines.push(line);
             }
         }
     }
@@ -273,7 +349,7 @@ if !skip_file {
         for item in s.def.items {
             if item.is_field() {
                 let f = item.as_field();
-                csv_lines.push("            " + to_snake_case(f.name) + ": " + csv_getter(f) + ",");
+                csv_lines.push("            " + to_snake_case(f.name) + ": " + csv_getter(f, ns_to_rust_path) + ",");
             }
         }
         all_structs[idx].csv_body = join_with(csv_lines, "\n");
@@ -283,7 +359,7 @@ if !skip_file {
         for item in s.def.items {
             if item.is_field() {
                 let f = item.as_field();
-                br_lines.push("            " + to_snake_case(f.name) + ": " + bin_read(f.field_type) + ",");
+                br_lines.push("            " + to_snake_case(f.name) + ": " + bin_read(f.field_type, ns_to_rust_path) + ",");
             }
         }
         all_structs[idx].bin_read_body = join_with(br_lines, "\n");

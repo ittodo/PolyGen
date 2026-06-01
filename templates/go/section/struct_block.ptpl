@@ -10,6 +10,9 @@ type {{struct.name}} struct {
 %endif
 %endfor
 }
+%if struct.is_embed && struct.pack_separator
+%include "detail/pack_methods.ptpl" with struct
+%endif
 %blank
 %for item in struct.items
 %if item.is_inline_enum

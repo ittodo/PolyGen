@@ -1,0 +1,12 @@
+# MessagePack Schema Configuration for PolyGen
+# Generates a schema descriptor for deterministic array-based MessagePack encoding.
+
+extension = ".json"
+
+[templates]
+main = "messagepack_file.ptpl"
+main_output = "{{stem}}.messagepack.json"
+main_per_file = true
+
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

@@ -44,6 +44,10 @@ namespace Polygen.Common
         public static T ReadEnumInt32<T>(BinaryReader br) where T : struct, Enum
         {
             int raw = br.ReadInt32();
+            if (!Enum.IsDefined(typeof(T), raw))
+            {
+                throw new InvalidDataException($"Invalid enum value for {typeof(T).FullName}: {raw}");
+            }
             return (T)Enum.ToObject(typeof(T), raw);
         }
 
@@ -52,6 +56,14 @@ namespace Polygen.Common
         {
             byte has = br.ReadByte();
             if (has == 0) return default!;
+            return reader(br);
+        }
+
+        // Reads a nullable value type using a 1-byte presence flag (0/!=0), then provided reader when present.
+        public static T? ReadOptionStruct<T>(BinaryReader br, Func<BinaryReader, T> reader) where T : struct
+        {
+            byte has = br.ReadByte();
+            if (has == 0) return null;
             return reader(br);
         }
 
@@ -92,6 +104,10 @@ namespace Polygen.Common
         public static void WriteEnumInt32<T>(BinaryWriter bw, T value) where T : struct, Enum
         {
             int raw = Convert.ToInt32(value);
+            if (!Enum.IsDefined(typeof(T), raw))
+            {
+                throw new InvalidDataException($"Invalid enum value for {typeof(T).FullName}: {raw}");
+            }
             bw.Write(raw);
         }
 

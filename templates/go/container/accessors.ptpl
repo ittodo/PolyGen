@@ -6,16 +6,19 @@ func (t *{{struct.name | suffix("Table")}}) All() []*{{struct.name}} { return t.
 func (t *{{struct.name | suffix("Table")}}) Count() int { return len(t.rows) }
 %blank
 %for idx in struct.indexes
+%logic
+let idx_type = go_lang_type(idx.field_type);
+%endlogic
 %if idx.is_unique
 // {{idx.field_name | pascal_case | prefix("GetBy")}} gets a row by {{idx.field_name}} (unique).
-func (t *{{struct.name | suffix("Table")}}) {{idx.field_name | pascal_case | prefix("GetBy")}}(key {{idx.field_type | lang_type}}) *{{struct.name}} {
+func (t *{{struct.name | suffix("Table")}}) {{idx.field_name | pascal_case | prefix("GetBy")}}(key {{idx_type}}) *{{struct.name}} {
 	val, _ := t.{{idx.field_name | pascal_case | prefix("by")}}.Get(key)
 	return val
 }
 %blank
 %else
 // {{idx.field_name | pascal_case | prefix("GetBy")}} gets rows by {{idx.field_name}} (group).
-func (t *{{struct.name | suffix("Table")}}) {{idx.field_name | pascal_case | prefix("GetBy")}}(key {{idx.field_type | lang_type}}) []*{{struct.name}} {
+func (t *{{struct.name | suffix("Table")}}) {{idx.field_name | pascal_case | prefix("GetBy")}}(key {{idx_type}}) []*{{struct.name}} {
 	return t.{{idx.field_name | pascal_case | prefix("by")}}.Get(key)
 }
 %blank

@@ -1,5 +1,8 @@
+%logic
+let field_type = go_lang_type(field.field_type);
+%endlogic
 %if field.field_type.is_option
-	{{field.name | pascal_case}} {{field.field_type | lang_type}} `json:"{{field.name | snake_case}},omitempty"`
+	{{field.name | pascal_case}} {{field_type}} `json:"{{field.name | snake_case}},omitempty"`
 %else
-	{{field.name | pascal_case}} {{field.field_type | lang_type}} `json:"{{field.name | snake_case}}"`
+	{{field.name | pascal_case}} {{field_type}} `json:"{{field.name | snake_case}}"`
 %endif

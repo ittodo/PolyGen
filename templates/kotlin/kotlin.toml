@@ -1,0 +1,14 @@
+# Kotlin Language Configuration for PolyGen
+# Generates kotlinx.serialization data classes and enums.
+
+extension = ".kt"
+
+[templates]
+main = "kotlin_file.ptpl"
+
+[[templates.extra]]
+template = "kotlin_redis_keys_file.ptpl"
+output = "{{stem}}_redis_keys.kt"
+
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

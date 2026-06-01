@@ -1,0 +1,136 @@
+%logic
+// Mermaid ER diagram generator.
+
+fn join_with(arr, sep) {
+    let result = "";
+    let i = 0;
+    for item in arr {
+        if i > 0 { result += sep; }
+        result += item;
+        i += 1;
+    }
+    result
+}
+
+fn entity_name(fqn) {
+    let name = fqn;
+    name.replace(".", "_");
+    name
+}
+
+fn field_type_display(type_ref) {
+    let result = type_ref.type_name;
+    if type_ref.is_list {
+        result += "[]";
+    }
+    if type_ref.is_option {
+        result += "?";
+    }
+    result
+}
+
+let entities = [];
+let relations = [];
+
+fn collect_entities_from_namespace(ns) {
+    let result = #{ entities: [], relations: [] };
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if s.is_embed || s.name.ends_with("__Enum") {
+                continue;
+            }
+
+            let fields = [];
+
+            for field_item in s.items {
+                if field_item.is_field() {
+                    let f = field_item.as_field();
+
+                    let markers = [];
+                    if f.is_primary_key {
+                        markers.push("PK");
+                    }
+                    if f.is_unique && !f.is_primary_key {
+                        markers.push("UK");
+                    }
+                    if f.has_foreign_key {
+                        markers.push("FK");
+                    }
+
+                    let marker = "";
+                    if markers.len() > 0 {
+                        marker = " \"" + join_with(markers, ",") + "\"";
+                    }
+
+                    fields.push(#{
+                        type_name: field_type_display(f.field_type),
+                        name: f.name,
+                        marker: marker
+                    });
+
+                    if f.has_foreign_key {
+                        let fk = f.foreign_key;
+                        let label = if fk.alias != () && fk.alias != "" {
+                            fk.alias
+                        } else {
+                            f.name
+                        };
+                        result.relations.push(#{
+                            from: entity_name(fk.target_table_fqn),
+                            to: entity_name(s.fqn),
+                            label: label
+                        });
+                    }
+                }
+            }
+
+            result.entities.push(#{
+                name: entity_name(s.fqn),
+                fields: fields
+            });
+        } else if item.is_namespace() {
+            let nested = collect_entities_from_namespace(item.as_namespace());
+            for entity in nested.entities {
+                result.entities.push(entity);
+            }
+            for rel in nested.relations {
+                result.relations.push(rel);
+            }
+        }
+    }
+
+    result
+}
+
+for file in schema.files {
+    if file.path == () || file.path == "" { continue; }
+
+    for ns in file.namespaces {
+        let collected = collect_entities_from_namespace(ns);
+        for entity in collected.entities {
+            entities.push(entity);
+        }
+        for rel in collected.relations {
+            relations.push(rel);
+        }
+    }
+}
+
+let has_relations = relations.len() > 0;
+%endlogic
+erDiagram
+%for entity in entities
+    {{entity.name}} {
+%for field in entity.fields
+        {{field.type_name}} {{field.name}}{{field.marker}}
+%endfor
+    }
+%endfor
+%if has_relations
+
+%for rel in relations
+    {{rel.from}} ||--o{ {{rel.to}} : "{{rel.label}}"
+%endfor
+%endif

@@ -21,6 +21,9 @@ fn base_sqlite_type(type_ref) {
         // Binary data
         "bytes" => "BLOB",
 
+        // Timestamp values are stored as ISO-8601 text.
+        "timestamp" => "TEXT",
+
         // Default for unknown/custom types (enums, structs as references)
         _ => "INTEGER"
     }

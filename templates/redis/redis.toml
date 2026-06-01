@@ -1,0 +1,17 @@
+# Redis Cache Schema Configuration for PolyGen
+# Generates key pattern descriptors and Lua key helper functions.
+
+extension = ".json"
+
+[templates]
+main = "redis_file.ptpl"
+main_output = "schema.redis.json"
+main_per_file = false
+
+[[templates.extra]]
+template = "redis_lua_file.ptpl"
+output = "schema.redis.lua"
+per_file = false
+
+[rhai]
+prelude = ["rhai_utils/key_mapping.rhai"]

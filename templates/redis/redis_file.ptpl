@@ -1,0 +1,130 @@
+%logic
+import "templates/redis/rhai_utils/key_mapping" as redis;
+
+fn index_fields_json(idx) {
+    let fields = "";
+    let i = 0;
+    for f in idx.fields {
+        if i > 0 {
+            fields += ", ";
+        }
+        fields += redis::json_string(f.name);
+        i += 1;
+    }
+    fields
+}
+
+fn render_index(s, idx) {
+    let table_name = redis::table_name_from_fqn(s.fqn);
+    let key_prefix = redis::redis_key_prefix(s.fqn);
+    let index_name = to_snake_case(idx.name);
+
+    let out = "        {\n";
+    out += "          \"name\": " + redis::json_string(idx.name) + ",\n";
+    out += "          \"unique\": " + if idx.is_unique { "true" } else { "false" } + ",\n";
+    out += "          \"fields\": [" + index_fields_json(idx) + "],\n";
+    out += "          \"keyPattern\": " + redis::json_string(key_prefix + ":idx:" + index_name + ":{value}") + "\n";
+    out += "        }";
+    out
+}
+
+fn render_table(s) {
+    let table_name = redis::table_name_from_fqn(s.fqn);
+    let key_prefix = redis::redis_key_prefix(s.fqn);
+    let pk = redis::primary_key_field(s);
+    let explicit_cache_strategy = redis::cache_strategy(s);
+    let cache_strategy = if explicit_cache_strategy != "" {
+        explicit_cache_strategy
+    } else if s.cache_strategy != () && s.cache_strategy != "" {
+        s.cache_strategy
+    } else {
+        "on_demand"
+    };
+    let ttl_seconds = redis::cache_ttl_seconds(s);
+
+    let indexes = "";
+    let index_count = 0;
+    for idx in s.indexes {
+        if index_count > 0 {
+            indexes += ",\n";
+        }
+        indexes += render_index(s, idx);
+        index_count += 1;
+    }
+
+    let out = "    {\n";
+    out += "      \"name\": " + redis::json_string(table_name) + ",\n";
+    out += "      \"fqn\": " + redis::json_string(s.fqn) + ",\n";
+    out += "      \"cacheStrategy\": " + redis::json_string(cache_strategy) + ",\n";
+    if ttl_seconds != "" {
+        out += "      \"ttlSeconds\": " + ttl_seconds + ",\n";
+    } else {
+        out += "      \"ttlSeconds\": null,\n";
+    }
+    out += "      \"primaryKey\": " + redis::json_string(pk) + ",\n";
+    out += "      \"valueEncoding\": \"json\",\n";
+    out += "      \"entityKeyPattern\": " + redis::json_string(key_prefix + ":{" + pk + "}") + ",\n";
+    out += "      \"allSetKey\": " + redis::json_string(key_prefix + ":all") + ",\n";
+    out += "      \"indexes\": [\n";
+    out += indexes + "\n";
+    out += "      ]\n";
+    out += "    }";
+    out
+}
+
+fn collect_namespace(ns, inherited_datasource) {
+    let ns_datasource = if ns.datasource != () && ns.datasource != "" {
+        ns.datasource
+    } else {
+        inherited_datasource
+    };
+
+    let entries = "";
+    let entry_count = 0;
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed && (redis::should_include_for_redis(s.datasource, ns_datasource, s.cache_strategy) || redis::has_cache_annotation(s)) {
+                if entry_count > 0 {
+                    entries += ",\n";
+                }
+                entries += render_table(s);
+                entry_count += 1;
+            }
+        } else if item.is_namespace {
+            let nested = collect_namespace(item.as_namespace(), ns_datasource);
+            if nested != "" {
+                if entry_count > 0 {
+                    entries += ",\n";
+                }
+                entries += nested;
+                entry_count += 1;
+            }
+        }
+    }
+    entries
+}
+
+let tables_body = "";
+let table_count = 0;
+for file in schema.files {
+    for ns in file.namespaces {
+        let rendered = collect_namespace(ns, "");
+        if rendered != "" {
+            if table_count > 0 {
+                tables_body += ",\n";
+            }
+            tables_body += rendered;
+            table_count += 1;
+        }
+    }
+}
+%endlogic
+{
+  "format": "polygen-redis-cache-schema",
+  "version": 1,
+  "keyNamespace": "polygen",
+  "tables": [
+{{tables_body}}
+  ]
+}

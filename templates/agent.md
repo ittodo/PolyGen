@@ -1,7 +1,7 @@
 # templates/ - Agent Documentation
 
 ## Scope
-PolyTemplate (.ptpl) 엔진을 사용하여 다양한 타겟 언어의 코드를 생성하는 템플릿 파일들이 위치한 폴더입니다. 지원 언어: C#, C++, Rust, TypeScript, Go, Unreal, SQLite.
+PolyTemplate (.ptpl) 엔진을 사용하여 다양한 타겟 언어와 직렬화 포맷의 코드를 생성하는 템플릿 파일들이 위치한 폴더입니다. 지원 대상: C#, C++, Rust, TypeScript, Go, Python, Kotlin, Swift, Unreal, SQLite, MySQL/MariaDB, PostgreSQL, Redis, Protocol Buffers, MessagePack.
 
 ## Template Engine
 
@@ -20,8 +20,13 @@ templates/
 ├── csharp/                    # C# 코드 생성
 │   ├── csharp.toml            # 언어 설정 (type_map, binary_read 등)
 │   ├── csharp_file.ptpl       # 메인 클래스/구조체 생성
+│   ├── csharp_binary_readers_file.ptpl  # BinaryReader helpers incl. nullable value types
+│   ├── csharp_binary_writers_file.ptpl  # BinaryWriter helpers incl. bytes cardinality
+│   ├── csharp_binary_refs_file.ptpl  # indexed binary package + lazy row refs
 │   ├── csharp_csv_columns_file.ptpl  # CSV 컬럼 정의
-│   ├── csharp_sqlite_accessor_file.ptpl  # SQLite Accessor
+│   ├── csharp_container_file.ptpl  # Container + auto_create timezone
+│   ├── csharp_sqlite_accessor_file.ptpl  # SQLite Accessor with recursive namespace datasource inheritance
+│   ├── csharp_redis_keys_file.ptpl  # Redis key helper
 │   ├── section/               # 섹션 단위 템플릿
 │   │   ├── namespace_block.ptpl
 │   │   ├── struct_block.ptpl
@@ -33,17 +38,19 @@ templates/
 │   │   ├── struct_pack.ptpl       # @pack Pack/Unpack/TryUnpack
 │   │   ├── struct_fk_nav.ptpl
 │   │   ├── struct_relation_nav.ptpl
-│   │   └── struct_auto_update.ptpl
+│   │   └── struct_auto_update.ptpl  # auto_update helper methods
 │   └── rhai_utils/            # Rhai 유틸리티 (prelude)
 │       ├── type_utils.rhai
-│       └── binary_mapping.rhai
+│       └── binary_mapping.rhai  # binary primitive mapping, unsupported paths emit NotSupportedException
 │
 ├── cpp/                       # C++ 헤더 전용 생성
 │   ├── cpp.toml
 │   ├── cpp_file.ptpl          # 구조체/Enum 헤더
-│   ├── cpp_container_file.ptpl  # Container (인덱스, 검증)
-│   ├── cpp_loaders_file.ptpl  # CSV/JSON/Binary 로더
-│   ├── cpp_sqlite_accessor_file.ptpl
+│   ├── cpp_container_file.ptpl  # recursive namespace Container (인덱스, 검증)
+│   ├── cpp_loaders_file.ptpl  # recursive namespace Binary loader incl. checked enum cardinality
+│   ├── cpp_binary_refs_file.ptpl  # indexed binary lazy refs with shared BinaryDocument lifetime
+│   ├── cpp_sqlite_accessor_file.ptpl  # recursive namespace SQLite accessor
+│   ├── cpp_redis_keys_file.ptpl  # Redis key helper
 │   ├── section/
 │   │   ├── namespace_block.ptpl
 │   │   ├── struct_block.ptpl
@@ -57,13 +64,14 @@ templates/
 ├── rust/                      # Rust 모듈 생성
 │   ├── rust.toml
 │   ├── rust_file.ptpl
-│   ├── rust_container_file.ptpl
-│   ├── rust_loaders_file.ptpl
-│   ├── rust_sqlite_accessor_file.ptpl
+│   ├── rust_container_file.ptpl  # recursive namespace Container
+│   ├── rust_loaders_file.ptpl  # recursive namespace CSV/Binary loader incl. checked enum/scalar/list parsing
+│   ├── rust_sqlite_accessor_file.ptpl  # recursive namespace SQLite accessor
+│   ├── rust_redis_keys_file.ptpl
 │   ├── section/
 │   │   ├── namespace_block.ptpl
 │   │   ├── struct_block.ptpl
-│   │   └── enum_block.ptpl
+│   │   └── enum_block.ptpl     # enum + TryFrom<i32>
 │   ├── detail/
 │   │   ├── struct_body.ptpl
 │   │   └── pack_methods.ptpl  # @pack pack/unpack
@@ -73,8 +81,9 @@ templates/
 ├── typescript/                # TypeScript 인터페이스/Zod 생성
 │   ├── typescript.toml
 │   ├── typescript_file.ptpl
-│   ├── typescript_zod_file.ptpl
-│   ├── typescript_sqlite_accessor_file.ptpl
+│   ├── typescript_zod_file.ptpl  # Zod schema + checked @pack unpack helpers
+│   ├── typescript_sqlite_accessor_file.ptpl  # recursive namespace SQLite accessor
+│   ├── typescript_redis_keys_file.ptpl
 │   ├── section/
 │   │   ├── namespace_block.ptpl
 │   │   ├── struct_block.ptpl
@@ -84,16 +93,44 @@ templates/
 │
 ├── go/                        # Go 패키지 생성
 │   ├── go.toml
-│   ├── go_file.rhai           # (아직 .rhai — 미마이그레이션)
-│   ├── go_container_file.rhai
+│   ├── go_file.ptpl
+│   ├── go_container_file.ptpl
+│   ├── go_redis_keys_file.ptpl
+│   ├── detail/
+│   │   └── pack_methods.ptpl  # @pack Pack/Unpack/TryUnpack
 │   └── rhai_utils/
 │       └── type_mapping.rhai
+│
+├── python/                    # Python dataclass/Pydantic/SQLAlchemy 생성
+│   ├── python.toml
+│   ├── python_file.ptpl
+│   ├── python_pydantic_file.ptpl
+│   ├── python_sqlalchemy_file.ptpl
+│   ├── python_redis_keys_file.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai  # FQN replace 기반 클래스명 변환
+│
+├── kotlin/                    # Kotlin data class/kotlinx.serialization 생성
+│   ├── kotlin.toml
+│   ├── kotlin_file.ptpl
+│   ├── kotlin_redis_keys_file.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai  # FQN replace 기반 클래스명 변환
+│
+├── swift/                     # Swift Codable/SwiftData 생성
+│   ├── swift.toml
+│   ├── swift_file.ptpl
+│   ├── swift_swiftdata_file.ptpl
+│   ├── swift_redis_keys_file.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai  # FQN replace 기반 클래스명 변환
 │
 ├── unreal/                    # Unreal Engine USTRUCT/UENUM
 │   ├── unreal.toml
 │   ├── unreal_file.ptpl
-│   ├── unreal_loaders_file.ptpl
-│   ├── unreal_hotreload_file.ptpl
+│   ├── unreal_loaders_file.ptpl  # recursive namespace/embed loader helpers
+│   ├── unreal_hotreload_file.ptpl  # recursive @load table collection
+│   ├── unreal_redis_keys_file.ptpl
 │   ├── section/
 │   │   ├── namespace_block.ptpl
 │   │   ├── struct_block.ptpl
@@ -105,12 +142,45 @@ templates/
 │
 ├── sqlite/                    # SQLite DDL + Migration
 │   ├── sqlite.toml
-│   ├── sqlite_file.ptpl
-│   ├── sqlite_migration_file.ptpl
+│   ├── sqlite_file.ptpl       # recursive namespace DDL + FK/index/auto timestamp trigger + metadata tables
+│   ├── sqlite_migration_file.ptpl  # Rename migrations + metadata/version bootstrap
 │   └── rhai_utils/
 │       └── type_mapping.rhai
 │
-├── mermaid/                   # Mermaid 다이어그램 (예정)
+├── mysql/                     # MySQL/MariaDB DDL
+│   ├── mysql.toml
+│   ├── mysql_file.ptpl        # recursive namespace DDL + auto timestamp + metadata tables
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── postgresql/                # PostgreSQL DDL
+│   ├── postgresql.toml
+│   ├── postgresql_file.ptpl   # recursive namespace DDL + auto timestamp trigger + metadata tables
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── redis/                     # Redis cache schema descriptor
+│   ├── redis.toml
+│   ├── redis_file.ptpl        # JSON key pattern descriptor + ttlSeconds
+│   ├── redis_lua_file.ptpl    # Lua key helper module
+│   └── rhai_utils/
+│       └── key_mapping.rhai
+│
+├── protobuf/                  # Protocol Buffers proto3
+│   ├── protobuf.toml
+│   ├── protobuf_file.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── messagepack/               # MessagePack array encoding schema descriptor
+│   ├── messagepack.toml
+│   ├── messagepack_file.ptpl
+│   └── rhai_utils/
+│       └── type_mapping.rhai
+│
+├── mermaid/                   # Mermaid ER 다이어그램
+│   ├── mermaid.toml
+│   └── mermaid_file.ptpl      # recursive namespace ER diagram
 └── rhai_utils/                # 공통 Rhai 유틸리티
     └── indent.rhai
 ```
@@ -123,7 +193,7 @@ templates/
 
 1. **`<lang>.toml`**: 언어 설정 (타입 매핑, 필터 정의, 템플릿 목록)
 2. **`<lang>_file.ptpl`**: 메인 엔트리 포인트 (per-file 렌더링)
-3. **`<lang>_<feature>_file.ptpl`**: 추가 기능 템플릿 (container, loaders, sqlite_accessor 등)
+3. **`<lang>_<feature>_file.ptpl`**: 추가 기능 템플릿 (container, loaders, binary_refs, sqlite_accessor 등)
 4. **`section/`**: 네임스페이스, 구조체, enum 블록 단위 분리
 5. **`detail/`**: 필드, 헤더, 팩 등 세부 렌더링
 6. **`rhai_utils/`**: `%logic` 블록에서 import하는 Rhai 헬퍼 함수

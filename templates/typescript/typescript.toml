@@ -43,6 +43,11 @@ main = "typescript_file.ptpl"
 template = "typescript_zod_file.ptpl"
 output = "{{stem}}.schema.ts"
 
+# Redis key helpers (no client dependency)
+[[templates.extra]]
+template = "typescript_redis_keys_file.ptpl"
+output = "{{stem}}_redis_keys.ts"
+
 # SQLite Accessor (for @datasource("sqlite") tables)
 [[templates.extra]]
 template = "typescript_sqlite_accessor_file.ptpl"

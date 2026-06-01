@@ -24,6 +24,22 @@ fn generate_zod_enum(e, current_ts_path) {
     result
 }
 
+fn packed_parse_expr(type_name, part_expr, field_name) {
+    if type_name == "string" {
+        return part_expr;
+    } else if type_name == "bool" {
+        return "__parsePackedBool(" + part_expr + ", '" + field_name + "')";
+    } else if type_name == "f32" || type_name == "f64" {
+        return "__parsePackedFloat(" + part_expr + ", '" + field_name + "')";
+    } else if type_name == "u8" || type_name == "u16" || type_name == "u32" || type_name == "u64" {
+        return "__parsePackedInteger(" + part_expr + ", '" + field_name + "', 0)";
+    } else if type_name == "i8" || type_name == "i16" || type_name == "i32" || type_name == "i64" {
+        return "__parsePackedInteger(" + part_expr + ", '" + field_name + "')";
+    }
+
+    part_expr
+}
+
 fn generate_zod_interface(s, current_ns, current_ts_path) {
     let ns_fqn = if current_ns != () { current_ns } else { "" };
     let ts_path = if current_ts_path != () && current_ts_path != "" { current_ts_path } else { "" };
@@ -110,19 +126,7 @@ fn generate_zod_interface(s, current_ns, current_ts_path) {
                 let f = field_list[i];
                 let field_name = to_camel_case(f.name);
                 let type_name = f.field_type.type_name;
-                let parse_expr = "";
-
-                if type_name == "string" {
-                    parse_expr = "parts[" + i + "]";
-                } else if type_name == "bool" {
-                    parse_expr = "parts[" + i + "] === 'true'";
-                } else if type_name == "f32" || type_name == "f64" {
-                    parse_expr = "parseFloat(parts[" + i + "])";
-                } else if type_name == "u8" || type_name == "u16" || type_name == "u32" || type_name == "u64" || type_name == "i8" || type_name == "i16" || type_name == "i32" || type_name == "i64" {
-                    parse_expr = "parseInt(parts[" + i + "], 10)";
-                } else {
-                    parse_expr = "parts[" + i + "]";
-                }
+                let parse_expr = packed_parse_expr(type_name, "parts[" + i + "]", field_name);
 
                 result += "        " + field_name + ": " + parse_expr;
                 if i < field_list.len() - 1 {
@@ -218,6 +222,36 @@ if has_file {
 %blank
 import { z } from 'zod';
 import * as Types from './{{types_file}}';
+%blank
+function __parsePackedFloat(value: string, fieldName: string): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        throw new Error(`Invalid number for ${fieldName}: ${value}`);
+    }
+    return parsed;
+}
+%blank
+function __parsePackedInteger(value: string, fieldName: string, min?: number): number {
+    if (!/^-?\d+$/.test(value)) {
+        throw new Error(`Invalid integer for ${fieldName}: ${value}`);
+    }
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || (min !== undefined && parsed < min)) {
+        throw new Error(`Invalid integer for ${fieldName}: ${value}`);
+    }
+    return parsed;
+}
+%blank
+function __parsePackedBool(value: string, fieldName: string): boolean {
+    const normalized = value.toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+        return true;
+    }
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+        return false;
+    }
+    throw new Error(`Invalid boolean for ${fieldName}: ${value}`);
+}
 %blank
 {{ns_bodies}}
 %endif

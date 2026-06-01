@@ -1,0 +1,142 @@
+%logic
+import "templates/messagepack/rhai_utils/type_mapping" as mp;
+
+fn collect_fields(s) {
+    let fields = [];
+    for item in s.items {
+        if item.is_field {
+            fields.push(item.as_field());
+        }
+    }
+    fields
+}
+
+fn render_enum(e, owner_fqn) {
+    let fqn = owner_fqn + "." + e.name;
+    let members = [];
+    let next_value = 0;
+
+    for item in e.items {
+        if item.is_member {
+            let m = item.as_member();
+            let value = next_value;
+            if m.value != () {
+                value = m.value;
+            }
+            members.push("        { \"name\": " + mp::json_string(m.name) + ", \"value\": " + value + " }");
+            next_value = value + 1;
+        }
+    }
+
+    let out = "    {\n";
+    out += "      \"kind\": \"enum\",\n";
+    out += "      \"name\": " + mp::json_string(mp::type_name_from_fqn(fqn)) + ",\n";
+    out += "      \"fqn\": " + mp::json_string(fqn) + ",\n";
+    out += "      \"wireType\": \"int\",\n";
+    out += "      \"members\": [\n";
+    out += mp::join_with(members, ",\n") + "\n";
+    out += "      ]\n";
+    out += "    }";
+    out
+}
+
+fn render_field(f, index) {
+    let parts = [];
+    parts.push("\"index\": " + index);
+    parts.push("\"name\": " + mp::json_string(f.name));
+    parts.push("\"polyType\": " + mp::json_string(f.field_type.type_name));
+    parts.push("\"wireType\": " + mp::json_string(mp::msgpack_wire_type(f.field_type)));
+    parts.push("\"optional\": " + mp::json_bool(f.field_type.is_option));
+    parts.push("\"array\": " + mp::json_bool(f.field_type.is_list));
+    parts.push("\"primaryKey\": " + mp::json_bool(f.is_primary_key));
+    parts.push("\"unique\": " + mp::json_bool(f.is_unique));
+
+    let target = mp::type_target(f.field_type);
+    if target != () {
+        parts.push("\"target\": " + mp::json_string(target));
+    }
+
+    let element_wire_type = mp::msgpack_element_wire_type(f.field_type);
+    if element_wire_type != () {
+        parts.push("\"elementWireType\": " + mp::json_string(element_wire_type));
+    }
+
+    if f.has_foreign_key {
+        let fk = f.foreign_key;
+        parts.push("\"foreignKey\": { \"table\": " + mp::json_string(fk.target_table_fqn) + ", \"field\": " + mp::json_string(fk.target_field) + " }");
+    }
+
+    "        { " + mp::join_with(parts, ", ") + " }"
+}
+
+fn render_struct(s) {
+    let type_entries = [];
+
+    for item in s.items {
+        if item.is_inline_enum {
+            type_entries.push(render_enum(item.as_inline_enum(), s.fqn));
+        } else if item.is_embedded_struct {
+            type_entries.push(render_struct(item.as_embedded_struct()));
+        }
+    }
+
+    let fields = collect_fields(s);
+    let field_entries = [];
+    for i in 0..fields.len() {
+        field_entries.push(render_field(fields[i], i));
+    }
+
+    let out = "    {\n";
+    out += "      \"kind\": " + mp::json_string(if s.is_embed { "embed" } else { "table" }) + ",\n";
+    out += "      \"name\": " + mp::json_string(mp::type_name_from_fqn(s.fqn)) + ",\n";
+    out += "      \"fqn\": " + mp::json_string(s.fqn) + ",\n";
+    out += "      \"encoding\": \"array\",\n";
+    out += "      \"fields\": [\n";
+    out += mp::join_with(field_entries, ",\n") + "\n";
+    out += "      ]\n";
+    out += "    }";
+    type_entries.push(out);
+
+    mp::join_with(type_entries, ",\n")
+}
+
+fn render_namespace(ns) {
+    let entries = [];
+    for item in ns.items {
+        if item.is_enum {
+            entries.push(render_enum(item.as_enum(), ns.name));
+        } else if item.is_struct {
+            entries.push(render_struct(item.as_struct()));
+        } else if item.is_namespace {
+            let nested = render_namespace(item.as_namespace());
+            if nested != "" {
+                entries.push(nested);
+            }
+        }
+    }
+    mp::join_with(entries, ",\n")
+}
+
+let entries = [];
+for ns in file.namespaces {
+    let rendered = render_namespace(ns);
+    if rendered != "" {
+        entries.push(rendered);
+    }
+}
+
+let types_body = mp::join_with(entries, ",\n");
+%endlogic
+{
+  "format": "polygen-messagepack-schema",
+  "version": 1,
+  "source": {{file.path | quote}},
+  "encoding": {
+    "record": "array",
+    "fieldOrder": "index",
+    "optional": "nil"
+  },
+  "types": [
+{{types_body}}
+  ]
+}

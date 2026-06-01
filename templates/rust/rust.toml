@@ -48,6 +48,11 @@ output = "{{stem}}_loaders.rs"
 template = "rust_container_file.ptpl"
 output = "{{stem}}_container.rs"
 
+# Redis key helpers (no client dependency)
+[[templates.extra]]
+template = "rust_redis_keys_file.ptpl"
+output = "{{stem}}_redis_keys.rs"
+
 # Level 4: SQLite Accessor (for @datasource("sqlite") tables)
 [[templates.extra]]
 template = "rust_sqlite_accessor_file.ptpl"

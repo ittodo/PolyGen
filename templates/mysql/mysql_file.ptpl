@@ -1,0 +1,253 @@
+%logic
+// MySQL/MariaDB DDL generator.
+
+import "templates/mysql/rhai_utils/type_mapping" as types;
+
+fn join_with(arr, sep) {
+    let result = "";
+    let i = 0;
+    for item in arr {
+        if i > 0 { result += sep; }
+        result += item;
+        i += 1;
+    }
+    result
+}
+
+fn should_include_for_mysql(struct_datasource, ns_datasource) {
+    if struct_datasource != () && struct_datasource != "" {
+        return struct_datasource == "mysql" || struct_datasource == "mariadb";
+    }
+    if ns_datasource != () && ns_datasource != "" {
+        return ns_datasource == "mysql" || ns_datasource == "mariadb";
+    }
+    return true;
+}
+
+fn table_name_from_fqn(fqn) {
+    let name = fqn;
+    name.replace(".", "_");
+    name
+}
+
+fn quote_table(name) {
+    types::quote_ident(name)
+}
+
+fn default_sql(sql_type, value) {
+    if value == () {
+        return "";
+    }
+    if sql_type.starts_with("VARCHAR") || sql_type == "TEXT" || sql_type == "TIMESTAMP" {
+        return " DEFAULT '" + value + "'";
+    }
+    return " DEFAULT " + value;
+}
+
+fn auto_timestamp_sql(sql_type, field) {
+    if sql_type != "TIMESTAMP" {
+        return "";
+    }
+
+    let sql = "";
+    if field.auto_create != () {
+        sql += " DEFAULT CURRENT_TIMESTAMP";
+    }
+    if field.auto_update != () {
+        if field.auto_create == () && !field.has_default_value {
+            sql += " DEFAULT CURRENT_TIMESTAMP";
+        }
+        sql += " ON UPDATE CURRENT_TIMESTAMP";
+    }
+    sql
+}
+
+fn mysql_entries_for_struct(s) {
+    let table_name = table_name_from_fqn(s.fqn);
+    let columns = [];
+    let pk_cols = [];
+    let unique_cols = [];
+    let fk_statements = [];
+
+    for field_item in s.items {
+        if field_item.is_field() {
+            let f = field_item.as_field();
+            if types::is_array(f.field_type) { continue; }
+
+            let sql_type = types::base_mysql_type(f.field_type, f.max_length);
+            let col_name = types::quote_ident(f.name);
+            let col_def = col_name + " " + sql_type;
+
+            if !types::is_nullable(f.field_type) && !f.is_primary_key {
+                col_def += " NOT NULL";
+            }
+            if types::is_nullable(f.field_type) {
+                col_def += " NULL";
+            }
+            if f.has_default_value {
+                col_def += default_sql(sql_type, f.default_value);
+            }
+            col_def += auto_timestamp_sql(sql_type, f);
+
+            columns.push(col_def);
+
+            if f.is_primary_key {
+                pk_cols.push(col_name);
+            }
+            if f.is_unique {
+                unique_cols.push(col_name);
+            }
+            if f.has_foreign_key {
+                let fk = f.foreign_key;
+                let ref_table = quote_table(table_name_from_fqn(fk.target_table_fqn));
+                let ref_col = types::quote_ident(fk.target_field);
+                fk_statements.push("FOREIGN KEY (" + col_name + ") REFERENCES " + ref_table + " (" + ref_col + ")");
+            }
+        }
+    }
+
+    let all_lines = [];
+    for c in columns { all_lines.push("    " + c); }
+    if pk_cols.len() > 0 {
+        all_lines.push("    PRIMARY KEY (" + join_with(pk_cols, ", ") + ")");
+    }
+    for u in unique_cols {
+        all_lines.push("    UNIQUE (" + u + ")");
+    }
+    for fk in fk_statements {
+        all_lines.push("    " + fk);
+    }
+
+    let indexes = [];
+    for idx in s.indexes {
+        let idx_name = "idx_" + table_name + "_" + idx.name;
+        let unique_kw = if idx.is_unique { "UNIQUE " } else { "" };
+        let field_names = [];
+        for field in idx.fields {
+            field_names.push(types::quote_ident(field.name));
+        }
+        indexes.push(#{
+            sql: "CREATE " + unique_kw + "INDEX " + types::quote_ident(idx_name) + " ON " + quote_table(table_name) + " (" + join_with(field_names, ", ") + ");"
+        });
+    }
+
+    #{
+        table: #{
+            name: table_name,
+            quoted_name: quote_table(table_name),
+            body: join_with(all_lines, ",\n")
+        },
+        indexes: indexes
+    }
+}
+
+fn collect_mysql_entries_from_namespace(ns, inherited_datasource) {
+    let ns_datasource = if ns.datasource != () && ns.datasource != "" {
+        ns.datasource
+    } else {
+        inherited_datasource
+    };
+
+    let result = #{ tables: [], indexes: [] };
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if s.is_embed || !should_include_for_mysql(s.datasource, ns_datasource) {
+                continue;
+            }
+
+            let entries = mysql_entries_for_struct(s);
+            result.tables.push(entries.table);
+            for idx in entries.indexes {
+                result.indexes.push(idx);
+            }
+        } else if item.is_namespace() {
+            let nested = collect_mysql_entries_from_namespace(item.as_namespace(), ns_datasource);
+            for table in nested.tables {
+                result.tables.push(table);
+            }
+            for idx in nested.indexes {
+                result.indexes.push(idx);
+            }
+        }
+    }
+
+    result
+}
+
+let all_tables = [];
+let all_indexes = [];
+
+for file in schema.files {
+    if file.path == () || file.path == "" { continue; }
+
+    for ns in file.namespaces {
+        let entries = collect_mysql_entries_from_namespace(ns, "");
+        for table in entries.tables {
+            all_tables.push(table);
+        }
+        for idx in entries.indexes {
+            all_indexes.push(idx);
+        }
+    }
+}
+
+let has_tables = all_tables.len() > 0;
+let has_indexes = all_indexes.len() > 0;
+%endlogic
+-- ============================================
+-- Generated by PolyGen (MySQL/MariaDB)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS `_polygen_schema` (
+    `id` TINYINT PRIMARY KEY CHECK (`id` = 1),
+    `schema_hash` VARCHAR(128),
+    `schema_json` LONGTEXT,
+    `generated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `_polygen_schema` (`id`, `schema_hash`, `schema_json`, `generated_at`, `updated_at`)
+VALUES (1, '{{schema_hash}}', {{schema_json_sql_literal}}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON DUPLICATE KEY UPDATE
+    `schema_hash` = VALUES(`schema_hash`),
+    `schema_json` = VALUES(`schema_json`),
+    `updated_at` = CURRENT_TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS `_polygen_migrations` (
+    `version` BIGINT PRIMARY KEY AUTO_INCREMENT,
+    `schema_hash` VARCHAR(128),
+    `schema_json` LONGTEXT,
+    `checksum` VARCHAR(128),
+    `description` VARCHAR(255),
+    `applied_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `_polygen_migrations` (`schema_hash`, `schema_json`, `checksum`, `description`, `applied_at`)
+VALUES ('{{schema_hash}}', {{schema_json_sql_literal}}, '{{schema_hash}}', 'schema', CURRENT_TIMESTAMP);
+
+-- ============================================
+-- Tables
+-- ============================================
+
+%if has_tables
+%for tbl in all_tables
+CREATE TABLE IF NOT EXISTS {{tbl.quoted_name}} (
+{{tbl.body}}
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+%endfor
+%else
+-- No MySQL datasource tables found.
+
+%endif
+%if has_indexes
+-- ============================================
+-- Indexes
+-- ============================================
+
+%for idx in all_indexes
+{{idx.sql}}
+%endfor
+%endif

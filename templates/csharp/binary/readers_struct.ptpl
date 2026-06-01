@@ -27,13 +27,15 @@ if tf.is_option {
     read_kind = "wrapped";
     if inner.lang_type == "string" {
         read_assign = "obj." + f.name + " = BinaryUtils.ReadOption<string>(br, BinaryUtils.ReadUtf8String);";
+    } else if inner.lang_type == "bytes" {
+        read_assign = "obj." + f.name + " = BinaryUtils.ReadOption<byte[]>(br, BinaryUtils.ReadBytes);";
     } else if inner.is_primitive {
         let k = inner.lang_type;
         let cs = cs_type(k);
-        read_assign = "obj." + f.name + " = BinaryUtils.ReadOption<" + cs + ">(br, _ => " + read_expr(k, "br") + ");";
+        read_assign = "obj." + f.name + " = BinaryUtils.ReadOptionStruct<" + cs + ">(br, _ => " + read_expr(k, "br") + ");";
     } else if inner.is_enum || inline_enums.contains(inner.type_name) {
         let enum_type = inner.fqn;
-        read_assign = "obj." + f.name + " = BinaryUtils.ReadOption<" + enum_type + ">(br, BinaryUtils.ReadEnumInt32<" + enum_type + ">);";
+        read_assign = "obj." + f.name + " = BinaryUtils.ReadOptionStruct<" + enum_type + ">(br, BinaryUtils.ReadEnumInt32<" + enum_type + ">);";
     } else {
         let es_nl = find_embedded_struct(cur_s, inner.type_name);
         let call_ns = if es_nl != () { current_ns_name } else { if inner.namespace_fqn == "" { current_ns_name } else { inner.namespace_fqn } };
@@ -44,6 +46,8 @@ if tf.is_option {
     read_kind = "wrapped";
     if inner.lang_type == "string" {
         read_assign = "obj." + f.name + " = BinaryUtils.ReadList<string>(br, BinaryUtils.ReadUtf8String);";
+    } else if inner.lang_type == "bytes" {
+        read_assign = "obj." + f.name + " = BinaryUtils.ReadList<byte[]>(br, BinaryUtils.ReadBytes);";
     } else if inner.is_primitive {
         let k = inner.lang_type;
         let cs = cs_type(k);
@@ -83,12 +87,6 @@ if tf.is_option {
 %endif
 %if item.is_comment
         // {{item.as_comment}}
-%endif
-%if item.is_embedded_struct
-        // TODO: Embedded struct '{{item.as_embedded_struct.name}}' binary read not implemented
-%endif
-%if item.is_inline_enum
-        // TODO: Inline enum '{{item.as_inline_enum.name}}' binary read not implemented
 %endif
 %endfor
 

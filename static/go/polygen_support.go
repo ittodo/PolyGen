@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -235,6 +236,152 @@ func UniqueError(tableName, fieldName, rowKey string, value interface{}) Validat
 		Severity:       SeverityError,
 		ConstraintType: "Unique",
 	}
+}
+
+// ============ Packed Embed Helpers ============
+
+func packValues(sep string, values ...interface{}) string {
+	parts := make([]string, len(values))
+	for i, value := range values {
+		parts[i] = formatPackedValue(value)
+	}
+	return strings.Join(parts, sep)
+}
+
+func formatPackedValue(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case int:
+		return strconv.FormatInt(int64(v), 10)
+	case int8:
+		return strconv.FormatInt(int64(v), 10)
+	case int16:
+		return strconv.FormatInt(int64(v), 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case uint:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint64:
+		return strconv.FormatUint(v, 10)
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func splitPacked(value, sep, typeName string, expected int) ([]string, error) {
+	parts := strings.Split(value, sep)
+	if len(parts) != expected {
+		return nil, fmt.Errorf(
+			"expected %d parts but got %d when unpacking %s",
+			expected,
+			len(parts),
+			typeName,
+		)
+	}
+	return parts, nil
+}
+
+func parsePackedInt(value, typeName, fieldName string, bitSize int) (int64, error) {
+	parsed, err := strconv.ParseInt(value, 10, bitSize)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %s.%s as signed integer: %w", typeName, fieldName, err)
+	}
+	return parsed, nil
+}
+
+func parsePackedUint(value, typeName, fieldName string, bitSize int) (uint64, error) {
+	parsed, err := strconv.ParseUint(value, 10, bitSize)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %s.%s as unsigned integer: %w", typeName, fieldName, err)
+	}
+	return parsed, nil
+}
+
+func parsePackedInt8(value, typeName, fieldName string) (int8, error) {
+	parsed, err := parsePackedInt(value, typeName, fieldName, 8)
+	return int8(parsed), err
+}
+
+func parsePackedInt16(value, typeName, fieldName string) (int16, error) {
+	parsed, err := parsePackedInt(value, typeName, fieldName, 16)
+	return int16(parsed), err
+}
+
+func parsePackedInt32(value, typeName, fieldName string) (int32, error) {
+	parsed, err := parsePackedInt(value, typeName, fieldName, 32)
+	return int32(parsed), err
+}
+
+func parsePackedInt64(value, typeName, fieldName string) (int64, error) {
+	return parsePackedInt(value, typeName, fieldName, 64)
+}
+
+func parsePackedUint8(value, typeName, fieldName string) (uint8, error) {
+	parsed, err := parsePackedUint(value, typeName, fieldName, 8)
+	return uint8(parsed), err
+}
+
+func parsePackedUint16(value, typeName, fieldName string) (uint16, error) {
+	parsed, err := parsePackedUint(value, typeName, fieldName, 16)
+	return uint16(parsed), err
+}
+
+func parsePackedUint32(value, typeName, fieldName string) (uint32, error) {
+	parsed, err := parsePackedUint(value, typeName, fieldName, 32)
+	return uint32(parsed), err
+}
+
+func parsePackedUint64(value, typeName, fieldName string) (uint64, error) {
+	return parsePackedUint(value, typeName, fieldName, 64)
+}
+
+func parsePackedFloat32(value, typeName, fieldName string) (float32, error) {
+	parsed, err := strconv.ParseFloat(value, 32)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %s.%s as float32: %w", typeName, fieldName, err)
+	}
+	if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return 0, fmt.Errorf("failed to parse %s.%s as finite float32", typeName, fieldName)
+	}
+	return float32(parsed), nil
+}
+
+func parsePackedFloat64(value, typeName, fieldName string) (float64, error) {
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %s.%s as float64: %w", typeName, fieldName, err)
+	}
+	if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return 0, fmt.Errorf("failed to parse %s.%s as finite float64", typeName, fieldName)
+	}
+	return parsed, nil
+}
+
+func parsePackedBool(value, typeName, fieldName string) (bool, error) {
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse %s.%s as bool: %w", typeName, fieldName, err)
+	}
+	return parsed, nil
+}
+
+func unsupportedPackedField(typeName, fieldName, fieldType string) error {
+	return fmt.Errorf("unsupported packed field %s.%s type %s", typeName, fieldName, fieldType)
 }
 
 // ============ CSV Loading ============

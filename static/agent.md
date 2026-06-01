@@ -1,18 +1,24 @@
 # static/ - Agent Documentation
 
 ## Scope
-생성된 코드에서 사용되는 정적(static) C# 파일들이 위치한 폴더입니다. 이 파일들은 템플릿에서 생성되는 것이 아니라, 미리 작성된 코드로서 생성된 코드의 기반을 제공합니다.
+생성된 코드에서 사용되는 정적(static) 런타임 파일들이 위치한 폴더입니다. 이 파일들은 템플릿에서 생성되는 것이 아니라, 미리 작성된 코드로서 생성된 코드의 기반을 제공합니다.
 
 ## Structure
 ```
 static/
-└── csharp/                    # C# 정적 파일
-    ├── DataSource.cs           # 데이터 소스 관리
-    ├── BinaryUtils.cs          # 바이너리 입출력 유틸리티
-    ├── CsvUtils.cs             # CSV 입출력 유틸리티
-    ├── JsonUtils.cs            # JSON 입출력 유틸리티
-    ├── JsonCsvConverter.cs     # JSON ↔ CSV 변환기
-    └── PolygenAttributes.cs    # Polygen 어트리뷰트 정의
+├── csharp/                    # C# 정적 파일
+│   ├── BinaryRef.cs            # indexed binary document + lazy row ref utilities
+│   ├── BinaryUtils.cs          # 바이너리 입출력 유틸리티
+│   ├── CsvUtils.cs             # CSV 입출력 유틸리티
+│   ├── DataContainer.cs        # DataTable/Container 공통 구조
+│   ├── DataSource.cs           # 데이터 소스 관리
+│   ├── JsonCsvConverter.cs     # JSON ↔ CSV 변환기
+│   ├── JsonUtils.cs            # JSON 입출력 유틸리티
+│   ├── PatternLoader.cs        # 패턴 기반 로더
+│   ├── PolygenAttributes.cs    # Polygen 어트리뷰트 정의
+│   └── Validation.cs           # 검증 결과/예외 유틸리티
+└── cpp/                       # C++ 정적 파일
+    └── polygen_support.hpp     # BinaryReader/Writer, Container, validation, binary ref document support
 ```
 
 ## Files
@@ -37,6 +43,22 @@ static/
   - `ReadFloat()`, `WriteFloat()`: 부동소수점 입출력
   - 엔디언 처리
 - **네임스페이스**: `Polygen.Common`
+
+### BinaryRef.cs
+- **용도**: indexed binary row reference 런타임 유틸리티
+- **주요 기능**:
+  - `BinaryDocumentOwner`: ref 객체가 공유하는 byte buffer owner
+  - `BinaryRefFormat`: magic/version header, table/index block, row-frame offset helpers
+  - `BinaryRefRowBuilder`: 필드 offset table이 있는 lazy row frame 작성
+- **네임스페이스**: `Polygen.Common`
+
+### cpp/polygen_support.hpp
+- **용도**: C++ 생성 코드의 공통 header-only 런타임
+- **주요 기능**:
+  - `BinaryReader`/`BinaryWriter`: little-endian binary IO
+  - `DataTable`, index, validation 유틸리티
+  - `BinaryDocument`, `BinaryRefFormat`: shared ownership 기반 indexed binary lazy ref 지원
+- **네임스페이스**: `polygen`
 
 ### CsvUtils.cs
 - **크기**: 3.8KB
@@ -86,22 +108,11 @@ static/
 - **생성 파일** (`templates/`에서 생성): 스키마에 따라 동적으로 생성된 코드
 
 ### 파일 복사 프로세스
-```rust
-// lib.rs에서 정적 파일 복사 로직
-if lang == "csharp" {
-    let dest_dir = lang_output_dir.join("Common");
-    fs::create_dir_all(&dest_dir)?;
-
-    let static_files = [
-        (Path::new("static/csharp/DataSource.cs"), "DataSource.cs"),
-        (Path::new("static/csharp/BinaryUtils.cs"), "BinaryUtils.cs"),
-        // ...
-    ];
-    for (src, name) in static_files {
-        let dest_path = dest_dir.join(name);
-        fs::copy(src, &dest_path)?;
-    }
-}
+```toml
+# templates/<lang>/<lang>.toml
+[static_files]
+"Common/BinaryRef.cs" = "static/csharp/BinaryRef.cs"
+"polygen_support.hpp" = "static/cpp/polygen_support.hpp"
 ```
 
 ### 생성된 코드에서의 사용
@@ -129,22 +140,23 @@ public class Player {
 ## Dependencies
 
 ### 외부 의존성
-- 없음 (순수 C# 코드)
+- 없음 (순수 C#/C++ 표준 라이브러리 코드)
 
 ### 내부 의존성
 - `templates/csharp/`: 정적 파일을 사용하는 생성 코드
-- `src/lib.rs`: 정적 파일 복사 로직
+- `templates/cpp/`: `polygen_support.hpp`를 사용하는 생성 코드
+- `templates/<lang>/<lang>.toml`: 정적 파일 복사 선언
 
 ## Development Guidelines
 
 ### 새로운 정적 파일 추가 시
-1. `static/csharp/<new_file>.cs` 생성
-2. `lib.rs`의 `static_files` 배열에 추가
-3. 필요한 경우 `templates/csharp/csharp_using_*.rhai`에 using 문 추가
+1. `static/<lang>/<new_file>` 생성
+2. 해당 언어의 `<lang>.toml` `[static_files]`에 추가
+3. 필요한 경우 언어별 using/include 템플릿에 참조 추가
 4. 테스트: 빌드하여 사용 가능한지 확인
 
 ### 정적 파일 작성 규칙
-- **네임스페이스**: `Polygen.Common` 사용
+- **네임스페이스**: C#은 `Polygen.Common`, C++은 `polygen` 사용
 - **접근 제어**: 필요한 경우 `public`으로 설정
 - **문서화**: XML 주석으로 API 문서화
 - **예외 처리**: 적절한 예외 처리
@@ -172,9 +184,9 @@ public class Player {
   ```
 
 ### 주의사항
-- **파일명**: PascalCase 사용 (예: `BinaryUtils.cs`)
-- **네임스페이스**: 모든 정적 파일은 `Polygen.Common` 네임스페이스
-- **복사 로직**: 정적 파일 추가 시 `lib.rs`의 복사 로직 업데이트 필요
+- **파일명**: 언어 관례 사용 (예: C# `BinaryUtils.cs`, C++ `polygen_support.hpp`)
+- **네임스페이스**: 언어별 정적 런타임 네임스페이스 유지
+- **복사 로직**: 정적 파일 추가 시 언어 `.toml`의 `[static_files]` 업데이트 필요
 - **의존성**: 정적 파일 간의 의존성 최소화
 
 ### 버전 관리

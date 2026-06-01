@@ -1,0 +1,18 @@
+# Swift Language Configuration for PolyGen
+# Generates Codable structs/enums plus SwiftData model classes.
+
+extension = ".swift"
+
+[templates]
+main = "swift_file.ptpl"
+
+[[templates.extra]]
+template = "swift_swiftdata_file.ptpl"
+output = "{{stem}}_swiftdata.swift"
+
+[[templates.extra]]
+template = "swift_redis_keys_file.ptpl"
+output = "{{stem}}_redis_keys.swift"
+
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

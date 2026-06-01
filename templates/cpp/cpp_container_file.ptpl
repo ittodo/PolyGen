@@ -391,6 +391,26 @@ fn generate_container(base_name, tables) {
     return result;
 }
 
+fn collect_indexed_tables_from_namespace(ns) {
+    let tables = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if has_indexes(s) {
+                tables.push(#{ struct_def: s, namespace_name: ns.name });
+            }
+        } else if item.is_namespace() {
+            let child_tables = collect_indexed_tables_from_namespace(item.as_namespace());
+            for child_table in child_tables {
+                tables.push(child_table);
+            }
+        }
+    }
+
+    tables
+}
+
 // ============================================================
 // Data preparation
 // ============================================================
@@ -411,23 +431,9 @@ if has_file {
 let tables = [];
 if has_file {
     for ns in file.namespaces {
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                if has_indexes(s) {
-                    tables.push(#{ struct_def: s, namespace_name: ns.name });
-                }
-            } else if item.is_namespace() {
-                let child_ns = item.as_namespace();
-                for child_item in child_ns.items {
-                    if child_item.is_struct() {
-                        let cs = child_item.as_struct();
-                        if has_indexes(cs) {
-                            tables.push(#{ struct_def: cs, namespace_name: child_ns.name });
-                        }
-                    }
-                }
-            }
+        let ns_tables = collect_indexed_tables_from_namespace(ns);
+        for table in ns_tables {
+            tables.push(table);
         }
     }
 }

@@ -25,5 +25,9 @@ template = "unreal_hotreload_file.ptpl"
 output = "PolygenHotReload.h"
 per_file = false
 
+[[templates.extra]]
+template = "unreal_redis_keys_file.ptpl"
+output = "Polygen{{stem | pascal_case}}RedisKeys.h"
+
 [rhai]
 prelude = ["rhai_utils/type_mapping.rhai"]

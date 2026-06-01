@@ -46,6 +46,10 @@ main = "cpp_file.ptpl"
 template = "cpp_loaders_file.ptpl"
 output = "{{stem}}_loaders.hpp"
 
+[[templates.extra]]
+template = "cpp_binary_refs_file.ptpl"
+output = "{{stem}}_binary_refs.hpp"
+
 # Level 3: Container System (indexes, relations)
 [[templates.extra]]
 template = "cpp_container_file.ptpl"
@@ -56,6 +60,11 @@ output = "{{stem}}_container.hpp"
 template = "cpp_sqlite_accessor_file.ptpl"
 output = "{{stem}}_sqlite_accessor.hpp"
 per_file = false
+
+# Redis key helper (for @datasource("redis"/"cache") and @cache tables)
+[[templates.extra]]
+template = "cpp_redis_keys_file.ptpl"
+output = "{{stem}}_redis_keys.hpp"
 
 # Rhai prelude scripts for %logic blocks in ptpl templates
 [rhai]

@@ -4,7 +4,9 @@
 %elif struct.auto_create_field.auto_create.kind == "local"
         row.{{struct.auto_create_field.name}} = DateTime.Now;
 %elif struct.auto_create_field.auto_create.kind == "offset"
-        row.{{struct.auto_create_field.name}} = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours({{struct.auto_create_field.auto_create.offset_hours}})).DateTime;
+        row.{{struct.auto_create_field.name}} = DateTimeOffset.UtcNow.ToOffset(new TimeSpan({{struct.auto_create_field.auto_create.offset_hours}}, {{struct.auto_create_field.auto_create.offset_minutes}}, 0)).DateTime;
+%elif struct.auto_create_field.auto_create.kind == "named"
+        row.{{struct.auto_create_field.name}} = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("{{struct.auto_create_field.auto_create.name}}"));
 %else
         row.{{struct.auto_create_field.name}} = DateTime.UtcNow;
 %endif

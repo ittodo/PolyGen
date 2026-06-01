@@ -1,0 +1,792 @@
+%logic
+// C# indexed binary ref generator.
+// Produces a whole-file binary context that loads table indexes eagerly and rows lazily.
+
+fn to_pascal(name) {
+    let parts = name.split("_");
+    let result = "";
+    for part in parts {
+        if part.len() > 0 {
+            let first = part.sub_string(0, 1);
+            first = first.to_upper();
+            let rest = part.sub_string(1);
+            result += first + rest;
+        }
+    }
+    result
+}
+
+fn to_camel(name) {
+    if name.len() == 0 { return name; }
+    let first = name.sub_string(0, 1);
+    let rest = name.sub_string(1);
+    first.to_lower() + rest
+}
+
+fn ref_name(s) {
+    let n = s.fqn + "";
+    n.replace(".", "_");
+    n + "Ref"
+}
+
+fn table_name(s) {
+    ref_name(s) + "Table"
+}
+
+fn codec_name(s) {
+    ref_name(s) + "Codec"
+}
+
+fn namespace_from_fqn(s) {
+    let n = s.fqn + "";
+    if !n.contains(".") {
+        return "";
+    }
+    let parts = n.split(".");
+    let result = "";
+    for i in 0..(parts.len - 1) {
+        if i > 0 { result += "."; }
+        result += parts[i];
+    }
+    result
+}
+
+fn cs_full_type(t) {
+    if t.is_option {
+        return cs_full_type(t.inner) + "?";
+    }
+    if t.is_list {
+        return "List<" + cs_full_type(t.inner) + ">";
+    }
+    if t.lang_type == "string" { return "string"; }
+    if t.lang_type == "bytes" { return "byte[]"; }
+    if t.lang_type == "timestamp" { return "DateTime"; }
+    if t.is_primitive { return cs_type(t.lang_type); }
+    if t.is_enum { return "global::" + t.fqn; }
+    return "global::" + t.fqn;
+}
+
+fn is_nullable_value_type(t) {
+    if t.is_enum { return true; }
+    if t.lang_type == "timestamp" { return true; }
+    if t.is_primitive && t.lang_type != "string" && t.lang_type != "bytes" { return true; }
+    return false;
+}
+
+fn enum_or_inline(t, inline_enums) {
+    t.is_enum || inline_enums.contains(t.type_name)
+}
+
+fn full_enum_type(t) {
+    "global::" + t.fqn
+}
+
+fn call_namespace_for_type(t, current_ns, current_struct_name) {
+    if t.namespace_fqn == "" {
+        return current_ns;
+    }
+    if t.namespace_fqn == current_ns + "." + current_struct_name {
+        return current_ns;
+    }
+    return t.namespace_fqn;
+}
+
+fn write_inner_stmt(t, value_expr, writer_expr, current_ns, current_struct_name, inline_enums) {
+    if t.is_list {
+        let inner = t.inner;
+        if inner.lang_type == "string" {
+            return "BinaryUtils.WriteList<string>(" + writer_expr + ", " + value_expr + ", BinaryUtils.WriteUtf8String);";
+        }
+        if inner.lang_type == "bytes" {
+            return "BinaryUtils.WriteList<byte[]>(" + writer_expr + ", " + value_expr + ", BinaryUtils.WriteBytes);";
+        }
+        if inner.lang_type == "timestamp" {
+            return "BinaryUtils.WriteList<DateTime>(" + writer_expr + ", " + value_expr + ", (bw2, v) => bw2.Write(v.Ticks));";
+        }
+        if enum_or_inline(inner, inline_enums) {
+            let enum_type = full_enum_type(inner);
+            return "BinaryUtils.WriteList<" + enum_type + ">(" + writer_expr + ", " + value_expr + ", BinaryUtils.WriteEnumInt32<" + enum_type + ">);";
+        }
+        if inner.is_primitive {
+            let mapped = cs_type(inner.lang_type);
+            return "BinaryUtils.WriteList<" + mapped + ">(" + writer_expr + ", " + value_expr + ", (bw2, v) => bw2.Write(v));";
+        }
+        let call_ns = call_namespace_for_type(inner, current_ns, current_struct_name);
+        return "BinaryUtils.WriteList<global::" + inner.fqn + ">(" + writer_expr + ", " + value_expr + ", " + call_ns + ".BinaryWriters.Write" + inner.type_name + ");";
+    }
+    if t.lang_type == "string" {
+        return "BinaryUtils.WriteUtf8String(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.lang_type == "bytes" {
+        return "BinaryUtils.WriteBytes(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.lang_type == "timestamp" {
+        return writer_expr + ".Write(" + value_expr + ".Ticks);";
+    }
+    if enum_or_inline(t, inline_enums) {
+        let enum_type = full_enum_type(t);
+        return "BinaryUtils.WriteEnumInt32<" + enum_type + ">(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.is_primitive {
+        return writer_expr + ".Write(" + value_expr + ");";
+    }
+    let call_ns = call_namespace_for_type(t, current_ns, current_struct_name);
+    return call_ns + ".BinaryWriters.Write" + t.type_name + "(" + writer_expr + ", " + value_expr + ");";
+}
+
+fn read_direct_expr(t, offset_expr) {
+    if t.lang_type == "bool" { return "BinaryRefFormat.ReadBool(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "u8" { return "BinaryRefFormat.ReadU8(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "i8" { return "BinaryRefFormat.ReadI8(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "u16" { return "BinaryRefFormat.ReadU16(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "i16" { return "BinaryRefFormat.ReadI16(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "u32" { return "BinaryRefFormat.ReadU32(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "i32" { return "BinaryRefFormat.ReadI32(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "u64" { return "BinaryRefFormat.ReadU64(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "i64" { return "BinaryRefFormat.ReadI64(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "f32" { return "BinaryRefFormat.ReadF32(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "f64" { return "BinaryRefFormat.ReadF64(_owner.Span, " + offset_expr + ")"; }
+    if t.lang_type == "timestamp" { return "BinaryRefFormat.ReadTimestamp(_owner.Span, " + offset_expr + ")"; }
+    if t.is_enum { return "BinaryRefFormat.ReadEnumInt32<" + full_enum_type(t) + ">(_owner.Span, " + offset_expr + ")"; }
+    return "";
+}
+
+fn materialized_read_expr(t, reader_expr, current_ns, current_struct_name, inline_enums) {
+    if t.is_list {
+        let inner = t.inner;
+        if inner.lang_type == "string" {
+            return "BinaryUtils.ReadList<string>(" + reader_expr + ", BinaryUtils.ReadUtf8String)";
+        }
+        if inner.lang_type == "bytes" {
+            return "BinaryUtils.ReadList<byte[]>(" + reader_expr + ", BinaryUtils.ReadBytes)";
+        }
+        if inner.lang_type == "timestamp" {
+            return "BinaryUtils.ReadList<DateTime>(" + reader_expr + ", br2 => new DateTime(br2.ReadInt64(), DateTimeKind.Utc))";
+        }
+        if enum_or_inline(inner, inline_enums) {
+            let enum_type = full_enum_type(inner);
+            return "BinaryUtils.ReadList<" + enum_type + ">(" + reader_expr + ", BinaryUtils.ReadEnumInt32<" + enum_type + ">)";
+        }
+        if inner.is_primitive {
+            let k = inner.lang_type;
+            let mapped = cs_type(k);
+            return "BinaryUtils.ReadList<" + mapped + ">(" + reader_expr + ", _ => " + read_expr(k, reader_expr) + ")";
+        }
+        let call_ns = call_namespace_for_type(inner, current_ns, current_struct_name);
+        return "BinaryUtils.ReadList<global::" + inner.fqn + ">(" + reader_expr + ", " + call_ns + ".BinaryReaders.Read" + inner.type_name + ")";
+    }
+    if t.lang_type == "string" { return "BinaryUtils.ReadUtf8String(" + reader_expr + ")"; }
+    if t.lang_type == "bytes" { return "BinaryUtils.ReadBytes(" + reader_expr + ")"; }
+    if t.lang_type == "timestamp" { return "new DateTime(" + reader_expr + ".ReadInt64(), DateTimeKind.Utc)"; }
+    if enum_or_inline(t, inline_enums) {
+        let enum_type = full_enum_type(t);
+        return "BinaryUtils.ReadEnumInt32<" + enum_type + ">(" + reader_expr + ")";
+    }
+    if t.is_primitive { return read_expr(t.lang_type, reader_expr); }
+    let call_ns = call_namespace_for_type(t, current_ns, current_struct_name);
+    return call_ns + ".BinaryReaders.Read" + t.type_name + "(" + reader_expr + ")";
+}
+
+fn can_read_direct(t) {
+    if t.is_list { return false; }
+    if t.lang_type == "string" || t.lang_type == "bytes" { return true; }
+    if t.lang_type == "timestamp" { return true; }
+    if t.is_enum { return true; }
+    if t.is_primitive { return true; }
+    return false;
+}
+
+fn is_supported_index(idx) {
+    if idx.is_composite { return false; }
+    let t = idx.field_type;
+    if t.is_option || t.is_list { return false; }
+    if t.lang_type == "string" || t.lang_type == "timestamp" { return true; }
+    if t.is_enum { return true; }
+    if t.is_primitive && t.lang_type != "bytes" { return true; }
+    return false;
+}
+
+fn key_type(t) {
+    if t.lang_type == "string" { return "string"; }
+    if t.lang_type == "timestamp" { return "DateTime"; }
+    if t.is_enum { return full_enum_type(t); }
+    return cs_type(t.lang_type);
+}
+
+fn write_key_stmt(t, key_expr, writer_expr) {
+    if t.lang_type == "string" { return "BinaryRefFormat.WriteString(" + writer_expr + ", " + key_expr + ");"; }
+    if t.lang_type == "timestamp" { return writer_expr + ".Write(" + key_expr + ".Ticks);"; }
+    if t.is_enum { return "BinaryUtils.WriteEnumInt32<" + full_enum_type(t) + ">(" + writer_expr + ", " + key_expr + ");"; }
+    return writer_expr + ".Write(" + key_expr + ");";
+}
+
+fn read_key_expr(t, reader_expr) {
+    if t.lang_type == "string" { return "BinaryRefFormat.ReadString(" + reader_expr + ")"; }
+    if t.lang_type == "timestamp" { return "new DateTime(" + reader_expr + ".ReadInt64(), DateTimeKind.Utc)"; }
+    if t.is_enum { return "BinaryUtils.ReadEnumInt32<" + full_enum_type(t) + ">(" + reader_expr + ")"; }
+    return read_expr(t.lang_type, reader_expr);
+}
+
+fn field_property_code(f, field_index, current_ns, current_struct_name, inline_enums) {
+    let ft = f.field_type;
+    let base = if ft.is_option { ft.inner } else { ft };
+    let idx = field_index + "";
+    let field_type = cs_full_type(ft);
+    let field_name = f.name;
+    let pascal = to_pascal(field_name);
+    let offset_req = "RequiredFieldOffset(" + idx + ")";
+    let offset_opt = "OptionalFieldOffset(" + idx + ")";
+    let code = "";
+
+    if ft.is_option {
+        code += "        public bool Has" + pascal + " => OptionalFieldOffset(" + idx + ") >= 0;\n\n";
+
+        if base.lang_type == "string" {
+            code += "        public ReadOnlySpan<byte> " + field_name + "Utf8\n";
+            code += "        {\n";
+            code += "            get\n";
+            code += "            {\n";
+            code += "                var fieldOffset = " + offset_opt + ";\n";
+            code += "                return fieldOffset < 0 ? ReadOnlySpan<byte>.Empty : BinaryRefFormat.ReadLengthPrefixedBytes(_owner.Span, fieldOffset);\n";
+            code += "            }\n";
+            code += "        }\n\n";
+            code += "        public " + field_type + " " + field_name + "\n";
+            code += "        {\n";
+            code += "            get\n";
+            code += "            {\n";
+            code += "                var fieldOffset = " + offset_opt + ";\n";
+            code += "                return fieldOffset < 0 ? null : BinaryRefFormat.ReadUtf8String(_owner.Span, fieldOffset);\n";
+            code += "            }\n";
+            code += "        }\n";
+            return code;
+        }
+
+        if base.lang_type == "bytes" {
+            code += "        public ReadOnlySpan<byte> " + field_name + "Span\n";
+            code += "        {\n";
+            code += "            get\n";
+            code += "            {\n";
+            code += "                var fieldOffset = " + offset_opt + ";\n";
+            code += "                return fieldOffset < 0 ? ReadOnlySpan<byte>.Empty : BinaryRefFormat.ReadLengthPrefixedBytes(_owner.Span, fieldOffset);\n";
+            code += "            }\n";
+            code += "        }\n\n";
+            code += "        public " + field_type + " " + field_name + "\n";
+            code += "        {\n";
+            code += "            get\n";
+            code += "            {\n";
+            code += "                var fieldOffset = " + offset_opt + ";\n";
+            code += "                return fieldOffset < 0 ? null : BinaryRefFormat.ReadLengthPrefixedBytes(_owner.Span, fieldOffset).ToArray();\n";
+            code += "            }\n";
+            code += "        }\n";
+            return code;
+        }
+
+        if can_read_direct(base) {
+            code += "        public " + field_type + " " + field_name + "\n";
+            code += "        {\n";
+            code += "            get\n";
+            code += "            {\n";
+            code += "                var fieldOffset = " + offset_opt + ";\n";
+            code += "                return fieldOffset < 0 ? null : " + read_direct_expr(base, "fieldOffset") + ";\n";
+            code += "            }\n";
+            code += "        }\n";
+            return code;
+        }
+
+        code += "        public " + field_type + " " + field_name + "\n";
+        code += "        {\n";
+        code += "            get\n";
+        code += "            {\n";
+        code += "                var fieldOffset = " + offset_opt + ";\n";
+        code += "                if (fieldOffset < 0)\n";
+        code += "                    return null;\n";
+        code += "                using var br = _owner.OpenReaderAt(fieldOffset);\n";
+        code += "                return " + materialized_read_expr(base, "br", current_ns, current_struct_name, inline_enums) + ";\n";
+        code += "            }\n";
+        code += "        }\n";
+        return code;
+    }
+
+    if base.lang_type == "string" {
+        code += "        public ReadOnlySpan<byte> " + field_name + "Utf8 => BinaryRefFormat.ReadLengthPrefixedBytes(_owner.Span, " + offset_req + ");\n\n";
+        code += "        public " + field_type + " " + field_name + " => BinaryRefFormat.ReadUtf8String(_owner.Span, " + offset_req + ");\n";
+        return code;
+    }
+
+    if base.lang_type == "bytes" {
+        code += "        public ReadOnlySpan<byte> " + field_name + " => BinaryRefFormat.ReadLengthPrefixedBytes(_owner.Span, " + offset_req + ");\n";
+        return code;
+    }
+
+    if can_read_direct(base) {
+        code += "        public " + field_type + " " + field_name + " => " + read_direct_expr(base, offset_req) + ";\n";
+        return code;
+    }
+
+    code += "        public " + field_type + " " + field_name + "\n";
+    code += "        {\n";
+    code += "            get\n";
+    code += "            {\n";
+    code += "                var fieldOffset = " + offset_req + ";\n";
+    code += "                using var br = _owner.OpenReaderAt(fieldOffset);\n";
+    code += "                return " + materialized_read_expr(base, "br", current_ns, current_struct_name, inline_enums) + ";\n";
+    code += "            }\n";
+    code += "        }\n";
+    return code;
+}
+
+fn to_owned_assignment(f) {
+    let ft = f.field_type;
+    let base = if ft.is_option { ft.inner } else { ft };
+    if !ft.is_option && base.lang_type == "bytes" {
+        return "            obj." + f.name + " = " + f.name + ".ToArray();";
+    }
+    return "            obj." + f.name + " = " + f.name + ";";
+}
+
+fn write_field_code(f, field_index, current_ns, current_struct_name, inline_enums) {
+    let ft = f.field_type;
+    let base = if ft.is_option { ft.inner } else { ft };
+    let idx = field_index + "";
+    let code = "";
+
+    if ft.is_option {
+        let value_expr = "obj." + f.name;
+        if is_nullable_value_type(base) {
+            value_expr += ".Value";
+            let stmt = write_inner_stmt(base, value_expr, "bw", current_ns, current_struct_name, inline_enums);
+            code += "            if (obj." + f.name + ".HasValue)\n";
+            code += "                builder.SetField(" + idx + ", bw => { " + stmt + " });";
+            return code;
+        }
+
+        let stmt = write_inner_stmt(base, value_expr, "bw", current_ns, current_struct_name, inline_enums);
+        code += "            if (obj." + f.name + " != null)\n";
+        code += "                builder.SetField(" + idx + ", bw => { " + stmt + " });";
+        return code;
+    }
+
+    let stmt = write_inner_stmt(base, "obj." + f.name, "bw", current_ns, current_struct_name, inline_enums);
+    code += "            builder.SetField(" + idx + ", bw => { " + stmt + " });";
+    return code;
+}
+
+fn collect_inline_enums(s) {
+    let inline_enums = [];
+    for it in s.items {
+        if it.is_inline_enum() {
+            inline_enums.push(it.as_inline_enum().name);
+        }
+    }
+    inline_enums
+}
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace() {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+let all_tables = [];
+for ns in file.namespaces {
+    let ns_tables = collect_tables_from_namespace(ns);
+    for s in ns_tables {
+        all_tables.push(s);
+    }
+}
+
+let entries = [];
+for s in all_tables {
+    let inline_enums = collect_inline_enums(s);
+    let current_ns = namespace_from_fqn(s);
+    let fields = [];
+    let field_index = 0;
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            fields.push(#{
+                def: f,
+                index: field_index,
+                property_code: field_property_code(f, field_index, current_ns, s.name, inline_enums),
+                to_owned_assignment: to_owned_assignment(f),
+                write_code: write_field_code(f, field_index, current_ns, s.name, inline_enums)
+            });
+            field_index += 1;
+        }
+    }
+
+    let indexes = [];
+    for idx in s.indexes {
+        if is_supported_index(idx) {
+            indexes.push(#{
+                def: idx,
+                var_name: to_camel(idx.name),
+                method_suffix: idx.name,
+                key_type: key_type(idx.field_type),
+                field_name: idx.field_name,
+                is_unique_literal: if idx.is_unique { "true" } else { "false" },
+                write_key: write_key_stmt(idx.field_type, "kv.Key", "bw"),
+                read_key: read_key_expr(idx.field_type, "br")
+            });
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        ns_name: current_ns,
+        ref_name: ref_name(s),
+        table_name: table_name(s),
+        codec_name: codec_name(s),
+        fields: fields,
+        field_count: field_index,
+        inline_enums: inline_enums,
+        indexes: indexes,
+        index_count: indexes.len()
+    });
+}
+
+let base_name = file.path;
+if base_name.contains("/") {
+    let pp = base_name.split("/");
+    base_name = pp[pp.len() - 1];
+}
+if base_name.ends_with(".poly") {
+    base_name = base_name.sub_string(0, base_name.len() - 5);
+}
+let binary_ref_namespace = to_pascal(base_name);
+let context_name = binary_ref_namespace + "BinaryRefContext";
+let root_container_type = "global::" + binary_ref_namespace + ".Container." + binary_ref_namespace + "DataContainer";
+let entry_count = entries.len;
+%endlogic
+using System;
+using System.Collections.Generic;
+using System.IO;
+using Polygen.Common;
+
+namespace {{binary_ref_namespace}}.BinaryRefs
+{
+%for entry in entries
+    public sealed class {{entry.ref_name}}
+    {
+        private readonly BinaryDocumentOwner _owner;
+        private readonly int _rowOffset;
+
+        internal {{entry.ref_name}}(BinaryDocumentOwner owner, int rowOffset)
+        {
+            _owner = owner;
+            _rowOffset = rowOffset;
+        }
+
+        private int RequiredFieldOffset(int fieldIndex) => BinaryRefFormat.RequireFieldOffset(_owner.Span, _rowOffset, fieldIndex);
+        private int OptionalFieldOffset(int fieldIndex) => BinaryRefFormat.GetFieldOffset(_owner.Span, _rowOffset, fieldIndex);
+
+%for field_entry in entry.fields
+{{field_entry.property_code}}
+
+%endfor
+        public global::{{entry.def.fqn}} ToOwned()
+        {
+            var obj = new global::{{entry.def.fqn}}();
+%for field_entry in entry.fields
+{{field_entry.to_owned_assignment}}
+%endfor
+            return obj;
+        }
+    }
+
+    internal static class {{entry.codec_name}}
+    {
+        public static byte[] WriteRow(global::{{entry.def.fqn}} obj)
+        {
+            var builder = new BinaryRefRowBuilder({{entry.field_count}});
+%for field_entry in entry.fields
+{{field_entry.write_code}}
+%endfor
+            return builder.ToArray();
+        }
+    }
+
+    public sealed class {{entry.table_name}}
+    {
+        private readonly BinaryDocumentOwner _owner;
+        private readonly int[] _rowOffsets;
+%for idx in entry.indexes
+%if idx.def.is_unique
+        private readonly Dictionary<{{idx.key_type}}, int> _{{idx.var_name}};
+%else
+        private readonly Dictionary<{{idx.key_type}}, int[]> _{{idx.var_name}};
+%endif
+%endfor
+
+        internal {{entry.table_name}}(
+            BinaryDocumentOwner owner,
+            int[] rowOffsets
+%for idx in entry.indexes
+%if idx.def.is_unique
+            , Dictionary<{{idx.key_type}}, int> {{idx.var_name}}
+%else
+            , Dictionary<{{idx.key_type}}, int[]> {{idx.var_name}}
+%endif
+%endfor
+        )
+        {
+            _owner = owner;
+            _rowOffsets = rowOffsets;
+%for idx in entry.indexes
+            _{{idx.var_name}} = {{idx.var_name}};
+%endfor
+        }
+
+        public int Count => _rowOffsets.Length;
+
+        public IEnumerable<{{entry.ref_name}}> All
+        {
+            get
+            {
+                for (var i = 0; i < _rowOffsets.Length; i++)
+                    yield return new {{entry.ref_name}}(_owner, _rowOffsets[i]);
+            }
+        }
+
+        public {{entry.ref_name}} At(int index) => new {{entry.ref_name}}(_owner, _rowOffsets[index]);
+
+%for idx in entry.indexes
+%if idx.def.is_unique
+        public {{entry.ref_name}}? Get{{idx.method_suffix}}({{idx.key_type}} key)
+        {
+            return _{{idx.var_name}}.TryGetValue(key, out var offset) ? new {{entry.ref_name}}(_owner, offset) : null;
+        }
+
+        public bool TryGet{{idx.method_suffix}}({{idx.key_type}} key, out {{entry.ref_name}}? row)
+        {
+            if (_{{idx.var_name}}.TryGetValue(key, out var offset))
+            {
+                row = new {{entry.ref_name}}(_owner, offset);
+                return true;
+            }
+            row = null;
+            return false;
+        }
+%else
+        public IReadOnlyList<{{entry.ref_name}}> Find{{idx.method_suffix}}({{idx.key_type}} key)
+        {
+            if (!_{{idx.var_name}}.TryGetValue(key, out var offsets))
+                return Array.Empty<{{entry.ref_name}}>();
+
+            var rows = new {{entry.ref_name}}[offsets.Length];
+            for (var i = 0; i < offsets.Length; i++)
+                rows[i] = new {{entry.ref_name}}(_owner, offsets[i]);
+            return rows;
+        }
+%endif
+
+%endfor
+        internal static void Write(BinaryWriter bw, IEnumerable<global::{{entry.def.fqn}}> sourceRows)
+        {
+            BinaryRefFormat.WriteString(bw, "{{entry.def.fqn}}");
+            var rows = new List<(global::{{entry.def.fqn}} Row, int Offset, byte[] Bytes)>();
+            var cursor = 0;
+            foreach (var row in sourceRows)
+            {
+                var bytes = {{entry.codec_name}}.WriteRow(row);
+                rows.Add((row, cursor, bytes));
+                cursor = checked(cursor + bytes.Length);
+            }
+
+            bw.Write(rows.Count);
+            foreach (var row in rows)
+                bw.Write(row.Offset);
+
+            bw.Write({{entry.index_count}});
+%for idx in entry.indexes
+            BinaryRefFormat.WriteString(bw, "{{idx.def.name}}");
+            bw.Write({{idx.is_unique_literal}});
+%if idx.def.is_unique
+            {
+                var map = new Dictionary<{{idx.key_type}}, int>();
+                foreach (var row in rows)
+                    map[row.Row.{{idx.field_name}}] = row.Offset;
+                bw.Write(map.Count);
+                foreach (var kv in map)
+                {
+                    {{idx.write_key}}
+                    bw.Write(kv.Value);
+                }
+            }
+%else
+            {
+                var map = new Dictionary<{{idx.key_type}}, List<int>>();
+                foreach (var row in rows)
+                {
+                    if (!map.TryGetValue(row.Row.{{idx.field_name}}, out var offsets))
+                    {
+                        offsets = new List<int>();
+                        map[row.Row.{{idx.field_name}}] = offsets;
+                    }
+                    offsets.Add(row.Offset);
+                }
+                bw.Write(map.Count);
+                foreach (var kv in map)
+                {
+                    {{idx.write_key}}
+                    bw.Write(kv.Value.Count);
+                    foreach (var offset in kv.Value)
+                        bw.Write(offset);
+                }
+            }
+%endif
+%endfor
+            bw.Write(cursor);
+            foreach (var row in rows)
+                bw.Write(row.Bytes);
+        }
+
+        internal static {{entry.table_name}} Read(BinaryDocumentOwner owner, BinaryReader br)
+        {
+            var tableName = BinaryRefFormat.ReadString(br);
+            if (tableName != "{{entry.def.fqn}}")
+                throw new InvalidDataException($"Expected table '{{entry.def.fqn}}' but found '{tableName}'.");
+
+            var rowCount = br.ReadInt32();
+            if (rowCount < 0)
+                throw new InvalidDataException("Negative row count.");
+            var rowOffsets = new int[rowCount];
+            for (var i = 0; i < rowOffsets.Length; i++)
+                rowOffsets[i] = br.ReadInt32();
+
+            var indexCount = br.ReadInt32();
+            if (indexCount != {{entry.index_count}})
+                throw new InvalidDataException($"Unexpected index count for {{entry.def.fqn}}: {indexCount}.");
+
+%for idx in entry.indexes
+%if idx.def.is_unique
+            var {{idx.var_name}} = new Dictionary<{{idx.key_type}}, int>();
+%else
+            var {{idx.var_name}} = new Dictionary<{{idx.key_type}}, int[]>();
+%endif
+            {
+                var indexName = BinaryRefFormat.ReadString(br);
+                if (indexName != "{{idx.def.name}}")
+                    throw new InvalidDataException($"Expected index '{{idx.def.name}}' but found '{indexName}'.");
+                var isUnique = br.ReadBoolean();
+                if (isUnique != {{idx.is_unique_literal}})
+                    throw new InvalidDataException("Binary index uniqueness does not match generated schema.");
+                var entryCount = br.ReadInt32();
+                if (entryCount < 0)
+                    throw new InvalidDataException("Negative index entry count.");
+                for (var i = 0; i < entryCount; i++)
+                {
+                    var key = {{idx.read_key}};
+%if idx.def.is_unique
+                    {{idx.var_name}}[key] = br.ReadInt32();
+%else
+                    var valueCount = br.ReadInt32();
+                    if (valueCount < 0)
+                        throw new InvalidDataException("Negative group index value count.");
+                    var offsets = new int[valueCount];
+                    for (var j = 0; j < offsets.Length; j++)
+                        offsets[j] = br.ReadInt32();
+                    {{idx.var_name}}[key] = offsets;
+%endif
+                }
+            }
+
+%endfor
+            var rowBlockLength = br.ReadInt32();
+            if (rowBlockLength < 0)
+                throw new InvalidDataException("Negative row block length.");
+            var rowBlockStart = checked((int)br.BaseStream.Position);
+            br.BaseStream.Seek(rowBlockLength, SeekOrigin.Current);
+
+            for (var i = 0; i < rowOffsets.Length; i++)
+                rowOffsets[i] = checked(rowBlockStart + rowOffsets[i]);
+%for idx in entry.indexes
+%if idx.def.is_unique
+            foreach (var key in new List<{{idx.key_type}}>({{idx.var_name}}.Keys))
+                {{idx.var_name}}[key] = checked(rowBlockStart + {{idx.var_name}}[key]);
+%else
+            foreach (var key in new List<{{idx.key_type}}>({{idx.var_name}}.Keys))
+            {
+                var offsets = {{idx.var_name}}[key];
+                for (var i = 0; i < offsets.Length; i++)
+                    offsets[i] = checked(rowBlockStart + offsets[i]);
+            }
+%endif
+%endfor
+
+            return new {{entry.table_name}}(
+                owner,
+                rowOffsets
+%for idx in entry.indexes
+                , {{idx.var_name}}
+%endfor
+            );
+        }
+    }
+
+%endfor
+    public sealed class {{context_name}}
+    {
+        private readonly BinaryDocumentOwner _owner;
+
+%for entry in entries
+        public {{entry.table_name}} {{entry.def.name}}s { get; }
+%endfor
+
+        private {{context_name}}(
+            BinaryDocumentOwner owner
+%for entry in entries
+            , {{entry.table_name}} {{entry.def.name}}s
+%endfor
+        )
+        {
+            _owner = owner;
+%for entry in entries
+            this.{{entry.def.name}}s = {{entry.def.name}}s;
+%endfor
+        }
+
+        public static {{context_name}} OpenBinary(string filePath)
+        {
+            var owner = BinaryDocumentOwner.Open(filePath);
+            using var br = owner.OpenReader();
+            BinaryRefFormat.ReadHeader(br);
+            var tableCount = br.ReadInt32();
+            if (tableCount != {{entry_count}})
+                throw new InvalidDataException($"Unexpected table count: {tableCount}.");
+
+%for entry in entries
+            var {{entry.def.name}}s = {{entry.table_name}}.Read(owner, br);
+%endfor
+            return new {{context_name}}(
+                owner
+%for entry in entries
+                , {{entry.def.name}}s
+%endfor
+            );
+        }
+
+        public static void SaveBinary(string filePath, {{root_container_type}} container)
+        {
+            using var fs = File.Create(filePath);
+            using var bw = new BinaryWriter(fs);
+            BinaryRefFormat.WriteHeader(bw);
+            bw.Write({{entry_count}});
+%for entry in entries
+            {{entry.table_name}}.Write(bw, container.{{entry.def.name}}s);
+%endfor
+        }
+    }
+}

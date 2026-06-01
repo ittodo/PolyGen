@@ -30,6 +30,10 @@ format = "*{{type}}"
 [type_map.list]
 format = "[]{{type}}"
 
+# Rhai prelude scripts for %logic blocks in ptpl templates
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]
+
 # Template configuration
 [templates]
 # Main template for generating Go structs (using new PolyTemplate engine)
@@ -38,3 +42,7 @@ main = "go_file.ptpl"
 # Extra templates to run after the main template (using PolyTemplate engine)
 [[templates.extra]]
 template = "go_container_file.ptpl"
+
+[[templates.extra]]
+template = "go_redis_keys_file.ptpl"
+output = "{{stem}}_redis_keys.go"

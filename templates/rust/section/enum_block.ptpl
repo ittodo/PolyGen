@@ -1,6 +1,20 @@
 %-- Rust enum definition. Context: enum
 %logic
 let first_member = true;
+let next_discriminant = 0;
+let match_arms = "";
+for item in enum.items {
+    if item.is_member {
+        let member = item.as_member();
+        if member.value != () {
+            match_arms += "            " + member.value + " => Ok(Self::" + member.name + "),\n";
+            next_discriminant = member.value + 1;
+        } else {
+            match_arms += "            " + next_discriminant + " => Ok(Self::" + member.name + "),\n";
+            next_discriminant += 1;
+        }
+    }
+}
 %endlogic
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(i32)]
@@ -20,4 +34,14 @@ pub enum {{enum.name}} {
 %endif
 %endif
 %endfor
+}
+%blank
+impl std::convert::TryFrom<i32> for {{enum.name}} {
+    type Error = i32;
+%blank
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+{{match_arms}}            other => Err(other),
+        }
+    }
 }

@@ -30,169 +30,261 @@ fn should_include_for_sqlite(struct_datasource, ns_datasource) {
     return true;
 }
 
+fn table_name_from_fqn(fqn) {
+    let name = fqn;
+    name.replace(".", "_");
+    name
+}
+
+fn default_sql(sql_type, value) {
+    if value == () {
+        return "";
+    }
+    if sql_type == "TEXT" {
+        return " DEFAULT '" + value + "'";
+    }
+    return " DEFAULT " + value;
+}
+
+fn sqlite_entries_for_struct(s) {
+    let table_name = table_name_from_fqn(s.fqn);
+    let columns = [];
+    let pk_cols = [];
+    let fk_statements = [];
+    let unique_cols = [];
+    let auto_update_cols = [];
+
+    for field_item in s.items {
+        if field_item.is_field() {
+            let f = field_item.as_field();
+            let col_name = f.name;
+
+            if types::is_array(f.field_type) { continue; }
+
+            let sql_type = types::base_sqlite_type(f.field_type);
+            let is_null = types::is_nullable(f.field_type);
+            let col_def = col_name + " " + sql_type;
+
+            if f.is_primary_key {
+                pk_cols.push(col_name);
+            }
+            if f.is_unique {
+                unique_cols.push(col_name);
+            }
+
+            if f.is_primary_key && pk_cols.len() == 1 && sql_type == "INTEGER" {
+                col_def += " PRIMARY KEY";
+            }
+            if !is_null && !f.is_primary_key {
+                col_def += " NOT NULL";
+            }
+            if f.has_default_value {
+                col_def += default_sql(sql_type, f.default_value);
+            }
+            if sql_type == "TEXT" && (f.auto_create != () || (f.auto_update != () && !f.has_default_value)) {
+                col_def += " DEFAULT CURRENT_TIMESTAMP";
+            }
+
+            columns.push(col_def);
+
+            if f.auto_update != () {
+                auto_update_cols.push(col_name);
+            }
+
+            if f.has_foreign_key {
+                let fk = f.foreign_key;
+                let ref_table = table_name_from_fqn(fk.target_table_fqn);
+                let ref_col = fk.target_field;
+                fk_statements.push("FOREIGN KEY (" + col_name + ") REFERENCES " + ref_table + "(" + ref_col + ")");
+            }
+        }
+    }
+
+    let all_lines = [];
+    for c in columns { all_lines.push("    " + c); }
+    if pk_cols.len() > 1 {
+        all_lines.push("    PRIMARY KEY (" + join_with(pk_cols, ", ") + ")");
+    }
+    for u in unique_cols {
+        all_lines.push("    UNIQUE (" + u + ")");
+    }
+    for fk in fk_statements {
+        all_lines.push("    " + fk);
+    }
+
+    let triggers = [];
+    if auto_update_cols.len() > 0 {
+        let set_parts = [];
+        let when_parts = [];
+        for col in auto_update_cols {
+            set_parts.push(col + " = CURRENT_TIMESTAMP");
+            when_parts.push("NEW." + col + " IS OLD." + col);
+        }
+        let trigger_name = "polygen_trg_" + table_name + "_auto_update";
+        triggers.push(#{
+            sql: "CREATE TRIGGER IF NOT EXISTS " + trigger_name + "\n"
+                + "AFTER UPDATE ON " + table_name + "\n"
+                + "FOR EACH ROW\n"
+                + "WHEN " + join_with(when_parts, " AND ") + "\n"
+                + "BEGIN\n"
+                + "    UPDATE " + table_name + " SET " + join_with(set_parts, ", ") + " WHERE rowid = NEW.rowid;\n"
+                + "END;"
+        });
+    }
+
+    let indexes = [];
+    for idx in s.indexes {
+        let idx_name = "idx_" + table_name.to_lower() + "_" + idx.name.to_lower();
+        let unique_kw = if idx.is_unique { "UNIQUE " } else { "" };
+        let field_names = [];
+        for field in idx.fields {
+            field_names.push(field.name);
+        }
+        indexes.push(#{
+            sql: "CREATE " + unique_kw + "INDEX IF NOT EXISTS " + idx_name + " ON " + table_name + " (" + join_with(field_names, ", ") + ");"
+        });
+    }
+
+    #{
+        table: #{
+            name: table_name,
+            body: join_with(all_lines, ",\n"),
+            is_enum: false
+        },
+        indexes: indexes,
+        triggers: triggers
+    }
+}
+
+fn sqlite_entry_for_enum(e, namespace_name) {
+    let table_name = if namespace_name != "" {
+        table_name_from_fqn(namespace_name + "." + e.name)
+    } else {
+        e.name
+    };
+    let inserts = [];
+    let auto_val = 0;
+    for enum_item in e.items {
+        if enum_item.is_member() {
+            let m = enum_item.as_member();
+            let val = if m.value != () { m.value } else { auto_val };
+            inserts.push("INSERT OR IGNORE INTO " + table_name + " (id, name) VALUES (" + val + ", '" + m.name + "');");
+            auto_val += 1;
+        }
+    }
+
+    #{
+        name: table_name,
+        body: "    id INTEGER PRIMARY KEY,\n    name TEXT NOT NULL UNIQUE",
+        is_enum: true,
+        enum_comment: "-- Enum: " + e.name,
+        inserts: inserts
+    }
+}
+
+fn collect_sqlite_entries_from_namespace(ns, inherited_datasource) {
+    let ns_datasource = if ns.datasource != () && ns.datasource != "" {
+        ns.datasource
+    } else {
+        inherited_datasource
+    };
+
+    let result = #{ tables: [], indexes: [], triggers: [] };
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+
+            if s.is_embed || !should_include_for_sqlite(s.datasource, ns_datasource) {
+                continue;
+            }
+
+            let entries = sqlite_entries_for_struct(s);
+            result.tables.push(entries.table);
+            for idx in entries.indexes {
+                result.indexes.push(idx);
+            }
+            for trigger in entries.triggers {
+                result.triggers.push(trigger);
+            }
+        } else if item.is_enum() {
+            if ns_datasource == () || ns_datasource == "" || ns_datasource == "sqlite" {
+                result.tables.push(sqlite_entry_for_enum(item.as_enum(), ns.name));
+            }
+        } else if item.is_namespace() {
+            let nested = collect_sqlite_entries_from_namespace(item.as_namespace(), ns_datasource);
+            for table in nested.tables {
+                result.tables.push(table);
+            }
+            for idx in nested.indexes {
+                result.indexes.push(idx);
+            }
+            for trigger in nested.triggers {
+                result.triggers.push(trigger);
+            }
+        }
+    }
+
+    result
+}
+
 // Collect all tables and indexes
 let all_tables = [];
 let all_indexes = [];
+let all_triggers = [];
 
 for file in schema.files {
     if file.path == () || file.path == "" { continue; }
 
     for ns in file.namespaces {
-        let parts = ns.name.split(".");
-        let ns_prefix = if ns.name != "" {
-            join_with(parts, "_") + "_"
-        } else {
-            ""
-        };
-
-        let ns_datasource = ns.datasource;
-
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-
-                if !should_include_for_sqlite(s.datasource, ns_datasource) {
-                    continue;
-                }
-                let table_name = ns_prefix + s.name;
-
-                // Build columns
-                let columns = [];
-                let pk_cols = [];
-                let fk_statements = [];
-                let unique_cols = [];
-
-                for field_item in s.items {
-                    if field_item.is_field() {
-                        let f = field_item.as_field();
-                        let col_name = f.name;
-
-                        if types::is_array(f.field_type) { continue; }
-
-                        let sql_type = types::base_sqlite_type(f.field_type);
-                        let is_null = types::is_nullable(f.field_type);
-                        let is_pk = false;
-                        let is_unique = false;
-                        let default_val = ();
-                        let fk_ref = ();
-
-                        for attr in f.attributes {
-                            if attr == "Key" || attr == "PrimaryKey" {
-                                is_pk = true;
-                                pk_cols.push(col_name);
-                            }
-                            if attr.contains("IsUnique") && attr.contains("true") {
-                                is_unique = true;
-                                unique_cols.push(col_name);
-                            }
-                            if attr.starts_with("Default(") && attr.ends_with(")") {
-                                let start = "Default(".len();
-                                default_val = attr.sub_string(start, attr.len() - start - 1);
-                            }
-                            if attr.starts_with("ForeignKey(") && attr.ends_with(")") {
-                                let start = "ForeignKey(".len();
-                                fk_ref = attr.sub_string(start, attr.len() - start - 1);
-                            }
-                        }
-
-                        let col_def = col_name + " " + sql_type;
-                        if is_pk && pk_cols.len() == 1 && sql_type == "INTEGER" {
-                            col_def += " PRIMARY KEY";
-                        }
-                        if !is_null && !is_pk {
-                            col_def += " NOT NULL";
-                        }
-                        if default_val != () {
-                            if sql_type == "TEXT" {
-                                col_def += " DEFAULT '" + default_val + "'";
-                            } else {
-                                col_def += " DEFAULT " + default_val;
-                            }
-                        }
-
-                        columns.push(col_def);
-
-                        if fk_ref != () {
-                            let parts = fk_ref.split(".");
-                            if parts.len() >= 2 {
-                                let ref_table = parts[0];
-                                let ref_col = parts[1];
-                                fk_statements.push("FOREIGN KEY (" + col_name + ") REFERENCES " + ref_table + "(" + ref_col + ")");
-                            }
-                        }
-                    }
-                }
-
-                // Merge columns + extra clauses into single body string
-                let all_lines = [];
-                for c in columns { all_lines.push("    " + c); }
-                if pk_cols.len() > 1 {
-                    all_lines.push("    PRIMARY KEY (" + join_with(pk_cols, ", ") + ")");
-                }
-                for u in unique_cols {
-                    all_lines.push("    UNIQUE (" + u + ")");
-                }
-                for fk in fk_statements {
-                    all_lines.push("    " + fk);
-                }
-
-                all_tables.push(#{
-                    name: table_name,
-                    body: join_with(all_lines, ",\n"),
-                    is_enum: false
-                });
-
-                // Indexes
-                for idx in s.indexes {
-                    let idx_name = "idx_" + table_name.to_lower() + "_" + idx.name.to_lower();
-                    let unique_kw = if idx.is_unique { "UNIQUE " } else { "" };
-                    let field_names = [];
-                    for field in idx.fields {
-                        field_names.push(field.name);
-                    }
-                    all_indexes.push(#{
-                        sql: "CREATE " + unique_kw + "INDEX IF NOT EXISTS " + idx_name + " ON " + table_name + " (" + join_with(field_names, ", ") + ");"
-                    });
-                }
-            }
-
-            if item.is_enum() {
-                if ns_datasource != () && ns_datasource != "" && ns_datasource != "sqlite" {
-                    continue;
-                }
-                let e = item.as_enum();
-                let table_name = ns_prefix + e.name;
-
-                // Collect enum insert statements
-                let inserts = [];
-                let auto_val = 0;
-                for enum_item in e.items {
-                    if enum_item.is_member() {
-                        let m = enum_item.as_member();
-                        let val = if m.value != () { m.value } else { auto_val };
-                        inserts.push("INSERT OR IGNORE INTO " + table_name + " (id, name) VALUES (" + val + ", '" + m.name + "');");
-                        auto_val += 1;
-                    }
-                }
-
-                all_tables.push(#{
-                    name: table_name,
-                    body: "    id INTEGER PRIMARY KEY,\n    name TEXT NOT NULL UNIQUE",
-                    is_enum: true,
-                    enum_comment: "-- Enum: " + e.name,
-                    inserts: inserts
-                });
-            }
+        let entries = collect_sqlite_entries_from_namespace(ns, "");
+        for table in entries.tables {
+            all_tables.push(table);
+        }
+        for idx in entries.indexes {
+            all_indexes.push(idx);
+        }
+        for trigger in entries.triggers {
+            all_triggers.push(trigger);
         }
     }
 }
 let has_indexes = all_indexes.len() > 0;
+let has_triggers = all_triggers.len() > 0;
 %endlogic
 -- ============================================
 -- Generated by PolyGen (SQLite)
 -- ============================================
 %blank
 PRAGMA foreign_keys = ON;
+%blank
+-- ============================================
+-- PolyGen Metadata
+-- ============================================
+%blank
+CREATE TABLE IF NOT EXISTS _polygen_schema (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    schema_hash TEXT,
+    schema_json TEXT,
+    generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO _polygen_schema (id, schema_hash, schema_json, generated_at, updated_at)
+VALUES (1, '{{schema_hash}}', {{schema_json_sql_literal}}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT(id) DO UPDATE SET
+    schema_hash = excluded.schema_hash,
+    schema_json = excluded.schema_json,
+    updated_at = CURRENT_TIMESTAMP;
+CREATE TABLE IF NOT EXISTS _polygen_migrations (
+    version INTEGER PRIMARY KEY AUTOINCREMENT,
+    schema_hash TEXT,
+    schema_json TEXT,
+    checksum TEXT,
+    description TEXT,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO _polygen_migrations (schema_hash, schema_json, checksum, description, applied_at)
+VALUES ('{{schema_hash}}', {{schema_json_sql_literal}}, '{{schema_hash}}', 'schema', CURRENT_TIMESTAMP);
 %blank
 -- ============================================
 -- Tables
@@ -220,5 +312,15 @@ CREATE TABLE IF NOT EXISTS {{tbl.name}} (
 %blank
 %for idx in all_indexes
 {{idx.sql}}
+%endfor
+%endif
+%if has_triggers
+-- ============================================
+-- Auto Update Triggers
+-- ============================================
+%blank
+%for trigger in all_triggers
+{{trigger.sql}}
+%blank
 %endfor
 %endif

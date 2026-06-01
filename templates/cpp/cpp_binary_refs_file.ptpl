@@ -1,0 +1,524 @@
+%logic
+import "templates/cpp/rhai_utils/type_mapping" as cpp_types;
+
+fn sanitize_fqn(fqn) {
+    let n = fqn + "";
+    n.replace(".", "_");
+    n
+}
+
+fn namespace_from_fqn(s) {
+    let n = s.fqn + "";
+    if !n.contains(".") { return ""; }
+    let parts = n.split(".");
+    let result = "";
+    for i in 0..(parts.len - 1) {
+        if i > 0 { result += "."; }
+        result += parts[i];
+    }
+    result
+}
+
+fn cpp_fqn(fqn) {
+    let n = fqn + "";
+    n.replace(".", "::");
+    "::" + n
+}
+
+fn ref_name(s) {
+    sanitize_fqn(s.fqn) + "Ref"
+}
+
+fn table_name(s) {
+    ref_name(s) + "Table"
+}
+
+fn get_full_cpp_type(namespace_fqn, type_name) {
+    if namespace_fqn == "" {
+        return type_name;
+    }
+    let ns_cpp = namespace_fqn + "";
+    ns_cpp.replace(".", "::");
+    return "::" + ns_cpp + "::" + type_name;
+}
+
+fn collect_type_mappings_from_struct(s, namespace_name) {
+    let mappings = [];
+    mappings.push(#{
+        fqn: s.fqn + "",
+        cpp_type: get_full_cpp_type(namespace_name, s.name)
+    });
+
+    for item in s.items {
+        if item.is_embedded_struct() {
+            let embedded_mappings = collect_type_mappings_from_struct(item.as_embedded_struct(), namespace_name);
+            for mapping in embedded_mappings {
+                mappings.push(mapping);
+            }
+        }
+    }
+
+    mappings
+}
+
+fn collect_type_mappings_from_namespace(ns) {
+    let mappings = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let struct_mappings = collect_type_mappings_from_struct(item.as_struct(), ns.name);
+            for mapping in struct_mappings {
+                mappings.push(mapping);
+            }
+        } else if item.is_namespace() {
+            let child_mappings = collect_type_mappings_from_namespace(item.as_namespace());
+            for mapping in child_mappings {
+                mappings.push(mapping);
+            }
+        }
+    }
+
+    mappings
+}
+
+fn pluralize(name) {
+    if name.ends_with("y") {
+        return name.sub_string(0, name.len() - 1) + "ies";
+    } else if name.ends_with("s") || name.ends_with("x") || name.ends_with("ch") || name.ends_with("sh") {
+        return name + "es";
+    } else {
+        return name + "s";
+    }
+}
+
+fn is_direct(t) {
+    if t.is_list { return false; }
+    if t.lang_type == "string" || t.lang_type == "bytes" || t.lang_type == "timestamp" { return true; }
+    if t.is_enum { return true; }
+    if t.is_primitive { return true; }
+    return false;
+}
+
+fn mapped_cpp_type(t, type_mappings) {
+    for mapping in type_mappings {
+        if mapping.fqn == t.fqn {
+            return mapping.cpp_type;
+        }
+    }
+    return cpp_fqn(t.fqn);
+}
+
+fn cpp_type(t, current_ns, type_mappings) {
+    if t.is_option {
+        return "std::optional<" + cpp_type(t.inner, current_ns, type_mappings) + ">";
+    }
+    if t.is_list {
+        return "std::vector<" + cpp_type(t.inner, current_ns, type_mappings) + ">";
+    }
+    if t.is_enum {
+        return cpp_fqn(t.fqn);
+    }
+    if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+        return cpp_types::map_type_with_ns(t, current_ns);
+    }
+    return mapped_cpp_type(t, type_mappings);
+}
+
+fn read_direct_expr(t, field_expr) {
+    if t.lang_type == "bool" { return "doc_->read_bool(" + field_expr + ")"; }
+    if t.lang_type == "u8" { return "doc_->read_u8(" + field_expr + ")"; }
+    if t.lang_type == "i8" { return "doc_->read_i8(" + field_expr + ")"; }
+    if t.lang_type == "u16" { return "doc_->read_u16(" + field_expr + ")"; }
+    if t.lang_type == "i16" { return "doc_->read_i16(" + field_expr + ")"; }
+    if t.lang_type == "u32" { return "doc_->read_u32(" + field_expr + ")"; }
+    if t.lang_type == "i32" { return "doc_->read_i32(" + field_expr + ")"; }
+    if t.lang_type == "u64" { return "doc_->read_u64(" + field_expr + ")"; }
+    if t.lang_type == "i64" { return "doc_->read_i64(" + field_expr + ")"; }
+    if t.lang_type == "f32" { return "doc_->read_f32(" + field_expr + ")"; }
+    if t.lang_type == "f64" { return "doc_->read_f64(" + field_expr + ")"; }
+    if t.lang_type == "timestamp" { return "polygen::ticks_to_time_point(doc_->read_i64(" + field_expr + "))"; }
+    if t.is_enum { return "static_cast<" + cpp_fqn(t.fqn) + ">(doc_->read_i32(" + field_expr + "))"; }
+    return "";
+}
+
+fn get_primitive_reader(type_name) {
+    switch type_name {
+        "string" => "read_string",
+        "bool" => "read_bool",
+        "u8" => "read_u8",
+        "u16" => "read_u16",
+        "u32" => "read_u32",
+        "u64" => "read_u64",
+        "i8" => "read_i8",
+        "i16" => "read_i16",
+        "i32" => "read_i32",
+        "i64" => "read_i64",
+        "f32" => "read_f32",
+        "f64" => "read_f64",
+        "bytes" => "read_bytes",
+        "timestamp" => "read_timestamp",
+        _ => "read_i32"
+    }
+}
+
+fn reader_value_expr(t, reader_expr, current_ns, type_mappings) {
+    if t.is_enum {
+        return "polygen_loaders::read_checked_enum<" + cpp_type(t, current_ns, type_mappings) + ">(" + reader_expr + ")";
+    }
+    if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+        return reader_expr + "." + get_primitive_reader(t.type_name) + "()";
+    }
+    return "polygen_loaders::read_" + t.type_name + "(" + reader_expr + ")";
+}
+
+fn materialized_read_expr(t, field_expr, current_ns, type_mappings) {
+    let ret_type = cpp_type(t, current_ns, type_mappings);
+    if t.is_list {
+        let elem = t.inner;
+        let elem_type = cpp_type(elem, current_ns, type_mappings);
+        let elem_read = reader_value_expr(elem, "r", current_ns, type_mappings);
+        return "read_owned_field<" + ret_type + ">(" + field_expr + ", [](polygen::BinaryReader& reader) { return reader.read_vector<" + elem_type + ">([](polygen::BinaryReader& r) { return " + elem_read + "; }); })";
+    }
+    return "read_owned_field<" + ret_type + ">(" + field_expr + ", [](polygen::BinaryReader& reader) { return " + reader_value_expr(t, "reader", current_ns, type_mappings) + "; })";
+}
+
+fn property_code(f, field_index, current_ns, type_mappings) {
+    let t = f.field_type;
+    let base = if t.is_option { t.inner } else { t };
+    let idx = field_index + "";
+    let name = f.name;
+    let code = "";
+
+    if t.is_option {
+        let ret_type = cpp_type(t, current_ns, type_mappings);
+        code += "    " + ret_type + " " + name + "() const {\n";
+        code += "        const auto field = optional_field(" + idx + ");\n";
+        code += "        if (field == polygen::BinaryRefFormat::npos) return std::nullopt;\n";
+        if base.lang_type == "string" {
+            code += "        return doc_->read_string(field);\n";
+        } else if base.lang_type == "bytes" {
+            code += "        auto view = doc_->read_length_prefixed_bytes(field);\n";
+            code += "        return std::vector<uint8_t>(view.begin(), view.end());\n";
+        } else if is_direct(base) {
+            code += "        return " + read_direct_expr(base, "field") + ";\n";
+        } else {
+            code += "        return " + materialized_read_expr(base, "field", current_ns, type_mappings) + ";\n";
+        }
+        code += "    }\n";
+        return code;
+    }
+
+    if base.lang_type == "string" {
+        code += "    std::string_view " + name + "_view() const { return doc_->read_length_prefixed_bytes(required_field(" + idx + ")); }\n";
+        code += "    std::string " + name + "() const { return doc_->read_string(required_field(" + idx + ")); }\n";
+        return code;
+    }
+    if base.lang_type == "bytes" {
+        code += "    std::string_view " + name + "_bytes() const { return doc_->read_length_prefixed_bytes(required_field(" + idx + ")); }\n";
+        return code;
+    }
+    if is_direct(base) {
+        code += "    " + cpp_type(base, current_ns, type_mappings) + " " + name + "() const { return " + read_direct_expr(base, "required_field(" + idx + ")") + "; }\n";
+        return code;
+    }
+    code += "    " + cpp_type(base, current_ns, type_mappings) + " " + name + "() const { return " + materialized_read_expr(base, "required_field(" + idx + ")", current_ns, type_mappings) + "; }\n";
+    return code;
+}
+
+fn to_owned_line(f, current_ns) {
+    let t = f.field_type;
+    let base = if t.is_option { t.inner } else { t };
+    if !t.is_option && base.lang_type == "bytes" {
+        return "        { auto view = " + f.name + "_bytes(); obj." + f.name + " = std::vector<uint8_t>(view.begin(), view.end()); }";
+    }
+    return "        obj." + f.name + " = " + f.name + "();";
+}
+
+fn is_supported_index(idx) {
+    if idx.is_composite { return false; }
+    let t = idx.field_type;
+    if t.is_option || t.is_list { return false; }
+    if t.lang_type == "string" || t.lang_type == "timestamp" { return true; }
+    if t.is_enum { return true; }
+    if t.is_primitive && t.lang_type != "bytes" { return true; }
+    return false;
+}
+
+fn key_type(t, current_ns, type_mappings) {
+    if t.lang_type == "string" { return "std::string"; }
+    return cpp_type(t, current_ns, type_mappings);
+}
+
+fn read_key_expr(t) {
+    if t.lang_type == "string" { return "polygen::BinaryRefFormat::read_string(reader)"; }
+    if t.lang_type == "bool" { return "reader.read_bool()"; }
+    if t.lang_type == "u8" { return "reader.read_u8()"; }
+    if t.lang_type == "i8" { return "reader.read_i8()"; }
+    if t.lang_type == "u16" { return "reader.read_u16()"; }
+    if t.lang_type == "i16" { return "reader.read_i16()"; }
+    if t.lang_type == "u32" { return "reader.read_u32()"; }
+    if t.lang_type == "i32" { return "reader.read_i32()"; }
+    if t.lang_type == "u64" { return "reader.read_u64()"; }
+    if t.lang_type == "i64" { return "reader.read_i64()"; }
+    if t.is_enum { return "static_cast<" + cpp_fqn(t.fqn) + ">(reader.read_i32())"; }
+    return "reader.read_i64()";
+}
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed { tables.push(s); }
+        } else if item.is_namespace() {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables { tables.push(child); }
+        }
+    }
+    tables
+}
+
+let all_tables = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for s in tables { all_tables.push(s); }
+}
+
+let cpp_type_mappings = [];
+for ns in file.namespaces {
+    let mappings = collect_type_mappings_from_namespace(ns);
+    for mapping in mappings {
+        cpp_type_mappings.push(mapping);
+    }
+}
+
+let entries = [];
+for s in all_tables {
+    let current_ns = namespace_from_fqn(s);
+    let fields = [];
+    let field_index = 0;
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            fields.push(#{
+                def: f,
+                property_code: property_code(f, field_index, current_ns, cpp_type_mappings),
+                to_owned_line: to_owned_line(f, current_ns)
+            });
+            field_index += 1;
+        }
+    }
+
+    let indexes = [];
+    for idx in s.indexes {
+        if is_supported_index(idx) {
+            indexes.push(#{
+                def: idx,
+                member: cpp_types::to_snake_case(idx.name),
+                key_type: key_type(idx.field_type, current_ns, cpp_type_mappings),
+                value_type: if idx.is_unique { "size_t" } else { "std::vector<size_t>" },
+                read_key: read_key_expr(idx.field_type),
+                is_unique_literal: if idx.is_unique { "true" } else { "false" }
+            });
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        cpp_type: cpp_fqn(s.fqn),
+        ref_name: ref_name(s),
+        table_name: table_name(s),
+        member_name: cpp_types::to_snake_case(pluralize(s.name)),
+        fields: fields,
+        indexes: indexes,
+        index_count: indexes.len
+    });
+}
+
+let parts = file.path.split("/");
+let filename = parts[parts.len - 1];
+let stem = filename + "";
+stem.replace(".poly", "");
+let header_name = stem + ".hpp";
+let loaders_name = stem + "_loaders.hpp";
+let ns_name = stem + "_binary_refs";
+let entry_count = entries.len;
+%endlogic
+// Auto-generated by PolyGen - indexed binary refs
+#pragma once
+
+#include "{{header_name}}"
+#include "{{loaders_name}}"
+#include "polygen_support.hpp"
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+namespace {{ns_name}} {
+
+%for entry in entries
+class {{entry.ref_name}} {
+public:
+    {{entry.ref_name}}(std::shared_ptr<const polygen::BinaryDocument> doc, size_t row_offset)
+        : doc_(std::move(doc)), row_offset_(row_offset) {}
+
+%for field in entry.fields
+{{field.property_code}}
+%endfor
+    {{entry.cpp_type}} to_owned() const {
+        {{entry.cpp_type}} obj;
+%for field in entry.fields
+{{field.to_owned_line}}
+%endfor
+        return obj;
+    }
+
+private:
+    size_t required_field(int index) const {
+        return polygen::BinaryRefFormat::required_field_offset(*doc_, row_offset_, index);
+    }
+
+    size_t optional_field(int index) const {
+        return polygen::BinaryRefFormat::field_offset(*doc_, row_offset_, index);
+    }
+
+    template<typename T, typename ReadFunc>
+    T read_owned_field(size_t field_offset, ReadFunc read_func) const {
+        std::vector<uint8_t> tail(doc_->bytes().begin() + static_cast<std::ptrdiff_t>(field_offset), doc_->bytes().end());
+        polygen::BinaryReader reader(tail);
+        return read_func(reader);
+    }
+
+    std::shared_ptr<const polygen::BinaryDocument> doc_;
+    size_t row_offset_;
+};
+
+class {{entry.table_name}} {
+public:
+    {{entry.table_name}}(std::shared_ptr<const polygen::BinaryDocument> doc, std::vector<size_t> row_offsets
+%for idx in entry.indexes
+        , std::unordered_map<{{idx.key_type}}, {{idx.value_type}}> {{idx.member}}
+%endfor
+    )
+        : doc_(std::move(doc)), row_offsets_(std::move(row_offsets))
+%for idx in entry.indexes
+        , {{idx.member}}_(std::move({{idx.member}}))
+%endfor
+    {}
+
+    size_t count() const { return row_offsets_.size(); }
+    {{entry.ref_name}} at(size_t index) const { return {{entry.ref_name}}(doc_, row_offsets_.at(index)); }
+
+%for idx in entry.indexes
+%if idx.def.is_unique
+    std::optional<{{entry.ref_name}}> get_{{idx.member}}(const {{idx.key_type}}& key) const {
+        auto it = {{idx.member}}_.find(key);
+        if (it == {{idx.member}}_.end()) return std::nullopt;
+        return {{entry.ref_name}}(doc_, it->second);
+    }
+%else
+    std::vector<{{entry.ref_name}}> find_{{idx.member}}(const {{idx.key_type}}& key) const {
+        auto it = {{idx.member}}_.find(key);
+        if (it == {{idx.member}}_.end()) return {};
+        std::vector<{{entry.ref_name}}> rows;
+        rows.reserve(it->second.size());
+        for (auto offset : it->second) rows.emplace_back(doc_, offset);
+        return rows;
+    }
+%endif
+
+%endfor
+    static {{entry.table_name}} read(std::shared_ptr<const polygen::BinaryDocument> doc, polygen::BinaryReader& reader) {
+        const auto table_name = polygen::BinaryRefFormat::read_string(reader);
+        if (table_name != "{{entry.def.fqn}}") {
+            throw std::runtime_error("Unexpected binary ref table: " + table_name);
+        }
+
+        const int32_t row_count = reader.read_i32();
+        if (row_count < 0) throw std::runtime_error("Negative row count");
+        std::vector<size_t> row_offsets(static_cast<size_t>(row_count));
+        for (auto& offset : row_offsets) offset = static_cast<size_t>(reader.read_i32());
+
+        const int32_t index_count = reader.read_i32();
+        if (index_count != {{entry.index_count}}) throw std::runtime_error("Unexpected binary ref index count");
+
+%for idx in entry.indexes
+        std::unordered_map<{{idx.key_type}}, {{idx.value_type}}> {{idx.member}};
+        {
+            const auto index_name = polygen::BinaryRefFormat::read_string(reader);
+            if (index_name != "{{idx.def.name}}") throw std::runtime_error("Unexpected binary ref index: " + index_name);
+            const bool is_unique = reader.read_bool();
+            if (is_unique != {{idx.is_unique_literal}}) throw std::runtime_error("Binary ref index uniqueness mismatch");
+            const int32_t entry_count = reader.read_i32();
+            if (entry_count < 0) throw std::runtime_error("Negative index entry count");
+            for (int32_t i = 0; i < entry_count; ++i) {
+                auto key = {{idx.read_key}};
+%if idx.def.is_unique
+                {{idx.member}}[key] = static_cast<size_t>(reader.read_i32());
+%else
+                const int32_t value_count = reader.read_i32();
+                if (value_count < 0) throw std::runtime_error("Negative group index value count");
+                auto& values = {{idx.member}}[key];
+                values.reserve(static_cast<size_t>(value_count));
+                for (int32_t j = 0; j < value_count; ++j) values.push_back(static_cast<size_t>(reader.read_i32()));
+%endif
+            }
+        }
+
+%endfor
+        const int32_t row_block_length = reader.read_i32();
+        if (row_block_length < 0) throw std::runtime_error("Negative row block length");
+        const size_t row_block_start = reader.position();
+        reader.skip(static_cast<size_t>(row_block_length));
+
+        for (auto& offset : row_offsets) offset += row_block_start;
+%for idx in entry.indexes
+%if idx.def.is_unique
+        for (auto& kv : {{idx.member}}) kv.second += row_block_start;
+%else
+        for (auto& kv : {{idx.member}}) for (auto& offset : kv.second) offset += row_block_start;
+%endif
+%endfor
+
+        return {{entry.table_name}}(doc, std::move(row_offsets)
+%for idx in entry.indexes
+            , std::move({{idx.member}})
+%endfor
+        );
+    }
+
+private:
+    std::shared_ptr<const polygen::BinaryDocument> doc_;
+    std::vector<size_t> row_offsets_;
+%for idx in entry.indexes
+    std::unordered_map<{{idx.key_type}}, {{idx.value_type}}> {{idx.member}}_;
+%endfor
+};
+
+%endfor
+class BinaryRefContext {
+public:
+%for entry in entries
+    {{entry.table_name}} {{entry.member_name}};
+%endfor
+
+    static BinaryRefContext open_binary(const std::string& path) {
+        auto doc = polygen::BinaryDocument::open(path);
+        polygen::BinaryReader reader(doc->bytes());
+        polygen::BinaryRefFormat::read_header(reader);
+        const int32_t table_count = reader.read_i32();
+        if (table_count != {{entry_count}}) throw std::runtime_error("Unexpected binary ref table count");
+
+        return BinaryRefContext{
+%for entry in entries
+            {{entry.table_name}}::read(doc, reader),
+%endfor
+        };
+    }
+};
+
+} // namespace {{ns_name}}

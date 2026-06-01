@@ -2,6 +2,8 @@
 // Rust SQLite Accessor Generator (PolyTemplate)
 // Generates a database accessor for @datasource("sqlite") tables using rusqlite
 
+import "templates/rust/rhai_utils/type_mapping" as rust_types;
+
 fn join_with(arr, sep) {
     let result = "";
     let i = 0;
@@ -61,6 +63,52 @@ fn sqlite_getter(type_name, idx) {
     }
 }
 
+fn table_name_for_namespace(ns_name, struct_name) {
+    let ns_sql = ns_name + "";
+    ns_sql.replace(".", "_");
+    ns_sql + "_" + struct_name
+}
+
+fn collect_sqlite_tables_from_namespace(ns, inherited_datasource, namespace_path) {
+    let tables = [];
+    let ns_datasource = inherited_datasource;
+    if ns.datasource != () && ns.datasource != "" {
+        ns_datasource = ns.datasource;
+    }
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if is_sqlite_table(s.datasource, ns_datasource) {
+                let table_name = table_name_for_namespace(ns.name, s.name);
+                let field_name = to_snake_case(s.name) + "s";
+                let full_type = "crate::schema::" + namespace_path + "::" + s.name;
+
+                tables.push(#{
+                    name: s.name,
+                    snake_name: to_snake_case(s.name),
+                    fqn: s.fqn,
+                    ns_name: ns.name,
+                    mod_path: namespace_path,
+                    table_name: table_name,
+                    field_name: field_name,
+                    full_type: full_type,
+                    struct_def: s
+                });
+            }
+        } else if item.is_namespace() {
+            let child = item.as_namespace();
+            let child_path = namespace_path + "::" + rust_types::ns_to_module_name(child.name);
+            let child_tables = collect_sqlite_tables_from_namespace(child, ns_datasource, child_path);
+            for child_table in child_tables {
+                tables.push(child_table);
+            }
+        }
+    }
+
+    tables
+}
+
 // Collect all SQLite tables
 let sqlite_tables = [];
 
@@ -68,46 +116,18 @@ for file in schema.files {
     if file.path == () || file.path == "" { continue; }
 
     for ns in file.namespaces {
-        let ns_datasource = ns.datasource;
-
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                if is_sqlite_table(s.datasource, ns_datasource) {
-                    let ns_parts = ns.name.split(".");
-                    let mod_path = join_with(ns_parts, "_");
-                    let table_name = join_with(ns_parts, "_") + "_" + s.name;
-                    let field_name = to_snake_case(s.name) + "s";
-                    let full_type = mod_path + "::" + s.name;
-
-                    sqlite_tables.push(#{
-                        name: s.name,
-                        snake_name: to_snake_case(s.name),
-                        fqn: s.fqn,
-                        ns_name: ns.name,
-                        mod_path: mod_path,
-                        table_name: table_name,
-                        field_name: field_name,
-                        full_type: full_type,
-                        struct_def: s
-                    });
-                }
-            }
+        let namespace_path = rust_types::ns_to_module_name(ns.name);
+        let tables = collect_sqlite_tables_from_namespace(ns, "", namespace_path);
+        for tbl in tables {
+            sqlite_tables.push(tbl);
         }
     }
 }
 
 let has_tables = sqlite_tables.len() > 0;
 
-// Pre-compute use lines (unique mod paths)
+// Type references use crate-qualified paths, so no imports are required.
 let use_lines = [];
-let imported_mods = #{};
-for tbl in sqlite_tables {
-    if !(tbl.mod_path in imported_mods) {
-        use_lines.push("use crate::schema::" + tbl.mod_path + ";");
-        imported_mods[tbl.mod_path] = true;
-    }
-}
 
 // Pre-compute per-table bodies (must use index)
 let tidx = 0;

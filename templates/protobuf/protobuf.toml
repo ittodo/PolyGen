@@ -1,0 +1,11 @@
+# Protocol Buffers Language Configuration for PolyGen
+# Generates proto3 message and enum definitions.
+
+extension = ".proto"
+
+[templates]
+main = "protobuf_file.ptpl"
+main_output = "{{stem}}.proto"
+
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

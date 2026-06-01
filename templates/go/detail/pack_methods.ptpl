@@ -1,0 +1,92 @@
+%-- Pack/Unpack methods for @pack embeds. Context: struct
+%logic
+let sep = struct.pack_separator;
+let fields = [];
+for item in struct.items {
+    if item.is_field() {
+        fields.push(item.as_field());
+    }
+}
+
+let has_fields = fields.len() > 0;
+let pack_args = "";
+let unpack_body = "";
+
+fn go_pack_parse_func(type_name) {
+    switch type_name {
+        "i8" => "parsePackedInt8",
+        "i16" => "parsePackedInt16",
+        "i32" => "parsePackedInt32",
+        "i64" => "parsePackedInt64",
+        "u8" => "parsePackedUint8",
+        "u16" => "parsePackedUint16",
+        "u32" => "parsePackedUint32",
+        "u64" => "parsePackedUint64",
+        "f32" => "parsePackedFloat32",
+        "f64" => "parsePackedFloat64",
+        "bool" => "parsePackedBool",
+        _ => ""
+    }
+}
+
+if has_fields {
+    for i in 0..fields.len() {
+        let f = fields[i];
+        if i > 0 {
+            pack_args += ", ";
+        }
+        pack_args += "v." + to_pascal_case(f.name);
+    }
+
+    unpack_body += "	parts, err := splitPacked(value, \"" + sep + "\", \"" + struct.name + "\", " + fields.len() + ")\n";
+    unpack_body += "	if err != nil {\n";
+    unpack_body += "		return " + struct.name + "{}, err\n";
+    unpack_body += "	}\n";
+
+    for i in 0..fields.len() {
+        let f = fields[i];
+        let type_name = f.field_type.type_name;
+        let field_name = to_pascal_case(f.name);
+        let local_name = "v" + i;
+
+        if type_name == "string" {
+            unpack_body += "	" + local_name + " := parts[" + i + "]\n";
+        } else {
+            let parse_func = go_pack_parse_func(type_name);
+            if parse_func == "" {
+                unpack_body += "	return " + struct.name + "{}, unsupportedPackedField(\"" + struct.name + "\", \"" + f.name + "\", \"" + type_name + "\")\n";
+            } else {
+                unpack_body += "	" + local_name + ", err := " + parse_func + "(parts[" + i + "], \"" + struct.name + "\", \"" + f.name + "\")\n";
+                unpack_body += "	if err != nil {\n";
+                unpack_body += "		return " + struct.name + "{}, err\n";
+                unpack_body += "	}\n";
+            }
+        }
+    }
+
+    unpack_body += "	return " + struct.name + "{\n";
+    for i in 0..fields.len() {
+        let f = fields[i];
+        unpack_body += "		" + to_pascal_case(f.name) + ": v" + i + ",\n";
+    }
+    unpack_body += "	}, nil";
+}
+%endlogic
+%if has_fields
+%blank
+// Pack serializes all fields into a single string using '{{struct.pack_separator}}' as separator.
+func (v {{struct.name}}) Pack() string {
+	return packValues("{{struct.pack_separator}}", {{pack_args}})
+}
+%blank
+// Unpack{{struct.name}} deserializes fields from a string using '{{struct.pack_separator}}' as separator.
+func Unpack{{struct.name}}(value string) ({{struct.name}}, error) {
+{{unpack_body}}
+}
+%blank
+// TryUnpack{{struct.name}} deserializes fields and reports whether parsing succeeded.
+func TryUnpack{{struct.name}}(value string) ({{struct.name}}, bool) {
+	result, err := Unpack{{struct.name}}(value)
+	return result, err == nil
+}
+%endif

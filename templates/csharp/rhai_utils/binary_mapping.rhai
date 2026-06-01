@@ -51,6 +51,10 @@ fn cs_type(poly_type) {
 // Read Expressions
 // =============================================================================
 
+fn unsupported_binary_expr(operation, type_string) {
+    `throw new NotSupportedException("Unsupported type for binary ${operation}: ${type_string}")`
+}
+
 /// Returns a C# expression string to read the given type from a BinaryReader.
 /// Example: read_expr("i32", "br") => "br.ReadInt32()"
 fn read_expr(type_string, br_ident) {
@@ -67,7 +71,7 @@ fn read_expr(type_string, br_ident) {
         "f64" => `${br_ident}.ReadDouble()`,
         "bool" => `${br_ident}.ReadBoolean()`,
         "timestamp" => `new DateTime(${br_ident}.ReadInt64(), DateTimeKind.Utc)`,
-        _ => "/* TODO: Unsupported type for binary read */"
+        _ => unsupported_binary_expr("read", type_string)
     }
 }
 
@@ -91,7 +95,7 @@ fn write_expr(type_string, bw_ident, value_expr) {
         "f64" => `${bw_ident}.Write(${value_expr})`,
         "bool" => `${bw_ident}.Write(${value_expr})`,
         "timestamp" => `${bw_ident}.Write(${value_expr}.Ticks)`,
-        _ => "/* TODO: Unsupported type for binary write */"
+        _ => unsupported_binary_expr("write", type_string)
     }
 }
 
@@ -103,7 +107,7 @@ fn write_lambda(type_string) {
     } else if is_primitive(type_string) {
         "(bw2,v)=>bw2.Write(v)"
     } else {
-        "/* TODO: Unsupported type for binary write lambda */"
+        `(bw2,v)=>${unsupported_binary_expr("write", type_string)}`
     }
 }
 
@@ -115,6 +119,6 @@ fn read_lambda(type_string, br_ident) {
     } else if is_primitive(type_string) {
         `_ => ${read_expr(type_string, br_ident)}`
     } else {
-        "/* TODO: Unsupported type for binary read lambda */"
+        `_ => ${unsupported_binary_expr("read", type_string)}`
     }
 }

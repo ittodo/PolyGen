@@ -1,0 +1,22 @@
+# Python Language Configuration for PolyGen
+# Generates dataclasses plus optional Pydantic and SQLAlchemy model files.
+
+extension = ".py"
+
+[templates]
+main = "python_file.ptpl"
+
+[[templates.extra]]
+template = "python_pydantic_file.ptpl"
+output = "{{stem}}_pydantic.py"
+
+[[templates.extra]]
+template = "python_sqlalchemy_file.ptpl"
+output = "{{stem}}_sqlalchemy.py"
+
+[[templates.extra]]
+template = "python_redis_keys_file.ptpl"
+output = "{{stem}}_redis_keys.py"
+
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

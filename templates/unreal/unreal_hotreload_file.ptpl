@@ -6,6 +6,68 @@ import "templates/unreal/rhai_utils/type_mapping" as ue_types;
 
 // Main entry point - generates a single hot reload utility file
 
+fn load_paths_for_struct(s) {
+    let result = #{
+        has_load: false,
+        csv_path: "",
+        json_path: ""
+    };
+
+    for header_item in s.header {
+        if header_item.is_annotation() {
+            let ann = header_item.as_annotation();
+            if ann.name == "load" {
+                result.has_load = true;
+                for param in ann.params {
+                    if param.key == "csv" {
+                        result.csv_path = param.value;
+                    } else if param.key == "json" {
+                        result.json_path = param.value;
+                    } else if param.key == "path" && result.csv_path == "" && result.json_path == "" {
+                        let path_val = param.value;
+                        if path_val.ends_with(".json") {
+                            result.json_path = path_val;
+                        } else if path_val.ends_with(".csv") {
+                            result.csv_path = path_val;
+                        } else {
+                            result.csv_path = path_val + ".csv";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
+fn collect_loadable_structs_from_namespace(ns, include_file) {
+    let result = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            let load_paths = load_paths_for_struct(s);
+            if load_paths.has_load {
+                result.push(#{
+                    struct_def: s,
+                    namespace_name: ns.name,
+                    include_file: include_file,
+                    csv_path: load_paths.csv_path,
+                    json_path: load_paths.json_path
+                });
+            }
+        } else if item.is_namespace() {
+            let nested = collect_loadable_structs_from_namespace(item.as_namespace(), include_file);
+            for entry in nested {
+                result.push(entry);
+            }
+        }
+    }
+
+    result
+}
+
 // Collect all table structs that have @load annotation
 let loadable_structs = [];
 for file in schema.files {
@@ -23,49 +85,11 @@ for file in schema.files {
     let rest = base_name.sub_string(1, base_name.len() - 1);
     let pascal_name = first_char.to_upper() + rest;
 
+    let include_file = "Polygen" + pascal_name + "Loaders.h";
     for ns in file.namespaces {
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                let has_load = false;
-                let csv_path = "";
-                let json_path = "";
-
-                for header_item in s.header {
-                    if header_item.is_annotation() {
-                        let ann = header_item.as_annotation();
-                        if ann.name == "load" {
-                            has_load = true;
-                            for param in ann.params {
-                                if param.key == "csv" {
-                                    csv_path = param.value;
-                                } else if param.key == "json" {
-                                    json_path = param.value;
-                                } else if param.key == "path" && csv_path == "" && json_path == "" {
-                                    let path_val = param.value;
-                                    if path_val.ends_with(".json") {
-                                        json_path = path_val;
-                                    } else if path_val.ends_with(".csv") {
-                                        csv_path = path_val;
-                                    } else {
-                                        csv_path = path_val + ".csv";
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if has_load {
-                    loadable_structs.push(#{
-                        struct_def: s,
-                        namespace_name: ns.name,
-                        include_file: "Polygen" + pascal_name + "Loaders.h",
-                        csv_path: csv_path,
-                        json_path: json_path
-                    });
-                }
-            }
+        let entries = collect_loadable_structs_from_namespace(ns, include_file);
+        for entry in entries {
+            loadable_structs.push(entry);
         }
     }
 }

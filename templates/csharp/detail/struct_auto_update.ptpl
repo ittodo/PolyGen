@@ -1,2 +1,42 @@
 %-- Auto-update timestamp methods. Context: struct
-%-- TODO: Implement auto_update when testing data is available
+%logic
+let auto_update_fields = [];
+for item in struct.items {
+    if item.is_field() {
+        let f = item.as_field();
+        if f.auto_update != () {
+            auto_update_fields.push(f);
+        }
+    }
+}
+
+let methods_code = "";
+if auto_update_fields.len() > 0 {
+    methods_code += "\n    // Auto-update timestamp methods\n";
+
+    for f in auto_update_fields {
+        let method_name = "OnUpdate" + to_pascal_case(f.name);
+        let datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+
+        methods_code += "\n    /// <summary>Updates " + f.name + " to the current timestamp.</summary>\n";
+        methods_code += "    public void " + method_name + "()\n";
+        methods_code += "    {\n";
+        methods_code += "        " + f.name + " = " + datetime_expr + ";\n";
+        methods_code += "    }\n";
+    }
+
+    if auto_update_fields.len() > 1 {
+        methods_code += "\n    /// <summary>Updates all auto-update timestamp fields.</summary>\n";
+        methods_code += "    public void OnUpdateAll()\n";
+        methods_code += "    {\n";
+        for f in auto_update_fields {
+            let datetime_expr = get_datetime_expr_for_timezone(f.auto_update);
+            methods_code += "        " + f.name + " = " + datetime_expr + ";\n";
+        }
+        methods_code += "    }\n";
+    }
+}
+%endlogic
+%if auto_update_fields.len() > 0
+{{methods_code}}
+%endif

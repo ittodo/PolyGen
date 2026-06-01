@@ -1,0 +1,12 @@
+# PostgreSQL Language Configuration for PolyGen
+# Generates schema-wide DDL for @datasource("postgresql") tables.
+
+extension = ".sql"
+
+[templates]
+main = "postgresql_file.ptpl"
+main_output = "schema.sql"
+main_per_file = false
+
+[rhai]
+prelude = ["rhai_utils/type_mapping.rhai"]

@@ -24,12 +24,18 @@ if tf.is_option {
     let inner = base;
     if inner.lang_type == "string" {
         write_assign = "BinaryUtils.WriteOptionRef<string>(bw, obj." + f.name + ", BinaryUtils.WriteUtf8String);";
+    } else if inner.lang_type == "bytes" {
+        write_assign = "BinaryUtils.WriteOptionRef<byte[]>(bw, obj." + f.name + ", BinaryUtils.WriteBytes);";
     } else if inner.is_list {
         let elem = inner.inner;
         if elem.lang_type == "string" {
             write_assign = "BinaryUtils.WriteOptionRef<IList<string>>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<string>(bw2, list, BinaryUtils.WriteUtf8String));";
+        } else if elem.lang_type == "bytes" {
+            write_assign = "BinaryUtils.WriteOptionRef<IList<byte[]>>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<byte[]>(bw2, list, BinaryUtils.WriteBytes));";
+        } else if elem.lang_type == "timestamp" {
+            write_assign = "BinaryUtils.WriteOptionRef<IList<DateTime>>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<DateTime>(bw2, list, (bw3,v)=>bw3.Write(v.Ticks)));";
         } else if elem.is_enum || inline_enums.contains(elem.type_name) {
-            let enum_type = if elem.is_enum { cur_s.name + "." + elem.type_name } else { elem.fqn };
+            let enum_type = elem.fqn;
             write_assign = "BinaryUtils.WriteOptionRef<IList<" + enum_type + ">>(bw, obj." + f.name + ", (bw2, list) => BinaryUtils.WriteList<" + enum_type + ">(bw2, list, BinaryUtils.WriteEnumInt32<" + enum_type + ">));";
         } else if elem.is_primitive {
             let mapped = cs_type(elem.lang_type);
@@ -56,6 +62,8 @@ if tf.is_option {
     let inner = base.inner;
     if inner.lang_type == "string" {
         write_assign = "BinaryUtils.WriteList<string>(bw, obj." + f.name + ", BinaryUtils.WriteUtf8String);";
+    } else if inner.lang_type == "bytes" {
+        write_assign = "BinaryUtils.WriteList<byte[]>(bw, obj." + f.name + ", BinaryUtils.WriteBytes);";
     } else if inner.is_enum || inline_enums.contains(inner.type_name) {
         let enum_type = inner.fqn;
         write_assign = "BinaryUtils.WriteList<" + enum_type + ">(bw, obj." + f.name + ", BinaryUtils.WriteEnumInt32<" + enum_type + ">);";

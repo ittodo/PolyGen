@@ -9,6 +9,7 @@ extension = ".cs"
 [static_files]
 "Common/DataSource.cs" = "static/csharp/DataSource.cs"
 "Common/BinaryUtils.cs" = "static/csharp/BinaryUtils.cs"
+"Common/BinaryRef.cs" = "static/csharp/BinaryRef.cs"
 "Common/CsvUtils.cs" = "static/csharp/CsvUtils.cs"
 "Common/JsonCsvConverter.cs" = "static/csharp/JsonCsvConverter.cs"
 "Common/JsonUtils.cs" = "static/csharp/JsonUtils.cs"
@@ -56,6 +57,9 @@ template = "csharp_binary_readers_file.ptpl"
 template = "csharp_binary_writers_file.ptpl"
 
 [[templates.extra]]
+template = "csharp_binary_refs_file.ptpl"
+
+[[templates.extra]]
 template = "csharp_csv_columns_file.ptpl"
 
 [[templates.extra]]
@@ -66,6 +70,9 @@ template = "csharp_container_file.ptpl"
 
 [[templates.extra]]
 template = "csharp_datacontext_file.ptpl"
+
+[[templates.extra]]
+template = "csharp_redis_keys_file.ptpl"
 
 [[templates.extra]]
 template = "csharp_sqlite_accessor_file.ptpl"

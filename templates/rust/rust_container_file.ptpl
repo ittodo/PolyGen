@@ -33,6 +33,33 @@ fn find_pk_field(struct_def) {
     return "";
 }
 
+fn collect_struct_entries_from_namespace(ns, schema_mod, namespace_path) {
+    let entries = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.name.ends_with("__Enum") {
+                entries.push(#{
+                    name: s.name,
+                    path: "crate::" + schema_mod + "::" + namespace_path + "::" + s.name,
+                    table_name: to_snake_case(s.name) + "s",
+                    def: s
+                });
+            }
+        } else if item.is_namespace() {
+            let child = item.as_namespace();
+            let child_path = namespace_path + "::" + rust_types::ns_to_module_name(child.name);
+            let child_entries = collect_struct_entries_from_namespace(child, schema_mod, child_path);
+            for child_entry in child_entries {
+                entries.push(child_entry);
+            }
+        }
+    }
+
+    entries
+}
+
 let skip_file = file.path == () || file.path == "";
 
 let schema_mod = "";
@@ -55,39 +82,10 @@ if !skip_file {
 
     // Collect all tables
     for ns in file.namespaces {
-        let ns_mod_path = ns.name;
-        ns_mod_path.replace(".", "_");
-
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                if !s.name.ends_with("__Enum") {
-                    all_tables.push(#{
-                        name: s.name,
-                        path: "crate::" + schema_mod + "::" + ns_mod_path + "::" + s.name,
-                        table_name: to_snake_case(s.name) + "s",
-                        def: s
-                    });
-                }
-            } else if item.is_namespace() {
-                let child = item.as_namespace();
-                let child_name = child.name;
-                child_name.replace(".", "_");
-                let child_mod_path = ns_mod_path + "::" + child_name;
-                for child_item in child.items {
-                    if child_item.is_struct() {
-                        let cs = child_item.as_struct();
-                        if !cs.name.ends_with("__Enum") {
-                            all_tables.push(#{
-                                name: cs.name,
-                                path: "crate::" + schema_mod + "::" + child_mod_path + "::" + cs.name,
-                                table_name: to_snake_case(cs.name) + "s",
-                                def: cs
-                            });
-                        }
-                    }
-                }
-            }
+        let ns_mod_path = rust_types::ns_to_module_name(ns.name);
+        let entries = collect_struct_entries_from_namespace(ns, schema_mod, ns_mod_path);
+        for entry in entries {
+            all_tables.push(entry);
         }
     }
 
@@ -303,36 +301,16 @@ if !skip_file {
 
     // Collect structs with relations
     for ns in file.namespaces {
-        let ns_mod_path2 = ns.name;
-        ns_mod_path2.replace(".", "_");
-
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                if s.relations.len() > 0 {
-                    structs_with_relations.push(#{
-                        name: s.name,
-                        path: "crate::" + schema_mod + "::" + ns_mod_path2 + "::" + s.name,
-                        def: s
-                    });
-                }
-            } else if item.is_namespace() {
-                let child = item.as_namespace();
-                let child_name2 = child.name;
-                child_name2.replace(".", "_");
-                let child_mod_path2 = ns_mod_path2 + "::" + child_name2;
-                for child_item in child.items {
-                    if child_item.is_struct() {
-                        let cs = child_item.as_struct();
-                        if cs.relations.len() > 0 {
-                            structs_with_relations.push(#{
-                                name: cs.name,
-                                path: "crate::" + schema_mod + "::" + child_mod_path2 + "::" + cs.name,
-                                def: cs
-                            });
-                        }
-                    }
-                }
+        let ns_mod_path2 = rust_types::ns_to_module_name(ns.name);
+        let entries = collect_struct_entries_from_namespace(ns, schema_mod, ns_mod_path2);
+        for entry in entries {
+            let s = entry.def;
+            if s.relations.len() > 0 {
+                structs_with_relations.push(#{
+                    name: entry.name,
+                    path: entry.path,
+                    def: s
+                });
             }
         }
     }

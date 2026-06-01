@@ -6,7 +6,12 @@ func (t *{{struct.name | suffix("Table")}}) ValidateForeignKeys(container *{{con
 	_ = container // Suppress unused variable warning
 %else
 	for _, row := range t.rows {
-		rowKey := fmt.Sprintf("%v", row.{{struct.pk_field_name | pascal_case}})
+		_ = row
+%logic
+let row_key_expr = go_row_key_expr(struct);
+%endlogic
+		rowKey := fmt.Sprintf("%v", {{row_key_expr}})
+		_ = rowKey
 %for field in struct.fk_fields
 %if field.field_type.is_option
 		if row.{{field.name | pascal_case}} != nil {

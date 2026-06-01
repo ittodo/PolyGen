@@ -1,0 +1,9 @@
+# Mermaid Language Configuration for PolyGen
+# Generates a schema-wide ER diagram.
+
+extension = ".mmd"
+
+[templates]
+main = "mermaid_file.ptpl"
+main_output = "schema.mmd"
+main_per_file = false

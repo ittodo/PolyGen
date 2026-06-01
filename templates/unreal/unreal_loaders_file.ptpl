@@ -238,6 +238,42 @@ fn generate_csv_loader(s, namespace_fqn) {
     return result;
 }
 
+fn collect_struct_entries_from_struct(s, namespace_name) {
+    let entries = [];
+    entries.push(#{ struct_def: s, namespace_name: namespace_name });
+
+    for item in s.items {
+        if item.is_embedded_struct() {
+            let embedded_entries = collect_struct_entries_from_struct(item.as_embedded_struct(), namespace_name);
+            for entry in embedded_entries {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries
+}
+
+fn collect_struct_entries_from_namespace(ns) {
+    let entries = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let struct_entries = collect_struct_entries_from_struct(item.as_struct(), ns.name);
+            for entry in struct_entries {
+                entries.push(entry);
+            }
+        } else if item.is_namespace() {
+            let nested_entries = collect_struct_entries_from_namespace(item.as_namespace());
+            for entry in nested_entries {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries
+}
+
 // ============================================================
 // Data preparation
 // ============================================================
@@ -262,26 +298,9 @@ if has_file {
     // Collect all structs from all namespaces in this file
     let all_structs = [];
     for ns in file.namespaces {
-        for item in ns.items {
-            if item.is_struct() {
-                let s = item.as_struct();
-                all_structs.push(#{ struct_def: s, namespace_name: ns.name });
-
-                for si in s.items {
-                    if si.is_embedded_struct() {
-                        let es = si.as_embedded_struct();
-                        all_structs.push(#{ struct_def: es, namespace_name: ns.name });
-                    }
-                }
-            } else if item.is_namespace() {
-                let child_ns = item.as_namespace();
-                for child_item in child_ns.items {
-                    if child_item.is_struct() {
-                        let cs = child_item.as_struct();
-                        all_structs.push(#{ struct_def: cs, namespace_name: child_ns.name });
-                    }
-                }
-            }
+        let ns_entries = collect_struct_entries_from_namespace(ns);
+        for entry in ns_entries {
+            all_structs.push(entry);
         }
     }
 
