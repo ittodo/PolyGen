@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use crate::ast_model::{AstRoot, Definition};
 use crate::codegen::{discover_languages, CodeGenerator};
 use crate::ir_model::SchemaContext;
-use crate::{ast_parser, ir_builder, validation, Polygen, Rule};
+use crate::{ast_parser, ir_builder, schema_lint, validation, Polygen, Rule};
 
 /// Configuration for the compilation pipeline.
 ///
@@ -186,7 +186,7 @@ impl CompilationPipeline {
         }
 
         // Generate SQLite migration SQL
-        let sql = diff.to_sqlite_sql();
+        let sql = diff.to_sqlite_sql_with_schema(current_ir);
         let migration_dir = self.config.output_dir.join("sqlite");
         fs::create_dir_all(&migration_dir)?;
         let migration_file = migration_dir.join("migration_diff.sql");
@@ -240,6 +240,15 @@ impl CompilationPipeline {
             .collect();
         validation::validate_ast(&all_definitions)?;
         println!("AST 유효성 검사 성공.");
+
+        let lint_report = schema_lint::lint_asts(asts);
+        if !lint_report.is_empty() {
+            println!("\n--- 스키마 경고 ---");
+            for warning in &lint_report.warnings {
+                println!("  ⚠️  {}", schema_lint::format_lint_warning(warning));
+            }
+        }
+
         Ok(())
     }
 
@@ -291,7 +300,7 @@ impl CompilationPipeline {
     /// 2. Copies static files (from config or defaults)
     /// 3. Runs the main template
     /// 4. Runs any extra templates defined in the config
-    /// 5. Generates DDL for any @datasource annotations found
+    /// 5. Generates datasource outputs for any @datasource annotations found
     fn generate_for_language(&self, lang: &str, ir_context: &SchemaContext) -> Result<()> {
         println!("\n--- {} 코드 생성 중 ---", lang.to_uppercase());
 
@@ -314,30 +323,30 @@ impl CompilationPipeline {
         // Generate extra templates from configuration
         generator.generate_extras(ir_context)?;
 
-        // Generate DDL for @datasource annotations (if not already generating for a DB language)
+        // Generate datasource outputs for @datasource annotations (if not already generating one).
         if !is_db_language(lang) {
-            self.generate_datasource_ddl(ir_context)?;
+            self.generate_datasource_outputs(ir_context)?;
         }
 
         println!("{} 코드 생성이 완료되었습니다.", lang.to_uppercase());
         Ok(())
     }
 
-    /// Generate DDL for all @datasource annotations found in the schema.
+    /// Generate outputs for all @datasource annotations found in the schema.
     ///
     /// Scans the IR for @datasource annotations and generates corresponding
-    /// DDL files using the appropriate database templates.
-    fn generate_datasource_ddl(&self, ir_context: &SchemaContext) -> Result<()> {
-        let datasources = collect_datasources(ir_context);
+    /// files using the appropriate datasource templates.
+    fn generate_datasource_outputs(&self, ir_context: &SchemaContext) -> Result<()> {
+        let datasources = collect_datasource_output_languages(ir_context);
 
         if datasources.is_empty() {
             return Ok(());
         }
 
-        println!("\n--- @datasource DDL 생성 중 ---");
+        println!("\n--- @datasource 산출물 생성 중 ---");
 
         for datasource in datasources {
-            println!("  - {} DDL 생성", datasource);
+            println!("  - {} 산출물 생성", datasource);
 
             let generator = CodeGenerator::new(
                 &datasource,
@@ -359,13 +368,23 @@ impl CompilationPipeline {
     }
 }
 
-/// Check if a language is a database language (DDL generator)
+/// Check if a language is a datasource output generator.
 fn is_db_language(lang: &str) -> bool {
     matches!(lang, "sqlite" | "mysql" | "postgresql" | "redis")
 }
 
-/// Collect all unique @datasource values from the IR
-fn collect_datasources(ir_context: &SchemaContext) -> Vec<String> {
+/// Maps user-facing datasource names to template language directories.
+fn datasource_output_language(datasource: &str) -> &str {
+    match datasource {
+        "mariadb" => "mysql",
+        "postgres" => "postgresql",
+        "cache" => "redis",
+        other => other,
+    }
+}
+
+/// Collect all unique datasource output languages from the IR.
+fn collect_datasource_output_languages(ir_context: &SchemaContext) -> Vec<String> {
     use std::collections::HashSet;
 
     let mut datasources: HashSet<String> = HashSet::new();
@@ -376,7 +395,12 @@ fn collect_datasources(ir_context: &SchemaContext) -> Vec<String> {
         }
     }
 
-    let mut result: Vec<String> = datasources.into_iter().collect();
+    let mut result: Vec<String> = datasources
+        .into_iter()
+        .map(|ds| datasource_output_language(&ds).to_string())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
     result.sort();
     result
 }
@@ -407,6 +431,77 @@ fn collect_datasources_from_namespace(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir_model::{FileDef, NamespaceDef, NamespaceItem, StructDef};
+
+    fn table(name: &str, datasource: Option<&str>) -> NamespaceItem {
+        NamespaceItem::Struct(StructDef {
+            name: name.to_string(),
+            fqn: format!("game.{name}"),
+            is_embed: false,
+            datasource: datasource.map(String::from),
+            cache_strategy: None,
+            is_readonly: false,
+            soft_delete_field: None,
+            pack_separator: None,
+            header: Vec::new(),
+            items: Vec::new(),
+            indexes: Vec::new(),
+            relations: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn datasource_output_language_maps_cache_to_redis() {
+        assert_eq!(datasource_output_language("cache"), "redis");
+        assert_eq!(datasource_output_language("mariadb"), "mysql");
+        assert_eq!(datasource_output_language("postgres"), "postgresql");
+        assert_eq!(datasource_output_language("sqlite"), "sqlite");
+    }
+
+    #[test]
+    fn collect_datasource_output_languages_deduplicates_cache_and_redis() {
+        let context = SchemaContext {
+            files: vec![FileDef {
+                path: "schema.poly".to_string(),
+                namespaces: vec![NamespaceDef {
+                    name: "game".to_string(),
+                    datasource: Some("cache".to_string()),
+                    items: vec![table("Session", None), table("HotData", Some("redis"))],
+                }],
+                renames: Vec::new(),
+            }],
+        };
+
+        assert_eq!(collect_datasource_output_languages(&context), vec!["redis"]);
+    }
+
+    #[test]
+    fn collect_datasource_output_languages_normalizes_aliases() {
+        let context = SchemaContext {
+            files: vec![FileDef {
+                path: "schema.poly".to_string(),
+                namespaces: vec![NamespaceDef {
+                    name: "game".to_string(),
+                    datasource: Some("mariadb".to_string()),
+                    items: vec![
+                        table("Audit", Some("postgres")),
+                        table("Session", Some("cache")),
+                    ],
+                }],
+                renames: Vec::new(),
+            }],
+        };
+
+        assert_eq!(
+            collect_datasource_output_languages(&context),
+            vec!["mysql", "postgresql", "redis"]
+        );
+    }
+}
+
 /// Parses and merges all schema files starting from an initial entry point.
 ///
 /// This function performs a breadth-first traversal of schema files, following
@@ -428,6 +523,22 @@ pub fn parse_and_merge_schemas(
     initial_path: &Path,
     output_dir: Option<&Path>,
 ) -> Result<Vec<AstRoot>> {
+    parse_and_merge_schemas_inner(initial_path, output_dir, true)
+}
+
+/// Parses and merges schema files without progress logging.
+pub fn parse_and_merge_schemas_quiet(
+    initial_path: &Path,
+    output_dir: Option<&Path>,
+) -> Result<Vec<AstRoot>> {
+    parse_and_merge_schemas_inner(initial_path, output_dir, false)
+}
+
+fn parse_and_merge_schemas_inner(
+    initial_path: &Path,
+    output_dir: Option<&Path>,
+    verbose: bool,
+) -> Result<Vec<AstRoot>> {
     let mut files_to_process: VecDeque<PathBuf> = VecDeque::new();
     let mut processed_files: HashSet<PathBuf> = HashSet::new();
     let mut all_asts: Vec<AstRoot> = Vec::new();
@@ -439,7 +550,9 @@ pub fn parse_and_merge_schemas(
     let mut is_first_file = true;
 
     while let Some(current_path) = files_to_process.pop_front() {
-        println!("--- 스키마 파싱 중: {} ---", current_path.display());
+        if verbose {
+            println!("--- 스키마 파싱 중: {} ---", current_path.display());
+        }
         let unparsed_file = fs::read_to_string(&current_path)?.replace("\r\n", "\n");
         let main_pair = Polygen::parse(Rule::main, &unparsed_file)?
             .next()
@@ -456,10 +569,12 @@ pub fn parse_and_merge_schemas(
                 fs::create_dir_all(&debug_dir)?;
                 let parse_tree_path = debug_dir.join("parse_tree.txt");
                 fs::write(&parse_tree_path, format!("{:#?}", main_pair.clone()))?;
-                println!(
-                    "Pest 파싱 트리 디버그 출력이 파일에 저장되었습니다: {}",
-                    parse_tree_path.display()
-                );
+                if verbose {
+                    println!(
+                        "Pest 파싱 트리 디버그 출력이 파일에 저장되었습니다: {}",
+                        parse_tree_path.display()
+                    );
+                }
             }
             is_first_file = false;
         }
@@ -489,7 +604,9 @@ pub fn parse_and_merge_schemas(
                 let renames = ast_parser::parse_renames_file(renames_pair)?;
                 let count = renames.len();
                 ast_root.renames.extend(renames);
-                println!("  - Loaded {} rename rules from {}", count, import_path_str);
+                if verbose {
+                    println!("  - Loaded {} rename rules from {}", count, import_path_str);
+                }
             } else {
                 // Regular .poly file - add to processing queue
                 let canonical_import_path = import_path.canonicalize()?;

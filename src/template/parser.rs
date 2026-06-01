@@ -243,7 +243,8 @@ fn parse_block(
         }
 
         // Not a directive — it's an output line
-        let segments = parse_line_segments(line)?;
+        let segments = parse_line_segments(line)
+            .map_err(|e| format!("{}:{}: {}", source_file, line_num, e))?;
         nodes.push(TemplateNode::OutputLine {
             line: line_num,
             segments,
@@ -1170,6 +1171,13 @@ mod tests {
     fn test_parse_let_error_no_equals() {
         let result = parse_template("%let x", "test.ptpl");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_interpolation_error_includes_source_line() {
+        let result = parse_template("ok\n{{ value | unknown_filter }}", "test.ptpl");
+        let err = result.expect_err("invalid filter should fail");
+        assert!(err.contains("test.ptpl:2:"), "error was: {err}");
     }
 
     #[test]

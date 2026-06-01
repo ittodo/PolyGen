@@ -39,7 +39,7 @@
 //! │   ├── csharp_binary_readers_file.rhai
 //! │   └── ...
 //! └── mysql/
-//!     └── mysql_file.rhai
+//!     └── mysql_file.ptpl
 //! ```
 //!
 //! # Static Files
@@ -63,6 +63,7 @@ use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 
 use crate::ir_model::SchemaContext;
 use crate::lang_config::{ExtraTemplateEntry, LanguageConfig, StaticFileEntry};
+use crate::schema_metadata::{build_schema_metadata, sql_string_literal};
 use crate::template;
 
 /// Configuration for a static file to be copied during code generation.
@@ -351,6 +352,7 @@ impl CodeGenerator {
             "output_dir",
             template::context::ContextValue::String(self.output_dir.to_string_lossy().to_string()),
         );
+        add_schema_metadata_bindings(&mut ctx, ir_context)?;
 
         let result = engine
             .render(template_name, &ctx)
@@ -630,6 +632,7 @@ impl CodeGenerator {
             "output_dir",
             template::context::ContextValue::String(self.output_dir.to_string_lossy().to_string()),
         );
+        add_schema_metadata_bindings(&mut ctx, ir_context)?;
 
         let result = engine
             .render(template_name, &ctx)
@@ -760,7 +763,7 @@ pub fn csharp_static_files() -> Vec<StaticFileConfig> {
 /// Discovers available target languages from the templates directory.
 ///
 /// A language is considered available if its template directory exists
-/// and contains a main template file (`{lang}_file.rhai`).
+/// and contains a main template file (`{lang}_file.ptpl` or `{lang}_file.rhai`).
 ///
 /// # Arguments
 ///
@@ -776,15 +779,37 @@ pub fn discover_languages(templates_dir: &Path) -> Vec<String> {
         for entry in entries.flatten() {
             if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
                 let name = entry.file_name().to_string_lossy().to_string();
-                let main_template = entry.path().join(format!("{}_file.rhai", name));
-                if main_template.exists() {
+                let ptpl_template = entry.path().join(format!("{}_file.ptpl", name));
+                let rhai_template = entry.path().join(format!("{}_file.rhai", name));
+                if ptpl_template.exists() || rhai_template.exists() {
                     languages.push(name);
                 }
             }
         }
     }
 
+    languages.sort();
     languages
+}
+
+fn add_schema_metadata_bindings(
+    ctx: &mut template::context::TemplateContext,
+    schema: &SchemaContext,
+) -> Result<()> {
+    let metadata = build_schema_metadata(schema)?;
+    ctx.set(
+        "schema_hash",
+        template::context::ContextValue::String(metadata.hash),
+    );
+    ctx.set(
+        "schema_json",
+        template::context::ContextValue::String(metadata.json.clone()),
+    );
+    ctx.set(
+        "schema_json_sql_literal",
+        template::context::ContextValue::String(sql_string_literal(&metadata.json)),
+    );
+    Ok(())
 }
 
 /// Resolves an output filename pattern by substituting `{{stem}}` with optional filters.
@@ -944,6 +969,49 @@ mod tests {
             .find("\"csharp/csv_test_schema.CsvColumns.cs\"")
             .ok_or_else(|| anyhow::anyhow!("manifest is missing CSV columns entry"))?;
         assert!(data_entry < csv_entry);
+        Ok(())
+    }
+
+    #[test]
+    fn test_discover_languages_accepts_ptpl_main_template() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let mysql_dir = temp_dir.path().join("mysql");
+        fs::create_dir(&mysql_dir)?;
+        fs::write(mysql_dir.join("mysql_file.ptpl"), "")?;
+
+        let languages = discover_languages(temp_dir.path());
+
+        assert_eq!(languages, vec!["mysql".to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_discover_languages_returns_sorted_valid_languages() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        for (language, template) in [
+            ("typescript", "typescript_file.ptpl"),
+            ("csharp", "csharp_file.ptpl"),
+            ("go", "go_file.rhai"),
+        ] {
+            let lang_dir = temp_dir.path().join(language);
+            fs::create_dir(&lang_dir)?;
+            fs::write(lang_dir.join(template), "")?;
+        }
+
+        let invalid_dir = temp_dir.path().join("invalid");
+        fs::create_dir(&invalid_dir)?;
+        fs::write(invalid_dir.join("other.ptpl"), "")?;
+
+        let languages = discover_languages(temp_dir.path());
+
+        assert_eq!(
+            languages,
+            vec![
+                "csharp".to_string(),
+                "go".to_string(),
+                "typescript".to_string()
+            ]
+        );
         Ok(())
     }
 }

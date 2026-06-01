@@ -15,6 +15,15 @@ pub struct DbSchema {
     pub tables: HashMap<String, DbTable>,
 }
 
+/// Metadata stored in PolyGen's internal `_polygen_schema` table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredSchemaMetadata {
+    /// Stable schema hash recorded when DDL/migration SQL was generated.
+    pub schema_hash: Option<String>,
+    /// Compact JSON schema IR recorded with the hash.
+    pub schema_json: Option<String>,
+}
+
 /// Represents a table in the database.
 #[derive(Debug, Clone)]
 pub struct DbTable {
@@ -84,6 +93,39 @@ impl SqliteIntrospector {
         }
 
         Ok(schema)
+    }
+
+    /// Read PolyGen schema metadata if the database contains `_polygen_schema`.
+    pub fn read_polygen_schema_metadata(&self) -> Result<Option<StoredSchemaMetadata>> {
+        let table_exists: bool = self.conn.query_row(
+            "SELECT EXISTS (
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = '_polygen_schema'
+            )",
+            [],
+            |row| row.get::<_, i32>(0).map(|v| v != 0),
+        )?;
+
+        if !table_exists {
+            return Ok(None);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT schema_hash, schema_json
+             FROM _polygen_schema
+             WHERE id = 1
+             LIMIT 1",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(StoredSchemaMetadata {
+                schema_hash: row.get::<_, Option<String>>(0)?,
+                schema_json: row.get::<_, Option<String>>(1)?,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Get all user table names from the database.
@@ -382,15 +424,60 @@ mod tests {
 
         conn.execute("CREATE TABLE MyTable (id INTEGER PRIMARY KEY)", [])?;
         conn.execute("CREATE TABLE _polygen_migrations (version INTEGER)", [])?;
+        conn.execute(
+            "CREATE TABLE _polygen_schema (id INTEGER PRIMARY KEY, schema_hash TEXT)",
+            [],
+        )?;
 
         let introspector = SqliteIntrospector::open(file.path())?;
         let schema = introspector.read_schema()?;
 
-        // Should only see MyTable, not _polygen_migrations
+        // Should only see MyTable, not PolyGen metadata tables
         assert_eq!(schema.table_count(), 1);
         assert!(schema.tables.contains_key("MyTable"));
         assert!(!schema.tables.contains_key("_polygen_migrations"));
+        assert!(!schema.tables.contains_key("_polygen_schema"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_reads_polygen_schema_metadata() -> Result<()> {
+        let (file, conn) = create_test_db()?;
+
+        conn.execute(
+            "CREATE TABLE _polygen_schema (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                schema_hash TEXT,
+                schema_json TEXT
+            )",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO _polygen_schema (id, schema_hash, schema_json)
+             VALUES (1, 'abc123', '{\"files\":[]}')",
+            [],
+        )?;
+
+        let introspector = SqliteIntrospector::open(file.path())?;
+        let metadata = introspector
+            .read_polygen_schema_metadata()?
+            .context("missing _polygen_schema metadata")?;
+
+        assert_eq!(metadata.schema_hash.as_deref(), Some("abc123"));
+        assert_eq!(metadata.schema_json.as_deref(), Some(r#"{"files":[]}"#));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_polygen_schema_metadata_absent_when_table_missing() -> Result<()> {
+        let (file, _conn) = create_test_db()?;
+
+        let introspector = SqliteIntrospector::open(file.path())?;
+        let metadata = introspector.read_polygen_schema_metadata()?;
+
+        assert!(metadata.is_none());
         Ok(())
     }
 

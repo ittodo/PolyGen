@@ -8,7 +8,27 @@ pub(super) fn extract_datasource(metadata: &[Metadata]) -> Option<String> {
 
 /// Extracts the @cache strategy from metadata.
 pub(super) fn extract_cache_strategy(metadata: &[Metadata]) -> Option<String> {
-    extract_annotation_string(metadata, "cache")
+    for meta in metadata {
+        if let Metadata::Annotation(ann) = meta {
+            if ann.name.as_deref() == Some("cache") {
+                for arg in &ann.args {
+                    if let ast_model::AnnotationArg::Positional(lit) = arg {
+                        return Some(lit.to_string().trim_matches('"').to_string());
+                    }
+                }
+
+                for arg in &ann.args {
+                    if let ast_model::AnnotationArg::Named(param) = arg {
+                        if param.key == "strategy" {
+                            return Some(param.value.to_string().trim_matches('"').to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// Extracts the @soft_delete field name from metadata.
@@ -98,4 +118,58 @@ fn extract_annotation_string(metadata: &[Metadata], annotation_name: &str) -> Op
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast_model::{Annotation, AnnotationArg, AnnotationParam, Literal, Metadata};
+
+    fn annotation(args: Vec<AnnotationArg>) -> Vec<Metadata> {
+        vec![Metadata::Annotation(Annotation {
+            name: Some("cache".to_string()),
+            args,
+        })]
+    }
+
+    #[test]
+    fn cache_strategy_reads_positional_value() {
+        let metadata = annotation(vec![AnnotationArg::Positional(Literal::String(
+            "full_load".to_string(),
+        ))]);
+
+        assert_eq!(
+            extract_cache_strategy(&metadata),
+            Some("full_load".to_string())
+        );
+    }
+
+    #[test]
+    fn cache_strategy_reads_named_strategy_even_after_ttl() {
+        let metadata = annotation(vec![
+            AnnotationArg::Named(AnnotationParam {
+                key: "ttl".to_string(),
+                value: Literal::Integer(300),
+            }),
+            AnnotationArg::Named(AnnotationParam {
+                key: "strategy".to_string(),
+                value: Literal::Identifier("on_demand".to_string()),
+            }),
+        ]);
+
+        assert_eq!(
+            extract_cache_strategy(&metadata),
+            Some("on_demand".to_string())
+        );
+    }
+
+    #[test]
+    fn cache_strategy_ignores_ttl_without_strategy() {
+        let metadata = annotation(vec![AnnotationArg::Named(AnnotationParam {
+            key: "ttl".to_string(),
+            value: Literal::Integer(300),
+        })]);
+
+        assert_eq!(extract_cache_strategy(&metadata), None);
+    }
 }

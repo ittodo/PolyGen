@@ -436,7 +436,6 @@ fn convert_enum_to_enum_def(
         for meta in &variant.metadata {
             if let Metadata::DocComment(c) = meta {
                 items.push(EnumItem::Comment(c.clone()));
-                println!("[ir_builder] comment 2: {:?}", c);
             }
         }
 
