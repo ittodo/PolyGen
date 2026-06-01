@@ -18,37 +18,44 @@ set(TEST_CASES
     06_arrays_and_optionals
     07_indexes
     08_complex_schema
+    09_sqlite
+    10_pack_embed
 )
 
 # Create test executable for each test case
 foreach(TEST_CASE ${TEST_CASES})
     set(TEST_NAME "test_${TEST_CASE}")
     set(TEST_GEN_DIR "${GENERATED_DIR}/${TEST_CASE}/cpp")
+    set(TEST_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${TEST_CASE}.cpp")
 
-    # Check if generated directory exists
-    if(EXISTS "${TEST_GEN_DIR}")
-        # Collect all generated headers
-        file(GLOB GENERATED_HEADERS "${TEST_GEN_DIR}/*.hpp")
-
-        # Create test executable
-        add_executable(${TEST_NAME}
-            tests/test_${TEST_CASE}.cpp
-        )
-
-        target_include_directories(${TEST_NAME} PRIVATE
-            ${TEST_GEN_DIR}
-        )
-
-        # Enable warnings
-        target_compile_options(${TEST_NAME} PRIVATE
-            $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -pedantic>
-            $<$<CXX_COMPILER_ID:MSVC>:/W4>
-        )
-
-        message(STATUS "Added test: ${TEST_NAME}")
-    else()
-        message(WARNING "Generated code not found for ${TEST_CASE}, skipping...")
+    if(NOT EXISTS "${TEST_SOURCE}")
+        message(FATAL_ERROR "Test source not found for ${TEST_CASE}: ${TEST_SOURCE}")
     endif()
+
+    if(NOT EXISTS "${TEST_GEN_DIR}")
+        message(FATAL_ERROR "Generated code not found for ${TEST_CASE}: ${TEST_GEN_DIR}")
+    endif()
+
+    file(GLOB GENERATED_HEADERS "${TEST_GEN_DIR}/*.hpp")
+    if(NOT GENERATED_HEADERS)
+        message(FATAL_ERROR "Generated C++ headers not found for ${TEST_CASE}: ${TEST_GEN_DIR}")
+    endif()
+
+    add_executable(${TEST_NAME}
+        ${TEST_SOURCE}
+    )
+
+    target_include_directories(${TEST_NAME} PRIVATE
+        ${TEST_GEN_DIR}
+    )
+
+    # Enable warnings
+    target_compile_options(${TEST_NAME} PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -pedantic>
+        $<$<CXX_COMPILER_ID:MSVC>:/W4>
+    )
+
+    message(STATUS "Added test: ${TEST_NAME}")
 endforeach()
 
 # Add a target to run all tests

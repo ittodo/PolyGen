@@ -84,6 +84,42 @@ class Program
         passed++;
     }
 
+    static void TestRootContainerIncludesNestedTables()
+    {
+        Console.WriteLine("  Testing root container with nested namespace tables...");
+
+        var container = new Schema.Container.SchemaDataContainer();
+        var user = new app.data.models.User
+        {
+            id = 7,
+            username = "deep_user"
+        };
+        var service = new app.services.UserService
+        {
+            id = 11,
+            target_user_id = 7,
+            permission = app.data.enums.Permission.Read
+        };
+        var config = new util.Config
+        {
+            key = "debug_mode",
+            value = "true"
+        };
+
+        container.Users.Add(user);
+        container.UserServices.Add(service);
+        container.Configs.Add(config);
+
+        Assert(container.Users.Count == 1, "Users count");
+        Assert(container.UserServices.Count == 1, "UserServices count");
+        Assert(container.Configs.Count == 1, "Configs count");
+        Assert(object.ReferenceEquals(container.Users.ById[7], user), "Users.ById should return inserted user");
+        Assert(object.ReferenceEquals(container.Configs.ByKey["debug_mode"], config), "Configs.ByKey should return inserted config");
+
+        Console.WriteLine("    PASS");
+        passed++;
+    }
+
     static void TestBinaryNested()
     {
         Console.WriteLine("  Testing binary serialization with nested namespaces...");
@@ -121,6 +157,7 @@ class Program
         TestNestedEnum();
         TestCrossNamespaceReference();
         TestSeparateNamespace();
+        TestRootContainerIncludesNestedTables();
         TestBinaryNested();
 
         if (failed > 0)

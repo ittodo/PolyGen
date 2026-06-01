@@ -7,6 +7,7 @@ use polygen_test::schema::app::app_data::app_data_models::User;
 use polygen_test::schema::app::app_data::app_data_enums::Permission;
 use polygen_test::schema::app::app_services::UserService;
 use polygen_test::schema::util::Config;
+use polygen_test::schema_container::container::SchemaContainer;
 use polygen_test::schema_loaders::BinaryIO;
 
 fn main() {
@@ -16,7 +17,9 @@ fn main() {
     test_nested_enum();
     test_cross_namespace_reference();
     test_separate_namespace();
+    test_container_deeply_nested_table();
     test_binary_nested();
+    test_binary_deeply_nested_table();
 
     println!("=== All tests passed! ===");
 }
@@ -77,6 +80,23 @@ fn test_separate_namespace() {
     println!("    PASS");
 }
 
+fn test_container_deeply_nested_table() {
+    println!("  Testing container access for deeply nested table...");
+
+    let mut container = SchemaContainer::new();
+    container.users.add_row(User {
+        id: 7,
+        username: "deep_user".to_string(),
+    });
+
+    assert_eq!(container.users.count(), 1);
+    let found = container.users.get_by_id(7);
+    assert!(found.is_some(), "deeply nested User should be indexed by id");
+    assert_eq!(found.unwrap().username, "deep_user");
+
+    println!("    PASS");
+}
+
 fn test_binary_nested() {
     println!("  Testing binary serialization with nested namespaces...");
 
@@ -97,6 +117,26 @@ fn test_binary_nested() {
     assert_eq!(loaded.id, original.id);
     assert_eq!(loaded.target_user_id, original.target_user_id);
     assert_eq!(loaded.permission, original.permission);
+
+    println!("    PASS (serialized {} bytes)", buffer.len());
+}
+
+fn test_binary_deeply_nested_table() {
+    println!("  Testing binary serialization on deeply nested table...");
+
+    let original = User {
+        id: 7,
+        username: "deep_user".to_string(),
+    };
+
+    let mut buffer = Vec::new();
+    original.write_binary(&mut buffer).unwrap();
+
+    let mut cursor = Cursor::new(&buffer);
+    let loaded = User::read_binary(&mut cursor).unwrap();
+
+    assert_eq!(loaded.id, original.id);
+    assert_eq!(loaded.username, original.username);
 
     println!("    PASS (serialized {} bytes)", buffer.len());
 }

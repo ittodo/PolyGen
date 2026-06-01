@@ -5,6 +5,7 @@ using System;
 using Microsoft.Data.Sqlite;
 using Polygen.Data;
 using test.sqlite;
+using test.sqlite.audit;
 
 class Program
 {
@@ -49,6 +50,12 @@ class Program
                 FOREIGN KEY (post_id) REFERENCES test_sqlite_Post(id),
                 FOREIGN KEY (user_id) REFERENCES test_sqlite_User(id)
             );
+
+            CREATE TABLE IF NOT EXISTS test_sqlite_audit_LoginEvent (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                ip_address TEXT NOT NULL
+            );
         ";
         cmd.ExecuteNonQuery();
 
@@ -68,6 +75,10 @@ class Program
                 (1, 1, 2, 'Nice post!'),
                 (2, 1, 3, 'Great work'),
                 (3, 3, 1, 'Thanks for sharing');
+
+            INSERT INTO test_sqlite_audit_LoginEvent (id, user_id, ip_address) VALUES
+                (1, 1, '127.0.0.1'),
+                (2, 2, '10.0.0.2');
         ";
         cmd.ExecuteNonQuery();
     }
@@ -82,6 +93,31 @@ class Program
         Assert(ctx.Users != null, "Users table should exist");
         Assert(ctx.Posts != null, "Posts table should exist");
         Assert(ctx.Comments != null, "Comments table should exist");
+        Assert(ctx.LoginEvents != null, "LoginEvents table should exist");
+
+        Console.WriteLine("    PASS");
+        passed++;
+    }
+
+    static void TestGeneratedDataContextIncludesNestedDatasourceTable()
+    {
+        Console.WriteLine("  Testing generated DataContext nested datasource table...");
+
+        var ctx = new Schema.DataContext.DataContext();
+        var loginEvent = new LoginEvent
+        {
+            id = 7,
+            user_id = 2,
+            ip_address = "10.0.0.7"
+        };
+
+        ctx.Sqlite.LoginEvents.Add(loginEvent);
+
+        Assert(ctx.Sqlite.Users != null, "DataContext Sqlite.Users table should exist");
+        Assert(ctx.Sqlite.LoginEvents != null, "DataContext Sqlite.LoginEvents table should exist");
+        Assert(ctx.Sqlite.LoginEvents.Count == 1, "DataContext should store nested LoginEvent rows");
+        Assert(ctx.Sqlite.LoginEvents.ById.TryGetValue(7, out var found), "DataContext nested LoginEvent should be indexed by id");
+        Assert(object.ReferenceEquals(found, loginEvent), "DataContext nested LoginEvent index should return inserted row");
 
         Console.WriteLine("    PASS");
         passed++;
@@ -125,6 +161,10 @@ class Program
         cmd.CommandText = "SELECT COUNT(*) FROM test_sqlite_Comment";
         var commentCount = Convert.ToInt32(cmd.ExecuteScalar());
         Assert(commentCount == 3, $"Expected 3 comments, got {commentCount}");
+
+        cmd.CommandText = "SELECT COUNT(*) FROM test_sqlite_audit_LoginEvent";
+        var loginEventCount = Convert.ToInt32(cmd.ExecuteScalar());
+        Assert(loginEventCount == 2, $"Expected 2 login events, got {loginEventCount}");
 
         // Test reading a specific user
         cmd.CommandText = "SELECT name FROM test_sqlite_User WHERE id = 1";
@@ -210,6 +250,25 @@ class Program
         passed++;
     }
 
+    static void TestLoginEventEntity()
+    {
+        Console.WriteLine("  Testing nested LoginEvent entity creation...");
+
+        var loginEvent = new LoginEvent
+        {
+            id = 1,
+            user_id = 1,
+            ip_address = "127.0.0.1"
+        };
+
+        Assert(loginEvent.id == 1, "loginEvent.id");
+        Assert(loginEvent.user_id == 1, "loginEvent.user_id");
+        Assert(loginEvent.ip_address == "127.0.0.1", "loginEvent.ip_address");
+
+        Console.WriteLine("    PASS");
+        passed++;
+    }
+
     static void TestDbTableGeneric()
     {
         Console.WriteLine("  Testing DbTable<T> generic class...");
@@ -279,9 +338,11 @@ class Program
         Console.WriteLine("=== Test Case 09: SQLite Accessor ===");
 
         TestDbContextCreation();
+        TestGeneratedDataContextIncludesNestedDatasourceTable();
         TestUserEntity();
         TestPostEntity();
         TestCommentEntity();
+        TestLoginEventEntity();
         TestPostStatusEnum();
         TestDirectSqliteAccess();
         TestDbTableGeneric();

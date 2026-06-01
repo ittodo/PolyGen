@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PolyGen C++ Integration Test Runner
 # Generates code from test schemas and compiles/runs the tests
 
 # Don't use set -e as we want to continue on test failures
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -44,6 +45,7 @@ TEST_CASES=(
     "06_arrays_and_optionals"
     "07_indexes"
     "08_complex_schema"
+    "09_sqlite"
     "10_pack_embed"
 )
 
@@ -52,12 +54,10 @@ mkdir -p "$GENERATED_DIR"
 
 PASSED=0
 FAILED=0
-SKIPPED=0
 
 # Function to safely increment counters
 inc_passed() { PASSED=$((PASSED + 1)); }
 inc_failed() { FAILED=$((FAILED + 1)); }
-inc_skipped() { SKIPPED=$((SKIPPED + 1)); }
 
 for TEST_CASE in "${TEST_CASES[@]}"; do
     echo ""
@@ -67,16 +67,16 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
     OUTPUT_DIR="$GENERATED_DIR/$TEST_CASE"
 
     if [ ! -d "$TEST_DIR" ]; then
-        echo -e "${YELLOW}  Skipped: Test directory not found${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (test directory not found)${NC}"
+        inc_failed
         continue
     fi
 
     # Find schema files
     SCHEMA_FILES=$(find "$TEST_DIR" -name "*.poly" | sort)
     if [ -z "$SCHEMA_FILES" ]; then
-        echo -e "${YELLOW}  Skipped: No schema files found${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (schema file not found)${NC}"
+        inc_failed
         continue
     fi
 
@@ -86,20 +86,44 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
 
     # Generate code for each schema
     echo "  Generating C++ code..."
+    GEN_SUCCESS=true
     for SCHEMA in $SCHEMA_FILES; do
         SCHEMA_NAME=$(basename "$SCHEMA")
         echo "    - $SCHEMA_NAME"
-        "$POLYGEN" --schema-path "$SCHEMA" --lang cpp --output-dir "$OUTPUT_DIR" --templates-dir "$PROJECT_ROOT/templates" 2>&1 | sed 's/^/      /'
+        if ! "$POLYGEN" --schema-path "$SCHEMA" --lang cpp --output-dir "$OUTPUT_DIR" --templates-dir "$PROJECT_ROOT/templates" 2>&1 | sed 's/^/      /'; then
+            GEN_SUCCESS=false
+        fi
     done
+    if [ "$GEN_SUCCESS" = false ]; then
+        echo -e "${RED}  FAILED (code generation error)${NC}"
+        inc_failed
+        continue
+    fi
+
+    GENERATED_HEADERS=$(find "$OUTPUT_DIR/cpp" -maxdepth 1 -name "*.hpp" | sort)
+    if [ -z "$GENERATED_HEADERS" ]; then
+        echo -e "${RED}  FAILED (no C++ headers generated)${NC}"
+        inc_failed
+        continue
+    fi
 
     # Copy polygen_support.hpp
-    cp "$STATIC_DIR/polygen_support.hpp" "$OUTPUT_DIR/cpp/"
+    if [ ! -f "$STATIC_DIR/polygen_support.hpp" ]; then
+        echo -e "${RED}  FAILED (polygen_support.hpp not found)${NC}"
+        inc_failed
+        continue
+    fi
+    if ! cp "$STATIC_DIR/polygen_support.hpp" "$OUTPUT_DIR/cpp/"; then
+        echo -e "${RED}  FAILED (could not copy polygen_support.hpp)${NC}"
+        inc_failed
+        continue
+    fi
 
     # Check if test file exists
     TEST_FILE="$SCRIPT_DIR/tests/test_${TEST_CASE}.cpp"
     if [ ! -f "$TEST_FILE" ]; then
-        echo -e "${YELLOW}  Skipped: Test file not found ($TEST_FILE)${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (test file not found: $TEST_FILE)${NC}"
+        inc_failed
         continue
     fi
 
@@ -107,11 +131,20 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
     echo "  Compiling..."
     BINARY="$OUTPUT_DIR/test_${TEST_CASE}"
     COMPILE_OUTPUT=$(mktemp)
+    EXTRA_SOURCES=()
+    if [ -f "$OUTPUT_DIR/cpp/schema_redis_keys.hpp" ]; then
+        REDIS_SMOKE="$OUTPUT_DIR/redis_keys_smoke.cpp"
+        cat > "$REDIS_SMOKE" <<'EOF'
+#include "schema_redis_keys.hpp"
+int polygen_cpp_redis_keys_smoke() { return 0; }
+EOF
+        EXTRA_SOURCES+=("$REDIS_SMOKE")
+    fi
 
     if g++ -std=c++17 -Wall -Wextra -O2 \
         -I"$OUTPUT_DIR/cpp" \
-        "$TEST_FILE" \
-        -o "$BINARY" 2>"$COMPILE_OUTPUT"; then
+        "$TEST_FILE" "${EXTRA_SOURCES[@]}" \
+        -o "$BINARY" >"$COMPILE_OUTPUT" 2>&1; then
 
         # Run test
         echo "  Running..."
@@ -138,7 +171,6 @@ echo ""
 echo -e "${BLUE}=== Test Summary ===${NC}"
 echo -e "  ${GREEN}Passed:${NC}  $PASSED"
 echo -e "  ${RED}Failed:${NC}  $FAILED"
-echo -e "  ${YELLOW}Skipped:${NC} $SKIPPED"
 echo ""
 
 if [ $FAILED -gt 0 ]; then

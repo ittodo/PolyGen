@@ -6,13 +6,15 @@
   "scripts": {
     "generate": "cd ../../.. && cargo run --release -- --schema-path tests/integration/08_complex_schema/schema.poly --lang typescript --output-dir tests/runners/typescript/generated",
     "build": "tsc --noEmit",
-    "test": "npm run generate && npm run build",
-    "test:all": "npm run generate:all && npm run build",
+    "test": "npm run generate && npm run build && npm run test:runtime",
+    "test:all": "npm run generate:all && npm run build && npm run test:runtime",
+    "test:runtime": "tsx tests/run_all.ts",
     "generate:all": "cd ../../.. && for dir in tests/integration/*/; do cargo run --release -- --schema-path \"${dir}schema.poly\" --lang typescript --output-dir tests/runners/typescript/generated 2>/dev/null; done"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
     "better-sqlite3": "^11.0.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.3.0",
     "zod": "^3.22.0"
   }

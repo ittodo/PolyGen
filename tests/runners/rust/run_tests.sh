@@ -1,6 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PolyGen Rust Integration Test Runner
 # Generates code from test schemas and compiles/runs the tests
+
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -41,6 +43,7 @@ TEST_CASES=(
     "06_arrays_and_optionals"
     "07_indexes"
     "08_complex_schema"
+    "09_sqlite"
     "10_pack_embed"
 )
 
@@ -49,12 +52,10 @@ mkdir -p "$GENERATED_DIR"
 
 PASSED=0
 FAILED=0
-SKIPPED=0
 
 # Function to safely increment counters
 inc_passed() { PASSED=$((PASSED + 1)); }
 inc_failed() { FAILED=$((FAILED + 1)); }
-inc_skipped() { SKIPPED=$((SKIPPED + 1)); }
 
 for TEST_CASE in "${TEST_CASES[@]}"; do
     echo ""
@@ -64,16 +65,16 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
     OUTPUT_DIR="$GENERATED_DIR/$TEST_CASE"
 
     if [ ! -d "$TEST_DIR" ]; then
-        echo -e "${YELLOW}  Skipped: Test directory not found${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (test directory not found)${NC}"
+        inc_failed
         continue
     fi
 
     # Find schema files
     SCHEMA_FILES=$(find "$TEST_DIR" -name "*.poly" | sort)
     if [ -z "$SCHEMA_FILES" ]; then
-        echo -e "${YELLOW}  Skipped: No schema files found${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (schema file not found)${NC}"
+        inc_failed
         continue
     fi
 
@@ -98,11 +99,18 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
         continue
     fi
 
+    GENERATED_RS_FILES=$(find "$OUTPUT_DIR/rust" -maxdepth 1 -name "*.rs" | sort)
+    if [ -z "$GENERATED_RS_FILES" ]; then
+        echo -e "${RED}  FAILED (no Rust files generated)${NC}"
+        inc_failed
+        continue
+    fi
+
     # Check if test file exists
     TEST_FILE="$SCRIPT_DIR/tests/test_${TEST_CASE}.rs"
     if [ ! -f "$TEST_FILE" ]; then
-        echo -e "${YELLOW}  Skipped: Test file not found ($TEST_FILE)${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (test file not found: $TEST_FILE)${NC}"
+        inc_failed
         continue
     fi
 
@@ -111,7 +119,8 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
     mkdir -p "$TEST_PROJECT_DIR/src"
 
     # Create Cargo.toml
-    cat > "$TEST_PROJECT_DIR/Cargo.toml" << 'CARGO'
+    if [ "$TEST_CASE" = "09_sqlite" ]; then
+        cat > "$TEST_PROJECT_DIR/Cargo.toml" << 'CARGO'
 [package]
 name = "polygen_test"
 version = "0.1.0"
@@ -121,31 +130,69 @@ edition = "2021"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 byteorder = "1.5"
+chrono = "0.4"
+regex = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
 CARGO
+    else
+        cat > "$TEST_PROJECT_DIR/Cargo.toml" << 'CARGO'
+[package]
+name = "polygen_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+byteorder = "1.5"
+chrono = "0.4"
+regex = "1"
+CARGO
+    fi
 
     # Copy generated files to src/
-    cp "$OUTPUT_DIR/rust"/*.rs "$TEST_PROJECT_DIR/src/" 2>/dev/null || true
+    if ! cp "$OUTPUT_DIR/rust"/*.rs "$TEST_PROJECT_DIR/src/"; then
+        echo -e "${RED}  FAILED (could not copy generated Rust files)${NC}"
+        inc_failed
+        continue
+    fi
 
     # Create lib.rs that includes all modules
-    cat > "$TEST_PROJECT_DIR/src/lib.rs" << 'LIBRS'
+    if [ "$TEST_CASE" = "09_sqlite" ]; then
+        cat > "$TEST_PROJECT_DIR/src/lib.rs" << 'LIBRS'
 pub mod polygen_support;
 pub mod schema;
 pub mod schema_loaders;
 pub mod schema_container;
+pub mod schema_redis_keys;
+pub mod schema_sqlite_accessor;
 LIBRS
+    else
+        cat > "$TEST_PROJECT_DIR/src/lib.rs" << 'LIBRS'
+pub mod polygen_support;
+pub mod schema;
+pub mod schema_loaders;
+pub mod schema_container;
+pub mod schema_redis_keys;
+LIBRS
+    fi
 
     # Copy test file as main.rs
-    cp "$TEST_FILE" "$TEST_PROJECT_DIR/src/main.rs"
+    if ! cp "$TEST_FILE" "$TEST_PROJECT_DIR/src/main.rs"; then
+        echo -e "${RED}  FAILED (could not copy test file)${NC}"
+        inc_failed
+        continue
+    fi
 
     # Compile
     echo "  Compiling..."
     cd "$TEST_PROJECT_DIR"
     COMPILE_OUTPUT=$(mktemp)
-    if cargo build --release 2>"$COMPILE_OUTPUT"; then
+    if cargo build --release >"$COMPILE_OUTPUT" 2>&1; then
         # Run test
         echo "  Running..."
         RUN_OUTPUT=$(mktemp)
-        if cargo run --release 2>&1 >"$RUN_OUTPUT"; then
+        if cargo run --release >"$RUN_OUTPUT" 2>&1; then
             cat "$RUN_OUTPUT" | sed 's/^/    /'
             echo -e "${GREEN}  PASSED${NC}"
             inc_passed
@@ -168,7 +215,6 @@ echo ""
 echo -e "${BLUE}=== Test Summary ===${NC}"
 echo -e "  ${GREEN}Passed:${NC}  $PASSED"
 echo -e "  ${RED}Failed:${NC}  $FAILED"
-echo -e "  ${YELLOW}Skipped:${NC} $SKIPPED"
 echo ""
 
 if [ $FAILED -gt 0 ]; then

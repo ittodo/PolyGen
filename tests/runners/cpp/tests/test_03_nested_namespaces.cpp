@@ -6,6 +6,7 @@
 
 #include "schema.hpp"
 #include "schema_loaders.hpp"
+#include "schema_container.hpp"
 
 void test_deeply_nested_table() {
     std::cout << "  Testing deeply nested table (app::data::models::User)..." << std::endl;
@@ -60,6 +61,25 @@ void test_separate_namespace() {
     std::cout << "    PASS" << std::endl;
 }
 
+void test_container_deeply_nested_table() {
+    std::cout << "  Testing container access for deeply nested table..." << std::endl;
+
+    schema_container::SchemaContainer container;
+
+    app::data::models::User user;
+    user.id = 7;
+    user.username = "deep_user";
+    container.users.add_row(user);
+
+    assert(container.users.count() == 1);
+
+    auto* found = container.users.get_by_id(7);
+    assert(found != nullptr);
+    assert(found->username == "deep_user");
+
+    std::cout << "    PASS" << std::endl;
+}
+
 void test_binary_nested() {
     std::cout << "  Testing binary serialization with nested namespaces..." << std::endl;
 
@@ -90,6 +110,31 @@ void test_binary_nested() {
     std::cout << "    PASS (serialized " << buffer.size() << " bytes)" << std::endl;
 }
 
+void test_binary_deeply_nested_table() {
+    std::cout << "  Testing binary serialization on deeply nested table..." << std::endl;
+
+    app::data::models::User original;
+    original.id = 7;
+    original.username = "deep_user";
+
+    std::vector<uint8_t> buffer;
+    {
+        polygen::BinaryWriter writer(buffer);
+        polygen_loaders::write_User(writer, original);
+    }
+
+    app::data::models::User loaded;
+    {
+        polygen::BinaryReader reader(buffer);
+        loaded = polygen_loaders::read_User(reader);
+    }
+
+    assert(loaded.id == original.id);
+    assert(loaded.username == original.username);
+
+    std::cout << "    PASS (serialized " << buffer.size() << " bytes)" << std::endl;
+}
+
 int main() {
     std::cout << "=== Test Case 03: Nested Namespaces ===" << std::endl;
 
@@ -97,7 +142,9 @@ int main() {
     test_nested_enum();
     test_cross_namespace_reference();
     test_separate_namespace();
+    test_container_deeply_nested_table();
     test_binary_nested();
+    test_binary_deeply_nested_table();
 
     std::cout << "=== All tests passed! ===" << std::endl;
     return 0;

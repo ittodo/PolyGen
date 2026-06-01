@@ -3,6 +3,7 @@
 
 use rusqlite::{Connection, Result};
 use polygen_test::schema::test_sqlite::{User, Post, Comment, PostStatus};
+use polygen_test::schema::test_sqlite::test_sqlite_audit::LoginEvent;
 use polygen_test::schema_sqlite_accessor::SqliteDb;
 
 fn main() {
@@ -53,6 +54,16 @@ fn test_entity_creation() {
     assert_eq!(comment.post_id, 1);
     assert_eq!(comment.user_id, 2);
 
+    let login_event = LoginEvent {
+        id: 1,
+        user_id: 1,
+        ip_address: "127.0.0.1".to_string(),
+    };
+
+    assert_eq!(login_event.id, 1);
+    assert_eq!(login_event.user_id, 1);
+    assert_eq!(login_event.ip_address, "127.0.0.1");
+
     println!("    PASS");
 }
 
@@ -93,6 +104,12 @@ fn setup_database(conn: &Connection) -> Result<()> {
             FOREIGN KEY (user_id) REFERENCES test_sqlite_User(id)
         );
 
+        CREATE TABLE IF NOT EXISTS test_sqlite_audit_LoginEvent (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            ip_address TEXT NOT NULL
+        );
+
         INSERT INTO test_sqlite_User (id, name, email, created_at) VALUES
             (1, 'Alice', 'alice@example.com', 1700000000),
             (2, 'Bob', NULL, 1700000001),
@@ -107,6 +124,10 @@ fn setup_database(conn: &Connection) -> Result<()> {
             (1, 1, 2, 'Nice post!'),
             (2, 1, 3, 'Great work'),
             (3, 3, 1, 'Thanks for sharing');
+
+        INSERT INTO test_sqlite_audit_LoginEvent (id, user_id, ip_address) VALUES
+            (1, 1, '127.0.0.1'),
+            (2, 2, '10.0.0.2');
         "
     )?;
     Ok(())
@@ -139,6 +160,13 @@ fn test_sqlite_operations() -> Result<()> {
         |row| row.get(0)
     )?;
     assert_eq!(comment_count, 3, "Expected 3 comments");
+
+    let login_event_count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM test_sqlite_audit_LoginEvent",
+        [],
+        |row| row.get(0)
+    )?;
+    assert_eq!(login_event_count, 2, "Expected 2 login events");
 
     // Test reading a specific user
     let user_name: String = conn.query_row(
@@ -184,6 +212,10 @@ fn test_sqlite_db_accessor() -> Result<()> {
     // Verify comments
     assert_eq!(db.comments.len(), 3, "Expected 3 comments loaded");
 
+    // Verify nested namespace table loaded through inherited sqlite datasource
+    assert_eq!(db.login_events.len(), 2, "Expected 2 login events loaded");
+    assert_eq!(db.login_events.all()[0].ip_address, "127.0.0.1");
+
     // Test get_by_id
     let user = db.get_user_by_id(2)?;
     assert!(user.is_some(), "User with id=2 should exist");
@@ -191,6 +223,10 @@ fn test_sqlite_db_accessor() -> Result<()> {
 
     let non_existent = db.get_user_by_id(999)?;
     assert!(non_existent.is_none(), "User with id=999 should not exist");
+
+    let login_event = db.get_login_event_by_id(2)?;
+    assert!(login_event.is_some(), "LoginEvent with id=2 should exist");
+    assert_eq!(login_event.unwrap().ip_address, "10.0.0.2");
 
     // Clean up
     let _ = std::fs::remove_file(&temp_file);

@@ -139,6 +139,41 @@ class Program
         passed++;
     }
 
+    static void TestBinaryOptionalNulls()
+    {
+        Console.WriteLine("  Testing binary serialization with optional nulls...");
+
+        var original = new test.collections.OptionalTest
+        {
+            id = 456,
+            required_name = "Null Optionals",
+            opt_int = null,
+            opt_string = null,
+            opt_float = null,
+            opt_bool = null,
+            opt_tag = null
+        };
+
+        using var ms = new System.IO.MemoryStream();
+        using var writer = new System.IO.BinaryWriter(ms);
+        test.collections.BinaryWriters.WriteOptionalTest(writer, original);
+
+        ms.Position = 0;
+        using var reader = new System.IO.BinaryReader(ms);
+        var loaded = test.collections.BinaryReaders.ReadOptionalTest(reader);
+
+        Assert(loaded.id == original.id, "id mismatch");
+        Assert(loaded.required_name == original.required_name, "required_name mismatch");
+        Assert(loaded.opt_int == null, "opt_int should stay null");
+        Assert(loaded.opt_string == null, "opt_string should stay null");
+        Assert(loaded.opt_float == null, "opt_float should stay null");
+        Assert(loaded.opt_bool == null, "opt_bool should stay null");
+        Assert(loaded.opt_tag == null, "opt_tag should stay null");
+
+        Console.WriteLine($"    PASS (serialized {ms.Length} bytes)");
+        passed++;
+    }
+
     static void Main()
     {
         Console.WriteLine("=== Test Case 06: Arrays and Optionals ===");
@@ -147,6 +182,7 @@ class Program
         TestArrayComplexTypes();
         TestOptionalPrimitives();
         TestBinaryArraysOptionals();
+        TestBinaryOptionalNulls();
 
         if (failed > 0)
         {

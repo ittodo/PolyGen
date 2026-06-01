@@ -2,6 +2,7 @@
 // Tests deeply nested namespace structures
 
 import { App, Util } from '../generated/03_nested_namespaces/typescript/schema';
+import * as ZodSchemas from '../generated/03_nested_namespaces/typescript/schema.schema';
 
 // Test deeply nested table
 function testDeeplyNestedTable(): void {
@@ -66,10 +67,44 @@ function testSeparateNamespace(): void {
     console.log("    PASS");
 }
 
+// Test Zod schemas for nested namespaces
+function testNestedZodSchemas(): void {
+    console.log("  Testing nested namespace Zod schemas...");
+
+    const userResult = ZodSchemas.App.AppData.AppDataModels.UserSchema.safeParse({
+        id: 7,
+        username: "deep_user",
+    });
+    console.assert(userResult.success, "UserSchema should accept valid nested user");
+
+    const serviceResult = ZodSchemas.App.AppServices.UserServiceSchema.safeParse({
+        id: 11,
+        targetUserId: 7,
+        permission: App.AppData.AppDataEnums.Permission.Read,
+    });
+    console.assert(serviceResult.success, "UserServiceSchema should accept valid cross-namespace enum reference");
+
+    const invalidServiceResult = ZodSchemas.App.AppServices.UserServiceSchema.safeParse({
+        id: 12,
+        targetUserId: 7,
+        permission: 999,
+    });
+    console.assert(!invalidServiceResult.success, "UserServiceSchema should reject invalid enum value");
+
+    const configResult = ZodSchemas.Util.ConfigSchema.safeParse({
+        key: "debug_mode",
+        value: "true",
+    });
+    console.assert(configResult.success, "ConfigSchema should accept separate namespace config");
+
+    console.log("    PASS");
+}
+
 // Main
 console.log("=== Test Case 03: Nested Namespaces ===");
 testDeeplyNestedTable();
 testNestedEnum();
 testCrossNamespaceReference();
 testSeparateNamespace();
+testNestedZodSchemas();
 console.log("=== All tests passed! ===");

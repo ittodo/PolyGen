@@ -3,8 +3,9 @@
 
 use std::io::Cursor;
 
+use polygen_test::polygen_support::CsvRow;
 use polygen_test::schema::test_collections::{ArrayTest, OptionalTest, Tag};
-use polygen_test::schema_loaders::BinaryIO;
+use polygen_test::schema_loaders::{BinaryIO, CsvLoadable};
 
 fn main() {
     println!("=== Test Case 06: Arrays and Optionals ===");
@@ -12,6 +13,8 @@ fn main() {
     test_array_primitives();
     test_array_complex_types();
     test_optional_primitives();
+    test_csv_array_parse_errors();
+    test_csv_optional_parse_errors();
     test_binary_arrays_optionals();
 
     println!("=== All tests passed! ===");
@@ -94,6 +97,110 @@ fn test_optional_primitives() {
     assert_eq!(opt.opt_string, Some("optional value".to_string()));
     assert!((opt.opt_float.unwrap() - 3.14159).abs() < 0.0001);
     assert_eq!(opt.opt_bool, Some(true));
+
+    println!("    PASS");
+}
+
+fn test_csv_array_parse_errors() {
+    println!("  Testing CSV array parse errors...");
+
+    let bool_row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "int_list".to_string(),
+            "string_list".to_string(),
+            "float_list".to_string(),
+            "bool_list".to_string(),
+            "tags".to_string(),
+        ],
+        vec![
+            "1".to_string(),
+            "10,20,30".to_string(),
+            "one,two".to_string(),
+            "1.5,2.5".to_string(),
+            "yes,0,no,true".to_string(),
+            "".to_string(),
+        ],
+    );
+
+    let parsed = ArrayTest::from_csv_row(&bool_row).unwrap();
+    assert_eq!(parsed.bool_list, vec![true, false, false, true]);
+
+    let row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "int_list".to_string(),
+            "string_list".to_string(),
+            "float_list".to_string(),
+            "bool_list".to_string(),
+            "tags".to_string(),
+        ],
+        vec![
+            "1".to_string(),
+            "10,not-an-int,30".to_string(),
+            "one,two".to_string(),
+            "1.5,2.5".to_string(),
+            "true,false".to_string(),
+            "".to_string(),
+        ],
+    );
+
+    let err = ArrayTest::from_csv_row(&row).unwrap_err();
+    assert!(format!("{}", err).contains("invalid value for int_list"));
+
+    println!("    PASS");
+}
+
+fn test_csv_optional_parse_errors() {
+    println!("  Testing CSV optional parse errors...");
+
+    let invalid_row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "required_name".to_string(),
+            "opt_int".to_string(),
+            "opt_string".to_string(),
+            "opt_float".to_string(),
+            "opt_bool".to_string(),
+            "opt_tag".to_string(),
+        ],
+        vec![
+            "1".to_string(),
+            "Test".to_string(),
+            "not-an-int".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+        ],
+    );
+
+    let err = OptionalTest::from_csv_row(&invalid_row).unwrap_err();
+    assert!(format!("{}", err).contains("invalid value for opt_int"));
+
+    let bool_row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "required_name".to_string(),
+            "opt_int".to_string(),
+            "opt_string".to_string(),
+            "opt_float".to_string(),
+            "opt_bool".to_string(),
+            "opt_tag".to_string(),
+        ],
+        vec![
+            "2".to_string(),
+            "BoolTest".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "yes".to_string(),
+            "".to_string(),
+        ],
+    );
+
+    let parsed = OptionalTest::from_csv_row(&bool_row).unwrap();
+    assert_eq!(parsed.opt_bool, Some(true));
 
     println!("    PASS");
 }

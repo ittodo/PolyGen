@@ -40,7 +40,6 @@ if not exist "%GENERATED_DIR%" mkdir "%GENERATED_DIR%"
 
 set PASSED=0
 set FAILED=0
-set SKIPPED=0
 
 for %%T in (%TEST_CASES%) do (
     echo.
@@ -50,8 +49,11 @@ for %%T in (%TEST_CASES%) do (
     set OUTPUT_DIR=%GENERATED_DIR%\%%T
 
     if not exist "!TEST_DIR!" (
-        echo   Skipped: Test directory not found
-        set /a SKIPPED+=1
+        echo   FAILED ^(test directory not found^)
+        set /a FAILED+=1
+    ) else if not exist "!TEST_DIR!\*.poly" (
+        echo   FAILED ^(schema file not found^)
+        set /a FAILED+=1
     ) else (
         REM Clean and create output directory
         if exist "!OUTPUT_DIR!" rmdir /s /q "!OUTPUT_DIR!"
@@ -59,16 +61,24 @@ for %%T in (%TEST_CASES%) do (
 
         REM Generate code
         echo   Generating C# code...
+        set CASE_FAILED=0
         for %%S in ("!TEST_DIR!\*.poly") do (
             echo     - %%~nxS
             "%POLYGEN%" --schema-path "%%S" --lang csharp --output-dir "!OUTPUT_DIR!" --templates-dir "%PROJECT_ROOT%\templates"
+            if errorlevel 1 set CASE_FAILED=1
         )
 
         REM Check if test file exists
         set TEST_FILE=%SCRIPT_DIR%tests\Test_%%T.cs
-        if not exist "!TEST_FILE!" (
-            echo   Skipped: Test file not found
-            set /a SKIPPED+=1
+        if !CASE_FAILED! neq 0 (
+            echo   FAILED ^(generation error^)
+            set /a FAILED+=1
+        ) else if not exist "!OUTPUT_DIR!\csharp\*.cs" (
+            echo   FAILED ^(no C# files generated^)
+            set /a FAILED+=1
+        ) else if not exist "!TEST_FILE!" (
+            echo   FAILED ^(test file not found^)
+            set /a FAILED+=1
         ) else (
             REM Create test project
             set TEST_PROJECT_DIR=!OUTPUT_DIR!\TestProject
@@ -105,38 +115,55 @@ for %%T in (%TEST_CASES%) do (
             )
 
             REM Copy all generated files including Container.cs
+            set COPY_FAILED=0
             for %%F in ("!OUTPUT_DIR!\csharp\*.cs") do (
                 copy "%%F" "!TEST_PROJECT_DIR!\" >nul 2>&1
+                if errorlevel 1 set COPY_FAILED=1
             )
-            if exist "!OUTPUT_DIR!\csharp\Common" (
+            if exist "!OUTPUT_DIR!\csharp\Common\*.cs" (
                 mkdir "!TEST_PROJECT_DIR!\Common" >nul 2>&1
+                if errorlevel 1 set COPY_FAILED=1
                 xcopy "!OUTPUT_DIR!\csharp\Common\*.cs" "!TEST_PROJECT_DIR!\Common\" /q >nul 2>&1
+                if errorlevel 1 set COPY_FAILED=1
             )
-            if exist "!OUTPUT_DIR!\csharp\Data" (
+            if exist "!OUTPUT_DIR!\csharp\Data\*.cs" (
                 mkdir "!TEST_PROJECT_DIR!\Data" >nul 2>&1
+                if errorlevel 1 set COPY_FAILED=1
                 xcopy "!OUTPUT_DIR!\csharp\Data\*.cs" "!TEST_PROJECT_DIR!\Data\" /q >nul 2>&1
+                if errorlevel 1 set COPY_FAILED=1
             )
             copy "!TEST_FILE!" "!TEST_PROJECT_DIR!\Program.cs" >nul
+            if errorlevel 1 set COPY_FAILED=1
 
-            REM Compile and run
-            echo   Compiling...
-            cd /d "!TEST_PROJECT_DIR!"
-            dotnet build -c Release --nologo -v q >nul 2>&1
-            if errorlevel 1 (
-                echo   FAILED ^(compilation error^)
+            if !COPY_FAILED! neq 0 (
+                echo   FAILED ^(could not copy generated C# or test files^)
                 set /a FAILED+=1
             ) else (
-                echo   Running...
-                dotnet run -c Release --no-build
+                REM Compile and run
+                echo   Compiling...
+                cd /d "!TEST_PROJECT_DIR!"
+                set BUILD_LOG=!OUTPUT_DIR!\dotnet_build.log
+                dotnet build -c Release --nologo -v q > "!BUILD_LOG!" 2>&1
                 if errorlevel 1 (
-                    echo   FAILED ^(runtime error^)
+                    echo   FAILED ^(compilation error^)
+                    type "!BUILD_LOG!"
                     set /a FAILED+=1
                 ) else (
-                    echo   PASSED
-                    set /a PASSED+=1
+                    echo   Running...
+                    set RUN_LOG=!OUTPUT_DIR!\dotnet_run.log
+                    dotnet run -c Release --no-build > "!RUN_LOG!" 2>&1
+                    if errorlevel 1 (
+                        type "!RUN_LOG!"
+                        echo   FAILED ^(runtime error^)
+                        set /a FAILED+=1
+                    ) else (
+                        type "!RUN_LOG!"
+                        echo   PASSED
+                        set /a PASSED+=1
+                    )
                 )
+                cd /d "%PROJECT_ROOT%"
             )
-            cd /d "%PROJECT_ROOT%"
         )
     )
 )
@@ -145,7 +172,6 @@ echo.
 echo === Test Summary ===
 echo   Passed:  %PASSED%
 echo   Failed:  %FAILED%
-echo   Skipped: %SKIPPED%
 echo.
 
 if %FAILED% gtr 0 (

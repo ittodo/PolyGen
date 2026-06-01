@@ -27,7 +27,7 @@ set SCRIPT_DIR=%~dp0
 set PASSED=0
 set FAILED=0
 
-for %%T in (01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema) do (
+for %%T in (01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed) do (
     echo. >> "%LOG%"
     echo === Test: %%T === >> "%LOG%"
 
@@ -36,7 +36,14 @@ for %%T in (01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_em
     set BINARY=!OUTPUT_DIR!\test_%%T.exe
 
     if not exist "!TEST_FILE!" (
-        echo   SKIP: Test file not found >> "%LOG%"
+        echo   FAILED: Test file not found >> "%LOG%"
+        set /a FAILED+=1
+    ) else if not exist "!OUTPUT_DIR!\cpp" (
+        echo   FAILED: Generated C++ directory not found >> "%LOG%"
+        set /a FAILED+=1
+    ) else if not exist "!OUTPUT_DIR!\cpp\*.hpp" (
+        echo   FAILED: Generated C++ headers not found >> "%LOG%"
+        set /a FAILED+=1
     ) else (
         echo   Compiling... >> "%LOG%"
         cl /std:c++17 /EHsc /O2 /I"!OUTPUT_DIR!\cpp" "!TEST_FILE!" /Fe:"!BINARY!" /nologo >> "%LOG%" 2>&1

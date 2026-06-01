@@ -122,6 +122,59 @@ class Program
         passed++;
     }
 
+    static void TestBinaryInvalidEnumRejected()
+    {
+        Console.WriteLine("  Testing binary invalid enum rejection...");
+
+        using var ms = new System.IO.MemoryStream();
+        using (var writer = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write((uint)12345);
+            Polygen.Common.BinaryUtils.WriteUtf8String(writer, "Invalid Customer");
+            writer.Write(999);
+            writer.Write((int)test.enums.Order.Priority.Normal);
+        }
+
+        ms.Position = 0;
+        using var reader = new System.IO.BinaryReader(ms);
+        try
+        {
+            _ = test.enums.BinaryReaders.ReadOrder(reader);
+            Assert(false, "ReadOrder should reject invalid enum discriminant");
+        }
+        catch (System.IO.InvalidDataException)
+        {
+            Console.WriteLine("    PASS");
+            passed++;
+        }
+    }
+
+    static void TestBinaryInvalidEnumWriteRejected()
+    {
+        Console.WriteLine("  Testing binary invalid enum write rejection...");
+
+        var invalid = new test.enums.Order
+        {
+            id = 12345,
+            customer_name = "Invalid Customer",
+            status = (test.enums.Order.Status)999,
+            priority = test.enums.Order.Priority.Normal
+        };
+
+        using var ms = new System.IO.MemoryStream();
+        using var writer = new System.IO.BinaryWriter(ms);
+        try
+        {
+            test.enums.BinaryWriters.WriteOrder(writer, invalid);
+            Assert(false, "WriteOrder should reject invalid enum discriminant");
+        }
+        catch (System.IO.InvalidDataException)
+        {
+            Console.WriteLine("    PASS");
+            passed++;
+        }
+    }
+
     static void Main()
     {
         Console.WriteLine("=== Test Case 04: Inline Enums ===");
@@ -130,6 +183,8 @@ class Program
         TestTaskInlineEnum();
         TestGlobalEnum();
         TestBinaryInlineEnums();
+        TestBinaryInvalidEnumRejected();
+        TestBinaryInvalidEnumWriteRejected();
 
         if (failed > 0)
         {

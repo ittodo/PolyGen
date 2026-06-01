@@ -3,7 +3,7 @@
 // Type-check only - validates generated types are correct
 
 import { TestSqlite } from '../generated/09_sqlite/typescript/schema';
-import { UserTable, PostTable, CommentTable, SqliteDb, DbTable } from '../generated/09_sqlite/typescript/schema_sqlite_accessor';
+import { UserTable, PostTable, CommentTable, LoginEventTable, SqliteDb, DbTable } from '../generated/09_sqlite/typescript/schema_sqlite_accessor';
 
 // Test entity type creation
 function testEntityCreation(): void {
@@ -42,6 +42,16 @@ function testEntityCreation(): void {
     console.assert(comment.id === 1, 'comment.id');
     console.assert(comment.postId === 1, 'comment.postId');
     console.assert(comment.userId === 2, 'comment.userId');
+
+    const loginEvent: TestSqlite.TestSqliteAudit.LoginEvent = {
+        id: 1,
+        userId: 1,
+        ipAddress: '127.0.0.1'
+    };
+
+    console.assert(loginEvent.id === 1, 'loginEvent.id');
+    console.assert(loginEvent.userId === 1, 'loginEvent.userId');
+    console.assert(loginEvent.ipAddress === '127.0.0.1', 'loginEvent.ipAddress');
 
     console.log('    PASS');
 }
@@ -89,11 +99,13 @@ function testTableAccessorTypes(): void {
     const userTable: UserTable = new UserTable();
     const postTable: PostTable = new PostTable();
     const commentTable: CommentTable = new CommentTable();
+    const loginEventTable: LoginEventTable = new LoginEventTable();
 
     // Verify DbTable<T> properties
     console.assert(typeof userTable.length === 'number', 'length should be number');
     console.assert(typeof userTable.isEmpty === 'boolean', 'isEmpty should be boolean');
     console.assert(Array.isArray(userTable.all), 'all should be array');
+    console.assert(typeof loginEventTable.length === 'number', 'nested table length should be number');
 
     console.log('    PASS');
 }
@@ -108,6 +120,7 @@ function testSqliteDbType(): void {
     console.assert(db.users instanceof UserTable, 'users should be UserTable');
     console.assert(db.posts instanceof PostTable, 'posts should be PostTable');
     console.assert(db.comments instanceof CommentTable, 'comments should be CommentTable');
+    console.assert(db.loginEvents instanceof LoginEventTable, 'loginEvents should be LoginEventTable');
 
     // Verify isOpen property
     console.assert(typeof db.isOpen === 'boolean', 'isOpen should be boolean');

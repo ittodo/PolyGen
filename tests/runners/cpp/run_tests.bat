@@ -72,7 +72,6 @@ if not exist "%GENERATED_DIR%" mkdir "%GENERATED_DIR%"
 
 set PASSED=0
 set FAILED=0
-set SKIPPED=0
 
 for %%T in (%TEST_CASES%) do (
     echo.
@@ -82,8 +81,11 @@ for %%T in (%TEST_CASES%) do (
     set OUTPUT_DIR=%GENERATED_DIR%\%%T
 
     if not exist "!TEST_DIR!" (
-        echo   Skipped: Test directory not found
-        set /a SKIPPED+=1
+        echo   FAILED ^(test directory not found^)
+        set /a FAILED+=1
+    ) else if not exist "!TEST_DIR!\*.poly" (
+        echo   FAILED ^(schema file not found^)
+        set /a FAILED+=1
     ) else (
         REM Clean and create output directory
         if exist "!OUTPUT_DIR!" rmdir /s /q "!OUTPUT_DIR!"
@@ -91,34 +93,70 @@ for %%T in (%TEST_CASES%) do (
 
         REM Generate code
         echo   Generating C++ code...
+        set CASE_FAILED=0
         for %%S in ("!TEST_DIR!\*.poly") do (
             echo     - %%~nxS
             "%POLYGEN%" --schema-path "%%S" --lang cpp --output-dir "!OUTPUT_DIR!" --templates-dir "%PROJECT_ROOT%\templates"
+            if errorlevel 1 set CASE_FAILED=1
         )
 
-        REM Copy polygen_support.hpp
-        if exist "%STATIC_DIR%\polygen_support.hpp" (
-            copy "%STATIC_DIR%\polygen_support.hpp" "!OUTPUT_DIR!\cpp\" >nul
-        )
-
-        REM Check if test file exists
-        set TEST_FILE=%SCRIPT_DIR%tests\test_%%T.cpp
-        if not exist "!TEST_FILE!" (
-            echo   Skipped: Test file not found
-            set /a SKIPPED+=1
+        if !CASE_FAILED! neq 0 (
+            echo   FAILED ^(generation error^)
+            set /a FAILED+=1
+        ) else if not exist "!OUTPUT_DIR!\cpp\*.hpp" (
+            echo   FAILED ^(no C++ headers generated^)
+            set /a FAILED+=1
         ) else (
+            REM Copy polygen_support.hpp
+            if exist "%STATIC_DIR%\polygen_support.hpp" (
+                copy "%STATIC_DIR%\polygen_support.hpp" "!OUTPUT_DIR!\cpp\" >nul
+                if errorlevel 1 (
+                    echo   FAILED ^(could not copy polygen_support.hpp^)
+                    set /a FAILED+=1
+                    set CASE_FAILED=1
+                )
+            ) else (
+                echo   FAILED ^(polygen_support.hpp not found^)
+                set /a FAILED+=1
+                set CASE_FAILED=1
+            )
+
+            REM Check if test file exists
+            set TEST_FILE=%SCRIPT_DIR%tests\test_%%T.cpp
+            if !CASE_FAILED! neq 0 (
+                REM Failure already reported.
+            ) else if not exist "!TEST_FILE!" (
+                echo   FAILED ^(test file not found^)
+                set /a FAILED+=1
+            ) else (
             REM Compile
             echo   Compiling...
             set BINARY=!OUTPUT_DIR!\test_%%T.exe
+            set COMPILE_LOG=!OUTPUT_DIR!\cpp_compile.log
+            set REDIS_SMOKE=
+            if exist "!OUTPUT_DIR!\cpp\schema_redis_keys.hpp" (
+                set REDIS_SMOKE=!OUTPUT_DIR!\redis_keys_smoke.cpp
+                > "!REDIS_SMOKE!" echo #include "schema_redis_keys.hpp"
+                >> "!REDIS_SMOKE!" echo int polygen_cpp_redis_keys_smoke^(^) { return 0; }
+            )
 
             if "%COMPILER%"=="g++" (
-                g++ -std=c++17 -Wall -Wextra -O2 -I"!OUTPUT_DIR!\cpp" "!TEST_FILE!" -o "!BINARY!" 2>nul
+                if "!REDIS_SMOKE!"=="" (
+                    g++ -std=c++17 -Wall -Wextra -O2 -I"!OUTPUT_DIR!\cpp" "!TEST_FILE!" -o "!BINARY!" > "!COMPILE_LOG!" 2>&1
+                ) else (
+                    g++ -std=c++17 -Wall -Wextra -O2 -I"!OUTPUT_DIR!\cpp" "!TEST_FILE!" "!REDIS_SMOKE!" -o "!BINARY!" > "!COMPILE_LOG!" 2>&1
+                )
             ) else (
-                cl /std:c++17 /EHsc /O2 /I"!OUTPUT_DIR!\cpp" "!TEST_FILE!" /Fe:"!BINARY!" /nologo 2>nul
+                if "!REDIS_SMOKE!"=="" (
+                    cl /std:c++17 /EHsc /O2 /I"!OUTPUT_DIR!\cpp" "!TEST_FILE!" /Fe:"!BINARY!" /nologo > "!COMPILE_LOG!" 2>&1
+                ) else (
+                    cl /std:c++17 /EHsc /O2 /I"!OUTPUT_DIR!\cpp" "!TEST_FILE!" "!REDIS_SMOKE!" /Fe:"!BINARY!" /nologo > "!COMPILE_LOG!" 2>&1
+                )
             )
 
             if errorlevel 1 (
                 echo   FAILED ^(compilation error^)
+                type "!COMPILE_LOG!"
                 set /a FAILED+=1
             ) else (
                 REM Run test
@@ -132,6 +170,7 @@ for %%T in (%TEST_CASES%) do (
                     set /a PASSED+=1
                 )
             )
+            )
         )
     )
 )
@@ -140,7 +179,6 @@ echo.
 echo === Test Summary ===
 echo   Passed:  %PASSED%
 echo   Failed:  %FAILED%
-echo   Skipped: %SKIPPED%
 echo.
 
 if %FAILED% gtr 0 (

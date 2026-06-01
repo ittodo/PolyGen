@@ -40,7 +40,6 @@ if not exist "%GENERATED_DIR%" mkdir "%GENERATED_DIR%"
 
 set PASSED=0
 set FAILED=0
-set SKIPPED=0
 
 for %%T in (%TEST_CASES%) do (
     echo.
@@ -50,8 +49,11 @@ for %%T in (%TEST_CASES%) do (
     set OUTPUT_DIR=%GENERATED_DIR%\%%T
 
     if not exist "!TEST_DIR!" (
-        echo   Skipped: Test directory not found
-        set /a SKIPPED+=1
+        echo   FAILED ^(test directory not found^)
+        set /a FAILED+=1
+    ) else if not exist "!TEST_DIR!\*.poly" (
+        echo   FAILED ^(schema file not found^)
+        set /a FAILED+=1
     ) else (
         REM Clean and create output directory
         if exist "!OUTPUT_DIR!" rmdir /s /q "!OUTPUT_DIR!"
@@ -59,16 +61,24 @@ for %%T in (%TEST_CASES%) do (
 
         REM Generate code
         echo   Generating Rust code...
+        set CASE_FAILED=0
         for %%S in ("!TEST_DIR!\*.poly") do (
             echo     - %%~nxS
             "%POLYGEN%" --schema-path "%%S" --lang rust --output-dir "!OUTPUT_DIR!" --templates-dir "%PROJECT_ROOT%\templates"
+            if errorlevel 1 set CASE_FAILED=1
         )
 
         REM Check if test file exists
         set TEST_FILE=%SCRIPT_DIR%tests\test_%%T.rs
-        if not exist "!TEST_FILE!" (
-            echo   Skipped: Test file not found
-            set /a SKIPPED+=1
+        if !CASE_FAILED! neq 0 (
+            echo   FAILED ^(generation error^)
+            set /a FAILED+=1
+        ) else if not exist "!OUTPUT_DIR!\rust\*.rs" (
+            echo   FAILED ^(no Rust files generated^)
+            set /a FAILED+=1
+        ) else if not exist "!TEST_FILE!" (
+            echo   FAILED ^(test file not found^)
+            set /a FAILED+=1
         ) else (
             REM Create Cargo project
             set TEST_PROJECT_DIR=!OUTPUT_DIR!\rust
@@ -108,47 +118,64 @@ for %%T in (%TEST_CASES%) do (
 
             REM Copy generated files to src/
             copy "!OUTPUT_DIR!\rust\*.rs" "!TEST_PROJECT_DIR!\src\" >nul 2>&1
-
-            REM Create lib.rs - check if SQLite test case
-            if "%%T"=="09_sqlite" (
-                (
-                    echo pub mod polygen_support;
-                    echo pub mod schema;
-                    echo pub mod schema_loaders;
-                    echo pub mod schema_container;
-                    echo pub mod schema_sqlite_accessor;
-                ) > "!TEST_PROJECT_DIR!\src\lib.rs"
-            ) else (
-                (
-                    echo pub mod polygen_support;
-                    echo pub mod schema;
-                    echo pub mod schema_loaders;
-                    echo pub mod schema_container;
-                ) > "!TEST_PROJECT_DIR!\src\lib.rs"
-            )
-
-            REM Copy test file as main.rs
-            copy "!TEST_FILE!" "!TEST_PROJECT_DIR!\src\main.rs" >nul
-
-            REM Compile and run
-            echo   Compiling...
-            cd /d "!TEST_PROJECT_DIR!"
-            cargo build --release 2>nul
             if errorlevel 1 (
-                echo   FAILED ^(compilation error^)
+                echo   FAILED ^(could not copy generated Rust files^)
                 set /a FAILED+=1
             ) else (
-                echo   Running...
-                cargo run --release 2>nul
+
+                REM Create lib.rs - check if SQLite test case
+                if "%%T"=="09_sqlite" (
+                    (
+                        echo pub mod polygen_support;
+                        echo pub mod schema;
+                        echo pub mod schema_loaders;
+                        echo pub mod schema_container;
+                        echo pub mod schema_redis_keys;
+                        echo pub mod schema_sqlite_accessor;
+                    ) > "!TEST_PROJECT_DIR!\src\lib.rs"
+                ) else (
+                    (
+                        echo pub mod polygen_support;
+                        echo pub mod schema;
+                        echo pub mod schema_loaders;
+                        echo pub mod schema_container;
+                        echo pub mod schema_redis_keys;
+                    ) > "!TEST_PROJECT_DIR!\src\lib.rs"
+                )
+
+                REM Copy test file as main.rs
+                copy "!TEST_FILE!" "!TEST_PROJECT_DIR!\src\main.rs" >nul
                 if errorlevel 1 (
-                    echo   FAILED ^(runtime error^)
+                    echo   FAILED ^(could not copy test file^)
                     set /a FAILED+=1
                 ) else (
-                    echo   PASSED
-                    set /a PASSED+=1
+
+                    REM Compile and run
+                    echo   Compiling...
+                    cd /d "!TEST_PROJECT_DIR!"
+                    set BUILD_LOG=!OUTPUT_DIR!\cargo_build.log
+                    cargo build --release > "!BUILD_LOG!" 2>&1
+                    if errorlevel 1 (
+                        echo   FAILED ^(compilation error^)
+                        type "!BUILD_LOG!"
+                        set /a FAILED+=1
+                    ) else (
+                        echo   Running...
+                        set RUN_LOG=!OUTPUT_DIR!\cargo_run.log
+                        cargo run --release > "!RUN_LOG!" 2>&1
+                        if errorlevel 1 (
+                            type "!RUN_LOG!"
+                            echo   FAILED ^(runtime error^)
+                            set /a FAILED+=1
+                        ) else (
+                            type "!RUN_LOG!"
+                            echo   PASSED
+                            set /a PASSED+=1
+                        )
+                    )
+                    cd /d "%PROJECT_ROOT%"
                 )
             )
-            cd /d "%PROJECT_ROOT%"
         )
     )
 )
@@ -157,7 +184,6 @@ echo.
 echo === Test Summary ===
 echo   Passed:  %PASSED%
 echo   Failed:  %FAILED%
-echo   Skipped: %SKIPPED%
 echo.
 
 if %FAILED% gtr 0 (

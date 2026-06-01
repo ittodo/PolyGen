@@ -38,9 +38,49 @@ dist/**/*.genruntimeconfig.cache
 tests/runners/typescript/node_modules/
 tests/runners/typescript/generated/
 tests/runners/typescript/package-lock.json
+tests/runners/typescript/npm_install.log
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# VS Code extension
+polygen-vscode/node_modules/
+polygen-vscode/out/
+*.vsix
 
 # Go test runner
 tests/runners/go/output/
+
+# Python test runner
+tests/runners/python/output/
+
+# MessagePack test runner
+tests/runners/messagepack/output/
+
+# Redis test runner
+tests/runners/redis/output/
+
+# MySQL test runner
+tests/runners/mysql/output/
+
+# PostgreSQL test runner
+tests/runners/postgresql/output/
+
+# Mermaid test runner
+tests/runners/mermaid/output/
+
+# Protobuf test runner
+tests/runners/protobuf/output/
+
+# Kotlin test runner
+tests/runners/kotlin/output/
+
+# Swift test runner
+tests/runners/swift/output/
+
+# Unreal test runner
+tests/runners/unreal/output/
 
 # C# test runner
 tests/runners/csharp/generated/
@@ -50,9 +90,11 @@ tests/runners/rust/generated/
 
 # C++ test runner
 tests/runners/cpp/generated/
+tests/runners/cpp/test_results.log
 
 # SQLite test runner
 tests/runners/sqlite/generated/
+tests/runners/sqlite/output/
 
 # IDE files
 *.sln

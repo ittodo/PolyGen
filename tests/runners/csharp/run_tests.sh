@@ -1,6 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PolyGen C# Integration Test Runner
 # Generates code from test schemas and compiles/runs the tests
+
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -47,6 +49,7 @@ TEST_CASES=(
     "06_arrays_and_optionals"
     "07_indexes"
     "08_complex_schema"
+    "09_sqlite"
     "10_pack_embed"
 )
 
@@ -55,12 +58,10 @@ mkdir -p "$GENERATED_DIR"
 
 PASSED=0
 FAILED=0
-SKIPPED=0
 
 # Function to safely increment counters
 inc_passed() { PASSED=$((PASSED + 1)); }
 inc_failed() { FAILED=$((FAILED + 1)); }
-inc_skipped() { SKIPPED=$((SKIPPED + 1)); }
 
 for TEST_CASE in "${TEST_CASES[@]}"; do
     echo ""
@@ -70,16 +71,16 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
     OUTPUT_DIR="$GENERATED_DIR/$TEST_CASE"
 
     if [ ! -d "$TEST_DIR" ]; then
-        echo -e "${YELLOW}  Skipped: Test directory not found${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (test directory not found)${NC}"
+        inc_failed
         continue
     fi
 
     # Find schema files
     SCHEMA_FILES=$(find "$TEST_DIR" -name "*.poly" | sort)
     if [ -z "$SCHEMA_FILES" ]; then
-        echo -e "${YELLOW}  Skipped: No schema files found${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (schema file not found)${NC}"
+        inc_failed
         continue
     fi
 
@@ -104,11 +105,18 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
         continue
     fi
 
+    GENERATED_CS_FILES=$(find "$OUTPUT_DIR/csharp" -name "*.cs" | sort)
+    if [ -z "$GENERATED_CS_FILES" ]; then
+        echo -e "${RED}  FAILED (no C# files generated)${NC}"
+        inc_failed
+        continue
+    fi
+
     # Check if test file exists
     TEST_FILE="$SCRIPT_DIR/tests/Test_${TEST_CASE}.cs"
     if [ ! -f "$TEST_FILE" ]; then
-        echo -e "${YELLOW}  Skipped: Test file not found ($TEST_FILE)${NC}"
-        inc_skipped
+        echo -e "${RED}  FAILED (test file not found: $TEST_FILE)${NC}"
+        inc_failed
         continue
     fi
 
@@ -130,26 +138,51 @@ for TEST_CASE in "${TEST_CASES[@]}"; do
 CSPROJ
 
     # Copy generated files and test file
-    cp "$OUTPUT_DIR/csharp"/*.cs "$TEST_PROJECT_DIR/" 2>/dev/null || true
+    if ! cp "$OUTPUT_DIR/csharp"/*.cs "$TEST_PROJECT_DIR/"; then
+        echo -e "${RED}  FAILED (could not copy generated C# files)${NC}"
+        inc_failed
+        continue
+    fi
+
     # Copy subdirectories (Common, Data, etc.)
+    COPY_FAILED=false
+    shopt -s nullglob
     for subdir in "$OUTPUT_DIR/csharp"/*/; do
         if [ -d "$subdir" ]; then
             dirname=$(basename "$subdir")
-            mkdir -p "$TEST_PROJECT_DIR/$dirname"
-            cp "$subdir"*.cs "$TEST_PROJECT_DIR/$dirname/" 2>/dev/null || true
+            subdir_files=("$subdir"*.cs)
+            if ! mkdir -p "$TEST_PROJECT_DIR/$dirname"; then
+                COPY_FAILED=true
+                break
+            fi
+            if [ "${#subdir_files[@]}" -gt 0 ] && ! cp "${subdir_files[@]}" "$TEST_PROJECT_DIR/$dirname/"; then
+                COPY_FAILED=true
+                break
+            fi
         fi
     done
-    cp "$TEST_FILE" "$TEST_PROJECT_DIR/Program.cs"
+    shopt -u nullglob
+    if [ "$COPY_FAILED" = true ]; then
+        echo -e "${RED}  FAILED (could not copy generated C# subdirectory files)${NC}"
+        inc_failed
+        continue
+    fi
+
+    if ! cp "$TEST_FILE" "$TEST_PROJECT_DIR/Program.cs"; then
+        echo -e "${RED}  FAILED (could not copy test file)${NC}"
+        inc_failed
+        continue
+    fi
 
     # Compile
     echo "  Compiling..."
     COMPILE_OUTPUT=$(mktemp)
     cd "$TEST_PROJECT_DIR"
-    if dotnet build -c Release --nologo -v q 2>"$COMPILE_OUTPUT"; then
+    if dotnet build -c Release --nologo -v q >"$COMPILE_OUTPUT" 2>&1; then
         # Run test
         echo "  Running..."
         RUN_OUTPUT=$(mktemp)
-        if dotnet run -c Release --no-build 2>&1 >"$RUN_OUTPUT"; then
+        if dotnet run -c Release --no-build >"$RUN_OUTPUT" 2>&1; then
             cat "$RUN_OUTPUT" | sed 's/^/    /'
             echo -e "${GREEN}  PASSED${NC}"
             inc_passed
@@ -172,7 +205,6 @@ echo ""
 echo -e "${BLUE}=== Test Summary ===${NC}"
 echo -e "  ${GREEN}Passed:${NC}  $PASSED"
 echo -e "  ${RED}Failed:${NC}  $FAILED"
-echo -e "  ${YELLOW}Skipped:${NC} $SKIPPED"
 echo ""
 
 if [ $FAILED -gt 0 ]; then

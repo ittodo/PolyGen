@@ -104,6 +104,52 @@ void test_binary_inline_enums() {
     std::cout << "    PASS (serialized " << buffer.size() << " bytes)" << std::endl;
 }
 
+void test_binary_rejects_invalid_enum() {
+    std::cout << "  Testing binary invalid enum rejection..." << std::endl;
+
+    std::vector<uint8_t> buffer;
+    {
+        polygen::BinaryWriter writer(buffer);
+        writer.write_u32(12345);
+        writer.write_string("Invalid Customer");
+        writer.write_i32(999);
+        writer.write_i32(static_cast<int32_t>(Order::Priority::Normal));
+    }
+
+    bool rejected = false;
+    try {
+        polygen::BinaryReader reader(buffer);
+        (void)polygen_loaders::read_Order(reader);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    assert(rejected);
+
+    std::cout << "    PASS" << std::endl;
+}
+
+void test_binary_rejects_invalid_enum_write() {
+    std::cout << "  Testing binary invalid enum write rejection..." << std::endl;
+
+    Order invalid;
+    invalid.id = 12345;
+    invalid.customer_name = "Invalid Customer";
+    invalid.status = static_cast<Order::Status>(999);
+    invalid.priority = Order::Priority::Normal;
+
+    bool rejected = false;
+    try {
+        std::vector<uint8_t> buffer;
+        polygen::BinaryWriter writer(buffer);
+        polygen_loaders::write_Order(writer, invalid);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    assert(rejected);
+
+    std::cout << "    PASS" << std::endl;
+}
+
 int main() {
     std::cout << "=== Test Case 04: Inline Enums ===" << std::endl;
 
@@ -111,6 +157,8 @@ int main() {
     test_task_inline_enum();
     test_global_enum();
     test_binary_inline_enums();
+    test_binary_rejects_invalid_enum();
+    test_binary_rejects_invalid_enum_write();
 
     std::cout << "=== All tests passed! ===" << std::endl;
     return 0;

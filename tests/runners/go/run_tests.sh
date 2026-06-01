@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Go Integration Test Runner for PolyGen
 # Tests that generated Go code compiles correctly
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -18,6 +18,11 @@ echo "=========================================="
 echo "PolyGen Go Integration Tests"
 echo "=========================================="
 
+if ! command -v go >/dev/null 2>&1; then
+    echo -e "${RED}Error: go is not installed${NC}"
+    exit 1
+fi
+
 # Clean and create output directory
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
@@ -26,6 +31,12 @@ mkdir -p "$OUTPUT_DIR"
 echo -e "\n${YELLOW}Building PolyGen...${NC}"
 cd "$PROJECT_ROOT"
 cargo build --release
+POLYGEN="$PROJECT_ROOT/target/release/polygen"
+
+if [ ! -x "$POLYGEN" ]; then
+    echo -e "${RED}Error: PolyGen binary not found at $POLYGEN${NC}"
+    exit 1
+fi
 
 # Test cases
 TEST_SCHEMAS=(
@@ -37,11 +48,14 @@ TEST_SCHEMAS=(
     "06_arrays_and_optionals"
     "07_indexes"
     "08_complex_schema"
+    "09_sqlite"
+    "10_pack_embed"
 )
 
 PASSED=0
 FAILED=0
 
+shopt -s nullglob
 for test_name in "${TEST_SCHEMAS[@]}"; do
     echo -e "\n${YELLOW}Testing: $test_name${NC}"
 
@@ -49,42 +63,75 @@ for test_name in "${TEST_SCHEMAS[@]}"; do
     TEST_OUTPUT="$OUTPUT_DIR/$test_name"
 
     if [ ! -f "$SCHEMA_PATH" ]; then
-        echo -e "${RED}  SKIP: Schema file not found${NC}"
+        echo -e "${RED}  FAIL: Schema file not found${NC}"
+        FAILED=$((FAILED + 1))
         continue
     fi
 
     # Generate Go code
     echo "  Generating Go code..."
-    GEN_OUTPUT=$("$PROJECT_ROOT/target/release/polygen" \
+    GEN_OUTPUT=$("$POLYGEN" \
         --schema-path "$SCHEMA_PATH" \
         --lang go \
-        --output-dir "$TEST_OUTPUT" 2>&1) || {
+        --output-dir "$TEST_OUTPUT" \
+        --templates-dir "$PROJECT_ROOT/templates" 2>&1) || {
         echo -e "${RED}  FAIL: Code generation failed${NC}"
         echo "$GEN_OUTPUT"
         FAILED=$((FAILED + 1))
         continue
     }
 
-    # Initialize Go module and compile
-    echo "  Compiling Go code..."
+    # Initialize Go module and run optional smoke tests
+    echo "  Testing Go code..."
+    if [ ! -d "$TEST_OUTPUT/go" ]; then
+        echo -e "${RED}  FAIL: No go output directory${NC}"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+
+    GO_FILES=("$TEST_OUTPUT"/go/*.go)
+    if [ "${#GO_FILES[@]}" -eq 0 ]; then
+        echo -e "${RED}  FAIL: No go files generated${NC}"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+
     cd "$TEST_OUTPUT/go"
 
     # Initialize module if needed
     if [ ! -f "go.mod" ]; then
-        go mod init "generated_$test_name" > /dev/null 2>&1
+        MOD_OUTPUT="$TEST_OUTPUT/go_mod_init.log"
+        if ! go mod init "generated_$test_name" > "$MOD_OUTPUT" 2>&1; then
+            echo -e "${RED}  FAIL: go mod init failed${NC}"
+            cat "$MOD_OUTPUT" | sed 's/^/    /'
+            FAILED=$((FAILED + 1))
+            cd "$PROJECT_ROOT"
+            continue
+        fi
     fi
 
-    # Try to build
-    if go build . 2>&1; then
-        echo -e "${GREEN}  PASS: Compilation successful${NC}"
+    if [ -f "$SCRIPT_DIR/tests/${test_name}_test.go" ]; then
+        if ! cp "$SCRIPT_DIR/tests/${test_name}_test.go" polygen_integration_test.go; then
+            echo -e "${RED}  FAIL: Could not copy smoke test${NC}"
+            FAILED=$((FAILED + 1))
+            cd "$PROJECT_ROOT"
+            continue
+        fi
+    fi
+
+    TEST_LOG="$TEST_OUTPUT/go_test.log"
+    if go test ./... > "$TEST_LOG" 2>&1; then
+        echo -e "${GREEN}  PASS: Tests successful${NC}"
         PASSED=$((PASSED + 1))
     else
-        echo -e "${RED}  FAIL: Compilation failed${NC}"
+        echo -e "${RED}  FAIL: Tests failed${NC}"
+        cat "$TEST_LOG" | sed 's/^/    /'
         FAILED=$((FAILED + 1))
     fi
 
     cd "$PROJECT_ROOT"
 done
+shopt -u nullglob
 
 # Summary
 echo -e "\n=========================================="
@@ -94,7 +141,7 @@ echo -e "Passed: ${GREEN}$PASSED${NC}"
 echo -e "Failed: ${RED}$FAILED${NC}"
 echo "Total:  $((PASSED + FAILED))"
 
-if [ $FAILED -eq 0 ]; then
+if [ "$FAILED" -eq 0 ]; then
     echo -e "\n${GREEN}All tests passed!${NC}"
     exit 0
 else

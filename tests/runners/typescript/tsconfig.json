@@ -13,6 +13,11 @@
     "sourceMap": true,
     "outDir": "./dist"
   },
-  "include": ["src/**/*", "tests/**/*", "generated/**/typescript/schema.ts"],
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "generated/**/typescript/schema.ts",
+    "generated/**/typescript/schema_redis_keys.ts"
+  ],
   "exclude": ["node_modules", "dist", "generated/**/typescript/schema.schema.ts"]
 }

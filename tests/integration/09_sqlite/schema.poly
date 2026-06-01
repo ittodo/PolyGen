@@ -29,4 +29,12 @@ namespace test.sqlite {
         Published = 1;
         Archived = 2;
     }
+
+    namespace audit {
+        table LoginEvent {
+            id: u32 primary_key;
+            user_id: u32;
+            ip_address: string;
+        }
+    }
 }

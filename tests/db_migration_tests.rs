@@ -4,12 +4,13 @@
 //! and comparing it with .poly schema definitions.
 
 use polygen::db_introspection::SqliteIntrospector;
-use polygen::migration::MigrationDiff;
+use polygen::migration::{DestructiveChangePolicy, MigrationDiff};
 use polygen::{ir_builder, parse_and_merge_schemas, validation};
 use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
-use tempfile::NamedTempFile;
+use std::process::Command;
+use tempfile::{NamedTempFile, TempDir};
 
 /// Helper to create a test database with given SQL.
 fn create_test_db(sql: &str) -> anyhow::Result<NamedTempFile> {
@@ -339,6 +340,259 @@ fn test_migration_no_changes() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_cli_migrate_no_changes_writes_schema_metadata_sql() -> anyhow::Result<()> {
+    let db_file = create_test_db(
+        "CREATE TABLE game_Player (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL
+        )",
+    )?;
+
+    let schema_file = create_test_schema(
+        r#"
+        namespace game {
+            table Player {
+                id: u32 primary_key;
+                name: string;
+            }
+        }
+        "#,
+    )?;
+
+    let output_dir = TempDir::new()?;
+    let cli = polygen::Cli {
+        command: Some(polygen::Commands::Migrate {
+            baseline: None,
+            db: Some(db_file.path().to_path_buf()),
+            schema_path: schema_file.path().to_path_buf(),
+            output_dir: output_dir.path().to_path_buf(),
+            target: Some("sqlite".to_string()),
+            schema_hash_policy: "warn".to_string(),
+            destructive_policy: "warn".to_string(),
+        }),
+        schema_path: None,
+        templates_dir: PathBuf::from("templates"),
+        output_dir: output_dir.path().to_path_buf(),
+        lang: None,
+        baseline: None,
+    };
+
+    polygen::run(cli)?;
+
+    let migration_sql = fs::read_to_string(output_dir.path().join("sqlite/migration.sql"))?;
+    assert!(migration_sql.contains("INSERT INTO _polygen_schema"));
+    assert!(migration_sql.contains("CREATE TABLE IF NOT EXISTS _polygen_migrations"));
+    assert!(migration_sql.contains("INSERT INTO _polygen_migrations"));
+    assert!(migration_sql.contains("schema_hash"));
+    assert!(migration_sql.contains("-- No changes detected."));
+
+    Ok(())
+}
+
+#[test]
+fn test_cli_migrate_reports_schema_hash_mismatch() -> anyhow::Result<()> {
+    let db_file = create_test_db(
+        "CREATE TABLE game_Player (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+        CREATE TABLE _polygen_schema (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            schema_hash TEXT,
+            schema_json TEXT
+        );
+        INSERT INTO _polygen_schema (id, schema_hash, schema_json)
+        VALUES (1, 'stale_hash', '{}');",
+    )?;
+
+    let schema_file = create_test_schema(
+        r#"
+        namespace game {
+            table Player {
+                id: u32 primary_key;
+                name: string;
+            }
+        }
+        "#,
+    )?;
+
+    let output_dir = TempDir::new()?;
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "migrate",
+            "--db",
+            &db_file.path().to_string_lossy(),
+            "--schema-path",
+            &schema_file.path().to_string_lossy(),
+            "--output-dir",
+            &output_dir.path().to_string_lossy(),
+        ])
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{}{}", stdout, stderr);
+
+    assert!(output.status.success(), "migrate failed: {}", combined);
+    assert!(combined.contains("스키마 해시"), "output: {}", combined);
+    assert!(combined.contains("불일치"), "output: {}", combined);
+
+    Ok(())
+}
+
+#[test]
+fn test_cli_migrate_schema_hash_policy_fail_stops_on_mismatch() -> anyhow::Result<()> {
+    let db_file = create_test_db(
+        "CREATE TABLE game_Player (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+        CREATE TABLE _polygen_schema (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            schema_hash TEXT,
+            schema_json TEXT
+        );
+        INSERT INTO _polygen_schema (id, schema_hash, schema_json)
+        VALUES (1, 'stale_hash', '{}');",
+    )?;
+
+    let schema_file = create_test_schema(
+        r#"
+        namespace game {
+            table Player {
+                id: u32 primary_key;
+                name: string;
+            }
+        }
+        "#,
+    )?;
+
+    let output_dir = TempDir::new()?;
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "migrate",
+            "--db",
+            &db_file.path().to_string_lossy(),
+            "--schema-path",
+            &schema_file.path().to_string_lossy(),
+            "--output-dir",
+            &output_dir.path().to_string_lossy(),
+            "--schema-hash-policy",
+            "fail",
+        ])
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{}{}", stdout, stderr);
+
+    assert!(
+        !output.status.success(),
+        "migrate should fail: {}",
+        combined
+    );
+    assert!(combined.contains("스키마 해시"), "output: {}", combined);
+    assert!(!output_dir.path().join("sqlite/migration.sql").exists());
+
+    Ok(())
+}
+
+#[test]
+fn test_destructive_policy_fail_stops_on_removed_table() -> anyhow::Result<()> {
+    let baseline_file = create_test_schema(
+        r#"
+        namespace game {
+            table OldTable {
+                id: u32 primary_key;
+            }
+        }
+        "#,
+    )?;
+
+    let schema_file = create_test_schema(
+        r#"
+        namespace game {
+        }
+        "#,
+    )?;
+
+    let output_dir = TempDir::new()?;
+    let cli = polygen::Cli {
+        command: Some(polygen::Commands::Migrate {
+            baseline: Some(baseline_file.path().to_path_buf()),
+            db: None,
+            schema_path: schema_file.path().to_path_buf(),
+            output_dir: output_dir.path().to_path_buf(),
+            target: Some("sqlite".to_string()),
+            schema_hash_policy: "warn".to_string(),
+            destructive_policy: "fail".to_string(),
+        }),
+        schema_path: None,
+        templates_dir: PathBuf::from("templates"),
+        output_dir: output_dir.path().to_path_buf(),
+        lang: None,
+        baseline: None,
+    };
+
+    let result = polygen::run(cli);
+
+    assert!(result.is_err(), "destructive-policy=fail should stop");
+    assert!(!output_dir.path().join("sqlite/migration.sql").exists());
+
+    Ok(())
+}
+
+#[test]
+fn test_destructive_policy_allow_uncomments_drop_sql() -> anyhow::Result<()> {
+    let baseline_file = create_test_schema(
+        r#"
+        namespace game {
+            table Player {
+                id: u32 primary_key;
+                obsolete: string;
+            }
+            table OldTable {
+                id: u32 primary_key;
+            }
+        }
+        "#,
+    )?;
+
+    let schema_file = create_test_schema(
+        r#"
+        namespace game {
+            table Player {
+                id: u32 primary_key;
+            }
+        }
+        "#,
+    )?;
+
+    let baseline_ir = build_ir_from_schema(baseline_file.path())?;
+    let current_ir = build_ir_from_schema(schema_file.path())?;
+    let diff = MigrationDiff::compare(&baseline_ir, &current_ir);
+
+    assert!(diff.has_destructive_changes());
+
+    let warn_sql = diff.to_sqlite_sql_with_schema(&current_ir);
+    assert!(warn_sql.contains("-- DROP TABLE IF EXISTS game_OldTable;"));
+    assert!(warn_sql.contains("-- ALTER TABLE game_Player DROP COLUMN obsolete;"));
+
+    let allow_sql =
+        diff.to_sqlite_sql_with_schema_and_policy(&current_ir, DestructiveChangePolicy::Allow);
+    assert!(allow_sql.contains("DROP TABLE IF EXISTS game_OldTable;"));
+    assert!(allow_sql.contains("ALTER TABLE game_Player DROP COLUMN obsolete;"));
+    assert!(!allow_sql.contains("-- DROP TABLE IF EXISTS game_OldTable;"));
+    assert!(!allow_sql.contains("-- ALTER TABLE game_Player DROP COLUMN obsolete;"));
+
+    Ok(())
+}
+
+#[test]
 fn test_migration_multiple_tables() -> anyhow::Result<()> {
     // DB has Player but not Item
     let db_file = create_test_db(
@@ -428,6 +682,16 @@ fn test_cli_help_shows_db_option() -> anyhow::Result<()> {
     assert!(
         combined.contains("--db"),
         "CLI help should show --db option. Output: {}",
+        combined
+    );
+    assert!(
+        combined.contains("--schema-hash-policy"),
+        "CLI help should show --schema-hash-policy option. Output: {}",
+        combined
+    );
+    assert!(
+        combined.contains("--destructive-policy"),
+        "CLI help should show --destructive-policy option. Output: {}",
         combined
     );
 

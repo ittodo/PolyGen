@@ -5,7 +5,8 @@ description: >
   Trigger when: (1) user asks to "test", "run tests", "run runners", or "integration test" for any language,
   (2) user needs to add/update test cases, test files, or runner scripts,
   (3) user asks to verify generated code compiles and runs correctly across languages.
-  Supports: csharp, cpp, rust, typescript, go, sqlite runners.
+  Supports: csharp, cpp, rust, typescript, go, sqlite, mysql, postgresql, mermaid, redis,
+  python, messagepack, protobuf, kotlin, swift, unreal, and run_all runners.
   This skill acts as the test agent in a feedback loop: main agent requests test, this skill runs it,
   on failure returns error logs, main agent fixes, requests test again, repeat until green.
 ---
@@ -26,22 +27,40 @@ When asked to run tests:
 
 All runners live in `tests/runners/<lang>/`. Execute from project root.
 
-| Language   | Command                                  | Prerequisites  |
-|------------|------------------------------------------|----------------|
-| C#         | `tests\runners\csharp\run_tests.bat`     | dotnet SDK 8.0 |
-| C++        | `tests\runners\cpp\run_tests.bat`        | MSVC or g++    |
-| Rust       | `tests\runners\rust\run_tests.bat`       | cargo          |
-| TypeScript | `tests\runners\typescript\run_tests.bat` | node, npm      |
-| Go         | `tests\runners\go\run_tests.bat`         | go             |
-| SQLite     | `tests\runners\sqlite\run_tests.bat`     | (none)         |
+| Target     | Windows command                             | POSIX command                              | Prerequisites            |
+|------------|---------------------------------------------|--------------------------------------------|--------------------------|
+| All/subset | `tests\runners\run_all.bat [runner...]`      | `bash tests/runners/run_all.sh [runner...]` | runner-specific tools    |
+| C#         | `tests\runners\csharp\run_tests.bat`        | `bash tests/runners/csharp/run_tests.sh`   | dotnet SDK 8.0           |
+| C++        | `tests\runners\cpp\run_tests.bat`           | `bash tests/runners/cpp/run_tests.sh`      | MSVC or g++              |
+| Rust       | `tests\runners\rust\run_tests.bat`          | `bash tests/runners/rust/run_tests.sh`     | cargo                    |
+| TypeScript | `tests\runners\typescript\run_tests.bat`    | `bash tests/runners/typescript/run_tests.sh` | node, npm              |
+| Go         | `tests\runners\go\run_tests.bat`            | `bash tests/runners/go/run_tests.sh`       | go                       |
+| SQLite     | `tests\runners\sqlite\run_tests.bat`        | `bash tests/runners/sqlite/run_tests.sh`   | python                   |
+| MySQL      | `tests\runners\mysql\run_tests.bat`         | `bash tests/runners/mysql/run_tests.sh`    | python                   |
+| PostgreSQL | `tests\runners\postgresql\run_tests.bat`    | `bash tests/runners/postgresql/run_tests.sh` | python                 |
+| Mermaid    | `tests\runners\mermaid\run_tests.bat`       | `bash tests/runners/mermaid/run_tests.sh`  | python                   |
+| Redis      | `tests\runners\redis\run_tests.bat`         | `bash tests/runners/redis/run_tests.sh`    | python                   |
+| Python     | `tests\runners\python\run_tests.bat`        | `bash tests/runners/python/run_tests.sh`   | python                   |
+| MessagePack | `tests\runners\messagepack\run_tests.bat`  | `bash tests/runners/messagepack/run_tests.sh` | python                |
+| Protobuf   | `tests\runners\protobuf\run_tests.bat`      | `bash tests/runners/protobuf/run_tests.sh` | python                   |
+| Kotlin     | `tests\runners\kotlin\run_tests.bat`        | `bash tests/runners/kotlin/run_tests.sh`   | python                   |
+| Swift      | `tests\runners\swift\run_tests.bat`         | `bash tests/runners/swift/run_tests.sh`    | python                   |
+| Unreal     | `tests\runners\unreal\run_tests.bat`        | `bash tests/runners/unreal/run_tests.sh`   | python                   |
 
-- No language specified: ask which language(s)
-- "test all": run all runners sequentially
+- No target specified: ask which runner(s), or use `run_all` when the user asks to test all.
+- `run_all` accepts optional runner names, e.g. `tests\runners\run_all.bat sqlite rust`.
+- `run_all --list` prints supported runner names.
+- `run_all --verify` checks that `run_all.bat`, `run_all.sh`, and runner directories
+  stay synchronized and retain ordered Python availability/fallback, selected-Python live/regression invocation, pre-invocation no-bytecode, runtime runner-argument, `--list`, `--help`, and live/regression `--verify` guards, then runs focused verifier regression tests for duplicate,
+  empty, malformed, invalid, missing, extra, one-sided runners, and Windows `--list`
+  and `--help` output/default/default-validation/subset/failure/unknown-runner/invalid-argument/metachar drift.
+  Live matrix verification failures must short-circuit before regression tests run.
+  On Windows, fallback from hidden/missing `python` to the `py -3` launcher and the no-Python failure exit code are covered by execution regression tests.
 
 ## Output Filtering
 
 Return to caller ONLY:
-- **Summary**: `Passed: N, Failed: N, Skipped: N`
+- **Summary**: `Passed: N, Failed: N`
 - **Error details** on failure: compilation errors or runtime assertion failures
 - Omit verbose progress lines ("Generating...", "Compiling...") when tests pass
 - Success = one-line confirmation
@@ -62,7 +81,9 @@ Test files per language:
 - C++: `tests/runners/cpp/tests/test_<case>.cpp`
 - C#: `tests/runners/csharp/tests/Test_<case>.cs`
 - Rust: `tests/runners/rust/tests/test_<case>.rs`
-- TS: `tests/runners/typescript/tests/test_<case>.ts`
+- TypeScript: `tests/runners/typescript/tests/test_<case>.ts` plus `tests/runners/typescript/tests/run_all.ts`
+- Go: optional smoke tests at `tests/runners/go/tests/<case>_test.go`
+- Descriptor/DDL/Python/Kotlin/Swift/Unreal runners use validator scripts or generated-code compilation instead of per-case test files.
 
 ## Maintenance: Adding a New Test Case
 
@@ -83,4 +104,4 @@ Test files per language:
 
 **Rust**: `use polygen_test::schema::*`, `assert_eq!`/`assert!`, `std::io::Cursor` for binary
 
-**TypeScript**: Type-check only (`tsc --noEmit`), import generated interfaces, `console.assert()`
+**TypeScript**: Type-check (`tsc --noEmit`) plus runtime assertions via `tsx tests/run_all.ts`

@@ -64,6 +64,21 @@ void test_comment_creation() {
     std::cout << "    PASS" << std::endl;
 }
 
+void test_nested_login_event_creation() {
+    std::cout << "  Testing nested LoginEvent creation..." << std::endl;
+
+    test::sqlite::audit::LoginEvent login_event;
+    login_event.id = 1;
+    login_event.user_id = 1;
+    login_event.ip_address = "127.0.0.1";
+
+    assert(login_event.id == 1);
+    assert(login_event.user_id == 1);
+    assert(login_event.ip_address == "127.0.0.1");
+
+    std::cout << "    PASS" << std::endl;
+}
+
 void test_optional_fields() {
     std::cout << "  Testing optional fields..." << std::endl;
 
@@ -168,6 +183,7 @@ int main() {
     test_user_creation();
     test_post_creation();
     test_comment_creation();
+    test_nested_login_event_creation();
     test_optional_fields();
     test_post_status_enum();
     test_binary_serialization();

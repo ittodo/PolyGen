@@ -3,6 +3,7 @@
 
 use std::io::Cursor;
 
+use polygen_test::polygen_support::BinaryWriteExt;
 use polygen_test::schema::test_enums::{Order, Task, GlobalStatus, Status, Priority, State};
 use polygen_test::schema_loaders::BinaryIO;
 
@@ -13,6 +14,7 @@ fn main() {
     test_task_inline_enum();
     test_global_enum();
     test_binary_inline_enums();
+    test_binary_rejects_invalid_enum();
 
     println!("=== All tests passed! ===");
 }
@@ -107,4 +109,20 @@ fn test_binary_inline_enums() {
     assert_eq!(loaded.priority, original.priority);
 
     println!("    PASS (serialized {} bytes)", buffer.len());
+}
+
+fn test_binary_rejects_invalid_enum() {
+    println!("  Testing binary invalid enum rejection...");
+
+    let mut buffer = Vec::new();
+    buffer.write_u32(1).unwrap();
+    buffer.write_string("Invalid enum").unwrap();
+    buffer.write_i32(999).unwrap();
+    buffer.write_i32(Priority::Normal as i32).unwrap();
+
+    let mut cursor = Cursor::new(&buffer);
+    let err = Order::read_binary(&mut cursor).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+
+    println!("    PASS");
 }
