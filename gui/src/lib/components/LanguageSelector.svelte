@@ -22,8 +22,8 @@
   }
 </script>
 
-<div class="language-selector">
-  <label>Target Languages</label>
+<fieldset class="language-selector">
+  <legend>Target Languages</legend>
   <div class="languages">
     {#each languages as lang}
       <label class="checkbox-label">
@@ -36,13 +36,22 @@
       </label>
     {/each}
   </div>
-</div>
+</fieldset>
 
 <style>
   .language-selector {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  legend {
+    padding: 0;
+    color: var(--text-primary);
+    font-size: 0.875rem;
   }
 
   .languages {

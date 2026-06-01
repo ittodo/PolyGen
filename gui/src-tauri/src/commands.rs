@@ -1,13 +1,14 @@
+use pest::Parser;
+use polygen::migration::{MigrationDiff, SchemaChange};
+use polygen::pipeline::parse_and_merge_schemas;
+use polygen::{ast_parser, ir_builder, validation, visualize, Polygen};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use pest::Parser;
-use polygen::{Polygen, ast_parser, validation, ir_builder, visualize};
-use polygen::pipeline::parse_and_merge_schemas;
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-fn get_polygen_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn get_polygen_path(_app: &AppHandle) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
         // Development: use the binary built by cargo
         let bin_name = if cfg!(target_os = "windows") {
@@ -56,7 +57,9 @@ pub fn run_generate(
         cmd.arg("--templates-dir").arg(&templates);
     }
 
-    let output = cmd.output().map_err(|e| format!("Failed to execute polygen: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute polygen: {}", e))?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -71,20 +74,46 @@ pub fn run_generate(
 #[tauri::command]
 pub fn run_migrate(
     app: AppHandle,
-    baseline_path: String,
+    baseline_path: Option<String>,
+    db_path: Option<String>,
     schema_path: String,
     output_dir: String,
+    target: Option<String>,
+    schema_hash_policy: Option<String>,
 ) -> Result<String, String> {
     let polygen = get_polygen_path(&app)?;
 
-    let output = Command::new(&polygen)
-        .arg("migrate")
-        .arg("--baseline")
-        .arg(&baseline_path)
-        .arg("--schema-path")
+    if baseline_path.is_some() == db_path.is_some() {
+        return Err(
+            "Choose exactly one migration source: baseline schema or SQLite database.".to_string(),
+        );
+    }
+
+    let mut cmd = Command::new(&polygen);
+    cmd.arg("migrate");
+
+    if let Some(baseline) = baseline_path {
+        cmd.arg("--baseline").arg(baseline);
+    }
+
+    if let Some(db) = db_path {
+        cmd.arg("--db").arg(db);
+    }
+
+    cmd.arg("--schema-path")
         .arg(&schema_path)
         .arg("--output-dir")
-        .arg(&output_dir)
+        .arg(&output_dir);
+
+    if let Some(target) = target {
+        cmd.arg("--target").arg(target);
+    }
+
+    if let Some(policy) = schema_hash_policy {
+        cmd.arg("--schema-hash-policy").arg(policy);
+    }
+
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to execute polygen: {}", e))?;
 
@@ -127,12 +156,10 @@ pub fn write_file(path: String, content: String) -> Result<(), String> {
 /// Parse import statements from a .poly file and return absolute paths
 #[tauri::command]
 pub fn parse_imports(file_path: String) -> Result<Vec<String>, String> {
-    let content = fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    let base_dir = Path::new(&file_path)
-        .parent()
-        .ok_or("Invalid file path")?;
+    let base_dir = Path::new(&file_path).parent().ok_or("Invalid file path")?;
 
     let mut imports = Vec::new();
 
@@ -167,7 +194,7 @@ pub struct DefinitionLocation {
     pub end_line: usize,
     pub end_column: usize,
     pub name: String,
-    pub kind: String, // "table", "enum", "embed", "namespace"
+    pub kind: String,              // "table", "enum", "embed", "namespace"
     pub file_path: Option<String>, // For cross-file navigation
 }
 
@@ -185,7 +212,10 @@ pub struct SchemaError {
 /// Validate schema content and return errors
 /// If file_path is provided, imports will be resolved relative to that path
 #[tauri::command]
-pub fn validate_schema(content: String, file_path: Option<String>) -> Result<Vec<SchemaError>, String> {
+pub fn validate_schema(
+    content: String,
+    file_path: Option<String>,
+) -> Result<Vec<SchemaError>, String> {
     use polygen::Rule;
 
     let mut errors = Vec::new();
@@ -218,7 +248,8 @@ pub fn validate_schema(content: String, file_path: Option<String>) -> Result<Vec
                     if let Err(e) = validation::validate_ast(&ast.definitions) {
                         // Skip TypeNotFound errors when file_path is provided,
                         // as the symbol table validation handles imports properly
-                        let is_type_not_found = matches!(&e, polygen::error::ValidationError::TypeNotFound(_));
+                        let is_type_not_found =
+                            matches!(&e, polygen::error::ValidationError::TypeNotFound(_));
                         if !is_type_not_found || file_path.is_none() {
                             errors.push(SchemaError {
                                 start_line: 1,
@@ -260,9 +291,15 @@ pub fn validate_schema(content: String, file_path: Option<String>) -> Result<Vec
                 Err(e) => {
                     // AST build errors have line/col info
                     let (line, col, msg) = match &e {
-                        polygen::error::AstBuildError::InvalidValue { line, col, .. } => (*line, *col, e.to_string()),
-                        polygen::error::AstBuildError::UnexpectedRule { line, col, .. } => (*line, *col, e.to_string()),
-                        polygen::error::AstBuildError::MissingElement { line, col, .. } => (*line, *col, e.to_string()),
+                        polygen::error::AstBuildError::InvalidValue { line, col, .. } => {
+                            (*line, *col, e.to_string())
+                        }
+                        polygen::error::AstBuildError::UnexpectedRule { line, col, .. } => {
+                            (*line, *col, e.to_string())
+                        }
+                        polygen::error::AstBuildError::MissingElement { line, col, .. } => {
+                            (*line, *col, e.to_string())
+                        }
                     };
                     errors.push(SchemaError {
                         start_line: line,
@@ -298,8 +335,15 @@ pub fn validate_schema(content: String, file_path: Option<String>) -> Result<Vec
 /// Go to definition: find the definition location for a symbol at the given position
 /// If file_path is provided, imports will be resolved relative to that path
 #[tauri::command]
-pub fn goto_definition(content: String, line: usize, column: usize, file_path: Option<String>) -> Option<DefinitionLocation> {
-    use polygen::symbol_table::{build_symbol_table, build_symbol_table_with_imports, DefinitionKind};
+pub fn goto_definition(
+    content: String,
+    line: usize,
+    column: usize,
+    file_path: Option<String>,
+) -> Option<DefinitionLocation> {
+    use polygen::symbol_table::{
+        build_symbol_table, build_symbol_table_with_imports, DefinitionKind,
+    };
 
     let symbol_table = if let Some(ref path) = file_path {
         build_symbol_table_with_imports(&content, Some(Path::new(path))).ok()?
@@ -445,7 +489,8 @@ pub fn find_references(
 
                         // Read and check if this file imports our file
                         if let Ok(other_content) = fs::read_to_string(&entry_path) {
-                            let current_filename = current_path.file_name()
+                            let current_filename = current_path
+                                .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("");
 
@@ -502,7 +547,9 @@ pub fn get_hover_info(
     column: usize,
     file_path: Option<String>,
 ) -> Option<HoverInfo> {
-    use polygen::symbol_table::{build_symbol_table, build_symbol_table_with_imports, DefinitionKind};
+    use polygen::symbol_table::{
+        build_symbol_table, build_symbol_table_with_imports, DefinitionKind,
+    };
 
     let symbol_table = if let Some(ref path) = file_path {
         build_symbol_table_with_imports(&content, Some(Path::new(path))).ok()?
@@ -524,10 +571,8 @@ pub fn get_hover_info(
         let fields_info = if matches!(def.kind, DefinitionKind::Table | DefinitionKind::Embed) {
             let fields = symbol_table.get_fields_of(&def.fqn);
             if !fields.is_empty() {
-                let field_list: Vec<String> = fields
-                    .iter()
-                    .map(|f| format!("  {}", f.name))
-                    .collect();
+                let field_list: Vec<String> =
+                    fields.iter().map(|f| format!("  {}", f.name)).collect();
                 format!("\n\n**Fields:**\n{}", field_list.join("\n"))
             } else {
                 String::new()
@@ -536,7 +581,9 @@ pub fn get_hover_info(
             String::new()
         };
 
-        let file_info = def.file_path.as_ref()
+        let file_info = def
+            .file_path
+            .as_ref()
             .map(|p| format!("\n\n*Defined in: {}*", p))
             .unwrap_or_default();
 
@@ -575,10 +622,20 @@ pub fn get_hover_info(
         let mut start = col;
         let mut end = col;
 
-        while start > 0 && chars.get(start - 1).map(|c| c.is_alphanumeric() || *c == '_').unwrap_or(false) {
+        while start > 0
+            && chars
+                .get(start - 1)
+                .map(|c| c.is_alphanumeric() || *c == '_')
+                .unwrap_or(false)
+        {
             start -= 1;
         }
-        while end < chars.len() && chars.get(end).map(|c| c.is_alphanumeric() || *c == '_').unwrap_or(false) {
+        while end < chars.len()
+            && chars
+                .get(end)
+                .map(|c| c.is_alphanumeric() || *c == '_')
+                .unwrap_or(false)
+        {
             end += 1;
         }
 
@@ -609,7 +666,9 @@ pub fn get_hover_info(
             "default" => Some("**default(value)**\n\nSets a default value."),
             "range" => Some("**range(min, max)**\n\nSets allowed value range."),
             "regex" => Some("**regex(\"pattern\")**\n\nSets a regex validation pattern."),
-            "foreign_key" => Some("**foreign_key(Table.field)**\n\nReferences a field in another table."),
+            "foreign_key" => {
+                Some("**foreign_key(Table.field)**\n\nReferences a field in another table.")
+            }
             _ => None,
         };
 
@@ -645,7 +704,9 @@ pub fn get_completions(
     column: usize,
     file_path: Option<String>,
 ) -> Vec<CompletionItemResult> {
-    use polygen::symbol_table::{build_symbol_table, build_symbol_table_with_imports, DefinitionKind};
+    use polygen::symbol_table::{
+        build_symbol_table, build_symbol_table_with_imports, DefinitionKind,
+    };
 
     let mut items = Vec::new();
 
@@ -671,7 +732,11 @@ pub fn get_completions(
     // Annotations (only at start of line)
     if in_annotation || before_cursor.trim().is_empty() {
         let annotations = [
-            ("@load(csv: \"$1\", json: \"$2\")", "@load", "Specify data loading sources"),
+            (
+                "@load(csv: \"$1\", json: \"$2\")",
+                "@load",
+                "Specify data loading sources",
+            ),
             ("@cache($1)", "@cache", "Enable caching"),
             ("@readonly", "@readonly", "Mark table as read-only"),
             ("@taggable", "@taggable", "Enable row tagging"),
@@ -787,7 +852,11 @@ pub fn get_completions(
             ("default", "default($1)", "Set default value"),
             ("range", "range($1, $2)", "Set value range"),
             ("regex", "regex(\"$1\")", "Set regex validation pattern"),
-            ("foreign_key", "foreign_key($1.$2)", "Reference another table.field"),
+            (
+                "foreign_key",
+                "foreign_key($1.$2)",
+                "Reference another table.field",
+            ),
         ];
 
         for (label, insert, detail) in constraints {
@@ -823,7 +892,9 @@ pub fn get_document_symbols(
     content: String,
     file_path: Option<String>,
 ) -> Vec<DocumentSymbolResult> {
-    use polygen::symbol_table::{build_symbol_table, build_symbol_table_with_imports, DefinitionKind, DefinitionInfo};
+    use polygen::symbol_table::{
+        build_symbol_table, build_symbol_table_with_imports, DefinitionInfo, DefinitionKind,
+    };
 
     let symbol_table = if let Some(ref path) = file_path {
         match build_symbol_table_with_imports(&content, Some(Path::new(path))) {
@@ -837,7 +908,10 @@ pub fn get_document_symbols(
         }
     };
 
-    fn create_symbol(def: &DefinitionInfo, symbol_table: &polygen::symbol_table::SymbolTable) -> DocumentSymbolResult {
+    fn create_symbol(
+        def: &DefinitionInfo,
+        symbol_table: &polygen::symbol_table::SymbolTable,
+    ) -> DocumentSymbolResult {
         let kind = match def.kind {
             DefinitionKind::Namespace => "namespace",
             DefinitionKind::Table => "table",
@@ -886,7 +960,8 @@ pub fn get_document_symbols(
 
             // Top-level: no parent or is a namespace
             let is_top_level = !d.fqn.contains('.')
-                || (matches!(d.kind, DefinitionKind::Namespace) && d.fqn.matches('.').count() == d.name.matches('.').count());
+                || (matches!(d.kind, DefinitionKind::Namespace)
+                    && d.fqn.matches('.').count() == d.name.matches('.').count());
 
             is_current_file && is_top_level && !matches!(d.kind, DefinitionKind::Field)
         })
@@ -912,7 +987,9 @@ pub fn prepare_rename(
     column: usize,
     file_path: Option<String>,
 ) -> Option<PrepareRenameResult> {
-    use polygen::symbol_table::{build_symbol_table, build_symbol_table_with_imports, DefinitionKind};
+    use polygen::symbol_table::{
+        build_symbol_table, build_symbol_table_with_imports, DefinitionKind,
+    };
 
     let symbol_table = if let Some(ref path) = file_path {
         build_symbol_table_with_imports(&content, Some(Path::new(path))).ok()?
@@ -1007,7 +1084,10 @@ pub fn rename_symbol(
 
     // Rename the definition
     if let Some(def) = symbol_table.get_definition(&target_fqn) {
-        let edit_path = def.file_path.clone().unwrap_or_else(|| default_path.clone());
+        let edit_path = def
+            .file_path
+            .clone()
+            .unwrap_or_else(|| default_path.clone());
         edits.push(RenameEditResult {
             file_path: edit_path,
             start_line: def.name_span.start_line,
@@ -1045,7 +1125,8 @@ pub fn rename_symbol(
     // Search in files that import the current file
     if let Some(current_path) = current_file_path {
         if let Some(dir) = current_path.parent() {
-            let current_filename = current_path.file_name()
+            let current_filename = current_path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("");
 
@@ -1071,11 +1152,14 @@ pub fn rename_symbol(
                                     for reference in other_table.find_references(&target_fqn) {
                                         let ref_text = &reference.path;
 
-                                        if ref_text == simple_name || ref_text.ends_with(&format!(".{}", simple_name)) {
+                                        if ref_text == simple_name
+                                            || ref_text.ends_with(&format!(".{}", simple_name))
+                                        {
                                             let new_text = if ref_text == simple_name {
                                                 new_name.clone()
                                             } else {
-                                                let prefix = &ref_text[..ref_text.len() - simple_name.len()];
+                                                let prefix =
+                                                    &ref_text[..ref_text.len() - simple_name.len()];
                                                 format!("{}{}", prefix, new_name)
                                             };
 
@@ -1108,23 +1192,158 @@ pub fn rename_symbol(
 pub fn get_schema_visualization(
     schema_path: String,
 ) -> Result<visualize::SchemaVisualization, String> {
-    // Parse schema
-    let asts = parse_and_merge_schemas(Path::new(&schema_path), None)
-        .map_err(|e| format!("Failed to parse schema: {}", e))?;
+    let ir = parse_schema_ir(Path::new(&schema_path))?;
 
-    // Validate
+    // Build visualization
+    Ok(visualize::build_visualization(&ir))
+}
+
+#[derive(Debug, Serialize)]
+pub struct SchemaDiffResult {
+    pub changes: Vec<SchemaDiffChange>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SchemaDiffChange {
+    pub kind: String,
+    #[serde(rename = "tableName")]
+    pub table_name: String,
+    pub namespace: String,
+    #[serde(rename = "columnName")]
+    pub column_name: Option<String>,
+    #[serde(rename = "columnType")]
+    pub column_type: Option<String>,
+    #[serde(rename = "oldType")]
+    pub old_type: Option<String>,
+    #[serde(rename = "newType")]
+    pub new_type: Option<String>,
+    #[serde(rename = "isNullable")]
+    pub is_nullable: Option<bool>,
+    #[serde(rename = "fieldCount")]
+    pub field_count: Option<usize>,
+}
+
+/// Compare two schema files and return structured diff data for the GUI.
+#[tauri::command]
+pub fn get_schema_diff(
+    baseline_path: String,
+    schema_path: String,
+) -> Result<SchemaDiffResult, String> {
+    let baseline_ir = parse_schema_ir(Path::new(&baseline_path))?;
+    let current_ir = parse_schema_ir(Path::new(&schema_path))?;
+    let diff = MigrationDiff::compare(&baseline_ir, &current_ir);
+
+    Ok(SchemaDiffResult {
+        changes: diff
+            .changes
+            .into_iter()
+            .map(schema_change_to_gui_change)
+            .collect(),
+        warnings: diff.warnings,
+    })
+}
+
+fn parse_schema_ir(path: &Path) -> Result<polygen::SchemaContext, String> {
+    let asts = parse_and_merge_schemas(path, None)
+        .map_err(|e| format!("Failed to parse schema {}: {}", path.display(), e))?;
+
     let defs: Vec<_> = asts
         .iter()
         .flat_map(|ast| ast.definitions.clone())
         .collect();
-    validation::validate_ast(&defs)
-        .map_err(|e| format!("Validation error: {}", e))?;
+    validation::validate_ast(&defs).map_err(|e| format!("Validation error: {}", e))?;
 
-    // Build IR
-    let ir = ir_builder::build_ir(&asts);
+    Ok(ir_builder::build_ir(&asts))
+}
 
-    // Build visualization
-    Ok(visualize::build_visualization(&ir))
+fn schema_change_to_gui_change(change: SchemaChange) -> SchemaDiffChange {
+    match change {
+        SchemaChange::TableAdded {
+            table_name,
+            namespace,
+            struct_def,
+        } => SchemaDiffChange {
+            kind: "table_added".to_string(),
+            table_name,
+            namespace,
+            column_name: None,
+            column_type: None,
+            old_type: None,
+            new_type: None,
+            is_nullable: None,
+            field_count: Some(
+                struct_def
+                    .items
+                    .iter()
+                    .filter(|item| matches!(item, polygen::ir_model::StructItem::Field(_)))
+                    .count(),
+            ),
+        },
+        SchemaChange::TableRemoved {
+            table_name,
+            namespace,
+        } => SchemaDiffChange {
+            kind: "table_removed".to_string(),
+            table_name,
+            namespace,
+            column_name: None,
+            column_type: None,
+            old_type: None,
+            new_type: None,
+            is_nullable: None,
+            field_count: None,
+        },
+        SchemaChange::ColumnAdded {
+            table_name,
+            namespace,
+            column_name,
+            column_type,
+            is_nullable,
+        } => SchemaDiffChange {
+            kind: "column_added".to_string(),
+            table_name,
+            namespace,
+            column_name: Some(column_name),
+            column_type: Some(column_type),
+            old_type: None,
+            new_type: None,
+            is_nullable: Some(is_nullable),
+            field_count: None,
+        },
+        SchemaChange::ColumnRemoved {
+            table_name,
+            namespace,
+            column_name,
+        } => SchemaDiffChange {
+            kind: "column_removed".to_string(),
+            table_name,
+            namespace,
+            column_name: Some(column_name),
+            column_type: None,
+            old_type: None,
+            new_type: None,
+            is_nullable: None,
+            field_count: None,
+        },
+        SchemaChange::ColumnTypeChanged {
+            table_name,
+            namespace,
+            column_name,
+            old_type,
+            new_type,
+        } => SchemaDiffChange {
+            kind: "column_type_changed".to_string(),
+            table_name,
+            namespace,
+            column_name: Some(column_name),
+            column_type: None,
+            old_type: Some(old_type),
+            new_type: Some(new_type),
+            is_nullable: None,
+            field_count: None,
+        },
+    }
 }
 
 // ============================================================================
@@ -1141,7 +1360,13 @@ pub struct RecentProject {
     pub name: String,
     pub timestamp: u64,
     pub output_dir: Option<String>,
+    pub templates_dir: Option<String>,
     pub languages: Option<Vec<String>>,
+    pub migration_source: Option<String>,
+    pub baseline_path: Option<String>,
+    pub db_path: Option<String>,
+    pub migration_target: Option<String>,
+    pub schema_hash_policy: Option<String>,
 }
 
 /// Get the path to the recent projects file
@@ -1282,14 +1507,20 @@ fn get_default_templates_dir(_app: &AppHandle) -> Result<PathBuf, String> {
 
 /// List all template languages
 #[tauri::command]
-pub fn list_template_languages(app: AppHandle, templates_dir: Option<String>) -> Result<Vec<TemplateLanguageInfo>, String> {
+pub fn list_template_languages(
+    app: AppHandle,
+    templates_dir: Option<String>,
+) -> Result<Vec<TemplateLanguageInfo>, String> {
     let templates_path = match templates_dir {
         Some(dir) => PathBuf::from(dir),
         None => get_default_templates_dir(&app)?,
     };
 
     if !templates_path.exists() {
-        return Err(format!("Templates directory not found: {:?}", templates_path));
+        return Err(format!(
+            "Templates directory not found: {:?}",
+            templates_path
+        ));
     }
 
     let mut languages = Vec::new();
@@ -1300,7 +1531,8 @@ pub fn list_template_languages(app: AppHandle, templates_dir: Option<String>) ->
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            let dir_name = path.file_name()
+            let dir_name = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string();
@@ -1315,8 +1547,7 @@ pub fn list_template_languages(app: AppHandle, templates_dir: Option<String>) ->
             let name = if toml_path.exists() {
                 // Try to read the name from toml
                 if let Ok(content) = fs::read_to_string(&toml_path) {
-                    extract_toml_value(&content, "name")
-                        .unwrap_or_else(|| dir_name.clone())
+                    extract_toml_value(&content, "name").unwrap_or_else(|| dir_name.clone())
                 } else {
                     dir_name.clone()
                 }
@@ -1408,12 +1639,14 @@ pub fn list_template_files(
 
             for entry in entries {
                 let entry_path = entry.path();
-                let name = entry_path.file_name()
+                let name = entry_path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("")
                     .to_string();
 
-                let relative_path = entry_path.strip_prefix(base_path)
+                let relative_path = entry_path
+                    .strip_prefix(base_path)
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|_| name.clone());
 
@@ -1464,17 +1697,18 @@ pub fn read_template_file(
     let file_path = templates_path.join(&lang).join(&relative_path);
 
     // Security: ensure path doesn't escape the templates directory
-    let canonical_templates = templates_path.canonicalize()
+    let canonical_templates = templates_path
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve templates path: {}", e))?;
-    let canonical_file = file_path.canonicalize()
+    let canonical_file = file_path
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve file path: {}", e))?;
 
     if !canonical_file.starts_with(&canonical_templates) {
         return Err("Invalid path: access denied".to_string());
     }
 
-    fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))
+    fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
 /// Write a template file
@@ -1495,25 +1729,90 @@ pub fn write_template_file(
 
     // Security: ensure path doesn't escape the templates directory
     // For new files, check parent directory
-    let parent_path = file_path.parent()
-        .ok_or("Invalid file path")?;
+    let parent_path = file_path.parent().ok_or("Invalid file path")?;
 
     if !parent_path.exists() {
         fs::create_dir_all(parent_path)
             .map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
-    let canonical_templates = templates_path.canonicalize()
+    let canonical_templates = templates_path
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve templates path: {}", e))?;
-    let canonical_parent = parent_path.canonicalize()
+    let canonical_parent = parent_path
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve parent path: {}", e))?;
 
     if !canonical_parent.starts_with(&canonical_templates) {
         return Err("Invalid path: access denied".to_string());
     }
 
-    fs::write(&file_path, content)
-        .map_err(|e| format!("Failed to write file: {}", e))
+    fs::write(&file_path, content).map_err(|e| format!("Failed to write file: {}", e))
+}
+
+/// Rename a template file within the same directory
+#[tauri::command]
+pub fn rename_template_file(
+    app: AppHandle,
+    lang: String,
+    relative_path: String,
+    new_name: String,
+    templates_dir: Option<String>,
+) -> Result<String, String> {
+    let trimmed_name = new_name.trim();
+    if trimmed_name.is_empty() {
+        return Err("New file name cannot be empty".to_string());
+    }
+    if trimmed_name.contains('/') || trimmed_name.contains('\\') {
+        return Err("New file name must not contain path separators".to_string());
+    }
+
+    let templates_path = match templates_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_default_templates_dir(&app)?,
+    };
+
+    let lang_path = templates_path.join(&lang);
+    let old_path = lang_path.join(&relative_path);
+
+    let canonical_templates = templates_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve templates path: {}", e))?;
+    let canonical_lang = lang_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve language path: {}", e))?;
+    let canonical_old = old_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve file path: {}", e))?;
+
+    if !canonical_lang.starts_with(&canonical_templates)
+        || !canonical_old.starts_with(&canonical_lang)
+    {
+        return Err("Invalid path: access denied".to_string());
+    }
+    if canonical_old.is_dir() {
+        return Err("Directory rename is not supported here".to_string());
+    }
+
+    let parent_path = old_path.parent().ok_or("Invalid file path")?;
+    let canonical_parent = parent_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve parent path: {}", e))?;
+    if !canonical_parent.starts_with(&canonical_lang) {
+        return Err("Invalid path: access denied".to_string());
+    }
+
+    let new_path = parent_path.join(trimmed_name);
+    if new_path.exists() {
+        return Err(format!("File already exists: {}", trimmed_name));
+    }
+
+    fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename file: {}", e))?;
+
+    let relative = new_path
+        .strip_prefix(&lang_path)
+        .map_err(|e| format!("Failed to resolve renamed path: {}", e))?;
+    Ok(relative.to_string_lossy().to_string())
 }
 
 /// Create a new language template
@@ -1543,7 +1842,8 @@ pub fn create_new_language(
         .map_err(|e| format!("Failed to create rhai_utils directory: {}", e))?;
 
     // Create .toml config file
-    let toml_content = format!(r#"[language]
+    let toml_content = format!(
+        r#"[language]
 id = "{}"
 name = "{}"
 version = "1.0"
@@ -1552,13 +1852,16 @@ version = "1.0"
 extension = "txt"
 namespace_separator = "."
 indent = "    "
-"#, lang_id, lang_name);
+"#,
+        lang_id, lang_name
+    );
 
     fs::write(lang_path.join(format!("{}.toml", lang_id)), toml_content)
         .map_err(|e| format!("Failed to create config file: {}", e))?;
 
     // Create main template file
-    let main_template = format!(r#"// {lang_name} Code Generator Template
+    let main_template = format!(
+        r#"// {lang_name} Code Generator Template
 // This is the main entry point for code generation.
 //
 // Available variables:
@@ -1615,10 +1918,15 @@ for ns in file.namespaces {{
         ``
     }}
 }}
-"#, lang_name = lang_name);
+"#,
+        lang_name = lang_name
+    );
 
-    fs::write(lang_path.join(format!("{}_file.rhai", lang_id)), main_template)
-        .map_err(|e| format!("Failed to create main template: {}", e))?;
+    fs::write(
+        lang_path.join(format!("{}_file.rhai", lang_id)),
+        main_template,
+    )
+    .map_err(|e| format!("Failed to create main template: {}", e))?;
 
     // Create type mapping utility
     let type_mapping = r#"// Type Mapping Utilities
@@ -1687,7 +1995,7 @@ pub fn create_new_language_v2(
     lang_id: String,
     lang_name: String,
     extension: String,
-    template_type: String,  // "ptpl" or "rhai"
+    template_type: String, // "ptpl" or "rhai"
     copy_from: Option<String>,
     type_map: std::collections::HashMap<String, String>,
     optional_format: String,
@@ -1728,14 +2036,21 @@ pub fn create_new_language_v2(
             let content = fs::read_to_string(&target_toml)
                 .map_err(|e| format!("Failed to read toml file: {}", e))?;
             let updated = content
-                .replace(&format!("id = \"{}\"", source_lang), &format!("id = \"{}\"", lang_id))
-                .replace(&format!("name = \"{}\"", source_lang), &format!("name = \"{}\"", lang_name));
+                .replace(
+                    &format!("id = \"{}\"", source_lang),
+                    &format!("id = \"{}\"", lang_id),
+                )
+                .replace(
+                    &format!("name = \"{}\"", source_lang),
+                    &format!("name = \"{}\"", lang_name),
+                );
             // Also update extension if present
             let ext_clean = extension.trim_start_matches('.');
             let updated = if updated.contains("extension = ") {
                 let re = regex::Regex::new(r#"extension\s*=\s*"[^"]*""#)
                     .map_err(|e| format!("Regex error: {}", e))?;
-                re.replace(&updated, &format!("extension = \"{}\"", ext_clean)).to_string()
+                re.replace(&updated, &format!("extension = \"{}\"", ext_clean))
+                    .to_string()
             } else {
                 updated
             };
@@ -1755,9 +2070,15 @@ pub fn create_new_language_v2(
 
         // Rename other prefixed files
         for suffix in [
-            "_loaders_file.ptpl", "_container_file.ptpl", "_sqlite_accessor_file.ptpl",
-            "_loaders_file.rhai", "_container_file.rhai", "_sqlite_accessor_file.rhai",
-            "_csv_columns_file.ptpl", "_hotreload_file.ptpl", "_zod_file.ptpl",
+            "_loaders_file.ptpl",
+            "_container_file.ptpl",
+            "_sqlite_accessor_file.ptpl",
+            "_loaders_file.rhai",
+            "_container_file.rhai",
+            "_sqlite_accessor_file.rhai",
+            "_csv_columns_file.ptpl",
+            "_hotreload_file.ptpl",
+            "_zod_file.ptpl",
         ] {
             let source_file = lang_path.join(format!("{}{}", source_lang, suffix));
             let target_file = lang_path.join(format!("{}{}", lang_id, suffix));
@@ -1780,13 +2101,15 @@ pub fn create_new_language_v2(
     let ext_clean = extension.trim_start_matches('.');
 
     // Build type map entries for toml
-    let type_map_toml: String = type_map.iter()
+    let type_map_toml: String = type_map
+        .iter()
         .map(|(k, v)| format!("{} = \"{}\"", k, v))
         .collect::<Vec<_>>()
         .join("\n");
 
     // Create .toml config file
-    let toml_content = format!(r#"[language]
+    let toml_content = format!(
+        r#"[language]
 id = "{lang_id}"
 name = "{lang_name}"
 version = "1.0"
@@ -1814,7 +2137,8 @@ list_format = "{list_fmt}"
 
     // Create main template file based on template type
     if template_type == "ptpl" {
-        let main_template = format!(r#"%-- {lang_name} Code Generator Template
+        let main_template = format!(
+            r#"%-- {lang_name} Code Generator Template
 %-- Generated by PolyGen Language Wizard
 
 %-- File header
@@ -1842,13 +2166,19 @@ enum {{{{enum.name}}}} {{{{
 
 %endfor
 %endfor
-"#, lang_name = lang_name);
+"#,
+            lang_name = lang_name
+        );
 
-        fs::write(lang_path.join(format!("{}_file.ptpl", lang_id)), main_template)
-            .map_err(|e| format!("Failed to create main template: {}", e))?;
+        fs::write(
+            lang_path.join(format!("{}_file.ptpl", lang_id)),
+            main_template,
+        )
+        .map_err(|e| format!("Failed to create main template: {}", e))?;
 
         // Create prelude.rhai for type mapping
-        let prelude = format!(r#"// {lang_name} Prelude - Type Mapping Functions
+        let prelude = format!(
+            r#"// {lang_name} Prelude - Type Mapping Functions
 // This file is loaded automatically before template rendering
 
 fn lang_type(type_ref) {{
@@ -1872,13 +2202,16 @@ fn lang_type(type_ref) {{
 
     mapped
 }}
-"#, lang_name = lang_name);
+"#,
+            lang_name = lang_name
+        );
 
         fs::write(lang_path.join("rhai_utils/prelude.rhai"), prelude)
             .map_err(|e| format!("Failed to create prelude: {}", e))?;
     } else {
         // Rhai template (legacy)
-        let main_template = format!(r#"// {lang_name} Code Generator Template
+        let main_template = format!(
+            r#"// {lang_name} Code Generator Template
 // This is the main entry point for code generation.
 //
 // Available variables:
@@ -1945,10 +2278,15 @@ fn map_type(type_ref) {{
 
     mapped
 }}
-"#, lang_name = lang_name);
+"#,
+            lang_name = lang_name
+        );
 
-        fs::write(lang_path.join(format!("{}_file.rhai", lang_id)), main_template)
-            .map_err(|e| format!("Failed to create main template: {}", e))?;
+        fs::write(
+            lang_path.join(format!("{}_file.rhai", lang_id)),
+            main_template,
+        )
+        .map_err(|e| format!("Failed to create main template: {}", e))?;
     }
 
     Ok(())
@@ -1956,11 +2294,10 @@ fn map_type(type_ref) {{
 
 /// Recursively copy a directory
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    fs::create_dir_all(dst)
-        .map_err(|e| format!("Failed to create directory {:?}: {}", dst, e))?;
+    fs::create_dir_all(dst).map_err(|e| format!("Failed to create directory {:?}: {}", dst, e))?;
 
-    for entry in fs::read_dir(src)
-        .map_err(|e| format!("Failed to read directory {:?}: {}", src, e))?
+    for entry in
+        fs::read_dir(src).map_err(|e| format!("Failed to read directory {:?}: {}", src, e))?
     {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let src_path = entry.path();
@@ -1993,9 +2330,11 @@ pub fn delete_template_file(
     let file_path = templates_path.join(&lang).join(&relative_path);
 
     // Security: ensure path doesn't escape the templates directory
-    let canonical_templates = templates_path.canonicalize()
+    let canonical_templates = templates_path
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve templates path: {}", e))?;
-    let canonical_file = file_path.canonicalize()
+    let canonical_file = file_path
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve file path: {}", e))?;
 
     if !canonical_file.starts_with(&canonical_templates) {
@@ -2008,11 +2347,9 @@ pub fn delete_template_file(
     }
 
     if file_path.is_dir() {
-        fs::remove_dir_all(&file_path)
-            .map_err(|e| format!("Failed to delete directory: {}", e))
+        fs::remove_dir_all(&file_path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
-        fs::remove_file(&file_path)
-            .map_err(|e| format!("Failed to delete file: {}", e))
+        fs::remove_file(&file_path).map_err(|e| format!("Failed to delete file: {}", e))
     }
 }
 
@@ -2033,16 +2370,19 @@ pub fn preview_template(
         Some(dir) => PathBuf::from(dir),
         None => get_default_templates_dir(&app)?,
     };
-    let resolved_templates = resolved_templates.canonicalize()
+    let resolved_templates = resolved_templates
+        .canonicalize()
         .map_err(|e| format!("Templates directory not found: {}", e))?;
 
     // Resolve schema path to absolute as well
-    let resolved_schema = PathBuf::from(&schema_path).canonicalize()
+    let resolved_schema = PathBuf::from(&schema_path)
+        .canonicalize()
         .map_err(|e| format!("Schema file not found: {}: {}", schema_path, e))?;
 
     // Set working directory to the parent of the templates directory (project root)
     // so that Rhai `import "templates/..."` paths resolve correctly.
-    let project_root = resolved_templates.parent()
+    let project_root = resolved_templates
+        .parent()
         .ok_or_else(|| "Cannot determine project root from templates directory".to_string())?;
 
     let mut cmd = Command::new(&polygen);
@@ -2056,7 +2396,9 @@ pub fn preview_template(
         .arg(&resolved_templates)
         .arg("--preview");
 
-    let output = cmd.output().map_err(|e| format!("Failed to execute polygen: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute polygen: {}", e))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -2131,14 +2473,16 @@ pub fn read_language_config(
         return Err(format!("Configuration file not found: {:?}", toml_path));
     }
 
-    let content = fs::read_to_string(&toml_path)
-        .map_err(|e| format!("Failed to read config file: {}", e))?;
+    let content =
+        fs::read_to_string(&toml_path).map_err(|e| format!("Failed to read config file: {}", e))?;
 
-    let toml_value: toml::Value = content.parse()
+    let toml_value: toml::Value = content
+        .parse()
         .map_err(|e| format!("Failed to parse TOML: {}", e))?;
 
     // Extract extension
-    let extension = toml_value.get("extension")
+    let extension = toml_value
+        .get("extension")
         .and_then(|v| v.as_str())
         .unwrap_or(".txt")
         .to_string();
@@ -2209,15 +2553,19 @@ pub fn write_language_config(
     }
 
     // Read existing content to preserve other settings
-    let content = fs::read_to_string(&toml_path)
-        .map_err(|e| format!("Failed to read config file: {}", e))?;
+    let content =
+        fs::read_to_string(&toml_path).map_err(|e| format!("Failed to read config file: {}", e))?;
 
-    let mut toml_value: toml::Value = content.parse()
+    let mut toml_value: toml::Value = content
+        .parse()
         .map_err(|e| format!("Failed to parse TOML: {}", e))?;
 
     // Update extension
     if let Some(table) = toml_value.as_table_mut() {
-        table.insert("extension".to_string(), toml::Value::String(config.extension));
+        table.insert(
+            "extension".to_string(),
+            toml::Value::String(config.extension),
+        );
     }
 
     // Update type_map
@@ -2231,12 +2579,18 @@ pub fn write_language_config(
 
         // Add optional format
         let mut optional_table = toml::value::Table::new();
-        optional_table.insert("format".to_string(), toml::Value::String(config.optional_format));
+        optional_table.insert(
+            "format".to_string(),
+            toml::Value::String(config.optional_format),
+        );
         type_map_table.insert("optional".to_string(), toml::Value::Table(optional_table));
 
         // Add list format
         let mut list_table = toml::value::Table::new();
-        list_table.insert("format".to_string(), toml::Value::String(config.list_format));
+        list_table.insert(
+            "format".to_string(),
+            toml::Value::String(config.list_format),
+        );
         type_map_table.insert("list".to_string(), toml::Value::Table(list_table));
 
         // Add non_primitive format if present
@@ -2253,8 +2607,7 @@ pub fn write_language_config(
     let output = toml::to_string_pretty(&toml_value)
         .map_err(|e| format!("Failed to serialize TOML: {}", e))?;
 
-    fs::write(&toml_path, output)
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
+    fs::write(&toml_path, output).map_err(|e| format!("Failed to write config file: {}", e))?;
 
     Ok(())
 }

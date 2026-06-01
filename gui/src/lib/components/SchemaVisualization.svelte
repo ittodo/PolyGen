@@ -10,6 +10,7 @@
     isPrimaryKey: boolean;
     isUnique: boolean;
     isForeignKey: boolean;
+    foreignKeyTarget: string | null;
     constraints: string[];
   }
 
@@ -266,6 +267,61 @@
     return badges;
   }
 
+  function getTableSummary(table: TableVisualization) {
+    return {
+      primaryKeys: table.fields.filter((field) => field.isPrimaryKey).length,
+      foreignKeys: table.fields.filter((field) => field.isForeignKey).length,
+      uniqueFields: table.fields.filter((field) => field.isUnique && !field.isPrimaryKey).length,
+      optionalFields: table.fields.filter((field) => field.isOptional).length,
+      constrainedFields: table.fields.filter((field) => field.constraints.length > 0).length,
+      relationCount: table.referencedBy.length + table.references.length,
+    };
+  }
+
+  function getConstraintKind(constraint: string): string {
+    if (constraint === "primary_key") return "primary-key";
+    if (constraint === "unique") return "unique";
+    if (constraint.startsWith("max_length")) return "max-length";
+    if (constraint.startsWith("range")) return "range";
+    if (constraint.startsWith("regex")) return "regex";
+    if (constraint.startsWith("default")) return "default";
+    return "other";
+  }
+
+  function getConstraintLabel(constraint: string): string {
+    if (constraint === "primary_key") return "primary key";
+    return constraint;
+  }
+
+  function getTypeNameFromFqn(fqn: string | null): string {
+    if (!fqn) return "";
+    const parts = fqn.split(".");
+    return parts[parts.length - 1] || fqn;
+  }
+
+  function getRelatedField(table: TableVisualization, fieldName: string): FieldVisualization | null {
+    return table.fields.find((field) => field.name === fieldName) ?? null;
+  }
+
+  function isConnectedToSelection(table: TableVisualization): boolean {
+    if (!selectedTable || selectedTable.fqn === table.fqn) return false;
+    return (
+      selectedTable.references.some((ref) => ref.tableFqn === table.fqn) ||
+      selectedTable.referencedBy.some((ref) => ref.tableFqn === table.fqn)
+    );
+  }
+
+  function isDimmedBySelection(table: TableVisualization): boolean {
+    return Boolean(selectedTable && selectedTable.fqn !== table.fqn && !isConnectedToSelection(table));
+  }
+
+  function isSelectedRelation(arrow: { fromFqn: string; toFqn: string }): boolean {
+    return Boolean(
+      selectedTable &&
+        (selectedTable.fqn === arrow.fromFqn || selectedTable.fqn === arrow.toFqn)
+    );
+  }
+
   // Diagram pan/zoom handlers
   function handleWheel(e: WheelEvent) {
     e.preventDefault();
@@ -423,6 +479,7 @@
 
         <!-- Main visualization area with three columns -->
         {#if selectedTable}
+          {@const tableSummary = getTableSummary(selectedTable)}
           <div class="detail-view">
             <!-- Left: Referenced By (tables that reference this table) -->
             <div class="ref-column left">
@@ -453,24 +510,56 @@
               <div class="table-header">
                 <h2>{selectedTable.name}</h2>
                 <div class="table-fqn">{selectedTable.fqn}</div>
-                {#if selectedTable.metadata.datasource}
-                  <span class="metadata-badge datasource">
-                    @{selectedTable.metadata.datasource}
+                <div class="metadata-badges">
+                  <span class="metadata-badge namespace">
+                    ns: {selectedTable.namespace || "(root)"}
                   </span>
-                {/if}
-                {#if selectedTable.metadata.isReadonly}
-                  <span class="metadata-badge readonly">readonly</span>
-                {/if}
-                {#if selectedTable.metadata.cacheStrategy}
-                  <span class="metadata-badge cache">
-                    cache: {selectedTable.metadata.cacheStrategy}
-                  </span>
-                {/if}
-                {#if selectedTable.metadata.softDeleteField}
-                  <span class="metadata-badge soft-delete">
-                    soft_delete: {selectedTable.metadata.softDeleteField}
-                  </span>
-                {/if}
+                  {#if selectedTable.metadata.datasource}
+                    <span class="metadata-badge datasource">
+                      @{selectedTable.metadata.datasource}
+                    </span>
+                  {/if}
+                  {#if selectedTable.metadata.isReadonly}
+                    <span class="metadata-badge readonly">readonly</span>
+                  {/if}
+                  {#if selectedTable.metadata.cacheStrategy}
+                    <span class="metadata-badge cache">
+                      cache: {selectedTable.metadata.cacheStrategy}
+                    </span>
+                  {/if}
+                  {#if selectedTable.metadata.softDeleteField}
+                    <span class="metadata-badge soft-delete">
+                      soft_delete: {selectedTable.metadata.softDeleteField}
+                    </span>
+                  {/if}
+                </div>
+              </div>
+
+              <div class="table-summary-grid" aria-label="Selected table summary">
+                <div class="summary-item">
+                  <span class="summary-value">{selectedTable.fields.length}</span>
+                  <span class="summary-label">Fields</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-value">{tableSummary.primaryKeys}</span>
+                  <span class="summary-label">Primary keys</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-value">{tableSummary.foreignKeys}</span>
+                  <span class="summary-label">Foreign keys</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-value">{tableSummary.relationCount}</span>
+                  <span class="summary-label">Relations</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-value">{selectedTable.indexes.length}</span>
+                  <span class="summary-label">Indexes</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-value">{tableSummary.constrainedFields}</span>
+                  <span class="summary-label">Constrained</span>
+                </div>
               </div>
 
               <div class="fields-section">
@@ -487,18 +576,36 @@
                     {#each selectedTable.fields as field}
                       <tr class:pk={field.isPrimaryKey} class:fk={field.isForeignKey}>
                         <td class="field-name">
-                          {field.name}
-                          {#each getFieldBadges(field) as badge}
-                            <span class="field-badge {badge.toLowerCase()}">{badge}</span>
-                          {/each}
+                          <div class="field-name-row">
+                            <span>{field.name}</span>
+                            {#each getFieldBadges(field) as badge}
+                              <span class="field-badge {badge.toLowerCase()}">{badge}</span>
+                            {/each}
+                          </div>
+                          {#if field.foreignKeyTarget}
+                            <button
+                              class="field-target"
+                              onclick={() => navigateToTable(field.foreignKeyTarget || "")}
+                              type="button"
+                              title={field.foreignKeyTarget}
+                            >
+                              → {getTypeNameFromFqn(field.foreignKeyTarget)}
+                            </button>
+                          {/if}
                         </td>
                         <td class="field-type">
                           <code>{getFieldTypeDisplay(field)}</code>
                         </td>
                         <td class="field-constraints">
-                          {#each field.constraints as constraint}
-                            <span class="constraint">{constraint}</span>
-                          {/each}
+                          {#if field.constraints.length === 0}
+                            <span class="constraint-empty">none</span>
+                          {:else}
+                            {#each field.constraints as constraint}
+                              <span class="constraint {getConstraintKind(constraint)}">
+                                {getConstraintLabel(constraint)}
+                              </span>
+                            {/each}
+                          {/if}
                         </td>
                       </tr>
                     {/each}
@@ -520,6 +627,42 @@
                           ({idx.fields.join(", ")})
                         </span>
                       </div>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+
+              {#if selectedTable.references.length > 0 || selectedTable.referencedBy.length > 0}
+                <div class="relationship-section">
+                  <h4>Relationship Map</h4>
+                  <div class="relationship-list">
+                    {#each selectedTable.references as ref}
+                      {@const sourceField = getRelatedField(selectedTable, ref.fieldName)}
+                      <button
+                        class="relationship-item outgoing"
+                        onclick={() => navigateToTable(ref.tableFqn)}
+                        type="button"
+                      >
+                        <span class="relationship-direction">out</span>
+                        <span class="relationship-main">
+                          {selectedTable.name}.{ref.fieldName}
+                          {#if sourceField}
+                            <code>{getFieldTypeDisplay(sourceField)}</code>
+                          {/if}
+                        </span>
+                        <span class="relationship-target">→ {ref.tableName}</span>
+                      </button>
+                    {/each}
+                    {#each selectedTable.referencedBy as ref}
+                      <button
+                        class="relationship-item incoming"
+                        onclick={() => navigateToTable(ref.tableFqn)}
+                        type="button"
+                      >
+                        <span class="relationship-direction">in</span>
+                        <span class="relationship-main">{ref.tableName}.{ref.fieldName}</span>
+                        <span class="relationship-target">→ {selectedTable.name}</span>
+                      </button>
                     {/each}
                   </div>
                 </div>
@@ -615,6 +758,8 @@
             {#each arrows() as arrow}
               <path
                 class="relation-arrow"
+                class:highlighted={isSelectedRelation(arrow)}
+                class:dimmed={selectedTable && !isSelectedRelation(arrow)}
                 d={getArrowPathFromPoints(arrow.points)}
                 marker-end="url(#arrowhead)"
               />
@@ -629,6 +774,8 @@
                 <g
                   class="table-box"
                   class:selected={selectedTable?.fqn === table.fqn}
+                  class:connected={isConnectedToSelection(table)}
+                  class:dimmed={isDimmedBySelection(table)}
                   onclick={() => selectTable(table)}
                 >
                   <!-- Box background -->
@@ -1071,13 +1218,24 @@
     font-family: monospace;
   }
 
+  .metadata-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+  }
+
   .metadata-badge {
     display: inline-block;
     font-size: 0.75rem;
     padding: 0.125rem 0.5rem;
     border-radius: 4px;
-    margin-top: 0.5rem;
-    margin-right: 0.25rem;
+  }
+
+  .metadata-badge.namespace {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
   }
 
   .metadata-badge.datasource {
@@ -1100,8 +1258,39 @@
     color: #ef4444;
   }
 
+  .table-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.625rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .summary-value {
+    color: var(--accent);
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .summary-label {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   .fields-section h4,
-  .indexes-section h4 {
+  .indexes-section h4,
+  .relationship-section h4 {
     font-size: 0.875rem;
     color: var(--text-secondary);
     margin: 0 0 0.5rem 0;
@@ -1138,11 +1327,17 @@
     font-weight: 500;
   }
 
+  .field-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
   .field-badge {
     font-size: 0.625rem;
     padding: 0.125rem 0.25rem;
     border-radius: 2px;
-    margin-left: 0.25rem;
     font-weight: 600;
   }
 
@@ -1168,6 +1363,22 @@
     font-size: 0.8125rem;
   }
 
+  .field-target {
+    display: inline-flex;
+    margin-top: 0.25rem;
+    padding: 0.125rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: inherit;
+  }
+
+  .field-target:hover {
+    text-decoration: underline;
+  }
+
   .field-constraints {
     display: flex;
     flex-wrap: wrap;
@@ -1180,9 +1391,48 @@
     padding: 0.125rem 0.375rem;
     border-radius: 2px;
     color: var(--text-secondary);
+    border: 1px solid var(--border);
   }
 
-  .indexes-section {
+  .constraint.primary-key {
+    background: #3b82f620;
+    color: #3b82f6;
+    border-color: #3b82f650;
+  }
+
+  .constraint.unique {
+    background: #10b98120;
+    color: #10b981;
+    border-color: #10b98150;
+  }
+
+  .constraint.max-length,
+  .constraint.range {
+    background: #8b5cf620;
+    color: #8b5cf6;
+    border-color: #8b5cf650;
+  }
+
+  .constraint.regex {
+    background: #f59e0b20;
+    color: #d97706;
+    border-color: #f59e0b50;
+  }
+
+  .constraint.default {
+    background: #14b8a620;
+    color: #0d9488;
+    border-color: #14b8a650;
+  }
+
+  .constraint-empty {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    opacity: 0.65;
+  }
+
+  .indexes-section,
+  .relationship-section {
     margin-top: 1rem;
   }
 
@@ -1213,6 +1463,74 @@
 
   .index-fields {
     color: var(--text-secondary);
+  }
+
+  .relationship-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .relationship-item {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .relationship-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+  }
+
+  .relationship-direction {
+    justify-self: start;
+    padding: 0.125rem 0.375rem;
+    border-radius: 3px;
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .relationship-item.outgoing .relationship-direction {
+    background: #f59e0b;
+  }
+
+  .relationship-item.incoming .relationship-direction {
+    background: #3b82f6;
+  }
+
+  .relationship-main {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .relationship-main code {
+    margin-left: 0.375rem;
+    padding: 0.125rem 0.25rem;
+    background: var(--bg-primary);
+    border-radius: 2px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+  }
+
+  .relationship-target {
+    color: var(--accent);
+    font-size: 0.8125rem;
+    white-space: nowrap;
   }
 
   /* Diagram View Styles */
@@ -1298,8 +1616,26 @@
     opacity: 0.6;
   }
 
+  .relation-arrow.highlighted {
+    stroke-width: 3;
+    opacity: 1;
+  }
+
+  .relation-arrow.dimmed {
+    opacity: 0.16;
+  }
+
   .table-box {
     cursor: pointer;
+  }
+
+  .table-box.dimmed {
+    opacity: 0.35;
+  }
+
+  .table-box.connected .table-rect {
+    stroke: #10b981;
+    stroke-width: 2;
   }
 
   .table-box:hover .table-rect {

@@ -24,6 +24,7 @@
     onSelectLang: (lang: string) => void;
     onSelectFile: (file: TemplateFileInfo) => void;
     onCreateLanguage: () => void;
+    onRenameFile?: (file: TemplateFileInfo) => void;
   }
 
   let {
@@ -34,6 +35,7 @@
     onSelectLang,
     onSelectFile,
     onCreateLanguage,
+    onRenameFile,
   }: Props = $props();
 
   let languages = $state<TemplateLanguageInfo[]>([]);
@@ -171,10 +173,26 @@
     onclick={() => handleFileClick(file)}
     onkeydown={(e) => e.key === 'Enter' && handleFileClick(file)}
     role="treeitem"
+    aria-selected={file.relative_path === selectedFile}
+    aria-expanded={file.is_directory ? expandedDirs.has(file.relative_path) : undefined}
     tabindex="0"
   >
     <span class="icon {getFileIcon(file)}"></span>
     <span class="name">{file.name}</span>
+    {#if !file.is_directory && onRenameFile}
+      <button
+        class="row-action"
+        onclick={(event) => {
+          event.stopPropagation();
+          onRenameFile?.(file);
+        }}
+        onkeydown={(event) => event.stopPropagation()}
+        title="Rename file"
+        type="button"
+      >
+        Rename
+      </button>
+    {/if}
   </div>
 
   {#if file.is_directory && expandedDirs.has(file.relative_path)}
@@ -327,5 +345,30 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .row-action {
+    display: none;
+    flex-shrink: 0;
+    padding: 0.125rem 0.375rem;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.6875rem;
+  }
+
+  .file-item:hover .row-action,
+  .file-item:focus-within .row-action {
+    display: inline-flex;
+  }
+
+  .file-item.selected .row-action {
+    color: white;
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.5);
   }
 </style>

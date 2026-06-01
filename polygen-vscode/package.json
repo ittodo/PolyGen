@@ -4,6 +4,11 @@
   "description": "Language support for PolyGen schema files (.poly)",
   "version": "0.1.0",
   "publisher": "polygen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/ittodo/PolyGen.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },

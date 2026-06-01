@@ -232,8 +232,9 @@
         <p class="hint">Use <code>{`{{type}}`}</code> as placeholder</p>
 
         <div class="format-group">
-          <label>Optional:</label>
+          <label for="optional-format">Optional:</label>
           <input
+            id="optional-format"
             type="text"
             bind:value={optionalFormat}
             placeholder={`{{type}}?`}
@@ -241,8 +242,9 @@
         </div>
 
         <div class="format-group">
-          <label>List/Array:</label>
+          <label for="list-format">List/Array:</label>
           <input
+            id="list-format"
             type="text"
             bind:value={listFormat}
             placeholder={`{{type}}[]`}
@@ -250,8 +252,9 @@
         </div>
 
         <div class="format-group">
-          <label>Non-primitive:</label>
+          <label for="non-primitive-format">Non-primitive:</label>
           <input
+            id="non-primitive-format"
             type="text"
             bind:value={nonPrimitiveFormat}
             placeholder={`{{type}}`}

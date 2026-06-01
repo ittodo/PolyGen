@@ -8,6 +8,8 @@ Visual Studio Code extension for PolyGen schema language (`.poly` files).
 - **Diagnostics**: Real-time error detection via LSP
 - **Autocompletion**: Keywords, types, constraints
 - **Hover Documentation**: Inline documentation for language elements
+- **Navigation**: Go to definition, find references, document symbols
+- **Rename**: Symbol rename support for types and references
 
 ## Installation
 
@@ -33,6 +35,17 @@ Visual Studio Code extension for PolyGen schema language (`.poly` files).
    - Open VS Code
    - Press `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
    - Select the generated `polygen-vscode-0.1.0.vsix`
+
+### Packaging Check
+
+```bash
+cd polygen-vscode
+npm install
+npm run compile
+npm run package
+```
+
+The packaged VSIX must include `out/extension.js`, `syntaxes/poly.tmLanguage.json`, and production dependencies such as `vscode-languageclient`. The current package step has been verified with `vsce package`.
 
 ### From Source (Development)
 
@@ -85,12 +98,12 @@ namespace game.character {
 ## Known Issues
 
 - LSP features require the `polygen-lsp` binary to be installed separately
-- Go to definition not yet implemented
+- Code formatting is not implemented yet
 
 ## Roadmap
 
-- [ ] Go to definition
-- [ ] Find all references
-- [ ] Rename symbol
+- [x] Go to definition
+- [x] Find all references
+- [x] Rename symbol
 - [ ] Code formatting
 - [ ] Snippets

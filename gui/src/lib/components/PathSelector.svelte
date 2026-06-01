@@ -4,7 +4,13 @@
     name: string;
     timestamp: number;
     output_dir?: string;
+    templates_dir?: string;
     languages?: string[];
+    migration_source?: string;
+    baseline_path?: string;
+    db_path?: string;
+    migration_target?: string;
+    schema_hash_policy?: string;
   }
 
   interface Props {
@@ -20,6 +26,7 @@
 
   let showDropdown = $state(false);
   let dropdownRef = $state<HTMLDivElement | null>(null);
+  const inputId = `path-selector-${Math.random().toString(36).slice(2)}`;
 
   function toggleDropdown() {
     if (recentProjects.length > 0) {
@@ -72,9 +79,9 @@
 </script>
 
 <div class="path-selector">
-  <label>{label}</label>
+  <label for={inputId}>{label}</label>
   <div class="input-group" bind:this={dropdownRef}>
-    <input type="text" {value} {placeholder} readonly />
+    <input id={inputId} type="text" {value} {placeholder} readonly />
     {#if recentProjects.length > 0}
       <button
         class="dropdown-btn"

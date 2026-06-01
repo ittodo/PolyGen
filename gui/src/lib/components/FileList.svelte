@@ -21,17 +21,18 @@
   {:else}
     <ul>
       {#each files as file}
-        <li
-          class:open={openPaths.includes(file.path)}
-          class:active={file.path === activePath}
-          onclick={() => onFileClick(file.path)}
-          onkeydown={(e) => e.key === "Enter" && onFileClick(file.path)}
-          title={file.path}
-          role="button"
-          tabindex="0"
-        >
-          <span class="icon">{openPaths.includes(file.path) ? "📄" : "📁"}</span>
-          <span class="name">{file.name}</span>
+        <li>
+          <button
+            class="file-entry"
+            class:open={openPaths.includes(file.path)}
+            class:active={file.path === activePath}
+            onclick={() => onFileClick(file.path)}
+            title={file.path}
+            type="button"
+          >
+            <span class="icon">{openPaths.includes(file.path) ? "📄" : "📁"}</span>
+            <span class="name">{file.name}</span>
+          </button>
         </li>
       {/each}
     </ul>
@@ -67,27 +68,31 @@
     gap: 2px;
   }
 
-  li {
+  .file-entry {
     display: flex;
     align-items: center;
     gap: 6px;
+    width: 100%;
     padding: 4px 8px;
     border-radius: 4px;
+    border: 0;
+    background: none;
     cursor: pointer;
     font-size: 0.75rem;
     color: var(--text-secondary);
+    text-align: left;
     transition: background-color 0.15s;
   }
 
-  li:hover {
+  .file-entry:hover {
     background-color: var(--bg-hover);
   }
 
-  li.open {
+  .file-entry.open {
     color: var(--text-primary);
   }
 
-  li.active {
+  .file-entry.active {
     background-color: var(--bg-hover);
     color: var(--accent);
   }

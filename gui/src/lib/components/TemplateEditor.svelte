@@ -20,6 +20,12 @@
     template?: string;
   }
 
+  interface TemplatePreviewError {
+    template: string;
+    line: number;
+    message: string;
+  }
+
   /** A block of code within a preview file, annotated with its source template */
   interface SourceBlock {
     /** The template that generated this block (undefined = unmarked code) */
@@ -75,6 +81,7 @@
   // Preview state
   let previewFiles = $state<PreviewFile[]>([]);
   let selectedPreviewFile = $state<number>(0);
+  let previewErrors = $state<TemplatePreviewError[]>([]);
 
   // Source block hover state (rhai marker-based)
   let hoveredBlockIndex = $state<number | null>(null);
@@ -245,6 +252,40 @@
     return files;
   }
 
+  function parseTemplateErrors(raw: string): TemplatePreviewError[] {
+    const errors: TemplatePreviewError[] = [];
+    const seen = new Set<string>();
+    const pattern = /(?:^|\s)([A-Za-z0-9_.\\/-]+\.(?:ptpl|rhai)):(\d+):\s*([^\r\n]*)/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(raw)) !== null) {
+      const template = normalizeTemplatePath(match[1]);
+      const line = Number.parseInt(match[2], 10);
+      const message = (match[3] || "").trim();
+      const key = `${template}:${line}:${message}`;
+      if (!Number.isFinite(line) || seen.has(key)) continue;
+
+      seen.add(key);
+      errors.push({ template, line, message });
+    }
+
+    return errors;
+  }
+
+  function normalizeTemplatePath(path: string): string {
+    let normalized = path.replace(/\\/g, "/");
+    const templatesMarker = `/templates/${selectedLang}/`;
+    const markerIndex = normalized.indexOf(templatesMarker);
+    if (markerIndex >= 0) {
+      return normalized.slice(markerIndex + templatesMarker.length);
+    }
+    const langPrefix = `${selectedLang}/`;
+    if (normalized.startsWith(langPrefix)) {
+      return normalized.slice(langPrefix.length);
+    }
+    return normalized;
+  }
+
   async function handleSelectLang(lang: string) {
     if (isModified) {
       const shouldSave = confirm("Save changes to current file?");
@@ -256,6 +297,7 @@
     originalContent = "";
     previewFiles = [];
     selectedPreviewFile = 0;
+    previewErrors = [];
     isModified = false;
     currentFile = null;
     showPreviewPanel = false;
@@ -334,6 +376,51 @@
     }
   }
 
+  async function handleRenameFile(file: TemplateFileInfo) {
+    if (file.is_directory || !selectedLang) return;
+
+    const newName = prompt("Rename template file", file.name);
+    if (!newName || newName.trim() === file.name) return;
+
+    const isCurrentFile = currentFile?.relative_path === file.relative_path;
+    if (isCurrentFile && isModified) {
+      const shouldSave = confirm("Save changes before renaming?");
+      if (shouldSave) {
+        await saveFile();
+      } else {
+        return;
+      }
+    }
+
+    try {
+      const newRelativePath = await invoke<string>("rename_template_file", {
+        lang: selectedLang,
+        relativePath: file.relative_path,
+        newName,
+        templatesDir: templatesDir || null,
+      });
+
+      languageRefreshKey++;
+
+      if (isCurrentFile) {
+        const renamedFile = {
+          ...file,
+          name: newName.trim(),
+          relative_path: newRelativePath,
+          path: newRelativePath,
+        };
+        selectedFile = newRelativePath;
+        currentFile = renamedFile;
+      } else if (selectedFile === file.relative_path) {
+        selectedFile = newRelativePath;
+      }
+
+      log(`Renamed: ${file.name} -> ${newName.trim()}`);
+    } catch (e) {
+      log(`ERROR: Failed to rename file - ${e}`);
+    }
+  }
+
   function togglePreviewPanel() {
     if (showPreviewPanel) {
       showPreviewPanel = false;
@@ -367,6 +454,7 @@
         : null;
 
       previewFiles = parsePreviewOutput(result);
+      previewErrors = [];
 
       // Restore previously selected file by name
       if (previousFileName) {
@@ -379,7 +467,9 @@
       showPreviewPanel = true;
       log(`Preview generated: ${previewFiles.length} files`);
     } catch (e) {
-      previewFiles = [{ name: "Error", content: `Error generating preview:\n${e}` }];
+      const errorText = `Error generating preview:\n${e}`;
+      previewFiles = [{ name: "Error", content: errorText }];
+      previewErrors = parseTemplateErrors(errorText);
       selectedPreviewFile = 0;
       showPreviewPanel = true;
       log(`ERROR: Preview failed - ${e}`);
@@ -565,6 +655,7 @@
       onSelectLang={handleSelectLang}
       onSelectFile={handleSelectFile}
       onCreateLanguage={openNewLangWizard}
+      onRenameFile={handleRenameFile}
     />
   </div>
 
@@ -726,7 +817,24 @@
                   {/if}
                 </div>
                 <div class="preview-code-container">
-                  {#if usesPtplSourceMap}
+                  {#if previewFiles[selectedPreviewFile].name === "Error" && previewErrors.length > 0}
+                    <div class="preview-error-links">
+                      {#each previewErrors as err}
+                        <button
+                          class="preview-error-link"
+                          onclick={() => navigateToTemplate(err.template, err.line)}
+                          title={err.message || `${err.template}:${err.line}`}
+                          type="button"
+                        >
+                          <span>{err.template}:{err.line}</span>
+                          {#if err.message}
+                            <small>{err.message}</small>
+                          {/if}
+                        </button>
+                      {/each}
+                    </div>
+                    <pre class="preview-block error-output">{previewFiles[selectedPreviewFile].content}</pre>
+                  {:else if usesPtplSourceMap}
                     <!-- Line-level source map rendering (ptpl engine) -->
                     <table class="source-map-table">
                       <tbody>
@@ -1202,6 +1310,52 @@
     border-left: 3px solid transparent;
     position: relative;
     transition: background-color 0.15s, border-color 0.15s;
+  }
+
+  .preview-block.error-output {
+    padding: 0.75rem;
+    color: var(--error);
+    white-space: pre-wrap;
+  }
+
+  .preview-error-links {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-secondary);
+  }
+
+  .preview-error-link {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+    padding: 0.5rem;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--error);
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .preview-error-link:hover {
+    border-color: var(--error);
+    background-color: var(--bg-hover);
+  }
+
+  .preview-error-link span {
+    color: var(--error);
+    font-family: "Consolas", "Monaco", monospace;
+    font-size: 0.75rem;
+  }
+
+  .preview-error-link small {
+    color: var(--text-secondary);
+    font-size: 0.6875rem;
   }
 
   .preview-block:not(.unmarked) {

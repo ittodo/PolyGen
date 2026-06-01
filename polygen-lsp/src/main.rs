@@ -1,6 +1,7 @@
 mod symbol_table;
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -53,7 +54,11 @@ impl Backend {
         }
     }
 
-    fn get_diagnostics(&self, content: &str, file_path: Option<&std::path::Path>) -> Vec<Diagnostic> {
+    fn get_diagnostics(
+        &self,
+        content: &str,
+        file_path: Option<&std::path::Path>,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let content = content.replace("\r\n", "\n");
 
@@ -69,7 +74,8 @@ impl Backend {
                             if let Err(e) = validation::validate_ast(&ast.definitions) {
                                 // Skip TypeNotFound errors when file_path is provided,
                                 // as the symbol table validation handles imports properly
-                                let is_type_not_found = matches!(&e, polygen::error::ValidationError::TypeNotFound(_));
+                                let is_type_not_found =
+                                    matches!(&e, polygen::error::ValidationError::TypeNotFound(_));
                                 if !is_type_not_found || file_path.is_none() {
                                     diagnostics.push(Diagnostic {
                                         range: Range {
@@ -103,7 +109,8 @@ impl Backend {
                                             range: Range {
                                                 start: Position {
                                                     line: (reference.span.start_line - 1) as u32,
-                                                    character: (reference.span.start_col - 1) as u32,
+                                                    character: (reference.span.start_col - 1)
+                                                        as u32,
                                                 },
                                                 end: Position {
                                                     line: (reference.span.end_line - 1) as u32,
@@ -111,7 +118,10 @@ impl Backend {
                                                 },
                                             },
                                             severity: Some(DiagnosticSeverity::ERROR),
-                                            message: format!("Unresolved reference: '{}'", reference.path),
+                                            message: format!(
+                                                "Unresolved reference: '{}'",
+                                                reference.path
+                                            ),
                                             source: Some("polygen".to_string()),
                                             ..Default::default()
                                         });
@@ -121,15 +131,15 @@ impl Backend {
                         }
                         Err(e) => {
                             let (line, col, msg) = match &e {
-                                polygen::error::AstBuildError::InvalidValue { line, col, .. } => {
-                                    (*line, *col, e.to_string())
-                                }
-                                polygen::error::AstBuildError::UnexpectedRule { line, col, .. } => {
-                                    (*line, *col, e.to_string())
-                                }
-                                polygen::error::AstBuildError::MissingElement { line, col, .. } => {
-                                    (*line, *col, e.to_string())
-                                }
+                                polygen::error::AstBuildError::InvalidValue {
+                                    line, col, ..
+                                } => (*line, *col, e.to_string()),
+                                polygen::error::AstBuildError::UnexpectedRule {
+                                    line, col, ..
+                                } => (*line, *col, e.to_string()),
+                                polygen::error::AstBuildError::MissingElement {
+                                    line, col, ..
+                                } => (*line, *col, e.to_string()),
                             };
                             diagnostics.push(Diagnostic {
                                 range: Range {
@@ -178,7 +188,12 @@ impl Backend {
         diagnostics
     }
 
-    fn get_completions(&self, content: &str, position: Position, symbol_table: Option<&SymbolTable>) -> Vec<CompletionItem> {
+    fn get_completions(
+        &self,
+        content: &str,
+        position: Position,
+        symbol_table: Option<&SymbolTable>,
+    ) -> Vec<CompletionItem> {
         let mut items = Vec::new();
 
         // Determine context by analyzing current line
@@ -203,12 +218,28 @@ impl Backend {
         // Annotations (only at start of line)
         if in_annotation || before_cursor.trim().is_empty() {
             let annotations = [
-                ("@load(csv: \"$1\", json: \"$2\")", "@load", "Specify data loading sources"),
-                ("@cache($1)", "@cache", "Enable caching (full_load, on_demand, write_through)"),
+                (
+                    "@load(csv: \"$1\", json: \"$2\")",
+                    "@load",
+                    "Specify data loading sources",
+                ),
+                (
+                    "@cache($1)",
+                    "@cache",
+                    "Enable caching (full_load, on_demand, write_through)",
+                ),
                 ("@readonly", "@readonly", "Mark table as read-only"),
                 ("@taggable", "@taggable", "Enable row tagging"),
-                ("@datasource($1)", "@datasource", "Specify database source (sqlite, mysql)"),
-                ("@soft_delete($1)", "@soft_delete", "Enable soft delete with specified field"),
+                (
+                    "@datasource($1)",
+                    "@datasource",
+                    "Specify database source (sqlite, mysql)",
+                ),
+                (
+                    "@soft_delete($1)",
+                    "@soft_delete",
+                    "Enable soft delete with specified field",
+                ),
                 ("@link_rows($1)", "@link_rows", "Link rows to another table"),
             ];
 
@@ -325,7 +356,11 @@ impl Backend {
                 ("default", "default($1)", "Set default value"),
                 ("range", "range($1, $2)", "Set value range (min, max)"),
                 ("regex", "regex(\"$1\")", "Set regex validation pattern"),
-                ("foreign_key", "foreign_key($1.$2)", "Reference another table.field"),
+                (
+                    "foreign_key",
+                    "foreign_key($1.$2)",
+                    "Reference another table.field",
+                ),
             ];
 
             for (label, insert, detail) in constraints {
@@ -353,7 +388,9 @@ impl Backend {
         let namespaces: Vec<_> = symbol_table
             .get_definitions_by_kind(DefinitionKind::Namespace)
             .into_iter()
-            .filter(|d| !d.fqn.contains('.') || d.fqn.matches('.').count() == d.name.matches('.').count())
+            .filter(|d| {
+                !d.fqn.contains('.') || d.fqn.matches('.').count() == d.name.matches('.').count()
+            })
             .collect();
 
         for ns in namespaces {
@@ -363,7 +400,9 @@ impl Backend {
 
         // Get top-level types (not in namespace)
         for def in symbol_table.get_all_definitions() {
-            if !def.fqn.contains('.') && !matches!(def.kind, DefinitionKind::Namespace | DefinitionKind::Field) {
+            if !def.fqn.contains('.')
+                && !matches!(def.kind, DefinitionKind::Namespace | DefinitionKind::Field)
+            {
                 symbols.push(self.create_document_symbol(def, symbol_table));
             }
         }
@@ -371,7 +410,11 @@ impl Backend {
         symbols
     }
 
-    fn create_document_symbol(&self, def: &symbol_table::DefinitionInfo, symbol_table: &SymbolTable) -> DocumentSymbol {
+    fn create_document_symbol(
+        &self,
+        def: &symbol_table::DefinitionInfo,
+        symbol_table: &SymbolTable,
+    ) -> DocumentSymbol {
         use symbol_table::DefinitionKind;
 
         let kind = match def.kind {
@@ -414,9 +457,226 @@ impl Backend {
             deprecated: None,
             range,
             selection_range: range,
-            children: if children.is_empty() { None } else { Some(children) },
+            children: if children.is_empty() {
+                None
+            } else {
+                Some(children)
+            },
         }
     }
+}
+
+fn location_for_definition(
+    definition: &symbol_table::DefinitionInfo,
+    fallback_uri: &Url,
+) -> Location {
+    let target_uri = definition
+        .file_path
+        .as_ref()
+        .and_then(|file_path| Url::from_file_path(file_path).ok())
+        .unwrap_or_else(|| fallback_uri.clone());
+
+    Location {
+        uri: target_uri,
+        range: Range {
+            start: Position {
+                line: (definition.name_span.start_line - 1) as u32,
+                character: (definition.name_span.start_col - 1) as u32,
+            },
+            end: Position {
+                line: (definition.name_span.end_line - 1) as u32,
+                character: (definition.name_span.end_col - 1) as u32,
+            },
+        },
+    }
+}
+
+fn span_to_range(span: &symbol_table::Span) -> Range {
+    Range {
+        start: Position {
+            line: (span.start_line - 1) as u32,
+            character: (span.start_col - 1) as u32,
+        },
+        end: Position {
+            line: (span.end_line - 1) as u32,
+            character: (span.end_col - 1) as u32,
+        },
+    }
+}
+
+fn reference_location(uri: &Url, reference: &symbol_table::TypeReference) -> Location {
+    Location {
+        uri: uri.clone(),
+        range: span_to_range(&reference.span),
+    }
+}
+
+fn imports_file(content: &str, filename: &str) -> bool {
+    content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("import ") && trimmed.contains(filename)
+    })
+}
+
+fn poly_files_importing(target_path: &Path, skip_path: Option<&Path>) -> Vec<(PathBuf, String)> {
+    let Some(dir) = target_path.parent() else {
+        return Vec::new();
+    };
+    let target_filename = target_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let entry_path = entry.path();
+            if entry_path.extension().and_then(|ext| ext.to_str()) != Some("poly") {
+                return None;
+            }
+            if entry_path == target_path || skip_path.is_some_and(|skip| entry_path == skip) {
+                return None;
+            }
+
+            let content = std::fs::read_to_string(&entry_path).ok()?;
+            imports_file(&content, target_filename).then_some((entry_path, content))
+        })
+        .collect()
+}
+
+fn definition_file_path<'a>(
+    symbol_table: &'a SymbolTable,
+    target_fqn: &str,
+    fallback_uri: &'a Url,
+) -> Option<PathBuf> {
+    symbol_table
+        .get_definition(target_fqn)
+        .and_then(|def| def.file_path.as_ref())
+        .map(PathBuf::from)
+        .or_else(|| fallback_uri.to_file_path().ok())
+}
+
+fn rename_text_for_reference(
+    reference_path: &str,
+    target_fqn: &str,
+    new_name: &str,
+) -> Option<String> {
+    let simple_name = target_fqn.rsplit('.').next().unwrap_or(target_fqn);
+
+    if reference_path == simple_name {
+        Some(new_name.to_string())
+    } else if reference_path.ends_with(&format!(".{}", simple_name)) {
+        let prefix = &reference_path[..reference_path.len() - simple_name.len()];
+        Some(format!("{}{}", prefix, new_name))
+    } else {
+        None
+    }
+}
+
+fn push_rename_reference_edits(
+    changes: &mut HashMap<Url, Vec<TextEdit>>,
+    uri: &Url,
+    symbol_table: &SymbolTable,
+    target_fqn: &str,
+    new_name: &str,
+) {
+    for reference in symbol_table.find_references(target_fqn) {
+        if let Some(new_text) = rename_text_for_reference(&reference.path, target_fqn, new_name) {
+            changes.entry(uri.clone()).or_default().push(TextEdit {
+                range: span_to_range(&reference.span),
+                new_text,
+            });
+        }
+    }
+}
+
+fn collect_workspace_references(
+    symbol_table: &SymbolTable,
+    uri: &Url,
+    target_fqn: &str,
+    include_declaration: bool,
+) -> Vec<Location> {
+    let mut locations = Vec::new();
+
+    if include_declaration {
+        if let Some(definition) = symbol_table.get_definition(target_fqn) {
+            locations.push(location_for_definition(definition, uri));
+        }
+    }
+
+    for reference in symbol_table.find_references(target_fqn) {
+        locations.push(reference_location(uri, reference));
+    }
+
+    let current_path = uri.to_file_path().ok();
+    if let Some(target_path) = definition_file_path(symbol_table, target_fqn, uri) {
+        for (entry_path, other_content) in
+            poly_files_importing(&target_path, current_path.as_deref())
+        {
+            let Ok(other_table) =
+                symbol_table::build_symbol_table_with_imports(&other_content, Some(&entry_path))
+            else {
+                continue;
+            };
+            let Ok(ref_uri) = Url::from_file_path(&entry_path) else {
+                continue;
+            };
+
+            for reference in other_table.find_references(target_fqn) {
+                locations.push(reference_location(&ref_uri, reference));
+            }
+        }
+    }
+
+    locations
+}
+
+fn collect_workspace_rename_changes(
+    symbol_table: &SymbolTable,
+    uri: &Url,
+    target_fqn: &str,
+    new_name: &str,
+) -> HashMap<Url, Vec<TextEdit>> {
+    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+
+    if let Some(definition) = symbol_table.get_definition(target_fqn) {
+        let def_uri = definition
+            .file_path
+            .as_ref()
+            .and_then(|file_path| Url::from_file_path(file_path).ok())
+            .unwrap_or_else(|| uri.clone());
+
+        changes.entry(def_uri).or_default().push(TextEdit {
+            range: span_to_range(&definition.name_span),
+            new_text: new_name.to_string(),
+        });
+    }
+
+    push_rename_reference_edits(&mut changes, uri, symbol_table, target_fqn, new_name);
+
+    let current_path = uri.to_file_path().ok();
+    if let Some(target_path) = definition_file_path(symbol_table, target_fqn, uri) {
+        for (entry_path, other_content) in
+            poly_files_importing(&target_path, current_path.as_deref())
+        {
+            let Ok(other_table) =
+                symbol_table::build_symbol_table_with_imports(&other_content, Some(&entry_path))
+            else {
+                continue;
+            };
+            let Ok(ref_uri) = Url::from_file_path(&entry_path) else {
+                continue;
+            };
+
+            push_rename_reference_edits(&mut changes, &ref_uri, &other_table, target_fqn, new_name);
+        }
+    }
+
+    changes
 }
 
 #[tower_lsp::async_trait]
@@ -532,10 +792,20 @@ impl LanguageServer for Backend {
             let mut start = col;
             let mut end = col;
 
-            while start > 0 && chars.get(start - 1).map(|c| c.is_alphanumeric() || *c == '_' || *c == '.').unwrap_or(false) {
+            while start > 0
+                && chars
+                    .get(start - 1)
+                    .map(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
+                    .unwrap_or(false)
+            {
                 start -= 1;
             }
-            while end < chars.len() && chars.get(end).map(|c| c.is_alphanumeric() || *c == '_' || *c == '.').unwrap_or(false) {
+            while end < chars.len()
+                && chars
+                    .get(end)
+                    .map(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
+                    .unwrap_or(false)
+            {
                 end += 1;
             }
 
@@ -558,13 +828,14 @@ impl LanguageServer for Backend {
                     };
 
                     // Get fields for table/embed
-                    let fields_info = if matches!(def.kind, symbol_table::DefinitionKind::Table | symbol_table::DefinitionKind::Embed) {
+                    let fields_info = if matches!(
+                        def.kind,
+                        symbol_table::DefinitionKind::Table | symbol_table::DefinitionKind::Embed
+                    ) {
                         let fields = symbol_table.get_fields_of(&def.fqn);
                         if !fields.is_empty() {
-                            let field_list: Vec<String> = fields
-                                .iter()
-                                .map(|f| format!("  {}", f.name))
-                                .collect();
+                            let field_list: Vec<String> =
+                                fields.iter().map(|f| format!("  {}", f.name)).collect();
                             format!("\n\n**Fields:**\n{}", field_list.join("\n"))
                         } else {
                             String::new()
@@ -573,7 +844,9 @@ impl LanguageServer for Backend {
                         String::new()
                     };
 
-                    let file_info = def.file_path.as_ref()
+                    let file_info = def
+                        .file_path
+                        .as_ref()
                         .map(|p| format!("\n\n*Defined in: {}*", p))
                         .unwrap_or_default();
 
@@ -588,8 +861,14 @@ impl LanguageServer for Backend {
                             value: hover_text,
                         }),
                         range: Some(Range {
-                            start: Position { line: position.line, character: start as u32 },
-                            end: Position { line: position.line, character: end as u32 },
+                            start: Position {
+                                line: position.line,
+                                character: start as u32,
+                            },
+                            end: Position {
+                                line: position.line,
+                                character: end as u32,
+                            },
                         }),
                     }));
                 }
@@ -633,8 +912,14 @@ impl LanguageServer for Backend {
                         value: text.to_string(),
                     }),
                     range: Some(Range {
-                        start: Position { line: position.line, character: start as u32 },
-                        end: Position { line: position.line, character: end as u32 },
+                        start: Position {
+                            line: position.line,
+                            character: start as u32,
+                        },
+                        end: Position {
+                            line: position.line,
+                            character: end as u32,
+                        },
                     }),
                 }));
             }
@@ -736,127 +1021,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
-
-        // Rename the definition
-        if let Some(def) = symbol_table.get_definition(&target_fqn) {
-            let def_uri = if let Some(ref file_path) = def.file_path {
-                Url::from_file_path(file_path).unwrap_or_else(|_| uri.clone())
-            } else {
-                uri.clone()
-            };
-
-            changes.entry(def_uri).or_default().push(TextEdit {
-                range: Range {
-                    start: Position {
-                        line: (def.name_span.start_line - 1) as u32,
-                        character: (def.name_span.start_col - 1) as u32,
-                    },
-                    end: Position {
-                        line: (def.name_span.end_line - 1) as u32,
-                        character: (def.name_span.end_col - 1) as u32,
-                    },
-                },
-                new_text: new_name.clone(),
-            });
-        }
-
-        // Rename references in current file
-        for reference in symbol_table.find_references(&target_fqn) {
-            // Only rename simple references (not qualified paths)
-            // For qualified paths, we'd need more complex logic
-            let ref_text = &reference.path;
-            let simple_name = target_fqn.rsplit('.').next().unwrap_or(&target_fqn);
-
-            if ref_text == simple_name || ref_text.ends_with(&format!(".{}", simple_name)) {
-                let new_text = if ref_text == simple_name {
-                    new_name.clone()
-                } else {
-                    // Replace only the last part of qualified name
-                    let prefix = &ref_text[..ref_text.len() - simple_name.len()];
-                    format!("{}{}", prefix, new_name)
-                };
-
-                changes.entry(uri.clone()).or_default().push(TextEdit {
-                    range: Range {
-                        start: Position {
-                            line: (reference.span.start_line - 1) as u32,
-                            character: (reference.span.start_col - 1) as u32,
-                        },
-                        end: Position {
-                            line: (reference.span.end_line - 1) as u32,
-                            character: (reference.span.end_col - 1) as u32,
-                        },
-                    },
-                    new_text,
-                });
-            }
-        }
-
-        // Search in files that import the current file
-        if let Ok(current_path) = uri.to_file_path() {
-            if let Some(dir) = current_path.parent() {
-                let current_filename = current_path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    for entry in entries.flatten() {
-                        let entry_path = entry.path();
-                        if entry_path.extension().and_then(|e| e.to_str()) == Some("poly") {
-                            if entry_path == current_path {
-                                continue;
-                            }
-
-                            if let Ok(other_content) = std::fs::read_to_string(&entry_path) {
-                                let imports_current = other_content.lines().any(|line| {
-                                    let trimmed = line.trim();
-                                    trimmed.starts_with("import ") && trimmed.contains(current_filename)
-                                });
-
-                                if imports_current {
-                                    if let Ok(other_table) = symbol_table::build_symbol_table_with_imports(
-                                        &other_content,
-                                        Some(&entry_path),
-                                    ) {
-                                        let simple_name = target_fqn.rsplit('.').next().unwrap_or(&target_fqn);
-
-                                        for reference in other_table.find_references(&target_fqn) {
-                                            let ref_text = &reference.path;
-
-                                            if ref_text == simple_name || ref_text.ends_with(&format!(".{}", simple_name)) {
-                                                let new_text = if ref_text == simple_name {
-                                                    new_name.clone()
-                                                } else {
-                                                    let prefix = &ref_text[..ref_text.len() - simple_name.len()];
-                                                    format!("{}{}", prefix, new_name)
-                                                };
-
-                                                if let Ok(ref_uri) = Url::from_file_path(&entry_path) {
-                                                    changes.entry(ref_uri).or_default().push(TextEdit {
-                                                        range: Range {
-                                                            start: Position {
-                                                                line: (reference.span.start_line - 1) as u32,
-                                                                character: (reference.span.start_col - 1) as u32,
-                                                            },
-                                                            end: Position {
-                                                                line: (reference.span.end_line - 1) as u32,
-                                                                character: (reference.span.end_col - 1) as u32,
-                                                            },
-                                                        },
-                                                        new_text,
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let changes = collect_workspace_rename_changes(symbol_table, uri, &target_fqn, new_name);
 
         if changes.is_empty() {
             Ok(None)
@@ -888,42 +1053,18 @@ impl LanguageServer for Backend {
         if let Some(reference) = symbol_table.reference_at(line, col) {
             if let Some(fqn) = &reference.resolved_fqn {
                 if let Some(definition) = symbol_table.get_definition(fqn) {
-                    let target_range = Range {
-                        start: Position {
-                            line: (definition.name_span.start_line - 1) as u32,
-                            character: (definition.name_span.start_col - 1) as u32,
-                        },
-                        end: Position {
-                            line: (definition.name_span.end_line - 1) as u32,
-                            character: (definition.name_span.end_col - 1) as u32,
-                        },
-                    };
-
-                    return Ok(Some(GotoDefinitionResponse::Scalar(Location {
-                        uri: uri.clone(),
-                        range: target_range,
-                    })));
+                    return Ok(Some(GotoDefinitionResponse::Scalar(
+                        location_for_definition(definition, uri),
+                    )));
                 }
             }
         }
 
         // Also check if we're clicking on a definition itself (to support F12 on definitions)
         if let Some(definition) = symbol_table.definition_at(line, col) {
-            let target_range = Range {
-                start: Position {
-                    line: (definition.name_span.start_line - 1) as u32,
-                    character: (definition.name_span.start_col - 1) as u32,
-                },
-                end: Position {
-                    line: (definition.name_span.end_line - 1) as u32,
-                    character: (definition.name_span.end_col - 1) as u32,
-                },
-            };
-
-            return Ok(Some(GotoDefinitionResponse::Scalar(Location {
-                uri: uri.clone(),
-                range: target_range,
-            })));
+            return Ok(Some(GotoDefinitionResponse::Scalar(
+                location_for_definition(definition, uri),
+            )));
         }
 
         Ok(None)
@@ -954,110 +1095,192 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let mut locations: Vec<Location> = Vec::new();
-
-        // Include the definition itself if include_declaration is true
-        if params.context.include_declaration {
-            if let Some(def) = symbol_table.get_definition(&target_fqn) {
-                let def_uri = if let Some(ref file_path) = def.file_path {
-                    Url::from_file_path(file_path).unwrap_or_else(|_| uri.clone())
-                } else {
-                    uri.clone()
-                };
-                locations.push(Location {
-                    uri: def_uri,
-                    range: Range {
-                        start: Position {
-                            line: (def.name_span.start_line - 1) as u32,
-                            character: (def.name_span.start_col - 1) as u32,
-                        },
-                        end: Position {
-                            line: (def.name_span.end_line - 1) as u32,
-                            character: (def.name_span.end_col - 1) as u32,
-                        },
-                    },
-                });
-            }
-        }
-
-        // Include references from current file
-        for reference in symbol_table.find_references(&target_fqn) {
-            locations.push(Location {
-                uri: uri.clone(),
-                range: Range {
-                    start: Position {
-                        line: (reference.span.start_line - 1) as u32,
-                        character: (reference.span.start_col - 1) as u32,
-                    },
-                    end: Position {
-                        line: (reference.span.end_line - 1) as u32,
-                        character: (reference.span.end_col - 1) as u32,
-                    },
-                },
-            });
-        }
-
-        // Search in files that might import the current file
-        if let Ok(current_path) = uri.to_file_path() {
-            if let Some(dir) = current_path.parent() {
-                let current_filename = current_path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    for entry in entries.flatten() {
-                        let entry_path = entry.path();
-                        if entry_path.extension().and_then(|e| e.to_str()) == Some("poly") {
-                            // Skip the current file
-                            if entry_path == current_path {
-                                continue;
-                            }
-
-                            // Read and check if this file imports our file
-                            if let Ok(other_content) = std::fs::read_to_string(&entry_path) {
-                                let imports_current = other_content.lines().any(|line| {
-                                    let trimmed = line.trim();
-                                    trimmed.starts_with("import ") && trimmed.contains(current_filename)
-                                });
-
-                                if imports_current {
-                                    // Build symbol table for this file (with imports)
-                                    if let Ok(other_table) = symbol_table::build_symbol_table_with_imports(
-                                        &other_content,
-                                        Some(&entry_path),
-                                    ) {
-                                        // Find references to our target FQN
-                                        for reference in other_table.find_references(&target_fqn) {
-                                            if let Ok(ref_uri) = Url::from_file_path(&entry_path) {
-                                                locations.push(Location {
-                                                    uri: ref_uri,
-                                                    range: Range {
-                                                        start: Position {
-                                                            line: (reference.span.start_line - 1) as u32,
-                                                            character: (reference.span.start_col - 1) as u32,
-                                                        },
-                                                        end: Position {
-                                                            line: (reference.span.end_line - 1) as u32,
-                                                            character: (reference.span.end_col - 1) as u32,
-                                                        },
-                                                    },
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let locations = collect_workspace_references(
+            symbol_table,
+            uri,
+            &target_fqn,
+            params.context.include_declaration,
+        );
 
         if locations.is_empty() {
             Ok(None)
         } else {
             Ok(Some(locations))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn definition_with_file_path(file_path: Option<String>) -> symbol_table::DefinitionInfo {
+        symbol_table::DefinitionInfo {
+            fqn: "game.common.Status".to_string(),
+            name: "Status".to_string(),
+            kind: symbol_table::DefinitionKind::Enum,
+            name_span: symbol_table::Span::new(3, 10, 3, 16),
+            file_path,
+        }
+    }
+
+    #[test]
+    fn location_for_definition_uses_definition_file_path() {
+        let fallback = Url::parse("file:///workspace/current.poly").unwrap();
+        let target_path = std::env::temp_dir().join("polygen_lsp_target.poly");
+        let target_uri = Url::from_file_path(&target_path).unwrap();
+        let definition = definition_with_file_path(Some(target_path.to_string_lossy().to_string()));
+
+        let location = location_for_definition(&definition, &fallback);
+
+        assert_eq!(location.uri, target_uri);
+        assert_eq!(location.range.start.line, 2);
+        assert_eq!(location.range.start.character, 9);
+        assert_eq!(location.range.end.line, 2);
+        assert_eq!(location.range.end.character, 15);
+    }
+
+    #[test]
+    fn location_for_definition_falls_back_to_current_uri() {
+        let fallback = Url::parse("file:///workspace/current.poly").unwrap();
+        let definition = definition_with_file_path(None);
+
+        let location = location_for_definition(&definition, &fallback);
+
+        assert_eq!(location.uri, fallback);
+    }
+
+    fn create_cross_file_workspace() -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("polygen_lsp_cross_file_{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+
+        let common = dir.join("common.poly");
+        let inventory = dir.join("inventory.poly");
+        let quest = dir.join("quest.poly");
+
+        fs::write(
+            &common,
+            r#"
+namespace game.common {
+    table Player {
+        id: u32;
+    }
+}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            &inventory,
+            r#"
+import "common.poly";
+
+namespace game.items {
+    table Inventory {
+        owner: game.common.Player;
+    }
+}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            &quest,
+            r#"
+import "common.poly";
+
+namespace game.quest {
+    table Quest {
+        npc: game.common.Player;
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        (dir, common, inventory, quest)
+    }
+
+    #[test]
+    fn cross_file_references_include_all_importing_files_from_definition() {
+        let (dir, common, inventory, quest) = create_cross_file_workspace();
+        let common_content = fs::read_to_string(&common).unwrap();
+        let common_table =
+            symbol_table::build_symbol_table_with_imports(&common_content, Some(&common)).unwrap();
+        let common_uri = Url::from_file_path(&common).unwrap();
+
+        let locations =
+            collect_workspace_references(&common_table, &common_uri, "game.common.Player", true);
+        let uris: Vec<Url> = locations.into_iter().map(|location| location.uri).collect();
+
+        assert!(uris.contains(&Url::from_file_path(&common).unwrap()));
+        assert!(uris.contains(&Url::from_file_path(&inventory).unwrap()));
+        assert!(uris.contains(&Url::from_file_path(&quest).unwrap()));
+        assert_eq!(uris.len(), 3);
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cross_file_references_from_importer_search_definition_importers() {
+        let (dir, common, inventory, quest) = create_cross_file_workspace();
+        let inventory_content = fs::read_to_string(&inventory).unwrap();
+        let inventory_table =
+            symbol_table::build_symbol_table_with_imports(&inventory_content, Some(&inventory))
+                .unwrap();
+        let inventory_uri = Url::from_file_path(&inventory).unwrap();
+
+        let locations = collect_workspace_references(
+            &inventory_table,
+            &inventory_uri,
+            "game.common.Player",
+            true,
+        );
+        let uris: Vec<Url> = locations.into_iter().map(|location| location.uri).collect();
+
+        assert!(uris.contains(&Url::from_file_path(&common).unwrap()));
+        assert!(uris.contains(&Url::from_file_path(&inventory).unwrap()));
+        assert!(uris.contains(&Url::from_file_path(&quest).unwrap()));
+        assert_eq!(uris.len(), 3);
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cross_file_rename_updates_definition_and_importing_files() {
+        let (dir, common, inventory, quest) = create_cross_file_workspace();
+        let common_content = fs::read_to_string(&common).unwrap();
+        let common_table =
+            symbol_table::build_symbol_table_with_imports(&common_content, Some(&common)).unwrap();
+        let common_uri = Url::from_file_path(&common).unwrap();
+
+        let changes = collect_workspace_rename_changes(
+            &common_table,
+            &common_uri,
+            "game.common.Player",
+            "Character",
+        );
+
+        let common_uri = Url::from_file_path(&common).unwrap();
+        let inventory_uri = Url::from_file_path(&inventory).unwrap();
+        let quest_uri = Url::from_file_path(&quest).unwrap();
+
+        assert_eq!(changes.get(&common_uri).unwrap()[0].new_text, "Character");
+        assert_eq!(
+            changes.get(&inventory_uri).unwrap()[0].new_text,
+            "game.common.Character"
+        );
+        assert_eq!(
+            changes.get(&quest_uri).unwrap()[0].new_text,
+            "game.common.Character"
+        );
+        assert_eq!(changes.len(), 3);
+
+        fs::remove_dir_all(dir).unwrap();
     }
 }
 
