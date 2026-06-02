@@ -8,6 +8,7 @@ extension = ".ts"
 [static_files]
 # Validation support
 "validation.ts" = "static/typescript/validation.ts"
+"binary_ref.ts" = "static/typescript/binary_ref.ts"
 
 # Type mapping from poly types to TypeScript types
 [type_map]
@@ -42,6 +43,10 @@ main = "typescript_file.ptpl"
 [[templates.extra]]
 template = "typescript_zod_file.ptpl"
 output = "{{stem}}.schema.ts"
+
+[[templates.extra]]
+template = "typescript_binary_refs_file.ptpl"
+output = "{{stem}}_binary_refs.ts"
 
 # Redis key helpers (no client dependency)
 [[templates.extra]]

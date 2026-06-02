@@ -1,0 +1,640 @@
+%logic
+// TypeScript indexed binary ref generator.
+// Mirrors the C# BinaryRef format and can both read and write documents.
+
+fn to_pascal(name) {
+    let parts = name.split("_");
+    let result = "";
+    for part in parts {
+        if part.len() > 0 {
+            let first = part.sub_string(0, 1);
+            first = first.to_upper();
+            let rest = part.sub_string(1);
+            result += first + rest;
+        }
+    }
+    result
+}
+
+fn ref_name(s) {
+    let n = s.fqn + "";
+    n.replace(".", "_");
+    n + "Ref"
+}
+
+fn table_name(s) {
+    ref_name(s) + "Table"
+}
+
+fn codec_name(s) {
+    ref_name(s) + "Codec"
+}
+
+fn namespace_from_fqn(s) {
+    let n = s.fqn + "";
+    if !n.contains(".") {
+        return "";
+    }
+    let parts = n.split(".");
+    let result = "";
+    for i in 0..(parts.len - 1) {
+        if i > 0 { result += "."; }
+        result += parts[i];
+    }
+    result
+}
+
+fn ts_namespace_from_fqn(ns_fqn, namespace_entries) {
+    if ns_fqn == "" {
+        return "";
+    }
+    for entry in namespace_entries {
+        if entry.name == ns_fqn {
+            return entry.path;
+        }
+    }
+    to_pascal_case(ns_fqn)
+}
+
+fn collect_namespace_paths(ns, parent_path) {
+    let current_path = if parent_path == "" {
+        to_pascal_case(ns.name)
+    } else {
+        parent_path + "." + to_pascal_case(ns.name)
+    };
+    let entries = [#{ name: ns.name, path: current_path }];
+    for item in ns.items {
+        if item.is_namespace() {
+            let child_entries = collect_namespace_paths(item.as_namespace(), current_path);
+            for child in child_entries {
+                entries.push(child);
+            }
+        }
+    }
+    entries
+}
+
+fn get_actual_namespace(fqn) {
+    let parts = fqn.split(".");
+    let result = "";
+    for part in parts {
+        if part.len() > 0 {
+            let first = part.sub_string(0, 1);
+            if first == first.to_upper() {
+                break;
+            }
+            if result != "" {
+                result += ".";
+            }
+            result += part;
+        }
+    }
+    result
+}
+
+fn ts_full_type(t, namespace_entries) {
+    if t.is_option {
+        return ts_full_type(t.inner, namespace_entries) + " | undefined";
+    }
+    if t.is_list {
+        return ts_full_type(t.inner, namespace_entries) + "[]";
+    }
+    if t.lang_type == "string" { return "string"; }
+    if t.lang_type == "bool" { return "boolean"; }
+    if t.lang_type == "bytes" { return "Uint8Array"; }
+    if t.lang_type == "timestamp" { return "Date"; }
+    if t.is_primitive { return "number"; }
+    if t.is_enum || t.is_struct {
+        let ns = "";
+        if t.namespace_fqn != () && t.namespace_fqn != "" {
+            ns = ts_namespace_from_fqn(get_actual_namespace(t.namespace_fqn), namespace_entries) + ".";
+        }
+        return "Types." + ns + t.type_name;
+    }
+    return t.type_name;
+}
+
+fn object_type(s, namespace_entries) {
+    let ns = namespace_from_fqn(s);
+    let prefix = if ns == "" { "" } else { ts_namespace_from_fqn(ns, namespace_entries) + "." };
+    "Types." + prefix + s.name
+}
+
+fn read_direct_expr(t, offset_expr, namespace_entries) {
+    if t.lang_type == "bool" { return "BinaryRefFormat.readBool(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "u8" { return "BinaryRefFormat.readU8(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "i8" { return "BinaryRefFormat.readI8(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "u16" { return "BinaryRefFormat.readU16(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "i16" { return "BinaryRefFormat.readI16(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "u32" { return "BinaryRefFormat.readU32(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "i32" { return "BinaryRefFormat.readI32(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "u64" { return "BinaryRefFormat.readU64(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "i64" { return "BinaryRefFormat.readI64(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "f32" { return "BinaryRefFormat.readF32(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "f64" { return "BinaryRefFormat.readF64(this.owner.bytes, " + offset_expr + ")"; }
+    if t.lang_type == "timestamp" { return "BinaryRefFormat.readTimestamp(this.owner.bytes, " + offset_expr + ")"; }
+    if t.is_enum { return "BinaryRefFormat.readI32(this.owner.bytes, " + offset_expr + ") as " + ts_full_type(t, namespace_entries); }
+    return "";
+}
+
+fn writer_method(k) {
+    if k == "bool" { return "writeBool"; }
+    if k == "u8" { return "writeU8"; }
+    if k == "i8" { return "writeI8"; }
+    if k == "u16" { return "writeU16"; }
+    if k == "i16" { return "writeI16"; }
+    if k == "u32" { return "writeU32"; }
+    if k == "i32" { return "writeI32"; }
+    if k == "u64" { return "writeU64"; }
+    if k == "i64" { return "writeI64"; }
+    if k == "f32" { return "writeF32"; }
+    if k == "f64" { return "writeF64"; }
+    return "";
+}
+
+fn write_inner_stmt(t, value_expr, writer_expr) {
+    if t.lang_type == "string" {
+        return "BinaryRefFormat.writeString(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.lang_type == "bytes" {
+        return "BinaryRefFormat.writeBytes(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.lang_type == "timestamp" {
+        return "BinaryRefFormat.writeTimestamp(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.is_enum {
+        return writer_expr + ".writeI32(" + value_expr + " as number);";
+    }
+    if t.is_primitive {
+        return writer_expr + "." + writer_method(t.lang_type) + "(" + value_expr + ");";
+    }
+    return "throw new Error('Nested object binary ref fields are not supported by this TypeScript template yet.');";
+}
+
+fn read_key_expr(t, reader_expr, namespace_entries) {
+    if t.lang_type == "string" { return "BinaryRefFormat.readString(" + reader_expr + ")"; }
+    if t.lang_type == "timestamp" { return "new Date(" + reader_expr + ".readI64() / 10000 - 62135596800000)"; }
+    if t.is_enum { return reader_expr + ".readI32() as " + ts_full_type(t, namespace_entries); }
+    if t.lang_type == "bool" { return reader_expr + ".readBool()"; }
+    let m = writer_method(t.lang_type);
+    if m == "writeU8" { return reader_expr + ".readU8()"; }
+    if m == "writeI8" { return reader_expr + ".readI8()"; }
+    if m == "writeU16" { return reader_expr + ".readU16()"; }
+    if m == "writeI16" { return reader_expr + ".readI16()"; }
+    if m == "writeU32" { return reader_expr + ".readU32()"; }
+    if m == "writeI32" { return reader_expr + ".readI32()"; }
+    if m == "writeU64" { return reader_expr + ".readU64()"; }
+    if m == "writeI64" { return reader_expr + ".readI64()"; }
+    if m == "writeF32" { return reader_expr + ".readF32()"; }
+    if m == "writeF64" { return reader_expr + ".readF64()"; }
+    return reader_expr + ".readI32()";
+}
+
+fn write_key_stmt(t, key_expr, writer_expr) {
+    if t.lang_type == "string" { return "BinaryRefFormat.writeString(" + writer_expr + ", " + key_expr + ");"; }
+    if t.lang_type == "timestamp" { return "BinaryRefFormat.writeTimestamp(" + writer_expr + ", " + key_expr + ");"; }
+    if t.is_enum { return writer_expr + ".writeI32(" + key_expr + " as number);"; }
+    if t.lang_type == "bool" { return writer_expr + ".writeBool(" + key_expr + ");"; }
+    return writer_expr + "." + writer_method(t.lang_type) + "(" + key_expr + ");";
+}
+
+fn can_read_direct(t) {
+    if t.is_list { return false; }
+    if t.lang_type == "string" || t.lang_type == "bytes" { return true; }
+    if t.lang_type == "timestamp" { return true; }
+    if t.is_enum { return true; }
+    if t.is_primitive { return true; }
+    return false;
+}
+
+fn is_supported_field(t) {
+    if t.is_list { return false; }
+    let base = if t.is_option { t.inner } else { t };
+    return can_read_direct(base);
+}
+
+fn is_supported_index(idx) {
+    if idx.is_composite { return false; }
+    let t = idx.field_type;
+    if t.is_option || t.is_list { return false; }
+    if t.lang_type == "string" || t.lang_type == "timestamp" { return true; }
+    if t.is_enum { return true; }
+    if t.is_primitive && t.lang_type != "bytes" { return true; }
+    return false;
+}
+
+fn key_type(t, namespace_entries) {
+    if t.lang_type == "string" { return "string"; }
+    if t.lang_type == "timestamp" { return "Date"; }
+    if t.lang_type == "bool" { return "boolean"; }
+    if t.is_enum { return ts_full_type(t, namespace_entries); }
+    return "number";
+}
+
+fn field_property_code(f, field_index, namespace_entries) {
+    let ft = f.field_type;
+    let base = if ft.is_option { ft.inner } else { ft };
+    let idx = field_index + "";
+    let name = to_camel_case(f.name);
+    let pascal = to_pascal(f.name);
+    let offset_req = "this.requiredFieldOffset(" + idx + ")";
+    let offset_opt = "this.optionalFieldOffset(" + idx + ")";
+    let typ = ts_full_type(ft, namespace_entries);
+    let code = "";
+
+    if !is_supported_field(ft) {
+        code += "  // Field '" + name + "' is not supported by TS binary refs yet.\n";
+        return code;
+    }
+
+    if ft.is_option {
+        code += "  get has" + pascal + "(): boolean { return " + offset_opt + " >= 0; }\n";
+        if base.lang_type == "string" {
+            code += "  get " + name + "Utf8(): Uint8Array { const o = " + offset_opt + "; return o < 0 ? new Uint8Array() : BinaryRefFormat.readLengthPrefixedBytes(this.owner.bytes, o); }\n";
+            code += "  get " + name + "(): " + typ + " { const o = " + offset_opt + "; return o < 0 ? undefined : BinaryRefFormat.readUtf8String(this.owner.bytes, o); }\n";
+        } else if base.lang_type == "bytes" {
+            code += "  get " + name + "(): " + typ + " { const o = " + offset_opt + "; return o < 0 ? undefined : BinaryRefFormat.readLengthPrefixedBytes(this.owner.bytes, o); }\n";
+        } else {
+            code += "  get " + name + "(): " + typ + " { const o = " + offset_opt + "; return o < 0 ? undefined : " + read_direct_expr(base, "o", namespace_entries) + "; }\n";
+        }
+        return code;
+    }
+
+    if base.lang_type == "string" {
+        code += "  get " + name + "Utf8(): Uint8Array { return BinaryRefFormat.readLengthPrefixedBytes(this.owner.bytes, " + offset_req + "); }\n";
+        code += "  get " + name + "(): " + typ + " { return BinaryRefFormat.readUtf8String(this.owner.bytes, " + offset_req + "); }\n";
+    } else if base.lang_type == "bytes" {
+        code += "  get " + name + "(): " + typ + " { return BinaryRefFormat.readLengthPrefixedBytes(this.owner.bytes, " + offset_req + "); }\n";
+    } else {
+        code += "  get " + name + "(): " + typ + " { return " + read_direct_expr(base, offset_req, namespace_entries) + "; }\n";
+    }
+    return code;
+}
+
+fn to_owned_assignment(f) {
+    let name = to_camel_case(f.name);
+    let ft = f.field_type;
+    if !is_supported_field(ft) {
+        return "";
+    }
+    if ft.is_option {
+        return "    if (this." + name + " !== undefined) obj." + name + " = this." + name + ";\n";
+    }
+    return "    obj." + name + " = this." + name + ";\n";
+}
+
+fn write_field_code(f, field_index) {
+    let ft = f.field_type;
+    let base = if ft.is_option { ft.inner } else { ft };
+    let name = to_camel_case(f.name);
+    let idx = field_index + "";
+    if !is_supported_field(ft) {
+        return "";
+    }
+    if ft.is_option {
+        let stmt = write_inner_stmt(base, name + "Value", "w");
+        return "    const " + name + "Value = obj." + name + ";\n    if (" + name + "Value !== undefined && " + name + "Value !== null) builder.setField(" + idx + ", w => { " + stmt + " });";
+    }
+    let stmt = write_inner_stmt(base, "obj." + name, "w");
+    return "    builder.setField(" + idx + ", w => { " + stmt + " });";
+}
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace() {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+let all_tables = [];
+let namespace_entries = [];
+for ns in file.namespaces {
+    let collected = collect_namespace_paths(ns, "");
+    for entry in collected {
+        namespace_entries.push(entry);
+    }
+    let ns_tables = collect_tables_from_namespace(ns);
+    for s in ns_tables {
+        all_tables.push(s);
+    }
+}
+
+let entries = [];
+for s in all_tables {
+    let fields = [];
+    let field_index = 0;
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            fields.push(#{
+                def: f,
+                index: field_index,
+                property_code: field_property_code(f, field_index, namespace_entries),
+                to_owned_assignment: to_owned_assignment(f),
+                write_code: write_field_code(f, field_index)
+            });
+            field_index += 1;
+        }
+    }
+
+    let indexes = [];
+    for idx in s.indexes {
+        if is_supported_index(idx) {
+            indexes.push(#{
+                def: idx,
+                var_name: to_camel_case(idx.name),
+                method_suffix: to_pascal(idx.name),
+                key_type: key_type(idx.field_type, namespace_entries),
+                field_name: to_camel_case(idx.field_name),
+                is_unique_literal: if idx.is_unique { "true" } else { "false" },
+                write_key: write_key_stmt(idx.field_type, "key", "writer"),
+                read_key: read_key_expr(idx.field_type, "reader", namespace_entries)
+            });
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        object_type: object_type(s, namespace_entries),
+        ref_name: ref_name(s),
+        table_name: table_name(s),
+        codec_name: codec_name(s),
+        fields: fields,
+        field_count: field_index,
+        indexes: indexes,
+        index_count: indexes.len()
+    });
+}
+
+let base_name = file.path;
+if base_name.contains("/") {
+    let pp = base_name.split("/");
+    base_name = pp[pp.len() - 1];
+}
+if base_name.ends_with(".poly") {
+    base_name = base_name.sub_string(0, base_name.len() - 5);
+}
+let type_module = "./" + base_name;
+let context_name = to_pascal(base_name) + "BinaryRefContext";
+let container_name = to_pascal(base_name) + "BinaryRefContainer";
+let entry_count = entries.len;
+%endlogic
+// Generated by PolyGen - TypeScript indexed binary refs
+// Source: {{file.path}}
+// Do not edit manually!
+
+import {
+  BinaryDocumentOwner,
+  BinaryRefFormat,
+  BinaryRefReader,
+  BinaryRefRowBuilder,
+  BinaryRefWriter,
+} from "./binary_ref";
+import * as Types from "{{type_module}}";
+
+export interface {{container_name}} {
+%for entry in entries
+  {{entry.def.name}}s: {{entry.object_type}}[];
+%endfor
+}
+
+%for entry in entries
+export class {{entry.ref_name}} {
+  constructor(private readonly owner: BinaryDocumentOwner, private readonly rowOffset: number) {}
+
+  private requiredFieldOffset(fieldIndex: number): number {
+    return BinaryRefFormat.requireFieldOffset(this.owner.bytes, this.rowOffset, fieldIndex);
+  }
+
+  private optionalFieldOffset(fieldIndex: number): number {
+    return BinaryRefFormat.getFieldOffset(this.owner.bytes, this.rowOffset, fieldIndex);
+  }
+
+%for field_entry in entry.fields
+{{field_entry.property_code}}
+%endfor
+  toOwned(): {{entry.object_type}} {
+    const obj: Partial<{{entry.object_type}}> = {};
+%for field_entry in entry.fields
+{{field_entry.to_owned_assignment}}
+%endfor
+    return obj as {{entry.object_type}};
+  }
+}
+
+class {{entry.codec_name}} {
+  static writeRow(obj: {{entry.object_type}}): Uint8Array {
+    const builder = new BinaryRefRowBuilder({{entry.field_count}});
+%for field_entry in entry.fields
+{{field_entry.write_code}}
+%endfor
+    return builder.toUint8Array();
+  }
+}
+
+export class {{entry.table_name}} {
+  constructor(
+    private readonly owner: BinaryDocumentOwner,
+    private readonly rowOffsets: number[]
+%for idx in entry.indexes
+%if idx.def.is_unique
+    , private readonly {{idx.var_name}}: Map<{{idx.key_type}}, number>
+%else
+    , private readonly {{idx.var_name}}: Map<{{idx.key_type}}, number[]>
+%endif
+%endfor
+  ) {}
+
+  get count(): number {
+    return this.rowOffsets.length;
+  }
+
+  *all(): Iterable<{{entry.ref_name}}> {
+    for (const offset of this.rowOffsets) yield new {{entry.ref_name}}(this.owner, offset);
+  }
+
+  at(index: number): {{entry.ref_name}} {
+    return new {{entry.ref_name}}(this.owner, this.rowOffsets[index]);
+  }
+
+%for idx in entry.indexes
+%if idx.def.is_unique
+  get{{idx.method_suffix}}(key: {{idx.key_type}}): {{entry.ref_name}} | undefined {
+    const offset = this.{{idx.var_name}}.get(key);
+    return offset === undefined ? undefined : new {{entry.ref_name}}(this.owner, offset);
+  }
+
+%else
+  find{{idx.method_suffix}}(key: {{idx.key_type}}): {{entry.ref_name}}[] {
+    const offsets = this.{{idx.var_name}}.get(key);
+    return offsets === undefined ? [] : offsets.map(offset => new {{entry.ref_name}}(this.owner, offset));
+  }
+
+%endif
+%endfor
+  static write(writer: BinaryRefWriter, sourceRows: {{entry.object_type}}[]): void {
+    BinaryRefFormat.writeString(writer, "{{entry.def.fqn}}");
+    const rows: Array<{ row: {{entry.object_type}}; offset: number; bytes: Uint8Array }> = [];
+    let cursor = 0;
+    for (const row of sourceRows) {
+      const bytes = {{entry.codec_name}}.writeRow(row);
+      rows.push({ row, offset: cursor, bytes });
+      cursor += bytes.byteLength;
+    }
+
+    writer.writeI32(rows.length);
+    for (const row of rows) writer.writeI32(row.offset);
+
+    writer.writeI32({{entry.index_count}});
+%for idx in entry.indexes
+    BinaryRefFormat.writeString(writer, "{{idx.def.name}}");
+    writer.writeBool({{idx.is_unique_literal}});
+%if idx.def.is_unique
+    {
+      const map = new Map<{{idx.key_type}}, number>();
+      for (const row of rows) map.set(row.row.{{idx.field_name}}, row.offset);
+      writer.writeI32(map.size);
+      for (const [key, offset] of map) {
+        {{idx.write_key}}
+        writer.writeI32(offset);
+      }
+    }
+%else
+    {
+      const map = new Map<{{idx.key_type}}, number[]>();
+      for (const row of rows) {
+        const key = row.row.{{idx.field_name}};
+        let offsets = map.get(key);
+        if (offsets === undefined) {
+          offsets = [];
+          map.set(key, offsets);
+        }
+        offsets.push(row.offset);
+      }
+      writer.writeI32(map.size);
+      for (const [key, offsets] of map) {
+        {{idx.write_key}}
+        writer.writeI32(offsets.length);
+        for (const offset of offsets) writer.writeI32(offset);
+      }
+    }
+%endif
+%endfor
+    writer.writeI32(cursor);
+    for (const row of rows) writer.writeRaw(row.bytes);
+  }
+
+  static read(owner: BinaryDocumentOwner, reader: BinaryRefReader): {{entry.table_name}} {
+    const tableName = BinaryRefFormat.readString(reader);
+    if (tableName !== "{{entry.def.fqn}}") throw new Error(`Expected table '{{entry.def.fqn}}' but found '${tableName}'.`);
+
+    const rowCount = reader.readI32();
+    if (rowCount < 0) throw new Error("Negative row count.");
+    const rowOffsets: number[] = [];
+    for (let i = 0; i < rowCount; i++) rowOffsets.push(reader.readI32());
+
+    const indexCount = reader.readI32();
+    if (indexCount !== {{entry.index_count}}) throw new Error(`Unexpected index count for {{entry.def.fqn}}: ${indexCount}.`);
+
+%for idx in entry.indexes
+%if idx.def.is_unique
+    const {{idx.var_name}} = new Map<{{idx.key_type}}, number>();
+%else
+    const {{idx.var_name}} = new Map<{{idx.key_type}}, number[]>();
+%endif
+    {
+      const indexName = BinaryRefFormat.readString(reader);
+      if (indexName !== "{{idx.def.name}}") throw new Error(`Expected index '{{idx.def.name}}' but found '${indexName}'.`);
+      const isUnique = reader.readBool();
+      if (isUnique !== {{idx.is_unique_literal}}) throw new Error("Binary index uniqueness does not match generated schema.");
+      const entryCount = reader.readI32();
+      if (entryCount < 0) throw new Error("Negative index entry count.");
+      for (let i = 0; i < entryCount; i++) {
+        const key = {{idx.read_key}};
+%if idx.def.is_unique
+        {{idx.var_name}}.set(key, reader.readI32());
+%else
+        const valueCount = reader.readI32();
+        if (valueCount < 0) throw new Error("Negative group index value count.");
+        const offsets: number[] = [];
+        for (let j = 0; j < valueCount; j++) offsets.push(reader.readI32());
+        {{idx.var_name}}.set(key, offsets);
+%endif
+      }
+    }
+
+%endfor
+    const rowBlockLength = reader.readI32();
+    if (rowBlockLength < 0) throw new Error("Negative row block length.");
+    const rowBlockStart = reader.position();
+    reader.skip(rowBlockLength);
+
+    for (let i = 0; i < rowOffsets.length; i++) rowOffsets[i] = rowBlockStart + rowOffsets[i];
+%for idx in entry.indexes
+%if idx.def.is_unique
+    for (const [key, offset] of {{idx.var_name}}) {{idx.var_name}}.set(key, rowBlockStart + offset);
+%else
+    for (const offsets of {{idx.var_name}}.values()) {
+      for (let i = 0; i < offsets.length; i++) offsets[i] = rowBlockStart + offsets[i];
+    }
+%endif
+%endfor
+
+    return new {{entry.table_name}}(
+      owner,
+      rowOffsets
+%for idx in entry.indexes
+      , {{idx.var_name}}
+%endfor
+    );
+  }
+}
+
+%endfor
+export class {{context_name}} {
+  private constructor(
+    private readonly owner: BinaryDocumentOwner
+%for entry in entries
+    , readonly {{entry.def.name}}s: {{entry.table_name}}
+%endfor
+  ) {}
+
+  static openBinary(input: ArrayBuffer | Uint8Array): {{context_name}} {
+    const owner = new BinaryDocumentOwner(input);
+    const reader = owner.reader();
+    BinaryRefFormat.readHeader(reader);
+    const tableCount = reader.readI32();
+    if (tableCount !== {{entry_count}}) throw new Error(`Unexpected table count: ${tableCount}.`);
+
+%for entry in entries
+    const {{entry.def.name}}s = {{entry.table_name}}.read(owner, reader);
+%endfor
+    return new {{context_name}}(
+      owner
+%for entry in entries
+      , {{entry.def.name}}s
+%endfor
+    );
+  }
+
+  static saveBinary(container: {{container_name}}): Uint8Array {
+    const writer = new BinaryRefWriter();
+    BinaryRefFormat.writeHeader(writer);
+    writer.writeI32({{entry_count}});
+%for entry in entries
+    {{entry.table_name}}.write(writer, container.{{entry.def.name}}s);
+%endfor
+    return writer.toUint8Array();
+  }
+}
