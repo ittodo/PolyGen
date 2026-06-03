@@ -46,12 +46,16 @@ class Program
         {
             id = 1,
             name = "Technology",
-            description = "Tech stuff"
+            description = "Tech stuff",
+            rank = 7,
+            kind = test.indexes.CategoryKind.Public
         };
 
         Assert(cat.id == 1, "id");
         Assert(cat.name == "Technology", "name");
         Assert(cat.description == "Tech stuff", "description");
+        Assert(cat.rank == 7, "rank");
+        Assert(cat.kind == test.indexes.CategoryKind.Public, "kind");
 
         Console.WriteLine("    PASS");
         passed++;
@@ -169,7 +173,9 @@ class Program
         {
             id = 10,
             name = "Tech",
-            description = "Technology"
+            description = "Technology",
+            rank = 7,
+            kind = test.indexes.CategoryKind.Public
         });
         container.Posts.Add(new test.indexes.Post
         {
@@ -206,6 +212,26 @@ class Program
             tag_id = 50
         });
 
+        var containerTitleMatches = container.Posts.SearchByTitle("binary");
+        Assert(containerTitleMatches.Count == 1, "container SearchByTitle should find one binary post");
+        Assert(containerTitleMatches[0].id == 100, "container SearchByTitle post id");
+
+        var containerNameMatches = container.Categorys.SearchByName("tech");
+        Assert(containerNameMatches.Count == 1, "container SearchByName should find category");
+        Assert(containerNameMatches[0].id == 10, "container SearchByName category id");
+
+        var containerDescriptionMatches = container.Categorys.SearchByDescription("tech");
+        Assert(containerDescriptionMatches.Count == 1, "container SearchByDescription should find category");
+        Assert(containerDescriptionMatches[0].name == "Tech", "container SearchByDescription category name");
+
+        var containerRankMatches = container.Categorys.SearchByRank(7);
+        Assert(containerRankMatches.Count == 1, "container SearchByRank should find category");
+        Assert(containerRankMatches[0].id == 10, "container SearchByRank category id");
+
+        var containerKindMatches = container.Categorys.SearchByKind(test.indexes.CategoryKind.Public);
+        Assert(containerKindMatches.Count == 1, "container SearchByKind should find category");
+        Assert(containerKindMatches[0].id == 10, "container SearchByKind category id");
+
         var path = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(),
             "polygen-csharp-binary-ref-" + Guid.NewGuid().ToString("N") + ".bin");
@@ -231,9 +257,29 @@ class Program
             Assert(tech != null, "GetByName should find category");
             Assert(tech!.description == "Technology", "optional category description");
 
+            var techBySearchName = ctx.Categorys.SearchByName("tech");
+            Assert(techBySearchName.Count == 1, "SearchByName should find category");
+            Assert(techBySearchName[0].id == 10, "SearchByName category id");
+
             var postsByAlice = ctx.Posts.FindByAuthorId(1);
             Assert(postsByAlice.Count == 2, "FindByAuthorId should return two posts");
             Assert(postsByAlice[0].title == "Binary refs", "first post title");
+
+            var binaryTitleMatches = ctx.Posts.SearchByTitle("binary");
+            Assert(binaryTitleMatches.Count == 1, "SearchByTitle should find one binary post");
+            Assert(binaryTitleMatches[0].id == 100, "SearchByTitle post id");
+
+            var techDescriptionMatches = ctx.Categorys.SearchByDescription("tech");
+            Assert(techDescriptionMatches.Count == 1, "SearchByDescription should find category");
+            Assert(techDescriptionMatches[0].name == "Tech", "SearchByDescription category name");
+
+            var rankMatches = ctx.Categorys.SearchByRank(7);
+            Assert(rankMatches.Count == 1, "SearchByRank should find category");
+            Assert(rankMatches[0].id == 10, "SearchByRank category id");
+
+            var kindMatches = ctx.Categorys.SearchByKind(test.indexes.CategoryKind.Public);
+            Assert(kindMatches.Count == 1, "SearchByKind should find category");
+            Assert(kindMatches[0].id == 10, "SearchByKind category id");
 
             var postTags = ctx.PostTags.FindByPostId(100);
             Assert(postTags.Count == 1, "FindByPostId should return one post tag");

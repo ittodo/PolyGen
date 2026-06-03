@@ -7,7 +7,7 @@ PolyGen의 핵심 Rust 소스 코드가 위치한 폴더입니다. 스키마 파
 ```
 src/
 ├── ast_model.rs          # AST 데이터 모델 정의
-├── ast_parser.rs         # Pest 기반 파서 구현
+├── ast_parser/           # Pest 기반 AST 파서 모듈
 ├── ir_model.rs           # IR 데이터 모델 정의
 ├── ir_builder.rs         # AST → IR 변환 로직
 ├── ir_builder/           # IR 빌더 하위 헬퍼 모듈
@@ -21,13 +21,14 @@ src/
 ├── validation.rs         # AST 유효성 검사
 ├── error.rs              # 에러 타입 정의
 ├── polygen.pest          # Pest 문법 정의
+├── template/             # PolyTemplate 파서/렌더러/Rhai bridge
 ├── lib.rs                # 라이브러리 엔트리 + polygen.pest 매크로
 ├── main.rs               # CLI 엔트리 포인트
-└── rhai/                 # Rhai 템플릿용 사용자 정의 함수
+└── rhai/                 # PolyTemplate Rhai logic/helper 함수
     ├── mod.rs            # Rhai 모듈 정의
     ├── registry.rs       # Rhai 함수 레지스트리
-    ├── csharp.rs         # C# 코드 생성용 함수
-    └── csv.rs           # CSV 매퍼 생성용 함수
+    ├── common/           # 공통 IR 조회/문자열 헬퍼
+    └── csharp/           # C# 코드 생성용 함수
 ```
 
 ## Files
@@ -43,7 +44,7 @@ src/
   - `Namespace`, `Table`, `Enum`, `Embed`, `FieldDefinition` 등
   - 스키마 파일의 구조를 Rust 타입으로 표현합니다
 
-- **ast_parser.rs**: Pest 파서 구현 (35KB)
+- **ast_parser/**: Pest 파서 구현
   - Pest 파서를 사용하여 `.poly` 파일을 AST로 변환
   - `build_ast_from_pairs()`: Pest 파싱 결과를 AST로 빌드
   - 파일 임포트 처리 (`import` 문)
@@ -112,9 +113,14 @@ src/
 
 ### Code Generation
 - **template/**: PolyTemplate 엔진 (.ptpl 렌더링)
-  - `generate_code_with_rhai()`: IR과 Rhai 템플릿으로 코드 생성
-  - Rhai 엔진 설정 및 컨텍스트 주입
+  - `.ptpl` 파싱, 렌더링, 표현식/필터 처리
+  - `%logic`, `%if` 조건의 Rhai 평가 브릿지
   - 템플릿 파일 로드 및 실행
+
+- **codegen.rs**: 코드 생성 오케스트레이션
+  - IR과 PolyTemplate 템플릿으로 코드 생성
+  - 언어 설정 로드
+  - 정적 파일 복사
 
 ### Rhai Functions
 - **rhai/mod.rs**: Rhai 모듈 정의
@@ -125,12 +131,12 @@ src/
   - `register_rhai_functions()`: 모든 함수 등록
   - 타입 변환, 문자열 조작, FQN 처리 등 유틸리티
 
-- **rhai/csharp.rs**: C# 코드 생성용 함수 (4KB)
+- **rhai/csharp/**: C# 코드 생성용 함수
   - C# 타입 매핑 (`map_type()`)
   - C# 네임스페이스 처리
   - 접근 제어자 생성
 
-- **rhai/csv.rs**: CSV 매퍼 생성용 함수 (51KB)
+- **rhai/csharp/loaders/csv.rs**: CSV 매퍼 생성용 함수
   - CSV 컬럼 이름 생성
   - CSV 헤더 생성
   - CSV 읽기/쓰기 코드 생성
@@ -154,14 +160,14 @@ src/
 
 ### 파이프라인
 ```
-.poly 파일 → Pest Parser → AST → Validation → IR → Rhai Template → Generated Code
+.poly 파일 → Pest Parser → AST → Validation → IR → PolyTemplate → Generated Code
 ```
 
 ### 데이터 흐름
 1. **파싱**: Pest가 `.poly` 파일을 파싱하여 AST 생성
 2. **검사**: Validation 단계에서 AST 구조 확인
 3. **변환**: AST를 언어 독립적인 IR로 변환
-4. **생성**: Rhai 템플릿 엔진이 IR을 타겟 언어 코드로 변환
+4. **생성**: PolyTemplate 렌더러가 IR을 타겟 언어 코드로 변환
 
 ### 타입 시스템
 - **AST**: 스키마 원본 구조 (`.poly` 파일 그대로)
@@ -184,7 +190,7 @@ src/
 
 ### 외부 라이브러리
 - `pest` 2.7 + `pest_derive`: 파서 생성기
-- `rhai` 1.22.2: 템플릿 엔진
+- `rhai` 1.22.2: PolyTemplate logic/helper 평가
 - `serde`: IR → JSON 직렬화
 - `thiserror`: 커스텀 에러 타입
 - `anyhow`: 에러 핸들링
@@ -192,7 +198,7 @@ src/
 - `regex`: 정규식 처리
 
 ### 내부 의존성
-- `ast_parser.rs` → `ast_model.rs`, `error.rs`
+- `ast_parser/` → `ast_model.rs`, `error.rs`
 - `ir_builder.rs` → `ast_model.rs`, `ir_model.rs`, `type_registry.rs`, `ir_builder/*`
 - `validation.rs` → `ast_model.rs`, `error.rs`
 - `template/` → `ir_model.rs`, `rhai/*`
@@ -226,7 +232,7 @@ cargo fmt --all        # 포맷팅
 ### 새로운 기능 추가 시
 1. `polygen.pest`에 문법 추가
 2. `ast_model.rs`에 AST 타입 추가
-3. `ast_parser.rs`에 파싱 로직 추가
+3. `ast_parser/`에 파싱 로직 추가
 4. `validation.rs`에 검사 로직 추가 (필요한 경우)
 5. `ir_builder.rs`에 IR 변환 로직 추가
 6. `ir_model.rs`에 IR 타입 추가

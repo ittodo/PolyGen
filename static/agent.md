@@ -89,7 +89,7 @@ static/
   - 열거형 값 매핑
 - **사용 예제**: `examples/JsonToCsvDemo.cs`
 - **네임스페이스**: `Polygen.Common`
-- **관련 문서**: `docs/json-to-csv-conversion-spec.md`
+- **관련 문서**: `docs/json-to-csv-spec.md`
 
 ### PolygenAttributes.cs
 - **크기**: 2.7KB
@@ -174,13 +174,13 @@ public class Player {
 
 ### 테스트
 - 정적 파일은 유닛 테스트 작성 권장
-- `tests/game_schema_test/`에서 통합 테스트 가능
+- 관련 언어 runner에서 생성 코드 컴파일/실행까지 확인
 
 ### 디버깅
 - 생성된 코드에서 정적 파일 사용을 확인:
   ```bash
   cargo run -- --schema-path examples/game_schema.poly --lang csharp
-  grep -r "using Polygen.Common" output/csharp/
+  rg "using Polygen.Common" output/csharp/
   ```
 
 ### 주의사항
@@ -193,10 +193,3 @@ public class Player {
 - 정적 파일은 git에 커밋됩니다
 - 변경 시 생성된 코드의 호환성 확인 필요
 - breaking change가 있을 경우 버전 번호 업데이트
-
-### 정적 파일 확장 아이디어
-1. **XmlUtils.cs**: XML 데이터 처리
-2. **ExcelUtils.cs**: Excel 파일 처리
-3. **NetworkUtils.cs**: 네트워크 패킷 처리
-4. **CompressionUtils.cs**: 데이터 압축/압축 해제
-5. **ValidationUtils.cs**: 데이터 유효성 검사

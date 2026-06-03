@@ -2,6 +2,8 @@
 
 Visual Studio Code extension for PolyGen schema language (`.poly` files).
 
+Project-level tool documentation: [docs/tools/vscode-extension.md](../docs/tools/vscode-extension.md)
+
 ## Features
 
 - **Syntax Highlighting**: Full TextMate grammar for `.poly` files

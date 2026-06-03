@@ -2,6 +2,8 @@
 
 `.poly` 스키마 파일을 웹 브라우저에서 렌더링하고 신택스 하이라이팅을 제공하는 도구입니다.
 
+프로젝트 문서: [docs/tools/poly-viewer.md](../../docs/tools/poly-viewer.md)
+
 ## 사용법
 
 ### 로컬에서 실행

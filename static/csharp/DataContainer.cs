@@ -217,6 +217,101 @@ namespace Polygen.Common
     }
 
     /// <summary>
+    /// Helpers for generated in-memory search indexes.
+    /// </summary>
+    public static class ContainerSearch
+    {
+        public static string Normalize(string value, string normalize)
+        {
+            return normalize switch
+            {
+                "none" => value,
+                "lower" => value.ToLowerInvariant(),
+                "trim" => value.Trim(),
+                "lower_trim" => value.Trim().ToLowerInvariant(),
+                _ => value,
+            };
+        }
+
+        public static string[] Tokens(string value, string mode, int n, int min, string normalize)
+        {
+            var text = Normalize(value, normalize);
+            if (string.IsNullOrEmpty(text))
+                return Array.Empty<string>();
+
+            if (mode == "word")
+            {
+                return text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(token => token.Length >= min)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+            }
+
+            if (mode == "ngram")
+            {
+                if (n <= 0)
+                    return Array.Empty<string>();
+                if (text.Length < n)
+                    return text.Length >= min ? new[] { text } : Array.Empty<string>();
+
+                var set = new HashSet<string>(StringComparer.Ordinal);
+                for (var i = 0; i <= text.Length - n; i++)
+                {
+                    var token = text.Substring(i, n);
+                    if (token.Length >= min)
+                        set.Add(token);
+                }
+                return set.ToArray();
+            }
+
+            return Array.Empty<string>();
+        }
+
+        internal static void Add<TRow>(Dictionary<string, List<TRow>> index, string token, TRow row)
+            where TRow : class
+        {
+            if (!index.TryGetValue(token, out var rows))
+            {
+                rows = new List<TRow>();
+                index[token] = rows;
+            }
+            rows.Add(row);
+        }
+
+        public static IReadOnlyList<TRow> Search<TRow>(
+            Dictionary<string, List<TRow>> index,
+            string query,
+            string mode,
+            int n,
+            int min,
+            string normalize)
+            where TRow : class
+        {
+            var tokens = Tokens(query, mode, n, min, normalize);
+            if (tokens.Length == 0)
+                return Array.Empty<TRow>();
+
+            List<TRow>? result = null;
+            foreach (var token in tokens)
+            {
+                if (!index.TryGetValue(token, out var rows))
+                    return Array.Empty<TRow>();
+
+                result = result == null
+                    ? new List<TRow>(rows)
+                    : result.Where(rows.Contains).ToList();
+
+                if (result.Count == 0)
+                    return Array.Empty<TRow>();
+            }
+
+            if (result == null)
+                return Array.Empty<TRow>();
+            return result;
+        }
+    }
+
+    /// <summary>
     /// Base class for data tables with common functionality.
     /// </summary>
     /// <typeparam name="TRow">The type of rows in this table.</typeparam>

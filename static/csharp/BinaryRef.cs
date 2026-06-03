@@ -46,7 +46,7 @@ namespace Polygen.Common
     public static class BinaryRefFormat
     {
         private static readonly byte[] Magic = { (byte)'P', (byte)'G', (byte)'B', (byte)'R', (byte)'E', (byte)'F', (byte)'1', 0 };
-        private const int Version = 1;
+        private const int Version = 2;
 
         public static void WriteHeader(BinaryWriter writer)
         {

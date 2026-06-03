@@ -1138,6 +1138,7 @@ fn validate_metadata_annotations(
     allow_pack: bool,
     allow_datasource: bool,
     allow_table_annotations: bool,
+    allow_search: bool,
 ) -> Result<(), ValidationError> {
     for meta in metadata {
         if let Metadata::Annotation(annotation) = meta {
@@ -1215,6 +1216,15 @@ fn validate_metadata_annotations(
                     );
                 }
                 validate_link_rows_annotation(&annotation.args, target)?;
+            } else if annotation.name.as_deref() == Some("search") {
+                if !allow_search {
+                    return invalid_search(
+                        target,
+                        "target",
+                        "@search can only be used on searchable fields",
+                    );
+                }
+                validate_search_annotation(&annotation.args, target)?;
             }
         }
     }
@@ -1861,9 +1871,278 @@ fn invalid_pack<T>(target: &str, part: &str, message: &str) -> Result<T, Validat
     })
 }
 
+#[derive(Clone, Copy)]
+enum SearchFieldKind {
+    String,
+    Exact,
+    Unsupported,
+}
+
+fn validate_search_annotation(args: &[AnnotationArg], target: &str) -> Result<(), ValidationError> {
+    let mut has_mode = false;
+    let mut seen = HashSet::new();
+
+    for arg in args {
+        match arg {
+            AnnotationArg::Positional(literal) => {
+                if has_mode {
+                    return invalid_search(target, "mode", "mode is specified more than once");
+                }
+                validate_search_identifier(literal, target, "mode")?;
+                has_mode = true;
+            }
+            AnnotationArg::Named(param) => {
+                if !seen.insert(param.key.as_str()) {
+                    return invalid_search(
+                        target,
+                        &param.key,
+                        "search parameter is specified more than once",
+                    );
+                }
+
+                match param.key.as_str() {
+                    "mode" => {
+                        if has_mode {
+                            return invalid_search(
+                                target,
+                                "mode",
+                                "mode is specified more than once",
+                            );
+                        }
+                        validate_search_identifier(&param.value, target, "mode")?;
+                        has_mode = true;
+                    }
+                    "n" | "min" => validate_positive_integer(&param.value, target, &param.key)?,
+                    "normalize" => validate_search_identifier(&param.value, target, "normalize")?,
+                    "name" => validate_search_identifier(&param.value, target, "name")?,
+                    "target" => validate_search_identifier(&param.value, target, "target")?,
+                    key => {
+                        return invalid_search(
+                            target,
+                            key,
+                            "unsupported @search parameter; expected mode, n, min, normalize, name, or target",
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_search_identifier(
+    literal: &Literal,
+    target: &str,
+    part: &str,
+) -> Result<(), ValidationError> {
+    match literal {
+        Literal::Identifier(_) | Literal::String(_) => Ok(()),
+        _ => invalid_search(
+            target,
+            part,
+            "value must be an identifier or string literal",
+        ),
+    }
+}
+
+fn validate_positive_integer(
+    literal: &Literal,
+    target: &str,
+    part: &str,
+) -> Result<(), ValidationError> {
+    match literal {
+        Literal::Integer(value) if *value > 0 => Ok(()),
+        Literal::Integer(_) => invalid_search(target, part, "value must be greater than 0"),
+        _ => invalid_search(target, part, "value must be an integer literal"),
+    }
+}
+
+fn search_literal_value<'a>(
+    literal: &'a Literal,
+    target: &str,
+    part: &str,
+) -> Result<&'a str, ValidationError> {
+    match literal {
+        Literal::Identifier(value) | Literal::String(value) => Ok(value.as_str()),
+        _ => invalid_search(
+            target,
+            part,
+            "value must be an identifier or string literal",
+        ),
+    }
+}
+
+fn validate_regular_field_search_annotations(
+    metadata: &[Metadata],
+    target: &str,
+    field_type: &TypeWithCardinality,
+    current_scope: &[String],
+    registry: &TypeRegistry,
+) -> Result<(), ValidationError> {
+    let kind = search_field_kind(field_type, current_scope, registry);
+    validate_search_annotations_for_kind(metadata, target, kind)
+}
+
+fn search_field_kind(
+    field_type: &TypeWithCardinality,
+    current_scope: &[String],
+    registry: &TypeRegistry,
+) -> SearchFieldKind {
+    if matches!(field_type.cardinality, Some(Cardinality::Array)) {
+        return SearchFieldKind::Unsupported;
+    }
+
+    match &field_type.base_type {
+        TypeName::Basic(BasicType::String) => SearchFieldKind::String,
+        TypeName::Basic(
+            BasicType::U8
+            | BasicType::U16
+            | BasicType::U32
+            | BasicType::U64
+            | BasicType::I8
+            | BasicType::I16
+            | BasicType::I32
+            | BasicType::I64
+            | BasicType::Bool
+            | BasicType::Timestamp,
+        ) => SearchFieldKind::Exact,
+        TypeName::Basic(BasicType::F32 | BasicType::F64 | BasicType::Bytes) => {
+            SearchFieldKind::Unsupported
+        }
+        TypeName::InlineEnum(_) => SearchFieldKind::Exact,
+        TypeName::Path(type_path) => resolve_type_path(type_path, current_scope, registry)
+            .and_then(|fqn| registry.get_kind(&fqn))
+            .map(|kind| {
+                if kind == TypeKind::Enum {
+                    SearchFieldKind::Exact
+                } else {
+                    SearchFieldKind::Unsupported
+                }
+            })
+            .unwrap_or(SearchFieldKind::Unsupported),
+    }
+}
+
+fn validate_search_annotations_for_kind(
+    metadata: &[Metadata],
+    target: &str,
+    kind: SearchFieldKind,
+) -> Result<(), ValidationError> {
+    let mut count = 0;
+
+    for meta in metadata {
+        if let Metadata::Annotation(annotation) = meta {
+            if annotation.name.as_deref() != Some("search") {
+                continue;
+            }
+
+            count += 1;
+            if count > 1 {
+                return invalid_search(target, "args", "@search is specified more than once");
+            }
+
+            if matches!(kind, SearchFieldKind::Unsupported) {
+                return invalid_search(
+                    target,
+                    "target",
+                    "@search is not supported for this field type",
+                );
+            }
+
+            let mut mode = match kind {
+                SearchFieldKind::String => "ngram",
+                SearchFieldKind::Exact => "exact",
+                SearchFieldKind::Unsupported => unreachable!(),
+            };
+            let mut has_n = false;
+            let mut has_min = false;
+            let mut has_normalize = false;
+            let mut target_value = "csharp";
+
+            for arg in &annotation.args {
+                match arg {
+                    AnnotationArg::Positional(literal) => {
+                        mode = search_literal_value(literal, target, "mode")?;
+                    }
+                    AnnotationArg::Named(param) => match param.key.as_str() {
+                        "mode" => mode = search_literal_value(&param.value, target, "mode")?,
+                        "n" => has_n = true,
+                        "min" => has_min = true,
+                        "normalize" => has_normalize = true,
+                        "target" => {
+                            target_value = search_literal_value(&param.value, target, "target")?
+                        }
+                        "name" => {}
+                        _ => {}
+                    },
+                }
+            }
+
+            match mode {
+                "exact" => {}
+                "ngram" | "word" if matches!(kind, SearchFieldKind::String) => {}
+                "ngram" | "word" => {
+                    return invalid_search(
+                        target,
+                        "mode",
+                        "ngram and word search modes are only supported for string fields",
+                    );
+                }
+                _ => {
+                    return invalid_search(
+                        target,
+                        "mode",
+                        "unsupported search mode; expected exact, ngram, or word",
+                    );
+                }
+            }
+
+            if has_n && mode != "ngram" {
+                return invalid_search(target, "n", "n can only be used with ngram mode");
+            }
+            if has_min && matches!(kind, SearchFieldKind::Exact) {
+                return invalid_search(
+                    target,
+                    "min",
+                    "min can only be used with string search modes",
+                );
+            }
+            if has_normalize && matches!(kind, SearchFieldKind::Exact) {
+                return invalid_search(
+                    target,
+                    "normalize",
+                    "normalize can only be used with string search modes",
+                );
+            }
+            if !matches!(
+                target_value,
+                "csharp" | "csharp_binary_ref" | "csharp_container"
+            ) {
+                return invalid_search(
+                    target,
+                    "target",
+                    "unsupported search target; expected csharp, csharp_binary_ref, or csharp_container",
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn invalid_search<T>(target: &str, part: &str, message: &str) -> Result<T, ValidationError> {
+    Err(ValidationError::InvalidConstraint {
+        field: target.to_string(),
+        constraint: format!("@search.{part}"),
+        message: message.to_string(),
+    })
+}
+
 fn validate_member_annotations(
     members: &[TableMember],
     path: &mut Vec<String>,
+    registry: &TypeRegistry,
 ) -> Result<(), ValidationError> {
     for member in members {
         match member {
@@ -1874,14 +2153,35 @@ fn validate_member_annotations(
                         .as_deref()
                         .map(|name| qualified_name(path, name))
                         .unwrap_or_else(|| "<anonymous field>".to_string());
-                    validate_metadata_annotations(&rf.metadata, &target, false, false, false)?;
+                    validate_metadata_annotations(
+                        &rf.metadata,
+                        &target,
+                        false,
+                        false,
+                        false,
+                        true,
+                    )?;
+                    validate_regular_field_search_annotations(
+                        &rf.metadata,
+                        &target,
+                        &rf.field_type,
+                        path,
+                        registry,
+                    )?;
                 }
                 FieldDefinition::InlineEmbed(ief) => {
                     let inline_name = required_name(&ief.name, "inline embed")?;
                     let target = qualified_name(path, inline_name);
-                    validate_metadata_annotations(&ief.metadata, &target, false, false, false)?;
+                    validate_metadata_annotations(
+                        &ief.metadata,
+                        &target,
+                        false,
+                        false,
+                        false,
+                        false,
+                    )?;
                     path.push(inline_name.to_string());
-                    validate_member_annotations(&ief.members, path)?;
+                    validate_member_annotations(&ief.members, path, registry)?;
                     path.pop();
                 }
                 FieldDefinition::InlineEnum(e) => {
@@ -1890,15 +2190,20 @@ fn validate_member_annotations(
                         .as_deref()
                         .map(|name| qualified_name(path, name))
                         .unwrap_or_else(|| "<anonymous enum field>".to_string());
-                    validate_metadata_annotations(&e.metadata, &target, false, false, false)?;
+                    validate_metadata_annotations(&e.metadata, &target, false, false, false, true)?;
+                    validate_search_annotations_for_kind(
+                        &e.metadata,
+                        &target,
+                        SearchFieldKind::Exact,
+                    )?;
                 }
             },
             TableMember::Embed(e) => {
                 let embed_name = required_name(&e.name, "embed")?;
                 let target = qualified_name(path, embed_name);
-                validate_metadata_annotations(&e.metadata, &target, true, false, false)?;
+                validate_metadata_annotations(&e.metadata, &target, true, false, false, false)?;
                 path.push(embed_name.to_string());
-                validate_member_annotations(&e.members, path)?;
+                validate_member_annotations(&e.members, path, registry)?;
                 path.pop();
             }
             TableMember::Enum(e) => {
@@ -1907,7 +2212,7 @@ fn validate_member_annotations(
                     .as_deref()
                     .map(|name| qualified_name(path, name))
                     .unwrap_or_else(|| "<anonymous enum>".to_string());
-                validate_metadata_annotations(&e.metadata, &target, false, false, false)?;
+                validate_metadata_annotations(&e.metadata, &target, false, false, false, false)?;
             }
             TableMember::Comment(_) => {}
         }
@@ -1925,7 +2230,7 @@ fn validate_all_annotations(
             Definition::Namespace(ns) => {
                 path.extend(ns.path.iter().cloned());
                 let target = path.join(".");
-                validate_metadata_annotations(&ns.metadata, &target, false, true, false)?;
+                validate_metadata_annotations(&ns.metadata, &target, false, true, false, false)?;
                 validate_all_annotations(&ns.definitions, path, registry)?;
                 for _ in 0..ns.path.len() {
                     path.pop();
@@ -1934,11 +2239,11 @@ fn validate_all_annotations(
             Definition::Table(t) => {
                 let table_name = required_name(&t.name, "table")?;
                 let target = qualified_name(path, table_name);
-                validate_metadata_annotations(&t.metadata, &target, false, true, true)?;
+                validate_metadata_annotations(&t.metadata, &target, false, true, true, false)?;
                 validate_soft_delete_fields(&t.metadata, t, &target)?;
                 path.push(table_name.to_string());
                 validate_index_fields(&t.metadata, t, &target, path, registry)?;
-                validate_member_annotations(&t.members, path)?;
+                validate_member_annotations(&t.members, path, registry)?;
                 path.pop();
             }
             Definition::Enum(e) => {
@@ -1947,14 +2252,14 @@ fn validate_all_annotations(
                     .as_deref()
                     .map(|name| qualified_name(path, name))
                     .unwrap_or_else(|| "<anonymous enum>".to_string());
-                validate_metadata_annotations(&e.metadata, &target, false, false, false)?;
+                validate_metadata_annotations(&e.metadata, &target, false, false, false, false)?;
             }
             Definition::Embed(e) => {
                 let embed_name = required_name(&e.name, "embed")?;
                 let target = qualified_name(path, embed_name);
-                validate_metadata_annotations(&e.metadata, &target, true, false, false)?;
+                validate_metadata_annotations(&e.metadata, &target, true, false, false, false)?;
                 path.push(embed_name.to_string());
-                validate_member_annotations(&e.members, path)?;
+                validate_member_annotations(&e.members, path, registry)?;
                 path.pop();
             }
             Definition::Comment(_) | Definition::Annotation(_) => {}

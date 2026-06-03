@@ -227,6 +227,101 @@ fn read_key_expr(t, reader_expr) {
     return read_expr(t.lang_type, reader_expr);
 }
 
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn search_has_value_condition(f) {
+    let t = f.field_type;
+    if !t.is_option {
+        return "";
+    }
+    let base = search_base_type(t);
+    if is_nullable_value_type(base) {
+        return "row.Row." + f.name + ".HasValue";
+    }
+    return "row.Row." + f.name + " != null";
+}
+
+fn search_value_expr(f) {
+    let t = f.field_type;
+    if t.is_option {
+        let base = search_base_type(t);
+        if is_nullable_value_type(base) {
+            return "row.Row." + f.name + ".Value";
+        }
+    }
+    return "row.Row." + f.name;
+}
+
+fn search_exact_value_expr(f) {
+    let search = f.search_index;
+    let base = search_base_type(f.field_type);
+    let value = search_value_expr(f);
+    if search.mode == "exact" && base.lang_type == "string" {
+        return "BinaryRefSearch.Normalize(" + value + ", \"" + search.normalize + "\")";
+    }
+    return value;
+}
+
+fn is_supported_search_index(f) {
+    if !f.has_search_index {
+        return false;
+    }
+    let search = f.search_index;
+    if search.target != "csharp" && search.target != "csharp_binary_ref" {
+        return false;
+    }
+    let t = f.field_type;
+    if t.is_list {
+        return false;
+    }
+    let base = search_base_type(t);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.lang_type == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    if base.lang_type == "string" || base.lang_type == "timestamp" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.lang_type != "bytes" && base.lang_type != "f32" && base.lang_type != "f64" {
+        return true;
+    }
+    return false;
+}
+
+fn search_key_type(f) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "string";
+    }
+    return key_type(search_base_type(f.field_type));
+}
+
+fn search_write_key_stmt(f, key_expr, writer_expr) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "BinaryRefFormat.WriteString(" + writer_expr + ", " + key_expr + ");";
+    }
+    return write_key_stmt(search_base_type(f.field_type), key_expr, writer_expr);
+}
+
+fn search_read_key_expr(f, reader_expr) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "BinaryRefFormat.ReadString(" + reader_expr + ")";
+    }
+    return read_key_expr(search_base_type(f.field_type), reader_expr);
+}
+
 fn field_property_code(f, field_index, current_ns, current_struct_name, inline_enums) {
     let ft = f.field_type;
     let base = if ft.is_option { ft.inner } else { ft };
@@ -443,6 +538,35 @@ for s in all_tables {
         }
     }
 
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if is_supported_search_index(f) {
+                let search = f.search_index;
+                search_indexes.push(#{
+                    field: f,
+                    def: search,
+                    name: search.name,
+                    mode: search.mode,
+                    n: search.n,
+                    min: search.min,
+                    normalize: search.normalize,
+                    var_name: to_camel("search_" + search.name),
+                    method_suffix: search.name,
+                    key_type: search_key_type(f),
+                    value_expr: search_value_expr(f),
+                    exact_value_expr: search_exact_value_expr(f),
+                    has_value_condition: search_has_value_condition(f),
+                    write_key: search_write_key_stmt(f, "kv.Key", "bw"),
+                    read_key: search_read_key_expr(f, "br"),
+                    is_token_mode: search.mode == "ngram" || search.mode == "word",
+                    is_exact_string: search.mode == "exact" && search_base_type(f.field_type).lang_type == "string"
+                });
+            }
+        }
+    }
+
     entries.push(#{
         def: s,
         ns_name: current_ns,
@@ -453,7 +577,9 @@ for s in all_tables {
         field_count: field_index,
         inline_enums: inline_enums,
         indexes: indexes,
-        index_count: indexes.len()
+        index_count: indexes.len(),
+        search_indexes: search_indexes,
+        search_index_count: search_indexes.len()
     });
 }
 
@@ -477,6 +603,101 @@ using Polygen.Common;
 
 namespace {{binary_ref_namespace}}.BinaryRefs
 {
+    internal static class BinaryRefSearch
+    {
+        public static string Normalize(string value, string mode)
+        {
+            value = mode switch
+            {
+                "lower" => value.ToLowerInvariant(),
+                "trim" => value.Trim(),
+                "lower_trim" => value.Trim().ToLowerInvariant(),
+                _ => value
+            };
+            return value;
+        }
+
+        public static string[] Tokens(string value, string mode, int n, int min, string normalize)
+        {
+            value = Normalize(value, normalize);
+            if (value.Length < min)
+                return Array.Empty<string>();
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var result = new List<string>();
+
+            if (mode == "word")
+            {
+                foreach (var token in value.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (seen.Add(token))
+                        result.Add(token);
+                }
+                return result.ToArray();
+            }
+
+            if (mode == "ngram")
+            {
+                if (n <= 0)
+                    throw new InvalidDataException("Search ngram size must be positive.");
+                if (value.Length < n)
+                    return Array.Empty<string>();
+                for (var i = 0; i <= value.Length - n; i++)
+                {
+                    var token = value.Substring(i, n);
+                    if (seen.Add(token))
+                        result.Add(token);
+                }
+                return result.ToArray();
+            }
+
+            if (seen.Add(value))
+                result.Add(value);
+            return result.ToArray();
+        }
+
+        public static void Add<TKey>(Dictionary<TKey, List<int>> map, TKey key, int ordinal) where TKey : notnull
+        {
+            if (!map.TryGetValue(key, out var ordinals))
+            {
+                ordinals = new List<int>();
+                map[key] = ordinals;
+            }
+            ordinals.Add(ordinal);
+        }
+
+        public static Dictionary<TKey, int[]> Freeze<TKey>(Dictionary<TKey, List<int>> map) where TKey : notnull
+        {
+            var frozen = new Dictionary<TKey, int[]>(map.Count);
+            foreach (var kv in map)
+                frozen[kv.Key] = kv.Value.ToArray();
+            return frozen;
+        }
+
+        public static int[] Intersect(IReadOnlyList<int[]> postings)
+        {
+            if (postings.Count == 0)
+                return Array.Empty<int>();
+
+            var result = new List<int>(postings[0]);
+            for (var i = 1; i < postings.Count; i++)
+            {
+                var next = new HashSet<int>(postings[i]);
+                var write = 0;
+                for (var read = 0; read < result.Count; read++)
+                {
+                    if (next.Contains(result[read]))
+                        result[write++] = result[read];
+                }
+                if (write < result.Count)
+                    result.RemoveRange(write, result.Count - write);
+                if (result.Count == 0)
+                    break;
+            }
+            return result.ToArray();
+        }
+    }
+
 %for entry in entries
     public sealed class {{entry.ref_name}}
     {
@@ -529,6 +750,9 @@ namespace {{binary_ref_namespace}}.BinaryRefs
         private readonly Dictionary<{{idx.key_type}}, int[]> _{{idx.var_name}};
 %endif
 %endfor
+%for search in entry.search_indexes
+        private readonly Dictionary<{{search.key_type}}, int[]> _{{search.var_name}};
+%endfor
 
         internal {{entry.table_name}}(
             BinaryDocumentOwner owner,
@@ -540,12 +764,18 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             , Dictionary<{{idx.key_type}}, int[]> {{idx.var_name}}
 %endif
 %endfor
+%for search in entry.search_indexes
+            , Dictionary<{{search.key_type}}, int[]> {{search.var_name}}
+%endfor
         )
         {
             _owner = owner;
             _rowOffsets = rowOffsets;
 %for idx in entry.indexes
             _{{idx.var_name}} = {{idx.var_name}};
+%endfor
+%for search in entry.search_indexes
+            _{{search.var_name}} = {{search.var_name}};
 %endfor
         }
 
@@ -588,6 +818,47 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             var rows = new {{entry.ref_name}}[offsets.Length];
             for (var i = 0; i < offsets.Length; i++)
                 rows[i] = new {{entry.ref_name}}(_owner, offsets[i]);
+            return rows;
+        }
+%endif
+
+%endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+        public IReadOnlyList<{{entry.ref_name}}> SearchBy{{search.method_suffix}}(string query)
+        {
+            var tokens = BinaryRefSearch.Tokens(query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}");
+            if (tokens.Length == 0)
+                return Array.Empty<{{entry.ref_name}}>();
+
+            var postings = new List<int[]>(tokens.Length);
+            foreach (var token in tokens)
+            {
+                if (!_{{search.var_name}}.TryGetValue(token, out var ordinals))
+                    return Array.Empty<{{entry.ref_name}}>();
+                postings.Add(ordinals);
+            }
+
+            var matches = BinaryRefSearch.Intersect(postings);
+            var rows = new {{entry.ref_name}}[matches.Length];
+            for (var i = 0; i < matches.Length; i++)
+                rows[i] = new {{entry.ref_name}}(_owner, _rowOffsets[matches[i]]);
+            return rows;
+        }
+%else
+        public IReadOnlyList<{{entry.ref_name}}> SearchBy{{search.method_suffix}}({{search.key_type}} key)
+        {
+%if search.is_exact_string
+            var normalized = BinaryRefSearch.Normalize(key, "{{search.normalize}}");
+            if (!_{{search.var_name}}.TryGetValue(normalized, out var ordinals))
+%else
+            if (!_{{search.var_name}}.TryGetValue(key, out var ordinals))
+%endif
+                return Array.Empty<{{entry.ref_name}}>();
+
+            var rows = new {{entry.ref_name}}[ordinals.Length];
+            for (var i = 0; i < ordinals.Length; i++)
+                rows[i] = new {{entry.ref_name}}(_owner, _rowOffsets[ordinals[i]]);
             return rows;
         }
 %endif
@@ -648,6 +919,59 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             }
 %endif
 %endfor
+            bw.Write({{entry.search_index_count}});
+%for search in entry.search_indexes
+            BinaryRefFormat.WriteString(bw, "{{search.name}}");
+            BinaryRefFormat.WriteString(bw, "{{search.mode}}");
+%if search.is_token_mode
+            {
+                var map = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                for (var ordinal = 0; ordinal < rows.Count; ordinal++)
+                {
+                    var row = rows[ordinal];
+%if search.has_value_condition != ""
+                    if (!({{search.has_value_condition}}))
+                        continue;
+%endif
+                    foreach (var token in BinaryRefSearch.Tokens({{search.value_expr}}, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}"))
+                        BinaryRefSearch.Add(map, token, ordinal);
+                }
+
+                var frozen = BinaryRefSearch.Freeze(map);
+                bw.Write(frozen.Count);
+                foreach (var kv in frozen)
+                {
+                    BinaryRefFormat.WriteString(bw, kv.Key);
+                    bw.Write(kv.Value.Length);
+                    foreach (var ordinal in kv.Value)
+                        bw.Write(ordinal);
+                }
+            }
+%else
+            {
+                var map = new Dictionary<{{search.key_type}}, List<int>>();
+                for (var ordinal = 0; ordinal < rows.Count; ordinal++)
+                {
+                    var row = rows[ordinal];
+%if search.has_value_condition != ""
+                    if (!({{search.has_value_condition}}))
+                        continue;
+%endif
+                    BinaryRefSearch.Add(map, {{search.exact_value_expr}}, ordinal);
+                }
+
+                var frozen = BinaryRefSearch.Freeze(map);
+                bw.Write(frozen.Count);
+                foreach (var kv in frozen)
+                {
+                    {{search.write_key}}
+                    bw.Write(kv.Value.Length);
+                    foreach (var ordinal in kv.Value)
+                        bw.Write(ordinal);
+                }
+            }
+%endif
+%endfor
             bw.Write(cursor);
             foreach (var row in rows)
                 bw.Write(row.Bytes);
@@ -704,6 +1028,36 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             }
 
 %endfor
+            var searchIndexCount = br.ReadInt32();
+            if (searchIndexCount != {{entry.search_index_count}})
+                throw new InvalidDataException($"Unexpected search index count for {{entry.def.fqn}}: {searchIndexCount}.");
+
+%for search in entry.search_indexes
+            var {{search.var_name}} = new Dictionary<{{search.key_type}}, int[]>();
+            {
+                var searchName = BinaryRefFormat.ReadString(br);
+                if (searchName != "{{search.name}}")
+                    throw new InvalidDataException($"Expected search index '{{search.name}}' but found '{searchName}'.");
+                var searchMode = BinaryRefFormat.ReadString(br);
+                if (searchMode != "{{search.mode}}")
+                    throw new InvalidDataException("Binary search index mode does not match generated schema.");
+                var entryCount = br.ReadInt32();
+                if (entryCount < 0)
+                    throw new InvalidDataException("Negative search index entry count.");
+                for (var i = 0; i < entryCount; i++)
+                {
+                    var key = {{search.read_key}};
+                    var valueCount = br.ReadInt32();
+                    if (valueCount < 0)
+                        throw new InvalidDataException("Negative search index value count.");
+                    var ordinals = new int[valueCount];
+                    for (var j = 0; j < ordinals.Length; j++)
+                        ordinals[j] = br.ReadInt32();
+                    {{search.var_name}}[key] = ordinals;
+                }
+            }
+
+%endfor
             var rowBlockLength = br.ReadInt32();
             if (rowBlockLength < 0)
                 throw new InvalidDataException("Negative row block length.");
@@ -731,6 +1085,9 @@ namespace {{binary_ref_namespace}}.BinaryRefs
                 rowOffsets
 %for idx in entry.indexes
                 , {{idx.var_name}}
+%endfor
+%for search in entry.search_indexes
+                , {{search.var_name}}
 %endfor
             );
         }

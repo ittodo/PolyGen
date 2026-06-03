@@ -173,6 +173,23 @@ pub struct IndexFieldDef {
     pub field_type: TypeRef,
 }
 
+/// Inverted search index definition for a field.
+#[derive(Serialize, Debug, Clone)]
+pub struct SearchIndexDef {
+    /// Generated method/index suffix. Defaults to the field name in PascalCase.
+    pub name: String,
+    /// Search mode: "exact", "ngram", or "word".
+    pub mode: String,
+    /// N-gram size when mode is "ngram".
+    pub n: u32,
+    /// Minimum query length before searching.
+    pub min: u32,
+    /// String normalization policy: "none", "lower", "trim", or "lower_trim".
+    pub normalize: String,
+    /// Target artifact for this search index. Defaults to "csharp_binary_ref".
+    pub target: String,
+}
+
 /// Reverse relation definition (created from foreign_key ... as).
 #[derive(Serialize, Debug, Clone)]
 pub struct RelationDef {
@@ -232,6 +249,8 @@ pub struct FieldDef {
     /// Auto-update timestamp configuration (set on UPDATE).
     /// If present, this field's value is automatically updated to the current time on update.
     pub auto_update: Option<TimezoneRef>,
+    /// Inverted search index configuration, if @search is present.
+    pub search_index: Option<SearchIndexDef>,
 }
 
 /// Range constraint definition for numeric fields.

@@ -1,6 +1,10 @@
-# SQL 지원 확장 계획
+# SQL/DB 지원 문서
 
-> 상태: Phase 1-4 완료 (2026-01-22)
+> 최종 업데이트: 2026-06-03
+
+이 문서는 PolyGen의 SQL/DB/datasource/migration 지원 상태와 설계를 정리합니다.
+
+관련 타겟 개요는 `README.md`를 참고합니다.
 
 ---
 
@@ -563,4 +567,4 @@ cargo test db_introspection
 
 ---
 
-*최종 업데이트: 2026-05-23*
+*최종 업데이트: 2026-06-03*

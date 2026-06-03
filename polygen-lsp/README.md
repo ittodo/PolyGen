@@ -2,6 +2,8 @@
 
 LSP (Language Server Protocol) implementation for the PolyGen schema language.
 
+Project-level tool documentation: [docs/tools/lsp.md](../docs/tools/lsp.md)
+
 ## Features
 
 - **Diagnostics**: Real-time syntax and validation error reporting

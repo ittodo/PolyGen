@@ -1,3 +1,128 @@
+%logic
+fn container_search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn container_search_full_enum_type(t) {
+    "global::" + t.fqn
+}
+
+fn container_search_is_nullable_value_type(t) {
+    if t.is_enum { return true; }
+    if t.lang_type == "timestamp" { return true; }
+    if t.is_primitive && t.lang_type != "string" && t.lang_type != "bytes" { return true; }
+    return false;
+}
+
+fn container_search_key_type(f) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "string";
+    }
+
+    let base = container_search_base_type(f.field_type);
+    if base.lang_type == "string" { return "string"; }
+    if base.lang_type == "timestamp" { return "DateTime"; }
+    if base.is_enum { return container_search_full_enum_type(base); }
+    return cs_type(base.lang_type);
+}
+
+fn container_search_has_value_condition(f) {
+    let t = f.field_type;
+    if !t.is_option {
+        return "";
+    }
+
+    let base = container_search_base_type(t);
+    if container_search_is_nullable_value_type(base) {
+        return "row." + f.name + ".HasValue";
+    }
+    return "row." + f.name + " != null";
+}
+
+fn container_search_value_expr(f) {
+    let t = f.field_type;
+    if t.is_option {
+        let base = container_search_base_type(t);
+        if container_search_is_nullable_value_type(base) {
+            return "row." + f.name + ".Value";
+        }
+    }
+    return "row." + f.name;
+}
+
+fn container_search_exact_value_expr(f) {
+    let search = f.search_index;
+    let base = container_search_base_type(f.field_type);
+    let value = container_search_value_expr(f);
+    if search.mode == "exact" && base.lang_type == "string" {
+        return "ContainerSearch.Normalize(" + value + ", \"" + search.normalize + "\")";
+    }
+    return value;
+}
+
+fn container_search_is_supported(f) {
+    if !f.has_search_index {
+        return false;
+    }
+
+    let search = f.search_index;
+    if search.target != "csharp" && search.target != "csharp_container" {
+        return false;
+    }
+
+    let t = f.field_type;
+    if t.is_list {
+        return false;
+    }
+
+    let base = container_search_base_type(t);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.lang_type == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    if base.lang_type == "string" || base.lang_type == "timestamp" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.lang_type != "bytes" && base.lang_type != "f32" && base.lang_type != "f64" {
+        return true;
+    }
+    return false;
+}
+
+let search_indexes = [];
+for item in struct.items {
+    if item.is_field() {
+        let f = item.as_field();
+        if container_search_is_supported(f) {
+        let search = f.search_index;
+        search_indexes.push(#{
+            name: search.name,
+            method_suffix: search.name,
+            var_name: "_search" + search.name,
+            key_type: container_search_key_type(f),
+            is_token_mode: search.mode == "ngram" || search.mode == "word",
+            is_exact_string: search.mode == "exact" && container_search_base_type(f.field_type).lang_type == "string",
+            mode: search.mode,
+            n: search.n,
+            min: search.min,
+            normalize: search.normalize,
+            has_value_condition: container_search_has_value_condition(f),
+            value_expr: container_search_value_expr(f),
+            exact_value_expr: container_search_exact_value_expr(f)
+        });
+        }
+    }
+}
+%endlogic
 /// <summary>
 /// Data table for {{struct.name}} entities.
 /// </summary>
@@ -10,7 +135,14 @@ public class {{struct.name}}Table : DataTableBase<{{struct.name}}>
     public GroupIndex<{{idx.field_type | lang_type}}, {{struct.name}}> {{idx.name}} { get; } = new();
 %endif
 %endfor
-%if struct.indexes
+%for search in search_indexes
+%if search.is_token_mode
+    private readonly Dictionary<string, List<{{struct.name}}>> {{search.var_name}} = new(StringComparer.Ordinal);
+%else
+    private readonly GroupIndex<{{search.key_type}}, {{struct.name}}> {{search.var_name}} = new();
+%endif
+%endfor
+%if struct.indexes || search_indexes
 %blank
 %endif
     /// <summary>
@@ -32,6 +164,26 @@ public class {{struct.name}}Table : DataTableBase<{{struct.name}}>
 %for idx in struct.indexes
         {{idx.name}}.Add(row.{{idx.field_name}}, row);
 %endfor
+%for search in search_indexes
+%if search.has_value_condition != ""
+        if ({{search.has_value_condition}})
+        {
+%if search.is_token_mode
+            foreach (var token in ContainerSearch.Tokens({{search.value_expr}}, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}"))
+                ContainerSearch.Add({{search.var_name}}, token, row);
+%else
+            {{search.var_name}}.Add({{search.exact_value_expr}}, row);
+%endif
+        }
+%else
+%if search.is_token_mode
+        foreach (var token in ContainerSearch.Tokens({{search.value_expr}}, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}"))
+            ContainerSearch.Add({{search.var_name}}, token, row);
+%else
+        {{search.var_name}}.Add({{search.exact_value_expr}}, row);
+%endif
+%endif
+%endfor
     }
 
     protected override void OnCleared()
@@ -39,8 +191,30 @@ public class {{struct.name}}Table : DataTableBase<{{struct.name}}>
 %for idx in struct.indexes
         {{idx.name}}.Clear();
 %endfor
+%for search in search_indexes
+        {{search.var_name}}.Clear();
+%endfor
     }
 
+%for search in search_indexes
+%if search.is_token_mode
+    public IReadOnlyList<{{struct.name}}> SearchBy{{search.method_suffix}}(string query)
+    {
+        return ContainerSearch.Search({{search.var_name}}, query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}");
+    }
+%else
+    public IReadOnlyList<{{struct.name}}> SearchBy{{search.method_suffix}}({{search.key_type}} key)
+    {
+%if search.is_exact_string
+        var normalized = ContainerSearch.Normalize(key, "{{search.normalize}}");
+        return {{search.var_name}}[normalized];
+%else
+        return {{search.var_name}}[key];
+%endif
+    }
+%endif
+
+%endfor
 %include "container/datatable_validate" with struct
 %blank
 %include "container/datatable_validate_fk" with struct

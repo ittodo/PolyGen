@@ -73,7 +73,7 @@ examples/
   - JSON 데이터를 CSV로 변환하는 C# 예제 코드
   - 생성된 `JsonCsvConverter` 클래스 사용 방법
   - `Polygen.Common` 네임스페이스 사용
-- **관련 문서**: `docs/json-to-csv-conversion-spec.md`
+- **관련 문서**: `docs/json-to-csv-spec.md`
 
 ## Key Concepts
 

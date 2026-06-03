@@ -890,6 +890,7 @@ mod tests {
                 regex_pattern: None,
                 auto_create: None,
                 auto_update: None,
+                search_index: None,
             }))],
             indexes: vec![],
             relations: vec![],

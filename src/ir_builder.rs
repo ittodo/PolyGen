@@ -17,7 +17,7 @@ use constraints::{convert_constraints_to_attributes, extract_constraint_info};
 use indexes::{build_indexes_from_annotations, build_indexes_from_items};
 use metadata::{
     convert_annotation_to_ir, extract_cache_strategy, extract_datasource, extract_pack_separator,
-    extract_soft_delete_field, is_readonly,
+    extract_search_index, extract_soft_delete_field, is_readonly,
 };
 use relations::resolve_relations;
 use renames::convert_rename;
@@ -316,6 +316,7 @@ fn convert_field_to_ir(
 
             // Extract constraint info for the new fields
             let constraint_info = extract_constraint_info(&rf.constraints, current_ns);
+            let search_index = extract_search_index(&rf.metadata, &field_name, &field_type);
 
             (
                 FieldDef {
@@ -332,6 +333,7 @@ fn convert_field_to_ir(
                     regex_pattern: constraint_info.regex_pattern,
                     auto_create: constraint_info.auto_create,
                     auto_update: constraint_info.auto_update,
+                    search_index,
                 },
                 Vec::new(),
                 inline_enums,
@@ -374,6 +376,7 @@ fn convert_field_to_ir(
                 regex_pattern: None,
                 auto_create: None,
                 auto_update: None,
+                search_index: None,
             };
             (field_def, nested_items, Vec::new())
         }
@@ -390,15 +393,17 @@ fn convert_field_to_ir(
 
             let enum_def =
                 convert_enum_to_enum_def(&temp_enum, Some(generated_enum_name.clone()), owner_fqn);
+            let field_type = build_type_ref_from_base(
+                &format!("{}.{}", owner_fqn, generated_enum_name),
+                &generated_enum_name,
+                &e.cardinality,
+                false,
+            );
+            let search_index = extract_search_index(&e.metadata, &field_name, &field_type);
 
             let field_def = FieldDef {
                 name: field_name,
-                field_type: build_type_ref_from_base(
-                    &format!("{}.{}", owner_fqn, generated_enum_name),
-                    &generated_enum_name,
-                    &e.cardinality,
-                    false,
-                ),
+                field_type,
                 attributes: Vec::new(),
                 is_primary_key: false,
                 is_unique: false,
@@ -410,6 +415,7 @@ fn convert_field_to_ir(
                 regex_pattern: None,
                 auto_create: None,
                 auto_update: None,
+                search_index,
             };
             (field_def, Vec::new(), vec![enum_def])
         }

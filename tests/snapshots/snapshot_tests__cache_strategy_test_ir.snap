@@ -72,6 +72,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -106,6 +107,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -142,6 +144,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                 ],
@@ -233,6 +236,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -267,6 +271,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -303,6 +308,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                 ],
@@ -394,6 +400,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -430,6 +437,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -466,6 +474,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -502,6 +511,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                 ],
@@ -641,6 +651,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -671,6 +682,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -701,6 +713,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                 ],
@@ -792,6 +805,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -828,6 +842,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                     Field(
@@ -858,6 +873,7 @@ SchemaContext {
                                             regex_pattern: None,
                                             auto_create: None,
                                             auto_update: None,
+                                            search_index: None,
                                         },
                                     ),
                                 ],

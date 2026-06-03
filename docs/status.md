@@ -1,6 +1,6 @@
-# PolyGen TODO
+# PolyGen Status
 
-> 최종 업데이트: 2026-05-23
+> 최종 업데이트: 2026-06-03
 
 ---
 
@@ -9,9 +9,9 @@
 ### ✅ 완료된 작업
 
 #### 문서화 (2026-01-28)
-- [x] `CUSTOMIZATION.md` - Rhai 템플릿 커스터마이징 가이드 (5개 언어)
-- [x] `SOURCE_STRUCTURE.md` - 소스 코드 구조 문서화
-- [x] `CLAUDE.md` 진입점 및 문서 동기화 규칙 추가
+- [x] `template-customization.md` - PolyTemplate/Rhai 커스터마이징 가이드
+- [x] `source-structure.md` - 소스 코드 구조 문서화
+- [x] `AGENTS.md`, `docs/README.md` 진입점 및 문서 동기화 규칙 추가
 
 #### 코드 품질 개선 (2026-01-28)
 - [x] Clippy 경고 수정: `strip_prefix()` 사용 (ast_parser/fields.rs)
@@ -33,7 +33,7 @@
 - [x] 생성 결과 출력 순회 중 파일시스템 엔트리 오류 전파
 - [x] 코드 문서화 (doc comments)
 
-> 상세 내용: [archive/REFACTORING_TODO.md](archive/REFACTORING_TODO.md), [archive/PHASE4_TODO.md](archive/PHASE4_TODO.md)
+> 완료된 리팩토링 세부 이력은 git history를 참조합니다.
 
 #### 언어 지원 (Phase 5)
 - [x] C# - 클래스, Enum, CSV/JSON/Binary 로더, Container, Validation
@@ -88,7 +88,7 @@
 - [x] 마이그레이션 diff 로직 (`--baseline` 옵션)
 - [x] CLI 명령어 (`polygen generate`, `polygen migrate`)
 
-> 상세 내용: [SQL_TODO.md](SQL_TODO.md)
+> 상세 내용: [targets/sql-support.md](targets/sql-support.md)
 
 #### 고급 어노테이션
 - [x] `@load` 대상/인자 의미 검증 (table 전용, csv/json named string)
@@ -166,6 +166,18 @@
 
 ### 🔴 높은 우선순위
 
+#### C# `@search` 역색인
+- [x] field-level `@search` annotation 문법/파싱 확정 (`@search`, `@search(n: 3)`, `@search(mode: exact)`, identifier option 값 허용)
+- [x] AST/IR에 `SearchIndexDef` 및 field search metadata 추가
+- [x] 검증 규칙 추가 (string은 `ngram`/`word`/`exact`, 정수/bool/named enum/inline enum/timestamp는 `exact`, bytes/embed/array는 v1 금지)
+- [x] C# BinaryRef 저장 포맷 확장 (row ordinal 기반 postings, BinaryRef version 2)
+- [x] C# BinaryRef 검색 API 생성 (`SearchBy<Field>` for token/exact modes)
+- [x] C# 일반 Container 메모리 역색인 생성 및 동일 `SearchBy<Field>` API 지원
+- [x] tokenizer/normalizer 공통 유틸리티 추가 (`ngram`, `word`, `exact`, `none/lower/trim/lower_trim`)
+- [x] snapshot/schema fixture 추가 및 C# runner에 Container/BinaryRef search roundtrip 테스트 추가
+- [x] `docs/schema-annotations.md`, `AGENTS.md`, `tests/agent.md`, `templates/agent.md` 구현 상태 동기화
+- [ ] C# 외 타겟의 `@search` 활용 여부와 API 정책 검토
+
 #### 스키마 관리 테이블
 - [x] `_polygen_schema` 테이블 자동 생성
 - [x] DDL/마이그레이션 SQL에 `schema_hash`, `schema_json` upsert 생성
@@ -239,12 +251,12 @@
 | SQL 지원 방식 | @datasource 기반 자동 생성 |
 | Rename 지원 | `.renames` 파일 방식 |
 | SQLite 최소 버전 | 3.25.0 (RENAME COLUMN 지원) |
-| 타입 매핑 통일 | 문제 발생 시 C# Rust 헬퍼 → Rhai 템플릿으로 이관 |
+| 타입 매핑 통일 | 문제 발생 시 C# Rust 헬퍼 → Rhai helper 또는 PolyTemplate 유틸로 이관 |
 
 ### 타입 매핑 현황
 
 현재 C#만 Rust 헬퍼(`src/rhai/csharp/type_mapping.rs`)로 구현되어 있고,
-다른 언어(C++, Rust, TypeScript, Go, Unreal, SQLite)는 Rhai 템플릿으로 구현됨.
+다른 언어(C++, Rust, TypeScript, Go, Unreal, SQLite)는 `rhai_utils/type_mapping.rhai` helper로 구현됨.
 
 ```
 C#:     src/rhai/csharp/type_mapping.rs                  (Rust)
@@ -270,12 +282,11 @@ Python/Kotlin/Swift의 FQN 클래스명 변환은 Rhai `split` 순회 대신 `re
 
 | 문서 | 설명 |
 |------|------|
-| `CUSTOMIZATION.md` | Rhai 템플릿 커스터마이징 가이드 |
-| `SOURCE_STRUCTURE.md` | 소스 코드 구조 |
-| `archive/REFACTORING_TODO.md` | 코어 리팩토링 Phase 1-5 (완료) |
-| `archive/PHASE4_TODO.md` | 성능 & 확장성 개선 (완료) |
-| `SQL_TODO.md` | SQL/DB 지원 상세 |
-| `CLAUDE.md` | 프로젝트 가이드 |
+| `template-customization.md` | PolyTemplate/Rhai 커스터마이징 가이드 |
+| `source-structure.md` | 소스 코드 구조 |
+| `targets/sql-support.md` | SQL/DB 지원 상세 |
+| `../AGENTS.md` | 에이전트 작업 지침 |
+| `README.md` | 문서 인덱스와 개발 전 필수 확인 문서 |
 
 ---
 
@@ -294,4 +305,4 @@ Python/Kotlin/Swift의 FQN 클래스명 변환은 Rhai `split` 순회 대신 `re
 
 ---
 
-*최종 업데이트: 2026-05-23*
+*최종 업데이트: 2026-06-03*

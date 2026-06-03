@@ -200,6 +200,7 @@ tests/
   - `03_nested_namespaces`에서 root `SchemaDataContainer`가 깊은 namespace table/index를 포함하는지 검증
   - `04_inline_enums`에서 invalid binary enum discriminant read/write가 `InvalidDataException`으로 거부되는지 검증
   - `06_arrays_and_optionals`에서 binary optional null roundtrip 검증
+  - `07_indexes`에서 C# Container/BinaryRef `@search` ngram/exact postings와 string/number/enum 조회 API 검증
   - `09_sqlite`에서 중첩 namespace table이 상위 SQLite datasource를 상속해 `SqliteDbContext`에 포함되는지 검증
   - `09_sqlite`에서 중첩 namespace table이 `Schema.DataContext.DataContext.Sqlite`에도 포함되는지 검증
 

@@ -23,10 +23,8 @@ PolyGen의 언어 지원은 **3단계**로 구분됩니다:
 ```
 templates/{lang}/
 ├── {lang}.toml              # 언어 설정
-├── {lang}_file.rhai         # 메인 진입점
-├── {lang}_mod.rhai          # 모듈/네임스페이스 생성
-├── {lang}_struct.rhai       # 구조체/클래스 생성
-├── {lang}_enum.rhai         # Enum 생성
+├── {lang}_file.ptpl         # 메인 진입점
+├── detail/                  # 구조체/Enum/모듈 세부 템플릿
 └── rhai_utils/
     └── type_mapping.rhai    # 타입 매핑
 ```
@@ -96,10 +94,8 @@ pub mod game_item {
 
 ```
 templates/{lang}/
-├── {lang}_csv_loader.rhai       # CSV 로더 생성
-├── {lang}_json_loader.rhai      # JSON 로더 생성
-├── {lang}_binary_reader.rhai    # Binary 리더 생성
-├── {lang}_binary_writer.rhai    # Binary 라이터 생성
+├── {lang}_loaders_file.ptpl     # CSV/JSON/Binary 로더 생성
+├── detail/                      # loader 세부 템플릿
 └── rhai_utils/
     ├── csv_mapping.rhai         # CSV 파싱 로직
     ├── json_mapping.rhai        # JSON 파싱 로직
@@ -258,11 +254,11 @@ impl Item {
 
 ```
 templates/{lang}/
-├── {lang}_container.rhai        # 컨테이너 생성
+├── {lang}_container_file.ptpl   # 컨테이너 생성
 ├── container/
-│   ├── {lang}_data_table.rhai   # DataTable 클래스
-│   ├── {lang}_indexes.rhai      # 인덱스 생성
-│   └── {lang}_relations.rhai    # 관계 생성
+│   ├── datatable.ptpl           # DataTable 클래스
+│   ├── indexes.ptpl             # 인덱스 생성
+│   └── relations.ptpl           # 관계 생성
 
 static/{lang}/
 └── DataContainer.{ext}          # 컨테이너 기반 클래스
@@ -487,6 +483,8 @@ let indented = indent_utils::indent_text(content, 1);  // 4스페이스 * 1
 - Rust 정적 파일: `static/rust/`
 - IR 모델: `src/ir_model.rs`
 - Rhai 함수 등록: `src/rhai/registry.rs`
+- 타겟 인덱스: `README.md`
+- 도구 문서: `../tools/README.md`
 
 ---
 
@@ -497,12 +495,10 @@ let indented = indent_utils::indent_text(content, 1);  // 4스페이스 * 1
 ```
 templates/rust/
 ├── rust.toml                      # 언어 설정
-├── rust_file.rhai                 # 메인 진입점
-├── rust_mod.rhai                  # 모듈 생성
-├── rust_struct.rhai               # 구조체 생성
-├── rust_enum.rhai                 # Enum 생성
-├── rust_loaders_file.rhai         # JSON/CSV/Binary 로더 통합
-├── rust_container_file.rhai       # 컨테이너 및 인덱스
+├── rust_file.ptpl                 # 메인 진입점
+├── rust_loaders_file.ptpl         # CSV/Binary 로더 통합
+├── rust_container_file.ptpl       # 컨테이너 및 인덱스
+├── detail/                        # 구조체/Enum/loader 세부 템플릿
 └── rhai_utils/
     └── type_mapping.rhai          # 타입 매핑
 
@@ -576,4 +572,4 @@ serde_json = "1.0"
 
 ---
 
-*최종 업데이트: 2026-01-21*
+*최종 업데이트: 2026-06-03*

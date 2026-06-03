@@ -7,7 +7,7 @@
 ```
 polygen/
 ├── src/                    # Rust 소스 코드 (핵심 로직)
-├── templates/              # 코드 생성 템플릿 (Rhai 스크립트)
+├── templates/              # 코드 생성 템플릿 (PolyTemplate .ptpl + Rhai utils)
 ├── static/                 # 정적 유틸리티 파일 (언어별)
 ├── tests/                  # 테스트
 ├── examples/               # 예제 스키마
@@ -42,7 +42,8 @@ src/
 ├── type_registry.rs      # 타입 레지스트리
 ├── pipeline.rs           # 컴파일 파이프라인
 ├── codegen.rs            # 코드 생성 유틸리티
-├── rhai_generator.rs     # Rhai 템플릿 엔진
+├── template/             # PolyTemplate 파서/렌더러/Rhai bridge
+├── rhai_generator.rs     # 레거시 Rhai 엔진 호환 레이어
 ├── error.rs              # 에러 타입 정의
 └── rhai/                 # Rhai 함수 모듈
     ├── registry.rs       # 함수 등록
@@ -183,20 +184,24 @@ target/
 | `.gitignore` | Git 무시 패턴 |
 | `README.md` | 프로젝트 소개 |
 | `LICENSE` | 라이선스 (MIT) |
-| `CLAUDE.md` | AI 어시스턴트 가이드 |
-| `agent.md` | 에이전트용 빠른 인덱스 |
-| `development_guide.md` | 개발 워크플로우 가이드 |
+| `AGENTS.md` | AI 어시스턴트 작업 지침 |
 
 ## 문서 (`docs/`)
 
 | 파일 | 설명 |
 |------|------|
-| `PROJECT_STRUCTURE.md` | 프로젝트 구조 설명 (이 문서) |
-| `LANGUAGE_SUPPORT_GUIDE.md` | 새 언어 지원 추가 가이드 |
-| `IMPLEMENTATION_ROADMAP.md` | 구현 로드맵 |
-| `TODO.md` | 할 일 목록 |
-| `*_TODO.md`, `*_PLAN.md` | 완료된 리팩토링 계획들 |
+| `README.md` | 문서 인덱스와 개발 전 필수 확인 문서 |
+| `project-structure.md` | 프로젝트 구조 설명 (이 문서) |
+| `source-structure.md` | Rust 소스 구조 |
+| `schema-annotations.md` | `.poly` 어노테이션/속성 스펙 |
+| `polytemplate-guide.md` | PolyTemplate 작성 가이드 |
+| `polytemplate-spec.md` | PolyTemplate 언어 상세 스펙 |
+| `targets/README.md` | 언어/DB/descriptor 타겟 인덱스 |
+| `targets/language-support.md` | 새 언어 지원 추가 가이드 |
+| `tools/README.md` | 주변 도구 인덱스 |
+| `status.md` | 현재 기능 현황과 남은 작업 |
+| `targets/sql-support.md` | SQL/DB/migration 지원 상세 |
 
 ---
 
-*최종 업데이트: 2025-01-23*
+*최종 업데이트: 2026-06-03*

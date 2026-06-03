@@ -2,6 +2,11 @@
 // Tests primary_key, unique, and foreign_key constraints
 
 namespace test.indexes {
+    enum CategoryKind {
+        Public = 1;
+        Internal = 2;
+    }
+
     /// User table with primary key and unique constraint
     @load(csv: "users.csv")
     table User {
@@ -13,16 +18,23 @@ namespace test.indexes {
 
     /// Category with simple primary key
     @load(csv: "categories.csv")
-    table Category {
-        id: u32 primary_key;
-        name: string unique;
-        description: string?;
+table Category {
+    id: u32 primary_key;
+    @search(mode: exact)
+    name: string unique;
+    @search
+    description: string?;
+        @search
+        rank: u8;
+        @search
+        kind: CategoryKind;
     }
 
     /// Post with foreign keys
     @load(csv: "posts.csv")
     table Post {
         id: u32 primary_key;
+        @search
         title: string;
         content: string;
         author_id: u32 foreign_key(User.id);

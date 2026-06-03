@@ -1,6 +1,6 @@
 # PolyGen 어노테이션 & 어트리뷰트 가이드
 
-> 상태: 작성 중 (2026-01-21)
+> 상태: 작성 중 (2026-06-03)
 
 ---
 
@@ -23,7 +23,8 @@ PolyGen 스키마 언어는 두 가지 메타데이터 시스템을 제공합니
 
 ```pest
 annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_params_list? ~ ")")? }
-annotation_params_list = { annotation_param ~ ("," ~ annotation_param)* }
+annotation_params_list = { annotation_arg ~ ("," ~ annotation_arg)* }
+annotation_arg         = { annotation_param | literal }
 annotation_param       = { IDENT ~ ":" ~ literal }
 ```
 
@@ -190,6 +191,104 @@ table Player {
 
 - 테이블/필드 이름 변경 추적
 - 마이그레이션 SQL 자동 생성
+
+### 1.4 @search - 필드별 역색인 (C# Container/BinaryRef 구현)
+
+`@search`는 각 searchable field에 붙는 역색인(inverted index) 생성 힌트입니다. 데이터 무결성 제약이
+아니라 C# Container/BinaryRef 같은 산출물에서 검색용 파생 인덱스를 만들기 위한 metadata이므로
+attribute/constraint가 아니라 field-level annotation으로 둡니다.
+
+#### 지원 문법
+
+| 문법 | 의미 | 기본/제약 |
+|------|------|-----------|
+| `@search` | 타입별 기본 검색 인덱스 생성 | string은 `ngram`, 나머지 scalar/enum은 `exact` |
+| `@search(n: 3)` | string n-gram 크기 지정 | `mode` 생략 시 string 기본 `ngram` |
+| `@search(mode: exact)` | 정확히 같은 값으로 역색인 | string/number/bool/enum/timestamp |
+| `@search(mode: ngram)` | n-gram 역색인 | string/string? 전용 |
+| `@search(mode: word)` | 단어 토큰 역색인 | string/string? 전용 |
+| `@search(normalize: lower_trim)` | 정규화 정책 지정 | string 계열 mode에 적용 |
+| `@search(name: "DisplayName")` | 생성 API/index 이름 지정 | 실제 문자열 이름이므로 따옴표 사용 |
+
+옵션 값이 enum-like인 경우 따옴표 없는 identifier를 권장합니다.
+
+```poly
+table Item {
+    id: u32 primary_key;
+
+    @search
+    name: string;
+
+    @search(n: 3, normalize: lower_trim)
+    description: string?;
+
+    @search(mode: exact)
+    item_code: string;
+
+    @search
+    grade: u8;
+
+    @search
+    rarity: Rarity;
+
+    @search
+    enabled: bool;
+}
+```
+
+#### 타입별 기본 동작
+
+| field 타입 | 기본 mode | 허용 mode | 색인 제외 조건 |
+|-----------|-----------|-----------|----------------|
+| `string` | `ngram` | `exact`, `ngram`, `word` | 빈 문자열은 mode 정책에 따름 |
+| `string?` | `ngram` | `exact`, `ngram`, `word` | `null` |
+| 정수 타입 | `exact` | `exact` | optional이면 `null` |
+| `bool` | `exact` | `exact` | optional이면 `null` |
+| named enum field | `exact` | `exact` | optional이면 `null` |
+| inline enum field | `exact` | `exact` | optional이면 `null` |
+| `timestamp` | `exact` | `exact` | optional이면 `null` |
+| float 타입 | 없음 | 향후 `bucket`/`range` 검토 | v1에서는 금지 권장 |
+| `bytes` | 없음 | 없음 | 항상 금지 |
+| embed/struct 참조 | 없음 | 없음 | 항상 금지 |
+| array | 없음 | 향후 `each: true` 검토 | v1에서는 금지 권장 |
+
+#### 옵션
+
+| 옵션 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `mode` | identifier/string | 타입별 기본값 | `exact`, `ngram`, `word` |
+| `n` | integer | `2` | `ngram` token 크기 |
+| `min` | integer | `n` | 검색어 최소 길이 |
+| `normalize` | identifier/string | `lower_trim` for string | `none`, `lower`, `trim`, `lower_trim` |
+| `name` | string/identifier | `By<Field>` 또는 `Search<Field>` | 생성 API/index 이름 |
+| `target` | identifier/string | `csharp` | 산출물 제한. `csharp`, `csharp_container`, `csharp_binary_ref` |
+
+#### C# 생성
+
+일반 Container와 BinaryRef는 같은 `SearchBy<Field>` API를 생성합니다.
+
+- 일반 Container: row를 `Add`할 때 메모리 postings를 갱신하고 row 객체를 반환합니다.
+- BinaryRef: 파일에 row ordinal 기반 postings를 저장하고 lazy row ref를 반환합니다.
+
+BinaryRef 파일에는 row offset 대신 row ordinal 기반 postings를 저장합니다.
+
+```text
+token/value -> row ordinal[]
+row ordinal -> rowOffsets[ordinal] -> RowRef
+```
+
+예상 API:
+
+```csharp
+ctx.Items.SearchByName("화염검");      // ngram/word
+ctx.Items.SearchByItemCode("ITEM_001"); // exact string
+ctx.Items.SearchByGrade(5);             // exact number
+ctx.Items.SearchByRarity(Rarity.Rare);  // exact enum
+ctx.Items.SearchByEnabled(true);        // exact bool
+```
+
+`ngram` 검색은 query를 같은 정책으로 token화한 뒤 postings를 교집합(AND)으로 결합합니다.
+`word`도 기본은 AND 검색으로 두고, OR 검색은 API 확장 시 별도 메서드로 추가합니다.
 
 ---
 
@@ -497,6 +596,7 @@ CREATE TABLE Player (
 | `@pack` | ✅ | ✅ | ✅ | ✅ |
 | `@readonly` | ✅ | ✅ | ✅ | ✅ |
 | `@soft_delete` | ✅ | ✅ | ✅ | ✅ |
+| `@search` | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef |
 | `@renamed_from` | ❌ | ❌ | ❌ | ❌ |
 
 ### 5.2 어트리뷰트
@@ -691,4 +791,4 @@ table Item {
 
 ---
 
-*최종 업데이트: 2026-01-21*
+*최종 업데이트: 2026-06-03*

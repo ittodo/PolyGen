@@ -39,7 +39,7 @@
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
     ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RangeDef, RelationDef, RenameInfo,
-    RenameKind, SchemaContext, StructDef, StructItem, TimezoneRef, TypeRef,
+    RenameKind, SchemaContext, SearchIndexDef, StructDef, StructItem, TimezoneRef, TypeRef,
 };
 use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
@@ -479,6 +479,26 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("has_auto_update", |f: &mut FieldDef| {
         f.auto_update.is_some()
     });
+    engine.register_get("search_index", |f: &mut FieldDef| {
+        f.search_index
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("has_search_index", |f: &mut FieldDef| {
+        f.search_index.is_some()
+    });
+
+    // Register SearchIndexDef type and getters
+    engine.register_type_with_name::<SearchIndexDef>("SearchIndexDef");
+    engine.register_get("name", |idx: &mut SearchIndexDef| idx.name.clone());
+    engine.register_get("mode", |idx: &mut SearchIndexDef| idx.mode.clone());
+    engine.register_get("n", |idx: &mut SearchIndexDef| idx.n as i64);
+    engine.register_get("min", |idx: &mut SearchIndexDef| idx.min as i64);
+    engine.register_get("normalize", |idx: &mut SearchIndexDef| {
+        idx.normalize.clone()
+    });
+    engine.register_get("target", |idx: &mut SearchIndexDef| idx.target.clone());
 
     // Register TimezoneRef type and getters
     engine.register_type_with_name::<TimezoneRef>("TimezoneRef");
