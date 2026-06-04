@@ -9,6 +9,7 @@ polygen/
 ├── src/                    # Rust 소스 코드 (핵심 로직)
 ├── templates/              # 코드 생성 템플릿 (PolyTemplate .ptpl + Rhai utils)
 ├── static/                 # 정적 유틸리티 파일 (언어별)
+├── *.sources.toml          # 선택적 CSV/JSON load source sidecar 설정
 ├── tests/                  # 테스트
 ├── examples/               # 예제 스키마
 ├── docs/                   # 문서
@@ -181,6 +182,7 @@ target/
 |------|------|
 | `Cargo.toml` | Rust 패키지 설정 및 의존성 |
 | `Cargo.lock` | 의존성 버전 잠금 |
+| `*.sources.toml` | `.poly` 옆에 둘 수 있는 CSV/JSON load source 설정 |
 | `.gitignore` | Git 무시 패턴 |
 | `README.md` | 프로젝트 소개 |
 | `LICENSE` | 라이선스 (MIT) |

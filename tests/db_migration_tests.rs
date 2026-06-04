@@ -375,6 +375,7 @@ fn test_cli_migrate_no_changes_writes_schema_metadata_sql() -> anyhow::Result<()
         output_dir: output_dir.path().to_path_buf(),
         lang: None,
         baseline: None,
+        sources: None,
     };
 
     polygen::run(cli)?;
@@ -536,6 +537,7 @@ fn test_destructive_policy_fail_stops_on_removed_table() -> anyhow::Result<()> {
         output_dir: output_dir.path().to_path_buf(),
         lang: None,
         baseline: None,
+        sources: None,
     };
 
     let result = polygen::run(cli);

@@ -1,0 +1,20 @@
+namespace examples.search {
+    enum ItemKind {
+        Weapon = 1;
+        Armor = 2;
+        Consumable = 3;
+    }
+
+    table Item {
+        id: u32 primary_key;
+
+        @search
+        name: string max_length(80);
+
+        @search(n: 3, normalize: lower_trim)
+        description: string?;
+
+        @search(mode: exact)
+        kind: ItemKind;
+    }
+}

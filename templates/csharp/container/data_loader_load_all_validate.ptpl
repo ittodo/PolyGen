@@ -1,5 +1,5 @@
         /// <summary>
-        /// Loads all tables using patterns from @load annotations and optionally validates.
+        /// Loads all tables using patterns from sources config and optionally validates.
         /// </summary>
         /// <param name="container">The container to load data into.</param>
         /// <param name="validate">If true, validates data after loading.</param>

@@ -63,7 +63,6 @@ namespace game {
         }
 
         /// Player character
-        @load(csv: "players.csv", json: "players.json")
         @taggable
         table Player {
             id: u32 primary_key;
@@ -85,7 +84,6 @@ namespace game {
         }
 
         /// NPC definition
-        @load(csv: "npcs.csv")
         table NPC {
             id: u32 primary_key;
             name: string;
@@ -120,7 +118,6 @@ namespace game {
         }
 
         /// Base item definition
-        @load(csv: "items.csv", json: "items.json")
         table Item {
             id: u32 primary_key;
             name: string unique;
@@ -141,7 +138,6 @@ namespace game {
         }
 
         /// Weapon-specific data
-        @load(csv: "weapons.csv")
         table Weapon {
             item_id: u32 primary_key foreign_key(Item.id);
             damage_min: u32;
@@ -158,7 +154,6 @@ namespace game {
         }
 
         /// Armor-specific data
-        @load(csv: "armors.csv")
         table Armor {
             item_id: u32 primary_key foreign_key(Item.id);
             defense: u32;
@@ -175,7 +170,6 @@ namespace game {
 
     namespace inventory {
         /// Player inventory slot
-        @load(csv: "inventory.csv")
         table InventorySlot {
             id: u32 primary_key;
             player_id: u32 foreign_key(game.character.Player.id);
@@ -191,7 +185,6 @@ namespace game {
         }
 
         /// Equipment currently worn
-        @load(csv: "equipment.csv")
         table Equipment {
             player_id: u32 foreign_key(game.character.Player.id);
             slot: game.character.EquipSlot;
@@ -201,7 +194,6 @@ namespace game {
 
     namespace social {
         /// Guild definition
-        @load(csv: "guilds.csv")
         table Guild {
             id: u32 primary_key;
             name: string unique max_length(24);
@@ -213,7 +205,6 @@ namespace game {
         }
 
         /// Guild membership
-        @load(csv: "guild_members.csv")
         table GuildMember {
             guild_id: u32 foreign_key(Guild.id);
             player_id: u32 foreign_key(game.character.Player.id);

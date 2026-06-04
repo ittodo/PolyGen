@@ -1,7 +1,7 @@
 use crate::ast_model::{self, Definition, Metadata, TableMember};
 use crate::ir_model::{
-    self, EnumDef, EnumItem, FieldDef, FileDef, NamespaceDef, NamespaceItem, SchemaContext,
-    StructDef, StructItem, TypeRef,
+    self, EnumDef, EnumItem, FieldDef, FileDef, LoadSourceDef, NamespaceDef, NamespaceItem,
+    SchemaContext, StructDef, StructItem, TypeRef,
 };
 use heck::ToPascalCase;
 
@@ -189,6 +189,7 @@ fn convert_table_to_struct(
 
     // Extract advanced annotations
     let cache_strategy = extract_cache_strategy(&table.metadata);
+    let load = extract_load_source(&table.metadata);
     let readonly = is_readonly(&table.metadata);
     let soft_delete_field = extract_soft_delete_field(&table.metadata);
 
@@ -264,6 +265,7 @@ fn convert_table_to_struct(
         is_embed: false,
         datasource: table_datasource,
         cache_strategy,
+        load,
         is_readonly: readonly,
         soft_delete_field,
         pack_separator: None, // Tables don't support @pack
@@ -486,9 +488,51 @@ fn convert_embed_to_struct(embed: &ast_model::Embed, owner_fqn: &str) -> StructD
         None, // Embeds don't inherit datasource
     );
     s.is_embed = true;
+    s.load = None;
     // Extract @pack annotation for embeds
     s.pack_separator = extract_pack_separator(&embed.metadata);
     s
+}
+
+fn extract_load_source(metadata: &[Metadata]) -> Option<LoadSourceDef> {
+    let mut csv = None;
+    let mut json = None;
+
+    for meta in metadata {
+        let Metadata::Annotation(annotation) = meta else {
+            continue;
+        };
+
+        if annotation.name.as_deref() != Some("load") {
+            continue;
+        }
+
+        for arg in &annotation.args {
+            if let ast_model::AnnotationArg::Named(param) = arg {
+                let Some(value) = literal_to_string(&param.value) else {
+                    continue;
+                };
+                match param.key.as_str() {
+                    "csv" => csv = Some(value),
+                    "json" => json = Some(value),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if csv.is_some() || json.is_some() {
+        Some(LoadSourceDef { csv, json })
+    } else {
+        None
+    }
+}
+
+fn literal_to_string(literal: &ast_model::Literal) -> Option<String> {
+    match literal {
+        ast_model::Literal::String(value) => Some(value.clone()),
+        _ => None,
+    }
 }
 
 // Build TypeRef from an AST type in the given namespace context

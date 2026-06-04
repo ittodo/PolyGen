@@ -1,0 +1,8 @@
+namespace examples.constraints {
+    table Account {
+        id: u32 primary_key;
+        username: string unique max_length(32) regex("^[a-z0-9_]{3,32}$");
+        level: u16 default(1) range(1, 100);
+        email: string? max_length(120);
+    }
+}

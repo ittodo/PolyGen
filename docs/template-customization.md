@@ -426,7 +426,7 @@ namespace.enums           // EnumDef[] - Enum 목록
 
 struct.name               // 구조체 이름
 struct.items              // StructItem[] - 필드, 주석, Embed 등
-struct.annotations        // AnnotationDef[] - @load, @readonly 등
+struct.load               // Option<LoadSourceDef> - .sources.toml CSV/JSON load 경로
 
 field.name                // 필드 이름
 field.field_type          // TypeRef - 타입 정보

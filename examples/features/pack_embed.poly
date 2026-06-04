@@ -1,0 +1,14 @@
+namespace examples.pack {
+    @pack(separator: ",")
+    embed Position {
+        x: f32;
+        y: f32;
+        z: f32;
+    }
+
+    table SpawnPoint {
+        id: u32 primary_key;
+        name: string max_length(60);
+        position: Position;
+    }
+}

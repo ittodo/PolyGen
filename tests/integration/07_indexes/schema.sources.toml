@@ -1,0 +1,17 @@
+[tables."test.indexes.User".load]
+csv = "users.csv"
+
+[tables."test.indexes.Category".load]
+csv = "categories.csv"
+
+[tables."test.indexes.Post".load]
+csv = "posts.csv"
+
+[tables."test.indexes.Comment".load]
+csv = "comments.csv"
+
+[tables."test.indexes.Tag".load]
+csv = "tags.csv"
+
+[tables."test.indexes.PostTag".load]
+csv = "post_tags.csv"

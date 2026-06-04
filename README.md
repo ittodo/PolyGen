@@ -3,52 +3,89 @@
 [![CI](https://github.com/ittodo/PolyGen/actions/workflows/ci.yml/badge.svg)](https://github.com/ittodo/PolyGen/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ittodo/PolyGen?label=GUI%20Download)](https://github.com/ittodo/PolyGen/releases/latest)
 
-PolyGen은 `.poly` 스키마를 단일 진실 공급원으로 사용해 여러 언어와 데이터 타겟의 코드를 생성하는 폴리글랏 코드 생성기입니다.
+PolyGen generates code for multiple languages and data targets from one `.poly` schema.
+
+Use it when the same data model must be shared across client, server, tools, databases, and runtime loaders without hand-maintaining duplicate types.
+
+## Why PolyGen?
+
+- Define tables, enums, constraints, indexes, relations, and data-source metadata once.
+- Generate language models, loaders, containers, DB DDL, migration SQL, Redis key helpers, and descriptors from the same schema.
+- Keep generated output consistent across C#, C++, Rust, TypeScript, Go, Python, Kotlin, Swift, Unreal, SQL, Redis, Protobuf, MessagePack, and Mermaid.
+
+## Example
+
+```poly
+@datasource("sqlite")
+namespace game {
+    enum Rarity {
+        Common = 1;
+        Rare = 2;
+        Epic = 3;
+    }
+
+    @index(rarity)
+    table Item {
+        id: u32 primary_key;
+        name: string max_length(80);
+        rarity: Rarity;
+        price: u32 default(0);
+    }
+}
+```
+
+```bash
+.\polygen.exe --schema-path examples\quickstart.poly --lang csharp --output-dir output\quickstart
+```
+
+Runnable quickstart: [docs/examples/quickstart.md](./docs/examples/quickstart.md)
 
 ## Quick Start
 
+Download the latest runtime from [Releases](https://github.com/ittodo/PolyGen/releases/latest), then run:
+
+```powershell
+.\polygen.exe --schema-path examples\quickstart.poly --lang csharp --output-dir output\quickstart
+.\polygen.exe --schema-path examples\quickstart.poly --lang sqlite --output-dir output\quickstart-sqlite
+.\polygen.exe watch --schema examples\quickstart.poly --lang csharp
+```
+
+On macOS/Linux, use `./polygen` with the same arguments.
+
+For source builds:
+
 ```bash
 cargo build --release
-cargo run -- generate --schema-path examples/game_schema.poly --lang csharp --output-dir output
+cargo run -- --schema-path examples/quickstart.poly --lang rust
+cargo run -- watch --schema examples/quickstart.poly --lang csharp
 ```
 
-GUI 앱은 [최신 릴리즈](https://github.com/ittodo/PolyGen/releases/latest)에서 받을 수 있습니다.
+GUI builds are also available from the latest release.
 
-## Targets
+## What It Generates
 
-- Languages: C#, C++, Rust, TypeScript, Go, Python, Kotlin, Swift, Unreal
-- Databases: SQLite, MySQL/MariaDB, PostgreSQL, Redis
-- Descriptors: Protocol Buffers, MessagePack, Mermaid
+- Language models and enums
+- CSV/JSON/Binary loaders
+- Containers, indexes, relations, and validation helpers
+- SQLite/MySQL/PostgreSQL DDL and migration SQL
+- Redis schema descriptors and key helpers
+- Protobuf, MessagePack, and Mermaid descriptors
 
-## Common Commands
+## Tools
 
-```bash
-cargo run -- generate --schema-path examples/game_schema.poly --lang rust
-cargo run -- watch --schema examples/game_schema.poly --lang csharp
-cargo run -- migrate --baseline old.poly --schema-path new.poly
-cargo run -- lint --schema-path examples/game_schema.poly
-cargo test
-```
+- Desktop GUI
+- Language Server
+- VS Code extension
+- Browser-based `.poly` viewer
 
-## Project Layout
+See [docs/tools](./docs/tools/README.md).
 
-```text
-src/        Rust core: parser, validation, IR, generation
-templates/  PolyTemplate (.ptpl) target templates
-static/     Runtime support files copied into generated output
-examples/   Example .poly schemas
-tests/      Snapshot and integration tests
-docs/       Specs, guides, and status documents
-```
-
-## Docs
+## Documentation
 
 - [Documentation index](./docs/README.md)
 - [Schema annotations](./docs/schema-annotations.md)
 - [PolyTemplate guide](./docs/polytemplate-guide.md)
 - [Targets](./docs/targets/README.md)
-- [Tools](./docs/tools/README.md)
-- [Agent guide](./AGENTS.md)
 
 ## License
 

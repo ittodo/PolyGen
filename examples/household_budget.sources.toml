@@ -1,0 +1,26 @@
+[tables."budget.Account".load]
+csv = "data/accounts.csv"
+json = "data/accounts.json"
+
+[tables."budget.Category".load]
+csv = "data/categories.csv"
+json = "data/categories.json"
+
+[tables."budget.Tag".load]
+csv = "data/tags.csv"
+json = "data/tags.json"
+
+[tables."budget.Transaction".load]
+csv = "data/transactions.csv"
+json = "data/transactions.json"
+
+[tables."budget.TransactionTag".load]
+csv = "data/transaction_tags.csv"
+
+[tables."budget.Budget".load]
+csv = "data/budgets.csv"
+json = "data/budgets.json"
+
+[tables."budget.SavingsGoal".load]
+csv = "data/savings_goals.csv"
+json = "data/savings_goals.json"

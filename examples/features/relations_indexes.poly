@@ -1,0 +1,21 @@
+namespace examples.relations {
+    enum PostStatus {
+        Draft = 1;
+        Published = 2;
+        Archived = 3;
+    }
+
+    table User {
+        id: u32 primary_key;
+        email: string unique max_length(120);
+        display_name: string max_length(40);
+    }
+
+    @index(author_id, status)
+    table Post {
+        id: u32 primary_key;
+        author_id: u32 foreign_key(User.id) as posts;
+        status: PostStatus;
+        title: string max_length(120);
+    }
+}

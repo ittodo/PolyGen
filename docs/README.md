@@ -13,11 +13,13 @@
 |------|-----------|
 | 전체 구조 파악 | `source-structure.md`, `project-structure.md` |
 | `.poly` 문법, 어노테이션, 제약조건 변경 | `schema-annotations.md` |
+| CSV/JSON load path 설정 변경 | `sources-config.md` |
 | PolyTemplate 문법/엔진 변경 | `polytemplate-guide.md`, `polytemplate-spec.md` |
 | 템플릿 커스터마이징/Rhai helper 변경 | `template-customization.md` |
 | 새 언어/타겟 추가 | `targets/language-support.md` |
 | SQL, datasource, migration 변경 | `targets/sql-support.md` |
 | GUI, LSP, VS Code, poly-viewer 변경 | `tools/README.md` |
+| 사용 예제 추가 | `examples/README.md` |
 | 기능 현황/남은 작업 확인 | `status.md` |
 
 ---
@@ -29,6 +31,7 @@
 | `source-structure.md` | Rust 소스 모듈 구조와 책임 |
 | `project-structure.md` | 저장소 디렉터리 구조 |
 | `schema-annotations.md` | `.poly` 어노테이션/속성 스펙 |
+| `sources-config.md` | `.sources.toml` 기반 CSV/JSON load path 설정 |
 | `polytemplate-guide.md` | PolyTemplate 작성 가이드 |
 | `polytemplate-spec.md` | PolyTemplate 언어 상세 스펙 |
 | `template-customization.md` | Rhai/템플릿 커스터마이징 가이드 |
@@ -36,6 +39,7 @@
 | `targets/language-support.md` | 새 언어 지원 추가 절차 |
 | `targets/sql-support.md` | SQL/DB/migration 지원 상세 |
 | `tools/README.md` | GUI/LSP/VS Code/poly-viewer 도구 인덱스 |
+| `examples/README.md` | README보다 긴 사용 예제 인덱스 |
 | `status.md` | 현재 기능 현황과 남은 작업 |
 | `json-to-csv-spec.md` | JSON to CSV 변환 스펙 |
 
@@ -46,9 +50,10 @@
 
 ## 문서 업데이트 규칙
 
-- `README.md`는 사용자용 소개와 빠른 시작만 유지합니다.
+- `README.md`는 사람에게 보여줄 제품 소개, 짧은 예제, 빠른 시작만 유지합니다.
 - `AGENTS.md`는 에이전트 작업 지침만 유지합니다.
 - 기능 스펙은 `docs/` 문서를 원본으로 둡니다.
+- README 설명이 길어지면 `examples/`, `targets/`, `tools/` 또는 관련 스펙 문서로 분리합니다.
 - 새 문서를 추가할 때는 이 파일에 역할을 등록합니다.
 - 문서를 삭제하거나 이동하면 `rg`로 깨진 참조를 확인합니다.
 

@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use crate::ast_model::{AstRoot, Definition};
 use crate::codegen::{discover_languages, CodeGenerator};
 use crate::ir_model::SchemaContext;
-use crate::{ast_parser, ir_builder, schema_lint, validation, Polygen, Rule};
+use crate::{ast_parser, ir_builder, schema_lint, sources_config, validation, Polygen, Rule};
 
 /// Configuration for the compilation pipeline.
 ///
@@ -55,6 +55,8 @@ pub struct PipelineConfig {
     pub debug_output: bool,
     /// Optional baseline schema path for migration diff generation.
     pub baseline_path: Option<PathBuf>,
+    /// Optional external sources configuration path.
+    pub sources_path: Option<PathBuf>,
     /// Whether to enable preview mode (source marker injection in generated code).
     pub preview_mode: bool,
 }
@@ -71,6 +73,7 @@ impl PipelineConfig {
             target_lang: None,
             debug_output: true,
             baseline_path: None,
+            sources_path: None,
             preview_mode: false,
         }
     }
@@ -95,6 +98,12 @@ impl PipelineConfig {
     /// and generate migration SQL files.
     pub fn with_baseline(mut self, baseline_path: PathBuf) -> Self {
         self.baseline_path = Some(baseline_path);
+        self
+    }
+
+    /// Sets an external sources configuration path.
+    pub fn with_sources(mut self, sources_path: PathBuf) -> Self {
+        self.sources_path = Some(sources_path);
         self
     }
 
@@ -136,7 +145,7 @@ impl CompilationPipeline {
         self.prepare_output_dir()?;
         let asts = self.parse_schemas()?;
         self.validate_asts(&asts)?;
-        let ir_context = self.build_ir(&asts);
+        let ir_context = self.build_ir(&asts)?;
 
         // Generate migration diff if baseline is provided
         if let Some(ref baseline_path) = self.config.baseline_path {
@@ -253,9 +262,10 @@ impl CompilationPipeline {
     }
 
     /// Build the IR from ASTs
-    fn build_ir(&self, asts: &[AstRoot]) -> SchemaContext {
+    fn build_ir(&self, asts: &[AstRoot]) -> Result<SchemaContext> {
         println!("\n--- AST를 IR로 변환 중 ---");
-        let ir_context = ir_builder::build_ir(asts);
+        let mut ir_context = ir_builder::build_ir(asts);
+        self.apply_sources_config(&mut ir_context)?;
         println!("IR 변환 성공.");
 
         if self.config.debug_output {
@@ -270,7 +280,22 @@ impl CompilationPipeline {
             }
         }
 
-        ir_context
+        Ok(ir_context)
+    }
+
+    fn apply_sources_config(&self, ir_context: &mut SchemaContext) -> Result<()> {
+        let loaded = sources_config::load_sources_config(
+            &self.config.schema_path,
+            self.config.sources_path.as_deref(),
+        )?;
+
+        let Some((path, config)) = loaded else {
+            return Ok(());
+        };
+
+        println!("  - sources config: {}", path.display());
+        sources_config::apply_sources_config(ir_context, &config)?;
+        Ok(())
     }
 
     /// Generate code for all target languages
@@ -443,6 +468,7 @@ mod tests {
             is_embed: false,
             datasource: datasource.map(String::from),
             cache_strategy: None,
+            load: None,
             is_readonly: false,
             soft_delete_field: None,
             pack_separator: None,

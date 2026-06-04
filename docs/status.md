@@ -91,6 +91,7 @@
 > 상세 내용: [targets/sql-support.md](targets/sql-support.md)
 
 #### 고급 어노테이션
+- [x] `.sources.toml` 외부 load source 설정 도입 (`@load` 관심사 분리, legacy 호환)
 - [x] `@load` 대상/인자 의미 검증 (table 전용, csv/json named string)
 - [x] `@taggable` 대상/인자 의미 검증 (table 전용, no args)
 - [x] `@link_rows` 대상/인자 의미 검증 (table 전용, positional target 1개)

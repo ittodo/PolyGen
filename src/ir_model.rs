@@ -106,6 +106,11 @@ pub struct StructDef {
     /// Cache strategy for this struct. Set via `@cache("strategy")` annotation.
     /// Possible values: "full_load", "on_demand", "write_through", "write_back".
     pub cache_strategy: Option<String>,
+    /// External load source configuration for this table.
+    ///
+    /// Prefer `.sources.toml` files for this data. Legacy `@load` annotations are
+    /// still converted into this field for compatibility.
+    pub load: Option<LoadSourceDef>,
     /// Whether this struct is read-only. Set via `@readonly` annotation.
     pub is_readonly: bool,
     /// Field name for soft delete. Set via `@soft_delete("field_name")` annotation.
@@ -124,6 +129,15 @@ pub struct StructDef {
     pub indexes: Vec<IndexDef>,
     /// Reverse relations pointing to this struct (from foreign_key ... as).
     pub relations: Vec<RelationDef>,
+}
+
+/// Load source configuration for a table.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct LoadSourceDef {
+    /// CSV file path or pattern, relative to the caller's data root.
+    pub csv: Option<String>,
+    /// JSON file path or pattern, relative to the caller's data root.
+    pub json: Option<String>,
 }
 
 /// Index definition for a struct.

@@ -1,0 +1,5 @@
+[tables."game.item.Item".load]
+csv = "data/items.csv"
+
+[tables."game.character.Monster".load]
+csv = "data/monsters.csv"

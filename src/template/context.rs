@@ -50,6 +50,8 @@ pub enum ContextValue {
     ForeignKey(ForeignKeyDef),
     /// A timezone reference.
     Timezone(TimezoneRef),
+    /// External load source configuration for a table.
+    LoadSource(LoadSourceDef),
     /// A range definition.
     Range(RangeDef),
     /// A list of context values.
@@ -264,6 +266,10 @@ impl ContextValue {
                 },
                 "cache_strategy" => match &s.cache_strategy {
                     Some(cs) => ContextValue::String(cs.clone()),
+                    None => ContextValue::Null,
+                },
+                "load" => match &s.load {
+                    Some(load) => ContextValue::LoadSource(load.clone()),
                     None => ContextValue::Null,
                 },
                 "soft_delete_field" => match &s.soft_delete_field {
@@ -770,6 +776,17 @@ impl ContextValue {
                 },
                 _ => ContextValue::Null,
             },
+            ContextValue::LoadSource(load) => match name {
+                "csv" => match &load.csv {
+                    Some(path) => ContextValue::String(path.clone()),
+                    None => ContextValue::Null,
+                },
+                "json" => match &load.json {
+                    Some(path) => ContextValue::String(path.clone()),
+                    None => ContextValue::Null,
+                },
+                _ => ContextValue::Null,
+            },
             _ => ContextValue::Null,
         }
     }
@@ -859,6 +876,7 @@ mod tests {
             is_embed: false,
             datasource: None,
             cache_strategy: None,
+            load: None,
             is_readonly: false,
             soft_delete_field: None,
             pack_separator: None,

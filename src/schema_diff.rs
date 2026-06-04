@@ -234,6 +234,7 @@ mod tests {
                         is_embed: false,
                         datasource: None,
                         cache_strategy: None,
+                        load: None,
                         is_readonly: false,
                         soft_delete_field: None,
                         pack_separator: None,

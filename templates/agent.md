@@ -129,7 +129,7 @@ templates/
 │   ├── unreal.toml
 │   ├── unreal_file.ptpl
 │   ├── unreal_loaders_file.ptpl  # recursive namespace/embed loader helpers
-│   ├── unreal_hotreload_file.ptpl  # recursive @load table collection
+│   ├── unreal_hotreload_file.ptpl  # recursive sources config load table collection
 │   ├── unreal_redis_keys_file.ptpl
 │   ├── section/
 │   │   ├── namespace_block.ptpl

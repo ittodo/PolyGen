@@ -352,6 +352,7 @@ pub fn context_value_to_dynamic(value: &ContextValue) -> Dynamic {
         ContextValue::Relation(r) => Dynamic::from(r.clone()),
         ContextValue::ForeignKey(fk) => Dynamic::from(fk.clone()),
         ContextValue::Timezone(tz) => Dynamic::from(tz.clone()),
+        ContextValue::LoadSource(load) => Dynamic::from(load.clone()),
         _ => Dynamic::from(value.to_display_string()),
     }
 }
@@ -453,6 +454,9 @@ pub fn dynamic_to_context_value(value: Dynamic) -> Result<ContextValue, String> 
     }
     if let Some(tz) = value.clone().try_cast::<crate::ir_model::TimezoneRef>() {
         return Ok(ContextValue::Timezone(tz));
+    }
+    if let Some(load) = value.clone().try_cast::<crate::ir_model::LoadSourceDef>() {
+        return Ok(ContextValue::LoadSource(load));
     }
 
     // Fallback: convert to string

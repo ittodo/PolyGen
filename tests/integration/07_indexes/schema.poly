@@ -8,7 +8,6 @@ namespace test.indexes {
     }
 
     /// User table with primary key and unique constraint
-    @load(csv: "users.csv")
     table User {
         id: u32 primary_key;
         username: string unique;
@@ -17,7 +16,6 @@ namespace test.indexes {
     }
 
     /// Category with simple primary key
-    @load(csv: "categories.csv")
 table Category {
     id: u32 primary_key;
     @search(mode: exact)
@@ -31,7 +29,6 @@ table Category {
     }
 
     /// Post with foreign keys
-    @load(csv: "posts.csv")
     table Post {
         id: u32 primary_key;
         @search
@@ -42,7 +39,6 @@ table Category {
     }
 
     /// Comment with multiple foreign keys
-    @load(csv: "comments.csv")
     table Comment {
         id: u32 primary_key;
         post_id: u32 foreign_key(Post.id);
@@ -52,14 +48,12 @@ table Category {
     }
 
     /// Tag for many-to-many relationship
-    @load(csv: "tags.csv")
     table Tag {
         id: u32 primary_key;
         name: string unique;
     }
 
     /// Junction table for Post-Tag relationship
-    @load(csv: "post_tags.csv")
     table PostTag {
         post_id: u32 foreign_key(Post.id);
         tag_id: u32 foreign_key(Tag.id);

@@ -24,6 +24,7 @@ SchemaContext {
                                 cache_strategy: Some(
                                     "full_load",
                                 ),
+                                load: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
                                 pack_separator: None,
@@ -188,6 +189,7 @@ SchemaContext {
                                 cache_strategy: Some(
                                     "full_load",
                                 ),
+                                load: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
                                 pack_separator: None,
@@ -352,6 +354,7 @@ SchemaContext {
                                 cache_strategy: Some(
                                     "on_demand",
                                 ),
+                                load: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
                                 pack_separator: None,
@@ -603,6 +606,7 @@ SchemaContext {
                                 cache_strategy: Some(
                                     "write_through",
                                 ),
+                                load: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
                                 pack_separator: None,
@@ -757,6 +761,7 @@ SchemaContext {
                                 cache_strategy: Some(
                                     "write_back",
                                 ),
+                                load: None,
                                 is_readonly: false,
                                 soft_delete_field: None,
                                 pack_separator: None,

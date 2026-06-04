@@ -41,6 +41,7 @@ fn test_csv_mappers_snapshot() -> Result<()> {
         output_dir: output_dir.clone(),
         lang: Some("csharp".to_string()),
         baseline: None,
+        sources: None,
     };
 
     run(cli)?;
@@ -89,6 +90,7 @@ fn test_redis_key_helpers_snapshot() -> Result<()> {
             output_dir: output_dir.clone(),
             lang: Some(lang.to_string()),
             baseline: None,
+            sources: None,
         };
 
         run(cli)?;
@@ -143,6 +145,7 @@ namespace demo.catalog {
             output_dir: temp_dir.path().join(lang),
             lang: Some(lang.to_string()),
             baseline: None,
+            sources: None,
         })?;
     }
 
@@ -272,6 +275,7 @@ namespace test.sqlite {
             output_dir: temp_dir.path().join(lang),
             lang: Some(lang.to_string()),
             baseline: None,
+            sources: None,
         })?;
     }
 
@@ -357,6 +361,7 @@ namespace test.audit {
         output_dir: temp_dir.path().join("out"),
         lang: Some("csharp".to_string()),
         baseline: None,
+        sources: None,
     })?;
 
     let csharp = find_generated_file_containing(
@@ -456,6 +461,7 @@ namespace test.binary {
         output_dir: temp_dir.path().join("out"),
         lang: Some("cpp".to_string()),
         baseline: None,
+        sources: None,
     })?;
 
     let loaders =
@@ -515,6 +521,7 @@ namespace test.binary {
         output_dir: temp_dir.path().join("out"),
         lang: Some("rust".to_string()),
         baseline: None,
+        sources: None,
     })?;
 
     let schema = find_generated_file_containing_ext(
@@ -579,6 +586,7 @@ namespace test.csv {
         output_dir: temp_dir.path().join("out"),
         lang: Some("rust".to_string()),
         baseline: None,
+        sources: None,
     })?;
 
     let loaders = find_generated_file_containing_ext(
@@ -632,6 +640,7 @@ namespace test.pack {
         output_dir: temp_dir.path().join("out"),
         lang: Some("go".to_string()),
         baseline: None,
+        sources: None,
     })?;
 
     let schema = find_generated_file_containing_ext(
@@ -686,6 +695,7 @@ namespace test.pack {
         output_dir: temp_dir.path().join("out"),
         lang: Some("typescript".to_string()),
         baseline: None,
+        sources: None,
     })?;
 
     let zod = find_generated_file_containing_ext(

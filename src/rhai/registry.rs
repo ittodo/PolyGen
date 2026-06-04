@@ -38,8 +38,9 @@
 
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
-    ForeignKeyDef, IndexDef, NamespaceDef, NamespaceItem, RangeDef, RelationDef, RenameInfo,
-    RenameKind, SchemaContext, SearchIndexDef, StructDef, StructItem, TimezoneRef, TypeRef,
+    ForeignKeyDef, IndexDef, LoadSourceDef, NamespaceDef, NamespaceItem, RangeDef, RelationDef,
+    RenameInfo, RenameKind, SchemaContext, SearchIndexDef, StructDef, StructItem, TimezoneRef,
+    TypeRef,
 };
 use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
@@ -227,6 +228,9 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
             .map(Dynamic::from)
             .unwrap_or(Dynamic::UNIT)
     });
+    engine.register_get("load", |s: &mut StructDef| {
+        s.load.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
     engine.register_get("is_readonly", |s: &mut StructDef| s.is_readonly);
     engine.register_get("soft_delete_field", |s: &mut StructDef| {
         s.soft_delete_field
@@ -237,6 +241,17 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     engine.register_get("is_embed", |s: &mut StructDef| s.is_embed);
     engine.register_get("pack_separator", |s: &mut StructDef| {
         s.pack_separator
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+
+    engine.register_type_with_name::<LoadSourceDef>("LoadSourceDef");
+    engine.register_get("csv", |load: &mut LoadSourceDef| {
+        load.csv.clone().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("json", |load: &mut LoadSourceDef| {
+        load.json
             .clone()
             .map(Dynamic::from)
             .unwrap_or(Dynamic::UNIT)

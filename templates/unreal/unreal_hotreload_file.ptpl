@@ -13,28 +13,15 @@ fn load_paths_for_struct(s) {
         json_path: ""
     };
 
-    for header_item in s.header {
-        if header_item.is_annotation() {
-            let ann = header_item.as_annotation();
-            if ann.name == "load" {
-                result.has_load = true;
-                for param in ann.params {
-                    if param.key == "csv" {
-                        result.csv_path = param.value;
-                    } else if param.key == "json" {
-                        result.json_path = param.value;
-                    } else if param.key == "path" && result.csv_path == "" && result.json_path == "" {
-                        let path_val = param.value;
-                        if path_val.ends_with(".json") {
-                            result.json_path = path_val;
-                        } else if path_val.ends_with(".csv") {
-                            result.csv_path = path_val;
-                        } else {
-                            result.csv_path = path_val + ".csv";
-                        }
-                    }
-                }
-            }
+    if s.load != () {
+        if s.load.csv != () {
+            result.csv_path = s.load.csv;
+        }
+        if s.load.json != () {
+            result.json_path = s.load.json;
+        }
+        if result.csv_path != "" || result.json_path != "" {
+            result.has_load = true;
         }
     }
 
@@ -68,7 +55,7 @@ fn collect_loadable_structs_from_namespace(ns, include_file) {
     result
 }
 
-// Collect all table structs that have @load annotation
+// Collect all table structs that have load sources configured.
 let loadable_structs = [];
 for file in schema.files {
     if file.path == () || file.path == "" {
@@ -196,7 +183,7 @@ for entry in loadable_structs {
             load_functions += "        return false;\n";
         }
     } else {
-        load_functions += "        // No load path specified in @load annotation\n";
+        load_functions += "        // No load path specified in sources config\n";
         load_functions += "        UE_LOG(LogTemp, Warning, TEXT(\"No file path specified for " + s.name + " in schema\"));\n";
         load_functions += "        return false;\n";
     }

@@ -1,0 +1,8 @@
+namespace examples.sources {
+    table Item {
+        id: u32 primary_key;
+        sku: string unique max_length(32);
+        name: string max_length(80);
+        price: u32 default(0);
+    }
+}

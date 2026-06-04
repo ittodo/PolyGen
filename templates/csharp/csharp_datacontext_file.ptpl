@@ -85,18 +85,14 @@ for ds_name in ds_keys {
     let all_structs = [];
     for entry in datasource_map[ds_name] {
         for s in entry.structs {
-            // Extract @load csv/json patterns
             let csv_pattern = "";
             let json_pattern = "";
-            for hi in s.header {
-                if hi.is_annotation() {
-                    let ann = hi.as_annotation();
-                    if ann.name == "load" {
-                        for p in ann.params {
-                            if p.key == "csv" { csv_pattern = p.value; }
-                            if p.key == "json" { json_pattern = p.value; }
-                        }
-                    }
+            if s.load != () {
+                if s.load.csv != () {
+                    csv_pattern = s.load.csv;
+                }
+                if s.load.json != () {
+                    json_pattern = s.load.json;
                 }
             }
             all_structs.push(#{
@@ -166,13 +162,13 @@ namespace {{context_ns_name}}.DataContext
         }
 %blank
         /// <summary>
-        /// Loads all tables from CSV files using @load annotation patterns.
+        /// Loads all tables from CSV files using sources config patterns.
         /// </summary>
         public void LoadFromCsv(char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
         {
 %for st in ds_info.all_structs
 %if st.csv_pattern != ""
-            // {{st.name}}: @load(csv: "{{st.csv_pattern}}")
+            // {{st.name}}: csv "{{st.csv_pattern}}"
             foreach (var item in Csv.{{st.ns_name}}.{{st.name}}.ReadRowsWithHeader(
                 Path.Combine(RootDirectory, "{{st.csv_pattern}}"), separator, gapMode))
             {
@@ -202,13 +198,13 @@ let var_name = st.name.to_lower() + "Path";
         }
 %blank
         /// <summary>
-        /// Loads all tables from JSON files using @load annotation patterns.
+        /// Loads all tables from JSON files using sources config patterns.
         /// </summary>
         public void LoadFromJson()
         {
 %for st in ds_info.all_structs
 %if st.json_pattern != ""
-            // {{st.name}}: @load(json: "{{st.json_pattern}}")
+            // {{st.name}}: json "{{st.json_pattern}}"
             {
                 var json = File.ReadAllText(Path.Combine(RootDirectory, "{{st.json_pattern}}"));
                 var items = System.Text.Json.JsonSerializer.Deserialize<List<global::{{st.ns_name}}.{{st.name}}>>(json);

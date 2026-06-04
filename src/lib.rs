@@ -63,6 +63,7 @@ pub mod schema_diff;
 pub mod schema_lint;
 pub mod schema_metadata;
 pub mod schema_stats;
+pub mod sources_config;
 pub mod symbol_table;
 pub mod template;
 pub mod type_registry;
@@ -104,6 +105,10 @@ pub struct Cli {
     /// Path to baseline schema file for migration diff
     #[arg(short, long)]
     pub baseline: Option<PathBuf>,
+
+    /// Path to external sources config (`*.sources.toml`) for default generate command
+    #[arg(long)]
+    pub sources: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -129,6 +134,10 @@ pub enum Commands {
         /// Path to baseline schema file for migration diff
         #[arg(short, long)]
         baseline: Option<PathBuf>,
+
+        /// Path to external sources config (`*.sources.toml`)
+        #[arg(long)]
+        sources: Option<PathBuf>,
 
         /// Preview mode: generate to temp directory and print results to stdout
         #[arg(long)]
@@ -265,6 +274,10 @@ pub enum Commands {
         #[arg(short, long)]
         baseline: Option<PathBuf>,
 
+        /// Path to external sources config (`*.sources.toml`)
+        #[arg(long)]
+        sources: Option<PathBuf>,
+
         /// Debounce interval in milliseconds before regenerating after file changes
         #[arg(long, default_value_t = 300)]
         debounce_ms: u64,
@@ -280,6 +293,7 @@ pub fn run(cli: Cli) -> Result<()> {
             output_dir,
             lang,
             baseline,
+            sources,
             preview,
         }) => run_generate(
             schema_path,
@@ -287,6 +301,7 @@ pub fn run(cli: Cli) -> Result<()> {
             output_dir,
             lang,
             baseline,
+            sources,
             preview,
         ),
 
@@ -344,6 +359,7 @@ pub fn run(cli: Cli) -> Result<()> {
             output_dir,
             lang,
             baseline,
+            sources,
             debounce_ms,
         }) => run_watch(
             schema_path,
@@ -351,6 +367,7 @@ pub fn run(cli: Cli) -> Result<()> {
             output_dir,
             lang,
             baseline,
+            sources,
             debounce_ms,
         ),
 
@@ -363,6 +380,7 @@ pub fn run(cli: Cli) -> Result<()> {
                     cli.output_dir,
                     cli.lang,
                     cli.baseline,
+                    cli.sources,
                     false,
                 )
             } else {
@@ -388,10 +406,16 @@ fn run_watch(
     output_dir: PathBuf,
     lang: Option<String>,
     baseline: Option<PathBuf>,
+    sources: Option<PathBuf>,
     debounce_ms: u64,
 ) -> Result<()> {
     let debounce = Duration::from_millis(debounce_ms);
-    let targets = collect_watch_targets(&schema_path, &templates_dir, baseline.as_deref());
+    let targets = collect_watch_targets(
+        &schema_path,
+        &templates_dir,
+        baseline.as_deref(),
+        sources.as_deref(),
+    );
 
     if targets.is_empty() {
         anyhow::bail!("감시할 경로를 찾을 수 없습니다.");
@@ -406,6 +430,9 @@ fn run_watch(
     println!("  출력: {}", output_dir.display());
     if let Some(ref lang) = lang {
         println!("  언어: {}", lang);
+    }
+    if let Some(ref sources) = sources {
+        println!("  sources: {}", sources.display());
     }
 
     for target in &targets {
@@ -424,6 +451,7 @@ fn run_watch(
         &output_dir,
         &lang,
         &baseline,
+        &sources,
         true,
     );
 
@@ -439,6 +467,7 @@ fn run_watch(
             &output_dir,
             &lang,
             &baseline,
+            &sources,
             false,
         );
     }
@@ -450,6 +479,7 @@ fn run_watch_generation(
     output_dir: &Path,
     lang: &Option<String>,
     baseline: &Option<PathBuf>,
+    sources: &Option<PathBuf>,
     initial: bool,
 ) {
     let label = if initial {
@@ -466,6 +496,7 @@ fn run_watch_generation(
         output_dir.to_path_buf(),
         lang.clone(),
         baseline.clone(),
+        sources.clone(),
         false,
     ) {
         Ok(()) => println!("--- {} 완료 ({:.2?}) ---", label, started.elapsed()),
@@ -477,6 +508,7 @@ fn collect_watch_targets(
     schema_path: &Path,
     templates_dir: &Path,
     baseline: Option<&Path>,
+    sources: Option<&Path>,
 ) -> Vec<WatchTarget> {
     let mut targets: BTreeMap<PathBuf, bool> = BTreeMap::new();
 
@@ -485,6 +517,15 @@ fn collect_watch_targets(
 
     if let Some(baseline) = baseline {
         add_watch_parent(&mut targets, baseline, true);
+    }
+
+    if let Some(sources) = sources {
+        add_watch_parent(&mut targets, sources, true);
+    } else {
+        let default_sources = crate::sources_config::default_sources_path(schema_path);
+        if default_sources.exists() {
+            add_watch_parent(&mut targets, &default_sources, true);
+        }
     }
 
     targets
@@ -576,10 +617,11 @@ fn run_generate(
     output_dir: PathBuf,
     lang: Option<String>,
     baseline: Option<PathBuf>,
+    sources: Option<PathBuf>,
     preview: bool,
 ) -> Result<()> {
     if preview {
-        return run_generate_preview(schema_path, templates_dir, lang);
+        return run_generate_preview(schema_path, templates_dir, lang, sources);
     }
 
     let mut config = PipelineConfig::new(schema_path, templates_dir, output_dir);
@@ -592,6 +634,10 @@ fn run_generate(
         config = config.with_baseline(baseline);
     }
 
+    if let Some(sources) = sources {
+        config = config.with_sources(sources);
+    }
+
     let pipeline = CompilationPipeline::new(config);
     pipeline.run()
 }
@@ -601,6 +647,7 @@ fn run_generate_preview(
     schema_path: PathBuf,
     templates_dir: PathBuf,
     lang: Option<String>,
+    sources: Option<PathBuf>,
 ) -> Result<()> {
     let temp_dir = tempfile::tempdir()?;
     let output_dir = temp_dir.path().to_path_buf();
@@ -610,6 +657,10 @@ fn run_generate_preview(
 
     if let Some(lang) = lang {
         config = config.with_language(lang);
+    }
+
+    if let Some(sources) = sources {
+        config = config.with_sources(sources);
     }
 
     let pipeline = CompilationPipeline::new(config);
@@ -1097,15 +1148,24 @@ mod tests {
             "examples/game_schema.poly",
             "--lang",
             "csharp",
+            "--sources",
+            "examples/game_schema.sources.toml",
         ])
         .expect("watch command should parse --schema alias");
 
         match cli.command {
             Some(Commands::Watch {
-                schema_path, lang, ..
+                schema_path,
+                lang,
+                sources,
+                ..
             }) => {
                 assert_eq!(schema_path, PathBuf::from("examples/game_schema.poly"));
                 assert_eq!(lang, Some("csharp".to_string()));
+                assert_eq!(
+                    sources,
+                    Some(PathBuf::from("examples/game_schema.sources.toml"))
+                );
             }
             other => panic!("expected watch command, got {other:?}"),
         }
@@ -1121,7 +1181,7 @@ mod tests {
         fs::write(&baseline, "namespace game {}").expect("baseline");
         fs::create_dir(&templates).expect("templates");
 
-        let targets = collect_watch_targets(&schema, &templates, Some(&baseline));
+        let targets = collect_watch_targets(&schema, &templates, Some(&baseline), None);
 
         assert_eq!(targets.len(), 2);
         assert!(targets

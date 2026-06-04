@@ -60,7 +60,6 @@ namespace budget {
     // ========================================
 
     // 계좌
-    @load(csv: "data/accounts.csv", json: "data/accounts.json")
     table Account {
         id: u32 primary_key;
         name: string max_length(50);
@@ -73,7 +72,6 @@ namespace budget {
     }
 
     // 카테고리
-    @load(csv: "data/categories.csv", json: "data/categories.json")
     table Category {
         id: u32 primary_key;
         name: string max_length(30);
@@ -85,7 +83,6 @@ namespace budget {
     }
 
     // 태그
-    @load(csv: "data/tags.csv", json: "data/tags.json")
     table Tag {
         id: u32 primary_key;
         name: string max_length(20) unique;
@@ -93,7 +90,6 @@ namespace budget {
     }
 
     // 거래 내역
-    @load(csv: "data/transactions.csv", json: "data/transactions.json")
     table Transaction {
         id: u64 primary_key;
         date: string;                       // ISO 8601 날짜 (YYYY-MM-DD)
@@ -118,14 +114,12 @@ namespace budget {
     }
 
     // 거래-태그 연결 (다대다 관계)
-    @load(csv: "data/transaction_tags.csv")
     table TransactionTag {
         transaction_id: u64 foreign_key(Transaction.id);
         tag_id: u32 foreign_key(Tag.id);
     }
 
     // 월별 예산
-    @load(csv: "data/budgets.csv", json: "data/budgets.json")
     table Budget {
         id: u32 primary_key;
         category_id: u32 foreign_key(Category.id);
@@ -137,7 +131,6 @@ namespace budget {
     }
 
     // 저축 목표
-    @load(csv: "data/savings_goals.csv", json: "data/savings_goals.json")
     table SavingsGoal {
         id: u32 primary_key;
         name: string max_length(50);

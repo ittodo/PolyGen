@@ -1,0 +1,28 @@
+[tables."game.character.Player".load]
+csv = "players.csv"
+json = "players.json"
+
+[tables."game.character.NPC".load]
+csv = "npcs.csv"
+
+[tables."game.item.Item".load]
+csv = "items.csv"
+json = "items.json"
+
+[tables."game.item.Weapon".load]
+csv = "weapons.csv"
+
+[tables."game.item.Armor".load]
+csv = "armors.csv"
+
+[tables."game.inventory.InventorySlot".load]
+csv = "inventory.csv"
+
+[tables."game.inventory.Equipment".load]
+csv = "equipment.csv"
+
+[tables."game.social.Guild".load]
+csv = "guilds.csv"
+
+[tables."game.social.GuildMember".load]
+csv = "guild_members.csv"

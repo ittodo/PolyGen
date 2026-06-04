@@ -39,7 +39,7 @@ annotation_param       = { IDENT ~ ":" ~ literal }
 
 | 어노테이션 | 파라미터 | 적용 대상 | 설명 |
 |----------|---------|----------|------|
-| `@load` | `csv: "path"`, `json: "path"` | table | 데이터 로더 지정 |
+| `@load` | `csv: "path"`, `json: "path"` | table | Legacy 데이터 로더 지정 (`sources-config.md` 권장) |
 | `@taggable` | 없음 | table | 태그 지원 표시 |
 | `@link_rows` | `(TypeName)` | table | 행 연결 (Cross-reference) |
 | `@index` | `(field1, field2, ...)` | table | 인덱스 생성 (단일/복합) |
@@ -51,7 +51,6 @@ annotation_param       = { IDENT ~ ":" ~ literal }
 
 **사용 예제:**
 ```poly
-@load(csv: "data/players.csv", json: "data/players.json")
 @taggable
 @index(name)
 @index(guild_id, level)  // 복합 인덱스
@@ -63,8 +62,11 @@ table Player {
 }
 ```
 
-`@load`, `@taggable`, `@link_rows`는 table 정의에만 사용할 수 있습니다. `@load`는
+`@load`는 하위 호환을 위해 유지되는 legacy annotation입니다. 새 스키마에서는
+CSV/JSON 경로를 `.sources.toml`에 작성하는 것을 권장합니다. 자세한 형식은
+[sources-config.md](sources-config.md)를 참고합니다. `@load`를 사용할 경우 table 정의에만 적용할 수 있고,
 `csv`/`json` named string parameter 중 하나 이상을 요구하며, 같은 parameter를 중복 지정할 수 없습니다.
+`@taggable`, `@link_rows`는 table 정의에만 사용할 수 있습니다.
 `@taggable`은 인자를 받지 않습니다. `@link_rows`는 positional target type 1개만 허용합니다.
 
 #### @pack - embed 직렬화

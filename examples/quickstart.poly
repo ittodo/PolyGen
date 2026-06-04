@@ -1,0 +1,20 @@
+// Minimal runnable PolyGen example.
+// Generate with:
+// cargo run -- --schema-path examples/quickstart.poly --sources examples/quickstart.sources.toml --lang csharp
+
+@datasource("sqlite")
+namespace demo.catalog {
+    enum Rarity {
+        Common = 1;
+        Rare = 2;
+        Epic = 3;
+    }
+
+    @index(rarity)
+    table Item {
+        id: u32 primary_key;
+        name: string max_length(80);
+        rarity: Rarity;
+        price: u32 default(0) range(0, 999999);
+    }
+}
