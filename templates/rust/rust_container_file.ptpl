@@ -33,6 +33,112 @@ fn find_pk_field(struct_def) {
     return "";
 }
 
+fn search_base_type(t) {
+    return t;
+}
+
+fn search_type_name_to_rust(type_name) {
+    switch type_name {
+        "string" => "String",
+        "bool" => "bool",
+        "bytes" => "Vec<u8>",
+        "u8" => "u8",
+        "u16" => "u16",
+        "u32" => "u32",
+        "u64" => "u64",
+        "i8" => "i8",
+        "i16" => "i16",
+        "i32" => "i32",
+        "i64" => "i64",
+        "timestamp" => "chrono::DateTime<chrono::Utc>",
+        _ => type_name
+    }
+}
+
+fn search_is_string(f) {
+    return search_base_type(f.field_type).type_name == "string";
+}
+
+fn search_is_supported(f) {
+    if !f.has_search_index {
+        return false;
+    }
+    let search = f.search_index;
+    if search.target != "csharp" && search.target != "rust" && search.target != "rust_container" {
+        return false;
+    }
+    let base = search_base_type(f.field_type);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    return search.mode == "exact";
+}
+
+fn search_key_type(f, schema_mod) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "String";
+    }
+
+    let base = search_base_type(f.field_type);
+    if base.type_name == "string" {
+        return "String";
+    }
+    if !base.is_primitive && base.namespace_fqn != "" {
+        return "crate::" + schema_mod + "::" + rust_types::ns_to_module_name(base.namespace_fqn) + "::" + base.type_name;
+    }
+    return search_type_name_to_rust(base.type_name);
+}
+
+fn search_method_param(f, key_type) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" || search_is_string(f) {
+        return "query: &str";
+    }
+    return "key: " + key_type;
+}
+
+fn container_index_key_type(index, schema_mod) {
+    if index.is_composite {
+        let result = "(";
+        for i in 0..index.fields.len() {
+            if i > 0 { result += ", "; }
+            result += container_key_type(index.fields[i].field_type, schema_mod);
+        }
+        result += ")";
+        return result;
+    }
+    return container_key_type(index.field_type, schema_mod);
+}
+
+fn container_key_type(type_ref, schema_mod) {
+    if type_ref.is_primitive || rust_types::is_primitive_name(type_ref.type_name) {
+        return rust_types::map_type(type_ref);
+    }
+    if type_ref.namespace_fqn != "" {
+        return "crate::" + schema_mod + "::" + rust_types::ns_to_module_name(type_ref.namespace_fqn) + "::" + type_ref.type_name;
+    }
+    return type_ref.type_name;
+}
+
+fn container_index_key_expr(index, row_var) {
+    if index.is_composite {
+        let result = "(";
+        for i in 0..index.fields.len() {
+            if i > 0 { result += ", "; }
+            result += row_var + "." + to_snake_case(index.fields[i].name) + ".clone()";
+        }
+        result += ")";
+        return result;
+    }
+
+    let field_name = to_snake_case(index.field_name);
+    if index.field_type.type_name == "string" {
+        return row_var + "." + field_name + ".clone()";
+    }
+    return row_var + "." + field_name;
+}
+
 fn collect_struct_entries_from_namespace(ns, schema_mod, namespace_path) {
     let entries = [];
 
@@ -40,11 +146,24 @@ fn collect_struct_entries_from_namespace(ns, schema_mod, namespace_path) {
         if item.is_struct() {
             let s = item.as_struct();
             if !s.name.ends_with("__Enum") {
+                let csv_pattern = "";
+                let json_pattern = "";
+                if s.load != () {
+                    if s.load.csv != () {
+                        csv_pattern = s.load.csv;
+                    }
+                    if s.load.json != () {
+                        json_pattern = s.load.json;
+                    }
+                }
                 entries.push(#{
                     name: s.name,
                     path: "crate::" + schema_mod + "::" + namespace_path + "::" + s.name,
                     table_name: to_snake_case(s.name) + "s",
-                    def: s
+                    namespace_path: namespace_path,
+                    def: s,
+                    csv_pattern: csv_pattern,
+                    json_pattern: json_pattern
                 });
             }
         } else if item.is_namespace() {
@@ -60,6 +179,31 @@ fn collect_struct_entries_from_namespace(ns, schema_mod, namespace_path) {
     entries
 }
 
+fn find_table_entry_by_fqn(entries, fqn) {
+    for entry in entries {
+        if entry.def.fqn == fqn {
+            return entry;
+        }
+    }
+    ()
+}
+
+fn nav_field_label(field_name) {
+    let label = to_snake_case(field_name);
+    if label.ends_with("_id") && label.len() > 3 {
+        return label.sub_string(0, label.len() - 3);
+    }
+    label
+}
+
+fn nav_method_suffix(source_table, field_name) {
+    to_snake_case(source_table.name) + "_" + nav_field_label(field_name)
+}
+
+fn reverse_nav_method_suffix(target_table, relation_name) {
+    to_snake_case(target_table.name) + "_" + to_snake_case(relation_name)
+}
+
 let skip_file = file.path == () || file.path == "";
 
 let schema_mod = "";
@@ -68,6 +212,9 @@ let all_tables = [];
 let structs_with_relations = [];
 let has_relations = false;
 let relations_body = "";
+let forward_navs = [];
+let reverse_navs = [];
+let has_unique_index = false;
 
 if !skip_file {
     let parts = file.path.split("/");
@@ -99,9 +246,10 @@ if !skip_file {
         // Index struct fields
         let idx_field_lines = [];
         for idx in struct_def.indexes {
-            let idx_field = "by_" + to_snake_case(idx.field_name);
-            let key_type = rust_types::map_type(idx.field_type);
+            let idx_field = to_snake_case(idx.name);
+            let key_type = container_index_key_type(idx, schema_mod);
             if idx.is_unique {
+                has_unique_index = true;
                 idx_field_lines.push("        " + idx_field + ": UniqueIndex<" + key_type + ", usize>,");
             } else {
                 idx_field_lines.push("        " + idx_field + ": GroupIndex<" + key_type + ">,");
@@ -109,12 +257,50 @@ if !skip_file {
         }
         all_tables[tidx].idx_fields_body = join_with(idx_field_lines, "\n");
 
+        // Search index struct fields
+        let search_indexes = [];
+        for item in struct_def.items {
+            if item.is_field() {
+                let field = item.as_field();
+                if search_is_supported(field) {
+                    let search = field.search_index;
+                    let key_type = search_key_type(field, schema_mod);
+                    search_indexes.push(#{
+                        name: search.name,
+                        method_name: "search_by_" + to_snake_case(search.name),
+                        field_name: to_snake_case(field.name),
+                        var_name: "search_" + to_snake_case(search.name),
+                        key_type: key_type,
+                        method_param: search_method_param(field, key_type),
+                        mode: search.mode,
+                        n: search.n,
+                        min: search.min,
+                        normalize: search.normalize,
+                        is_token_mode: search.mode == "ngram" || search.mode == "word",
+                        is_string: search_is_string(field),
+                        is_option: field.field_type.is_option
+                    });
+                }
+            }
+        }
+        all_tables[tidx].search_indexes = search_indexes;
+
+        let search_field_lines = [];
+        for search in search_indexes {
+            if search.is_token_mode {
+                search_field_lines.push("        " + search.var_name + ": HashMap<String, Vec<usize>>," );
+            } else {
+                search_field_lines.push("        " + search.var_name + ": GroupIndex<" + search.key_type + ">," );
+            }
+        }
+        all_tables[tidx].search_fields_body = join_with(search_field_lines, "\n");
+
         // Getter methods
         let getter_lines = [];
         for idx in struct_def.indexes {
             let method_name = "get_" + to_snake_case(idx.name);
-            let idx_field = "by_" + to_snake_case(idx.field_name);
-            let key_type = rust_types::map_type(idx.field_type);
+            let idx_field = to_snake_case(idx.name);
+            let key_type = container_index_key_type(idx, schema_mod);
 
             if idx.is_unique {
                 getter_lines.push("        /// Get by " + idx.field_name + " (unique)");
@@ -132,15 +318,29 @@ if !skip_file {
         }
         all_tables[tidx].getter_body = join_with(getter_lines, "\n");
 
+        // Search methods
+        let search_getter_lines = [];
+        for search in search_indexes {
+            search_getter_lines.push("        /// Search by " + search.name);
+            search_getter_lines.push("        pub fn " + search.method_name + "(&self, " + search.method_param + ") -> Vec<&" + table.path + "> {");
+            if search.is_token_mode {
+                search_getter_lines.push("            container_search::search(&self." + search.var_name + ", &self.rows, query, \"" + search.mode + "\", " + search.n + ", " + search.min + ", \"" + search.normalize + "\")");
+            } else if search.is_string {
+                search_getter_lines.push("            let key = container_search::normalize(query, \"" + search.normalize + "\");");
+                search_getter_lines.push("            self." + search.var_name + ".get(&key).iter().map(|&idx| &self.rows[idx]).collect()");
+            } else {
+                search_getter_lines.push("            self." + search.var_name + ".get(&key).iter().map(|&idx| &self.rows[idx]).collect()");
+            }
+            search_getter_lines.push("        }");
+            search_getter_lines.push("");
+        }
+        all_tables[tidx].search_getter_body = join_with(search_getter_lines, "\n");
+
         // add_row index lines
         let add_row_lines = [];
         for idx in struct_def.indexes {
-            let idx_field = "by_" + to_snake_case(idx.field_name);
-            let field_name = to_snake_case(idx.field_name);
-            let key_expr = "row." + field_name;
-            if idx.field_type.type_name == "string" {
-                key_expr = "row." + field_name + ".clone()";
-            }
+            let idx_field = to_snake_case(idx.name);
+            let key_expr = container_index_key_expr(idx, "row");
             if idx.is_unique {
                 add_row_lines.push("            self." + idx_field + ".insert(" + key_expr + ", idx);");
             } else {
@@ -149,11 +349,49 @@ if !skip_file {
         }
         all_tables[tidx].add_row_body = join_with(add_row_lines, "\n");
 
+        // add_row search index lines
+        let add_search_lines = [];
+        for search in search_indexes {
+            if search.is_token_mode {
+                if search.is_option {
+                    add_search_lines.push("            if let Some(value) = &row." + search.field_name + " {");
+                    add_search_lines.push("                for token in container_search::tokens(value, \"" + search.mode + "\", " + search.n + ", " + search.min + ", \"" + search.normalize + "\") {");
+                    add_search_lines.push("                    container_search::add(&mut self." + search.var_name + ", token, idx);");
+                    add_search_lines.push("                }");
+                    add_search_lines.push("            }");
+                } else {
+                    add_search_lines.push("            for token in container_search::tokens(&row." + search.field_name + ", \"" + search.mode + "\", " + search.n + ", " + search.min + ", \"" + search.normalize + "\") {");
+                    add_search_lines.push("                container_search::add(&mut self." + search.var_name + ", token, idx);");
+                    add_search_lines.push("            }");
+                }
+            } else if search.is_string {
+                if search.is_option {
+                    add_search_lines.push("            if let Some(value) = &row." + search.field_name + " {");
+                    add_search_lines.push("                self." + search.var_name + ".add(container_search::normalize(value, \"" + search.normalize + "\"), idx);");
+                    add_search_lines.push("            }");
+                } else {
+                    add_search_lines.push("            self." + search.var_name + ".add(container_search::normalize(&row." + search.field_name + ", \"" + search.normalize + "\"), idx);");
+                }
+            } else {
+                if search.is_option {
+                    add_search_lines.push("            if let Some(value) = row." + search.field_name + ".clone() {");
+                    add_search_lines.push("                self." + search.var_name + ".add(value, idx);");
+                    add_search_lines.push("            }");
+                } else {
+                    add_search_lines.push("            self." + search.var_name + ".add(row." + search.field_name + ".clone(), idx);");
+                }
+            }
+        }
+        all_tables[tidx].add_search_body = join_with(add_search_lines, "\n");
+
         // clear index lines
         let clear_lines = [];
         for idx in struct_def.indexes {
-            let idx_field = "by_" + to_snake_case(idx.field_name);
+            let idx_field = to_snake_case(idx.name);
             clear_lines.push("            self." + idx_field + ".clear();");
+        }
+        for search in search_indexes {
+            clear_lines.push("            self." + search.var_name + ".clear();");
         }
         all_tables[tidx].clear_body = join_with(clear_lines, "\n");
 
@@ -229,6 +467,27 @@ if !skip_file {
         }
 
         validate_lines.push("            }");
+
+        for idx in struct_def.indexes {
+            if idx.is_unique {
+                let seen_name = "seen_" + to_snake_case(idx.name);
+                let key_expr = container_index_key_expr(idx, "row");
+                validate_lines.push("            let mut " + seen_name + " = HashSet::new();");
+                if pk_field != "" {
+                    validate_lines.push("            for row in self.rows.iter() {");
+                    validate_lines.push("                let row_key = row." + pk_field + ".to_string();");
+                } else {
+                    validate_lines.push("            for (row_idx, row) in self.rows.iter().enumerate() {");
+                    validate_lines.push("                let row_key = row_idx.to_string();");
+                }
+                validate_lines.push("                let key = " + key_expr + ";");
+                validate_lines.push("                if !" + seen_name + ".insert(key.clone()) {");
+                validate_lines.push("                    result.add_error(validation::unique_error(");
+                validate_lines.push("                        \"" + table.name + "\", \"" + idx.name + "\", &row_key, format!(\"{:?}\", key)));");
+                validate_lines.push("                }");
+                validate_lines.push("            }");
+            }
+        }
         validate_lines.push("            result");
         all_tables[tidx].validate_body = join_with(validate_lines, "\n");
 
@@ -314,6 +573,51 @@ if !skip_file {
             }
         }
     }
+
+    // Root container FK navigation helper metadata
+    for table in all_tables {
+        let struct_def = table.def;
+        for item in struct_def.items {
+            if item.is_field() {
+                let field = item.as_field();
+                if field.foreign_key != () {
+                    let fk = field.foreign_key;
+                    let target_table = find_table_entry_by_fqn(all_tables, fk.target_table_fqn);
+                    if target_table != () {
+                        forward_navs.push(#{
+                            method_name: "get_" + nav_method_suffix(struct_def, field.name),
+                            source_path: table.path,
+                            field_name: to_snake_case(field.name),
+                            target_path: target_table.path,
+                            target_member: target_table.table_name,
+                            target_method: "get_by_" + to_snake_case(fk.target_field),
+                            is_optional: field.field_type.is_option
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    for table in all_tables {
+        let struct_def = table.def;
+        for rel in struct_def.relations {
+            let source_table = find_table_entry_by_fqn(all_tables, rel.source_table_fqn);
+            if source_table != () {
+                let pk_field = find_pk_field(struct_def);
+                if pk_field == "" { pk_field = "id"; }
+                reverse_navs.push(#{
+                    method_name: "find_" + reverse_nav_method_suffix(struct_def, rel.name),
+                    target_path: table.path,
+                    target_key_field: pk_field,
+                    source_path: source_table.path,
+                    source_member: source_table.table_name,
+                    source_method: "get_by_" + to_snake_case(rel.source_field)
+                });
+            }
+        }
+    }
+
     has_relations = structs_with_relations.len() > 0;
 
     // Pre-compute relations body
@@ -367,9 +671,102 @@ if !skip_file {
 pub mod container {
     //! Data Container with indexes and relations
 %blank
+%if has_unique_index
+    use std::collections::{HashMap, HashSet};
+%else
     use std::collections::HashMap;
+%endif
+    use std::path::Path;
     use crate::polygen_support::{UniqueIndex, GroupIndex, LoadError, LoadResult};
     use crate::polygen_support::{ValidationResult, ValidationException, validation};
+    use crate::{{schema_mod}}_loaders::{CsvLoadable, JsonLoadable};
+%blank
+    mod container_search {
+        use std::collections::{HashMap, HashSet};
+
+        pub fn normalize(value: &str, policy: &str) -> String {
+            match policy {
+                "lower" => value.to_lowercase(),
+                "trim" => value.trim().to_string(),
+                "lower_trim" => value.trim().to_lowercase(),
+                _ => value.to_string(),
+            }
+        }
+
+        pub fn tokens(value: &str, mode: &str, n: usize, min: usize, normalize_policy: &str) -> Vec<String> {
+            let value = normalize(value, normalize_policy);
+            if value.len() < min {
+                return Vec::new();
+            }
+
+            let mut seen = HashSet::new();
+            let mut result = Vec::new();
+
+            if mode == "word" {
+                for token in value.split_whitespace() {
+                    let token = token.to_string();
+                    if token.len() >= min && seen.insert(token.clone()) {
+                        result.push(token);
+                    }
+                }
+                return result;
+            }
+
+            let chars: Vec<char> = value.chars().collect();
+            if chars.len() < n {
+                return Vec::new();
+            }
+
+            for i in 0..=(chars.len() - n) {
+                let token: String = chars[i..i + n].iter().collect();
+                if seen.insert(token.clone()) {
+                    result.push(token);
+                }
+            }
+            result
+        }
+
+        pub fn add(index: &mut HashMap<String, Vec<usize>>, key: String, row_index: usize) {
+            index.entry(key).or_default().push(row_index);
+        }
+
+        pub fn search<'a, T>(
+            index: &HashMap<String, Vec<usize>>,
+            rows: &'a [T],
+            query: &str,
+            mode: &str,
+            n: usize,
+            min: usize,
+            normalize_policy: &str,
+        ) -> Vec<&'a T> {
+            let query_tokens = tokens(query, mode, n, min, normalize_policy);
+            if query_tokens.is_empty() {
+                return Vec::new();
+            }
+
+            let mut iter = query_tokens.iter();
+            let Some(first) = iter.next() else {
+                return Vec::new();
+            };
+            let Some(first_postings) = index.get(first) else {
+                return Vec::new();
+            };
+
+            let mut matches: Vec<usize> = first_postings.clone();
+            for token in iter {
+                let Some(postings) = index.get(token) else {
+                    return Vec::new();
+                };
+                let set: HashSet<usize> = postings.iter().copied().collect();
+                matches.retain(|idx| set.contains(idx));
+                if matches.is_empty() {
+                    return Vec::new();
+                }
+            }
+
+            matches.into_iter().map(|idx| &rows[idx]).collect()
+        }
+    }
 %blank
 %for table in all_tables
     /// DataTable for {{table.name}}
@@ -377,6 +774,7 @@ pub mod container {
     pub struct {{table.table_type}} {
         rows: Vec<{{table.path}}>,
 {{table.idx_fields_body}}
+{{table.search_fields_body}}
     }
 %blank
     impl {{table.table_type}} {
@@ -389,9 +787,11 @@ pub mod container {
         pub fn iter(&self) -> impl Iterator<Item = &{{table.path}}> { self.rows.iter() }
 %blank
 {{table.getter_body}}
+{{table.search_getter_body}}
         pub fn add_row(&mut self, row: {{table.path}}) {
             let idx = self.rows.len();
 {{table.add_row_body}}
+{{table.add_search_body}}
             self.rows.push(row);
         }
 %blank
@@ -435,6 +835,43 @@ pub mod container {
 %endfor
         }
 %blank
+%for table in all_tables
+        pub fn load_{{table.table_name}}_from_csv<P: AsRef<Path>>(&mut self, path: P) -> LoadResult<()> {
+            let path = path.as_ref();
+            let rows = <{{table.path}} as CsvLoadable>::load_csv(path.to_string_lossy().as_ref())?;
+            self.{{table.table_name}}.load_all(rows);
+            Ok(())
+        }
+%blank
+        pub fn load_{{table.table_name}}_from_json<P: AsRef<Path>>(&mut self, path: P) -> LoadResult<()> {
+            let path = path.as_ref();
+            let rows = <{{table.path}} as JsonLoadable>::load_json_vec(path)
+                .map_err(|err| LoadError::Json(err.to_string()))?;
+            self.{{table.table_name}}.load_all(rows);
+            Ok(())
+        }
+%blank
+%endfor
+        pub fn load_from_csv<P: AsRef<Path>>(&mut self, root: P) -> LoadResult<()> {
+            let root = root.as_ref();
+%for table in all_tables
+%if table.csv_pattern != ""
+            self.load_{{table.table_name}}_from_csv(root.join({{table.csv_pattern | quote}}))?;
+%endif
+%endfor
+            Ok(())
+        }
+%blank
+        pub fn load_from_json<P: AsRef<Path>>(&mut self, root: P) -> LoadResult<()> {
+            let root = root.as_ref();
+%for table in all_tables
+%if table.json_pattern != ""
+            self.load_{{table.table_name}}_from_json(root.join({{table.json_pattern | quote}}))?;
+%endif
+%endfor
+            Ok(())
+        }
+%blank
         /// Validates all tables and returns combined results.
         pub fn validate_all(&self) -> ValidationResult {
             let mut result = ValidationResult::new();
@@ -457,6 +894,24 @@ pub mod container {
             }
             Ok(())
         }
+%blank
+%for nav in forward_navs
+        pub fn {{nav.method_name}}<'a>(&'a self, row: &{{nav.source_path}}) -> Option<&'a {{nav.target_path}}> {
+%if nav.is_optional
+            let key = row.{{nav.field_name}}.clone()?;
+            self.{{nav.target_member}}.{{nav.target_method}}(key)
+%else
+            self.{{nav.target_member}}.{{nav.target_method}}(row.{{nav.field_name}}.clone())
+%endif
+        }
+%blank
+%endfor
+%for nav in reverse_navs
+        pub fn {{nav.method_name}}<'a>(&'a self, row: &{{nav.target_path}}) -> Vec<&'a {{nav.source_path}}> {
+            self.{{nav.source_member}}.{{nav.source_method}}(row.{{nav.target_key_field}}.clone())
+        }
+%blank
+%endfor
     }
 }
 %if has_relations

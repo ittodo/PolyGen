@@ -1,0 +1,824 @@
+%logic
+// Unreal Registry/Index Template for PolyGen
+// Generates a read-only UObject registry with TArray row storage, TMap indexes,
+// and Blueprint-callable query helpers.
+
+import "templates/unreal/rhai_utils/type_mapping" as ue_types;
+
+fn to_pascal(name) {
+    let result = "";
+    let capitalize_next = true;
+    for i in 0..name.len() {
+        let c = name.sub_string(i, 1);
+        if c == "_" || c == "-" {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result += c.to_upper();
+            capitalize_next = false;
+        } else {
+            result += c;
+        }
+    }
+    return result;
+}
+
+fn pluralize(name) {
+    if name.ends_with("y") {
+        return name.sub_string(0, name.len() - 1) + "ies";
+    } else if name.ends_with("s") || name.ends_with("x") || name.ends_with("ch") || name.ends_with("sh") {
+        return name + "es";
+    }
+    return name + "s";
+}
+
+fn base_file_name(path) {
+    let parts = path.split("/");
+    let filename = parts[parts.len - 1];
+    let base_name = filename + "";
+    base_name.replace(".poly", "");
+    return base_name;
+}
+
+fn model_include_for_file(path) {
+    let base_name = base_file_name(path);
+    let first = base_name.sub_string(0, 1);
+    let rest = base_name.sub_string(1, base_name.len() - 1);
+    return "Polygen" + first.to_upper() + rest + ".h";
+}
+
+fn is_supported_index_type(t) {
+    if t.is_list {
+        return false;
+    }
+    let name = t.type_name;
+    if name == "bytes" {
+        return false;
+    }
+    return true;
+}
+
+fn search_target_enabled(search) {
+    return search.target == "csharp" || search.target == "unreal" || search.target == "unreal_registry";
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn search_is_supported(field) {
+    if !field.has_search_index {
+        return false;
+    }
+    let search = field.search_index;
+    if !search_target_enabled(search) {
+        return false;
+    }
+    if field.field_type.is_list {
+        return false;
+    }
+    let base = search_base_type(field.field_type);
+    if base.type_name == "bytes" || base.is_struct {
+        return false;
+    }
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    return search.mode == "exact";
+}
+
+fn key_type(t) {
+    let base = if t.is_option { t.inner } else { t };
+    return ue_types::map_type_with_ns(base, "");
+}
+
+fn index_key_expr(t, row_expr, field_name) {
+    if t.type_name == "string" || (t.is_option && t.inner.type_name == "string") {
+        return row_expr + "." + field_name;
+    }
+    return row_expr + "." + field_name;
+}
+
+fn search_key_type(field) {
+    let search = field.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "FString";
+    }
+    return key_type(field.field_type);
+}
+
+fn search_index_expr(field, value_expr) {
+    let base = search_base_type(field.field_type);
+    if base.type_name == "string" {
+        return "PolygenRegistryDetail::NormalizeString(" + value_expr + ", TEXT(\"" + field.search_index.normalize + "\"))";
+    }
+    return value_expr;
+}
+
+fn ue_text_literal(value) {
+    let escaped = value + "";
+    escaped.replace("\\", "\\\\");
+    escaped.replace("\"", "\\\"");
+    return "TEXT(\"" + escaped + "\")";
+}
+
+fn validation_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn validation_is_string_like(t) {
+    let base = validation_base_type(t);
+    return base.type_name == "string" || base.type_name == "bytes";
+}
+
+fn validation_length_expr(field_name, t) {
+    let base = validation_base_type(t);
+    if base.type_name == "bytes" {
+        return "Row." + field_name + ".Num()";
+    }
+    return "Row." + field_name + ".Len()";
+}
+
+fn validation_is_numeric(t) {
+    let base = validation_base_type(t);
+    switch base.type_name {
+        "u8" | "u16" | "u32" | "u64" |
+        "i8" | "i16" | "i32" | "i64" |
+        "f32" | "f64" => true,
+        _ => false
+    }
+}
+
+fn collect_tables_from_namespace(ns, include_file) {
+    let result = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed {
+                result.push(#{
+                    struct_def: s,
+                    include_file: include_file
+                });
+            }
+        } else if item.is_namespace() {
+            let nested = collect_tables_from_namespace(item.as_namespace(), include_file);
+            for entry in nested {
+                result.push(entry);
+            }
+        }
+    }
+
+    return result;
+}
+
+fn prepare_table(entry) {
+    let s = entry.struct_def;
+    let struct_name = ue_types::get_struct_name(s.name);
+    let table_name = s.name;
+    let plural_name = pluralize(table_name);
+    let rows_member = plural_name;
+
+    let indexes = [];
+    if s.indexes != () {
+        for idx in s.indexes {
+            if !idx.is_composite && is_supported_index_type(idx.field_type) {
+                let field_pascal = to_pascal(idx.field_name);
+                indexes.push(#{
+                    name: idx.name,
+                    field_name: idx.field_name,
+                    field_pascal: field_pascal,
+                    key_type: key_type(idx.field_type),
+                    key_expr: index_key_expr(idx.field_type, "Row", idx.field_name),
+                    member_name: table_name + "By" + field_pascal,
+                    seen_name: table_name + "By" + field_pascal + "SeenKeys",
+                    key_name: table_name + "By" + field_pascal + "Key",
+                    is_unique: idx.is_unique,
+                    find_name: if idx.is_unique { "Get" + table_name + "By" + field_pascal } else { "Get" + plural_name + "By" + field_pascal }
+                });
+            }
+        }
+    }
+
+    let search_indexes = [];
+    let foreign_keys = [];
+    let field_checks = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.foreign_key != () {
+                foreign_keys.push(#{
+                    field_name: f.name,
+                    target_index_member: target_index_member_name(f.foreign_key),
+                    target_table_fqn: f.foreign_key.target_table_fqn,
+                    target_field: f.foreign_key.target_field
+                });
+            }
+            if search_is_supported(f) {
+                let search = f.search_index;
+                let field_pascal = to_pascal(search.name);
+                search_indexes.push(#{
+                    name: search.name,
+                    field_name: f.name,
+                    field_pascal: field_pascal,
+                    key_type: search_key_type(f),
+                    value_expr: "Row." + f.name,
+                    index_expr: search_index_expr(f, "Row." + f.name),
+                    query_expr: search_index_expr(f, "Query"),
+                    member_name: table_name + "SearchBy" + field_pascal,
+                    function_name: "Search" + table_name + "By" + field_pascal,
+                    mode: search.mode,
+                    n: search.n,
+                    min: search.min,
+                    normalize: search.normalize,
+                    is_token_mode: search.mode == "ngram" || search.mode == "word"
+                });
+            }
+            if f.max_length != () && validation_is_string_like(f.field_type) {
+                field_checks.push(#{
+                    kind: "max_length",
+                    field_name: f.name,
+                    length_expr: validation_length_expr(f.name, f.field_type),
+                    limit: f.max_length
+                });
+            }
+            if f.range != () && !f.field_type.is_option && validation_is_numeric(f.field_type) {
+                field_checks.push(#{
+                    kind: "range",
+                    field_name: f.name,
+                    value_expr: "Row." + f.name,
+                    min: f.range.min,
+                    max: f.range.max
+                });
+            }
+            if f.regex_pattern != () && !f.field_type.is_option && validation_base_type(f.field_type).type_name == "string" {
+                let field_pascal = to_pascal(f.name);
+                field_checks.push(#{
+                    kind: "regex",
+                    field_name: f.name,
+                    value_expr: "Row." + f.name,
+                    pattern_literal: ue_text_literal(f.regex_pattern),
+                    pattern_name: table_name + field_pascal + "RegexPattern",
+                    matcher_name: table_name + field_pascal + "RegexMatcher"
+                });
+            }
+        }
+    }
+
+    entry.struct_name = struct_name;
+    entry.table_name = table_name;
+    entry.plural_name = plural_name;
+    entry.rows_member = rows_member;
+    entry.set_function = "Set" + plural_name;
+    entry.get_function = "Get" + plural_name;
+    entry.count_function = "Get" + plural_name + "Count";
+    entry.rebuild_function = "Rebuild" + table_name + "Indexes";
+    entry.indexes = indexes;
+    entry.search_indexes = search_indexes;
+    entry.foreign_keys = foreign_keys;
+    entry.field_checks = field_checks;
+    return entry;
+}
+
+fn target_index_member_name(fk) {
+    let parts = fk.target_table_fqn.split(".");
+    let target_table = "";
+    for part in parts {
+        target_table = part;
+    }
+    return target_table + "By" + to_pascal(fk.target_field);
+}
+
+fn find_table_entry_by_fqn(entries, fqn) {
+    for entry in entries {
+        if entry.struct_def.fqn == fqn {
+            return entry;
+        }
+    }
+    return ();
+}
+
+fn fk_nav_suffix(field_name) {
+    if field_name.ends_with("_id") {
+        return to_pascal(field_name.sub_string(0, field_name.len() - 3));
+    }
+    return to_pascal(field_name);
+}
+
+fn relation_target_field(source_table, relation) {
+    for item in source_table.struct_def.items {
+        if item.is_field() {
+            let field = item.as_field();
+            if field.name == relation.source_field && field.foreign_key != () {
+                return field.foreign_key.target_field;
+            }
+        }
+    }
+    return "id";
+}
+
+let tables = [];
+let include_headers = [];
+let include_seen = [];
+
+for schema_file in schema.files {
+    if schema_file.path == () || schema_file.path == "" {
+        continue;
+    }
+    let include_file = model_include_for_file(schema_file.path);
+    let already = false;
+    for seen in include_seen {
+        if seen == include_file {
+            already = true;
+            break;
+        }
+    }
+    if !already {
+        include_headers.push(include_file);
+        include_seen.push(include_file);
+    }
+
+    for ns in schema_file.namespaces {
+        let ns_tables = collect_tables_from_namespace(ns, include_file);
+        for entry in ns_tables {
+            tables.push(prepare_table(entry));
+        }
+    }
+}
+
+let has_tables = tables.len() > 0;
+let has_regex_checks = false;
+let forward_navs = [];
+let reverse_navs = [];
+
+for table in tables {
+    for check in table.field_checks {
+        if check.kind == "regex" {
+            has_regex_checks = true;
+        }
+    }
+}
+
+for table in tables {
+    for fk in table.foreign_keys {
+        let target_table = find_table_entry_by_fqn(tables, fk.target_table_fqn);
+        if target_table != () {
+            forward_navs.push(#{
+                method_name: "Get" + table.table_name + fk_nav_suffix(fk.field_name),
+                source_struct_name: table.struct_name,
+                target_struct_name: target_table.struct_name,
+                source_field: fk.field_name,
+                target_lookup_name: "Get" + target_table.table_name + "By" + to_pascal(fk.target_field)
+            });
+        }
+    }
+
+    for relation in table.struct_def.relations {
+        let source_table = find_table_entry_by_fqn(tables, relation.source_table_fqn);
+        if source_table != () {
+            let target_field = relation_target_field(source_table, relation);
+            reverse_navs.push(#{
+                method_name: "Find" + table.table_name + to_pascal(relation.name),
+                target_struct_name: table.struct_name,
+                source_struct_name: source_table.struct_name,
+                target_field: target_field,
+                source_lookup_name: "Get" + source_table.plural_name + "By" + to_pascal(relation.source_field)
+            });
+        }
+    }
+}
+%endlogic
+%if has_tables
+// Generated by PolyGen - DO NOT EDIT
+// Unreal read-only registry and Blueprint query helpers
+#pragma once
+%blank
+#include "CoreMinimal.h"
+#include "UObject/NoExportTypes.h"
+%if has_regex_checks
+#include "Internationalization/Regex.h"
+%endif
+%for hdr in include_headers
+#include "{{hdr}}"
+%endfor
+#include "PolygenRegistry.generated.h"
+%blank
+namespace PolygenRegistryDetail
+{
+inline FString NormalizeString(const FString& Value, const TCHAR* Policy)
+{
+    FString Result = Value;
+    const FString PolicyText(Policy);
+    if (PolicyText == TEXT("trim") || PolicyText == TEXT("lower_trim"))
+    {
+        Result = Result.TrimStartAndEnd();
+    }
+    if (PolicyText == TEXT("lower") || PolicyText == TEXT("lower_trim"))
+    {
+        Result = Result.ToLower();
+    }
+    return Result;
+}
+%blank
+inline TArray<FString> SearchTokens(const FString& Value, const TCHAR* Mode, int32 N, int32 Min, const TCHAR* Normalize)
+{
+    const FString Normalized = NormalizeString(Value, Normalize);
+    TSet<FString> Seen;
+    TArray<FString> Result;
+    const FString ModeText(Mode);
+%blank
+    auto AddToken = [&](const FString& Token)
+    {
+        if (Token.Len() >= Min && !Seen.Contains(Token))
+        {
+            Seen.Add(Token);
+            Result.Add(Token);
+        }
+    };
+%blank
+    if (ModeText == TEXT("exact"))
+    {
+        if (!Normalized.IsEmpty() || Min <= 0)
+        {
+            AddToken(Normalized);
+        }
+    }
+    else if (ModeText == TEXT("word"))
+    {
+        TArray<FString> Parts;
+        Normalized.ParseIntoArrayWS(Parts);
+        for (const FString& Part : Parts)
+        {
+            AddToken(Part);
+        }
+    }
+    else if (N > 0 && Normalized.Len() >= FMath::Max(N, Min))
+    {
+        for (int32 Index = 0; Index + N <= Normalized.Len(); ++Index)
+        {
+            AddToken(Normalized.Mid(Index, N));
+        }
+    }
+%blank
+    return Result;
+}
+%blank
+inline TArray<int32> IntersectPostings(const TArray<TArray<int32>>& Postings)
+{
+    if (Postings.Num() == 0)
+    {
+        return {};
+    }
+%blank
+    TSet<int32> Current(Postings[0]);
+    for (int32 PostingIndex = 1; PostingIndex < Postings.Num(); ++PostingIndex)
+    {
+        TSet<int32> Next(Postings[PostingIndex]);
+        for (auto It = Current.CreateIterator(); It; ++It)
+        {
+            if (!Next.Contains(*It))
+            {
+                It.RemoveCurrent();
+            }
+        }
+    }
+%blank
+    TArray<int32> Result = Current.Array();
+    Result.Sort();
+    return Result;
+}
+%blank
+template <typename RowType>
+inline TArray<RowType> RowsFromIndices(const TArray<RowType>& Rows, const TArray<int32>& Indices)
+{
+    TArray<RowType> Result;
+    for (int32 RowIndex : Indices)
+    {
+        if (Rows.IsValidIndex(RowIndex))
+        {
+            Result.Add(Rows[RowIndex]);
+        }
+    }
+    return Result;
+}
+} // namespace PolygenRegistryDetail
+%blank
+USTRUCT(BlueprintType)
+struct FPolygenRegistryValidationError
+{
+    GENERATED_BODY()
+%blank
+    UPROPERTY(BlueprintReadOnly, Category = "PolyGen|Registry")
+    FString TableName;
+%blank
+    UPROPERTY(BlueprintReadOnly, Category = "PolyGen|Registry")
+    FString FieldName;
+%blank
+    UPROPERTY(BlueprintReadOnly, Category = "PolyGen|Registry")
+    FString ConstraintType;
+%blank
+    UPROPERTY(BlueprintReadOnly, Category = "PolyGen|Registry")
+    FString Message;
+};
+%blank
+/**
+ * Read-only registry for generated PolyGen data.
+ * Stores rows in TArray and rebuilds TMap indexes whenever rows are replaced.
+ */
+UCLASS(BlueprintType)
+class UPolygenSchemaRegistry : public UObject
+{
+    GENERATED_BODY()
+%blank
+public:
+%for table in tables
+    UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")
+    void {{table.set_function}}(const TArray<{{table.struct_name}}>& InRows)
+    {
+        {{table.rows_member}} = InRows;
+        {{table.rebuild_function}}();
+    }
+%blank
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    const TArray<{{table.struct_name}}>& {{table.get_function}}() const
+    {
+        return {{table.rows_member}};
+    }
+%blank
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    int32 {{table.count_function}}() const
+    {
+        return {{table.rows_member}}.Num();
+    }
+%blank
+%for idx in table.indexes
+%if idx.is_unique
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    bool {{idx.find_name}}({{idx.key_type}} Key, {{table.struct_name}}& OutRow) const
+    {
+        const int32* RowIndex = {{idx.member_name}}.Find(Key);
+        if (RowIndex == nullptr || !{{table.rows_member}}.IsValidIndex(*RowIndex))
+        {
+            return false;
+        }
+        OutRow = {{table.rows_member}}[*RowIndex];
+        return true;
+    }
+%blank
+%else
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    void {{idx.find_name}}({{idx.key_type}} Key, TArray<{{table.struct_name}}>& OutRows) const
+    {
+        OutRows.Reset();
+        const TArray<int32>* RowIndices = {{idx.member_name}}.Find(Key);
+        if (RowIndices != nullptr)
+        {
+            OutRows = PolygenRegistryDetail::RowsFromIndices({{table.rows_member}}, *RowIndices);
+        }
+    }
+%blank
+%endif
+%endfor
+%for search in table.search_indexes
+%if search.is_token_mode
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    TArray<{{table.struct_name}}> {{search.function_name}}(const FString& Query) const
+    {
+        const TArray<FString> Tokens = PolygenRegistryDetail::SearchTokens(Query, TEXT("{{search.mode}}"), {{search.n}}, {{search.min}}, TEXT("{{search.normalize}}"));
+        TArray<TArray<int32>> Postings;
+        for (const FString& Token : Tokens)
+        {
+            const TArray<int32>* RowsForToken = {{search.member_name}}.Find(Token);
+            if (RowsForToken == nullptr)
+            {
+                return {};
+            }
+            Postings.Add(*RowsForToken);
+        }
+        return PolygenRegistryDetail::RowsFromIndices({{table.rows_member}}, PolygenRegistryDetail::IntersectPostings(Postings));
+    }
+%blank
+%else
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    TArray<{{table.struct_name}}> {{search.function_name}}({{search.key_type}} Query) const
+    {
+        const TArray<int32>* RowIndices = {{search.member_name}}.Find({{search.query_expr}});
+        return RowIndices == nullptr ? TArray<{{table.struct_name}}>() : PolygenRegistryDetail::RowsFromIndices({{table.rows_member}}, *RowIndices);
+    }
+%blank
+%endif
+%endfor
+%endfor
+%for nav in forward_navs
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    bool {{nav.method_name}}(const {{nav.source_struct_name}}& Row, {{nav.target_struct_name}}& OutRow) const
+    {
+        return {{nav.target_lookup_name}}(Row.{{nav.source_field}}, OutRow);
+    }
+%blank
+%endfor
+%for nav in reverse_navs
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    void {{nav.method_name}}(const {{nav.target_struct_name}}& Row, TArray<{{nav.source_struct_name}}>& OutRows) const
+    {
+        {{nav.source_lookup_name}}(Row.{{nav.target_field}}, OutRows);
+    }
+%blank
+%endfor
+    UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")
+    void Clear()
+    {
+%for table in tables
+        {{table.rows_member}}.Reset();
+%endfor
+        RebuildIndexes();
+    }
+%blank
+    UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")
+    void RebuildIndexes()
+    {
+%for table in tables
+        {{table.rebuild_function}}();
+%endfor
+    }
+%blank
+    UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")
+    bool ValidateFieldConstraints(TArray<FPolygenRegistryValidationError>& OutErrors) const
+    {
+        OutErrors.Reset();
+%for table in tables
+%if table.field_checks.len() > 0
+        for (int32 RowIndex = 0; RowIndex < {{table.rows_member}}.Num(); ++RowIndex)
+        {
+            const {{table.struct_name}}& Row = {{table.rows_member}}[RowIndex];
+%for check in table.field_checks
+%if check.kind == "max_length"
+            if ({{check.length_expr}} > {{check.limit}})
+            {
+                FPolygenRegistryValidationError Error;
+                Error.TableName = TEXT("{{table.table_name}}");
+                Error.FieldName = TEXT("{{check.field_name}}");
+                Error.ConstraintType = TEXT("MaxLength");
+                Error.Message = FString::Printf(TEXT("Length for {{table.table_name}}.{{check.field_name}} exceeds maximum {{check.limit}} at row %d"), RowIndex);
+                OutErrors.Add(Error);
+            }
+%elif check.kind == "range"
+            if ({{check.value_expr}} < {{check.min}} || {{check.value_expr}} > {{check.max}})
+            {
+                FPolygenRegistryValidationError Error;
+                Error.TableName = TEXT("{{table.table_name}}");
+                Error.FieldName = TEXT("{{check.field_name}}");
+                Error.ConstraintType = TEXT("Range");
+                Error.Message = FString::Printf(TEXT("Value for {{table.table_name}}.{{check.field_name}} is outside range [{{check.min}}, {{check.max}}] at row %d"), RowIndex);
+                OutErrors.Add(Error);
+            }
+%elif check.kind == "regex"
+            {
+                const FRegexPattern {{check.pattern_name}}({{check.pattern_literal}});
+                FRegexMatcher {{check.matcher_name}}({{check.pattern_name}}, {{check.value_expr}});
+                if (!{{check.matcher_name}}.FindNext())
+                {
+                    FPolygenRegistryValidationError Error;
+                    Error.TableName = TEXT("{{table.table_name}}");
+                    Error.FieldName = TEXT("{{check.field_name}}");
+                    Error.ConstraintType = TEXT("Regex");
+                    Error.Message = FString::Printf(TEXT("Value for {{table.table_name}}.{{check.field_name}} does not match regex at row %d"), RowIndex);
+                    OutErrors.Add(Error);
+                }
+            }
+%endif
+%endfor
+        }
+%endif
+%endfor
+        return OutErrors.Num() == 0;
+    }
+%blank
+    UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")
+    bool ValidateUniqueKeys(TArray<FPolygenRegistryValidationError>& OutErrors) const
+    {
+        OutErrors.Reset();
+%for table in tables
+%for idx in table.indexes
+%if idx.is_unique
+        {
+            TSet<{{idx.key_type}}> {{idx.seen_name}};
+            for (int32 RowIndex = 0; RowIndex < {{table.rows_member}}.Num(); ++RowIndex)
+            {
+                const {{table.struct_name}}& Row = {{table.rows_member}}[RowIndex];
+                const {{idx.key_type}} {{idx.key_name}} = {{idx.key_expr}};
+                if ({{idx.seen_name}}.Contains({{idx.key_name}}))
+                {
+                    FPolygenRegistryValidationError Error;
+                    Error.TableName = TEXT("{{table.table_name}}");
+                    Error.FieldName = TEXT("{{idx.field_name}}");
+                    Error.ConstraintType = TEXT("Unique");
+                    Error.Message = FString::Printf(TEXT("Duplicate key for {{table.table_name}}.{{idx.field_name}} at row %d"), RowIndex);
+                    OutErrors.Add(Error);
+                }
+                else
+                {
+                    {{idx.seen_name}}.Add({{idx.key_name}});
+                }
+            }
+        }
+%endif
+%endfor
+%endfor
+        return OutErrors.Num() == 0;
+    }
+%blank
+    UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")
+    bool ValidateForeignKeys(TArray<FPolygenRegistryValidationError>& OutErrors) const
+    {
+        OutErrors.Reset();
+%for table in tables
+%for fk in table.foreign_keys
+        for (const {{table.struct_name}}& Row : {{table.rows_member}})
+        {
+            if (!{{fk.target_index_member}}.Contains(Row.{{fk.field_name}}))
+            {
+                FPolygenRegistryValidationError Error;
+                Error.TableName = TEXT("{{table.table_name}}");
+                Error.FieldName = TEXT("{{fk.field_name}}");
+                Error.ConstraintType = TEXT("ForeignKey");
+                Error.Message = FString::Printf(TEXT("Missing {{fk.target_table_fqn}}.{{fk.target_field}} reference for {{table.table_name}}.{{fk.field_name}}=%s"), *LexToString(Row.{{fk.field_name}}));
+                OutErrors.Add(Error);
+            }
+        }
+%endfor
+%endfor
+        return OutErrors.Num() == 0;
+    }
+%blank
+    UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")
+    bool ValidateAll(TArray<FPolygenRegistryValidationError>& OutErrors) const
+    {
+        OutErrors.Reset();
+        TArray<FPolygenRegistryValidationError> FieldErrors;
+        TArray<FPolygenRegistryValidationError> UniqueErrors;
+        TArray<FPolygenRegistryValidationError> ForeignKeyErrors;
+        const bool bFieldsValid = ValidateFieldConstraints(FieldErrors);
+        const bool bUniqueValid = ValidateUniqueKeys(UniqueErrors);
+        const bool bForeignKeysValid = ValidateForeignKeys(ForeignKeyErrors);
+        OutErrors.Append(FieldErrors);
+        OutErrors.Append(UniqueErrors);
+        OutErrors.Append(ForeignKeyErrors);
+        return bFieldsValid && bUniqueValid && bForeignKeysValid;
+    }
+%blank
+private:
+%for table in tables
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PolyGen|Registry", meta = (AllowPrivateAccess = "true"))
+    TArray<{{table.struct_name}}> {{table.rows_member}};
+%blank
+%for idx in table.indexes
+%if idx.is_unique
+    TMap<{{idx.key_type}}, int32> {{idx.member_name}};
+%else
+    TMap<{{idx.key_type}}, TArray<int32>> {{idx.member_name}};
+%endif
+%endfor
+%for search in table.search_indexes
+    TMap<{{search.key_type}}, TArray<int32>> {{search.member_name}};
+%endfor
+%blank
+    void {{table.rebuild_function}}()
+    {
+%for idx in table.indexes
+        {{idx.member_name}}.Reset();
+%endfor
+%for search in table.search_indexes
+        {{search.member_name}}.Reset();
+%endfor
+        for (int32 RowIndex = 0; RowIndex < {{table.rows_member}}.Num(); ++RowIndex)
+        {
+            const {{table.struct_name}}& Row = {{table.rows_member}}[RowIndex];
+%for idx in table.indexes
+%if idx.is_unique
+            {{idx.member_name}}.Add({{idx.key_expr}}, RowIndex);
+%else
+            {{idx.member_name}}.FindOrAdd({{idx.key_expr}}).Add(RowIndex);
+%endif
+%endfor
+%for search in table.search_indexes
+%if search.is_token_mode
+            for (const FString& Token : PolygenRegistryDetail::SearchTokens({{search.value_expr}}, TEXT("{{search.mode}}"), {{search.n}}, {{search.min}}, TEXT("{{search.normalize}}")))
+            {
+                {{search.member_name}}.FindOrAdd(Token).Add(RowIndex);
+            }
+%else
+            {{search.member_name}}.FindOrAdd({{search.index_expr}}).Add(RowIndex);
+%endif
+%endfor
+        }
+    }
+%blank
+%endfor
+};
+%endif

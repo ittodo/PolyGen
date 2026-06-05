@@ -33,7 +33,7 @@ if not exist "%POLYGEN%" (
 )
 
 REM Test cases
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed 11_relations_indexes
 
 REM Create generated directory
 if not exist "%GENERATED_DIR%" mkdir "%GENERATED_DIR%"
@@ -130,6 +130,7 @@ for %%T in (%TEST_CASES%) do (
                         echo pub mod schema;
                         echo pub mod schema_loaders;
                         echo pub mod schema_container;
+                        echo pub mod schema_binary_refs;
                         echo pub mod schema_redis_keys;
                         echo pub mod schema_sqlite_accessor;
                     ) > "!TEST_PROJECT_DIR!\src\lib.rs"
@@ -139,6 +140,7 @@ for %%T in (%TEST_CASES%) do (
                         echo pub mod schema;
                         echo pub mod schema_loaders;
                         echo pub mod schema_container;
+                        echo pub mod schema_binary_refs;
                         echo pub mod schema_redis_keys;
                     ) > "!TEST_PROJECT_DIR!\src\lib.rs"
                 )

@@ -157,7 +157,7 @@ Generated Code
 | 파일 | 줄 수 | 역할 |
 |------|-------|------|
 | `rhai/mod.rs` | 6 | 모듈 진입점 |
-| `rhai/registry.rs` | 632 | Rhai 함수 등록 |
+| `rhai/registry.rs` | 632 | Rhai 함수/IR getter 등록 (`FileDef.all_tables` 포함) |
 | `rhai/common/ir_lookup.rs` | 444 | IR 조회 헬퍼 |
 | `rhai/csharp/type_mapping.rs` | 168 | C# 타입 매핑 |
 | `rhai/csharp/loaders/csv.rs` | 1,120 | C# CSV 로더 생성 |

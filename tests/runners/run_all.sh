@@ -4,6 +4,9 @@
 #   tests/runners/run_all.sh
 #   tests/runners/run_all.sh csharp rust sqlite
 #   tests/runners/run_all.sh --verify
+#   tests/runners/run_all.sh --optional-toolchains
+#   tests/runners/run_all.sh --optional-toolchains-strict
+#   tests/runners/run_all.sh --optional-toolchains-dry-run
 
 set -u
 set -o pipefail
@@ -37,10 +40,16 @@ Usage:
   tests/runners/run_all.sh sqlite rust
   tests/runners/run_all.sh --list
   tests/runners/run_all.sh --verify
+  tests/runners/run_all.sh --optional-toolchains
+  tests/runners/run_all.sh --optional-toolchains-strict
+  tests/runners/run_all.sh --optional-toolchains-dry-run
   tests/runners/run_all.sh --help
 
 Runs all integration runners, or only the runner names passed as arguments.
 --verify checks runner matrix synchronization and verifier regression tests.
+--optional-toolchains runs ready Kotlin/Swift/Unreal optional runtime or compile gates.
+--optional-toolchains-strict fails if any optional toolchain target is not ready.
+--optional-toolchains-dry-run prints ready optional toolchain gate commands without running them.
 USAGE
         exit 0
         ;;
@@ -66,6 +75,69 @@ USAGE
         echo
         echo "=== Verifying runner matrix regression tests ==="
         PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_verify_runner_matrix.py"
+        VERIFY_EXIT=$?
+        if [ "$VERIFY_EXIT" -ne 0 ]; then
+            exit "$VERIFY_EXIT"
+        fi
+        echo
+        echo "=== Verifying optional runner gate helper tests ==="
+        PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_check_optional_toolchains.py"
+        VERIFY_EXIT=$?
+        if [ "$VERIFY_EXIT" -ne 0 ]; then
+            exit "$VERIFY_EXIT"
+        fi
+        PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_run_optional_toolchains.py"
+        VERIFY_EXIT=$?
+        if [ "$VERIFY_EXIT" -ne 0 ]; then
+            exit "$VERIFY_EXIT"
+        fi
+        PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/kotlin/test_run_kotlin_runtime.py"
+        VERIFY_EXIT=$?
+        if [ "$VERIFY_EXIT" -ne 0 ]; then
+            exit "$VERIFY_EXIT"
+        fi
+        PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/swift/test_run_swift_runtime.py"
+        VERIFY_EXIT=$?
+        if [ "$VERIFY_EXIT" -ne 0 ]; then
+            exit "$VERIFY_EXIT"
+        fi
+        PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/unreal/test_compile_unreal.py"
+        exit $?
+        ;;
+    --optional-toolchains)
+        if command -v python3 >/dev/null 2>&1; then
+            PYTHON_BIN=python3
+        elif command -v python >/dev/null 2>&1; then
+            PYTHON_BIN=python
+        else
+            echo "FAILED (python not found)"
+            exit 1
+        fi
+        "$PYTHON_BIN" "$SCRIPT_DIR/run_optional_toolchains.py"
+        exit $?
+        ;;
+    --optional-toolchains-strict)
+        if command -v python3 >/dev/null 2>&1; then
+            PYTHON_BIN=python3
+        elif command -v python >/dev/null 2>&1; then
+            PYTHON_BIN=python
+        else
+            echo "FAILED (python not found)"
+            exit 1
+        fi
+        "$PYTHON_BIN" "$SCRIPT_DIR/run_optional_toolchains.py" --fail-on-missing
+        exit $?
+        ;;
+    --optional-toolchains-dry-run)
+        if command -v python3 >/dev/null 2>&1; then
+            PYTHON_BIN=python3
+        elif command -v python >/dev/null 2>&1; then
+            PYTHON_BIN=python
+        else
+            echo "FAILED (python not found)"
+            exit 1
+        fi
+        "$PYTHON_BIN" "$SCRIPT_DIR/run_optional_toolchains.py" --dry-run
         exit $?
         ;;
 esac

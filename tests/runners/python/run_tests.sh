@@ -50,6 +50,7 @@ TEST_SCHEMAS=(
     "08_complex_schema"
     "09_sqlite"
     "10_pack_embed"
+    "11_relations_indexes"
 )
 
 PASSED=0
@@ -88,8 +89,23 @@ for test_name in "${TEST_SCHEMAS[@]}"; do
         echo -e "${RED}  FAIL: No Python files generated${NC}"
         FAILED=$((FAILED + 1))
     elif "$PYTHON_BIN" -m py_compile "${OUTPUT_FILES[@]}" >"$VALIDATION_LOG" 2>&1; then
-        echo -e "${GREEN}  PASS: py_compile successful${NC}"
-        PASSED=$((PASSED + 1))
+        RUNTIME_TEST="$SCRIPT_DIR/tests/${test_name}_test.py"
+        if [ -f "$RUNTIME_TEST" ]; then
+            cp "$RUNTIME_TEST" "$TEST_OUTPUT/python/polygen_integration_test.py"
+            touch "$TEST_OUTPUT/python/__init__.py"
+            echo "  Running runtime test..."
+            if (cd "$TEST_OUTPUT" && "$PYTHON_BIN" -m python.polygen_integration_test) >>"$VALIDATION_LOG" 2>&1; then
+                echo -e "${GREEN}  PASS: py_compile and runtime test successful${NC}"
+                PASSED=$((PASSED + 1))
+            else
+                echo -e "${RED}  FAIL: runtime test failed${NC}"
+                cat "$VALIDATION_LOG"
+                FAILED=$((FAILED + 1))
+            fi
+        else
+            echo -e "${GREEN}  PASS: py_compile successful${NC}"
+            PASSED=$((PASSED + 1))
+        fi
     else
         echo -e "${RED}  FAIL: py_compile failed${NC}"
         cat "$VALIDATION_LOG"

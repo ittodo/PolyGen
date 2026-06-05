@@ -14,6 +14,9 @@ This directory contains integration tests for the C++ code generator.
 | 06_arrays_and_optionals | Array and optional field types |
 | 07_indexes | primary_key, unique, foreign_key with containers |
 | 08_complex_schema | Comprehensive test combining all features |
+| 09_sqlite | SQLite datasource schema types |
+| 10_pack_embed | `@pack` embed helpers |
+| 11_relations_indexes | Reverse relation aliases and composite indexes |
 
 ## Running Tests
 

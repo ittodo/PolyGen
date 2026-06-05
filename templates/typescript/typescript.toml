@@ -48,6 +48,10 @@ output = "{{stem}}.schema.ts"
 template = "typescript_binary_refs_file.ptpl"
 output = "{{stem}}_binary_refs.ts"
 
+[[templates.extra]]
+template = "typescript_container_file.ptpl"
+output = "{{stem}}_container.ts"
+
 # Redis key helpers (no client dependency)
 [[templates.extra]]
 template = "typescript_redis_keys_file.ptpl"

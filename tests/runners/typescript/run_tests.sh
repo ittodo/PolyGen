@@ -60,6 +60,7 @@ TEST_CASES=(
     08_complex_schema
     09_sqlite
     10_pack_embed
+    11_relations_indexes
 )
 
 GENERATED=0

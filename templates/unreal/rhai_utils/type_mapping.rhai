@@ -68,7 +68,6 @@ fn map_type_with_ns(type_ref, current_ns) {
     } else {
         // Custom type (struct or enum)
         let type_name = type_ref.type_name;
-        let first_char = type_name.sub_string(0, 1);
 
         // Determine if this is an enum type
         // Use is_enum flag if available, otherwise use heuristics based on name
@@ -96,13 +95,10 @@ fn map_type_with_ns(type_ref, current_ns) {
             }
         }
 
-        // Add F prefix for structs, E prefix for enums (Unreal convention)
         if is_enum_type {
-            // Check if already has E prefix
-            base_type = if first_char == "E" { type_name } else { "E" + type_name };
+            base_type = get_enum_name(type_name);
         } else {
-            // Check if already has F prefix
-            base_type = if first_char == "F" { type_name } else { "F" + type_name };
+            base_type = get_struct_name(type_name);
         }
     }
 
@@ -167,22 +163,34 @@ fn to_snake_case(name) {
     return result;
 }
 
-// Get Unreal struct name with F prefix
+// Get Unreal struct name with a PolyGen-specific reflected name.
+// UHT strips the leading F/U/A prefix when checking engine names, so plain
+// FPlayer or FColor can collide with engine UPlayer/FColor.
 fn get_struct_name(name) {
-    let first_char = name.sub_string(0, 1);
-    if first_char == "F" {
+    if name.starts_with("FPolygen") {
         return name;
     }
-    return "F" + name;
+    if name.starts_with("Polygen") {
+        return "F" + name;
+    }
+    if name.starts_with("F") {
+        return "FPolygen" + name.sub_string(1, name.len() - 1);
+    }
+    return "FPolygen" + name;
 }
 
-// Get Unreal enum name with E prefix
+// Get Unreal enum name with a PolyGen-specific reflected name.
 fn get_enum_name(name) {
-    let first_char = name.sub_string(0, 1);
-    if first_char == "E" {
+    if name.starts_with("EPolygen") {
         return name;
     }
-    return "E" + name;
+    if name.starts_with("Polygen") {
+        return "E" + name;
+    }
+    if name.starts_with("E") {
+        return "EPolygen" + name.sub_string(1, name.len() - 1);
+    }
+    return "EPolygen" + name;
 }
 
 // Get first enum member name for default value

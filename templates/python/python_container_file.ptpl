@@ -1,0 +1,660 @@
+%logic
+import "templates/python/rhai_utils/type_mapping" as py;
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn table_member_name(s) {
+    to_snake_case(s.name) + "s"
+}
+
+fn table_class_name(s) {
+    py::class_name_from_fqn(s.fqn) + "Table"
+}
+
+fn index_method_name(prefix, field_name) {
+    prefix + "_by_" + to_snake_case(field_name)
+}
+
+fn index_api_name(idx) {
+    if idx.is_composite {
+        let result = "";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += "_";
+            }
+            result += idx.fields[i].name;
+        }
+        return result;
+    }
+    idx.field_name
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    t
+}
+
+fn is_supported_scalar(t) {
+    let base = search_base_type(t);
+    if base.is_list {
+        return false;
+    }
+    if base.type_name == "bytes" {
+        return false;
+    }
+    if base.type_name == "string" || base.type_name == "timestamp" || base.type_name == "bool" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    base.is_primitive
+}
+
+fn is_search_target_enabled(search) {
+    search.target == "csharp" || search.target == "python" || search.target == "python_container"
+}
+
+fn search_is_supported(f) {
+    if !f.has_search_index {
+        return false;
+    }
+    let search = f.search_index;
+    if !is_search_target_enabled(search) {
+        return false;
+    }
+    let ft = f.field_type;
+    if ft.is_list {
+        return false;
+    }
+    let base = search_base_type(ft);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    is_supported_scalar(base)
+}
+
+fn search_method_name(search_name) {
+    "search_by_" + to_snake_case(search_name)
+}
+
+fn validation_is_string_like(t) {
+    let base = search_base_type(t);
+    base.type_name == "string" || base.type_name == "bytes"
+}
+
+fn validation_is_numeric(t) {
+    let base = search_base_type(t);
+    if !base.is_primitive {
+        return false;
+    }
+    base.type_name != "bool" && base.type_name != "string" && base.type_name != "bytes" && base.type_name != "timestamp"
+}
+
+fn nav_field_label(field_name) {
+    let label = to_snake_case(field_name);
+    if label.ends_with("_id") && label.len() > 3 {
+        return label.sub_string(0, label.len() - 3);
+    }
+    label
+}
+
+fn forward_nav_method_name(source_table, field_name) {
+    "get_" + to_snake_case(source_table.name) + "_" + nav_field_label(field_name)
+}
+
+fn reverse_nav_method_name(target_table, relation_name) {
+    "find_" + to_snake_case(target_table.name) + "_" + to_snake_case(relation_name)
+}
+
+let all_tables = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for s in tables {
+        all_tables.push(s);
+    }
+}
+
+fn find_table_by_fqn(all_tables, fqn) {
+    for table in all_tables {
+        if table.fqn == fqn {
+            return table;
+        }
+    }
+    ()
+}
+
+let entries = [];
+for s in all_tables {
+    let indexes = [];
+    for idx in s.indexes {
+        let index_name = index_api_name(idx);
+        let key_expr = "";
+        if idx.is_composite {
+            key_expr = "(";
+            for i in 0..idx.fields.len() {
+                if i > 0 {
+                    key_expr += ", ";
+                }
+                key_expr += "row." + idx.fields[i].name;
+            }
+            key_expr += ")";
+        } else {
+            key_expr = "row." + idx.field_name;
+        }
+        indexes.push(#{
+            def: idx,
+            field_name: index_name,
+            attr_name: to_snake_case(idx.name),
+            key_expr: key_expr,
+            get_method: index_method_name("get", index_name),
+            find_method: index_method_name("find", index_name),
+            is_unique: idx.is_unique,
+            value_type: if idx.is_unique { py::class_name_from_fqn(s.fqn) } else { "list[" + py::class_name_from_fqn(s.fqn) + "]" }
+        });
+    }
+
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field {
+            let f = item.as_field();
+            if search_is_supported(f) {
+                let search = f.search_index;
+                let base = search_base_type(f.field_type);
+                search_indexes.push(#{
+                    name: search.name,
+                    attr_name: "search_" + to_snake_case(search.name),
+                    field_attr: f.name,
+                    method: search_method_name(search.name),
+                    mode: search.mode,
+                    normalize: search.normalize,
+                    n: search.n,
+                    min: search.min,
+                    is_token_mode: search.mode == "ngram" || search.mode == "word",
+                    is_exact_string: search.mode == "exact" && base.type_name == "string"
+                });
+            }
+        }
+    }
+
+    let validation_checks = [];
+    for item in s.items {
+        if item.is_field {
+            let f = item.as_field();
+            if f.max_length != () && validation_is_string_like(f.field_type) {
+                validation_checks.push(#{
+                    kind: "max_length",
+                    field_name: f.name,
+                    field_literal: py::quote_py_string(f.name),
+                    limit: f.max_length,
+                    is_optional: f.field_type.is_option
+                });
+            }
+            if f.range != () && validation_is_numeric(f.field_type) {
+                validation_checks.push(#{
+                    kind: "range",
+                    field_name: f.name,
+                    field_literal: py::quote_py_string(f.name),
+                    min: f.range.min,
+                    max: f.range.max,
+                    is_optional: f.field_type.is_option
+                });
+            }
+            if f.regex_pattern != () && search_base_type(f.field_type).type_name == "string" {
+                validation_checks.push(#{
+                    kind: "regex",
+                    field_name: f.name,
+                    field_literal: py::quote_py_string(f.name),
+                    pattern_literal: py::quote_py_string(f.regex_pattern),
+                    is_optional: f.field_type.is_option
+                });
+            }
+        }
+    }
+
+    let csv_pattern = "";
+    let json_pattern = "";
+    if s.load != () {
+        if s.load.csv != () {
+            csv_pattern = s.load.csv;
+        }
+        if s.load.json != () {
+            json_pattern = s.load.json;
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        class_name: py::class_name_from_fqn(s.fqn),
+        table_class: table_class_name(s),
+        member_name: table_member_name(s),
+        csv_loader: "load_" + to_snake_case(py::class_name_from_fqn(s.fqn)) + "s_from_csv",
+        json_loader: "load_" + to_snake_case(py::class_name_from_fqn(s.fqn)) + "s_from_json",
+        csv_pattern: csv_pattern,
+        csv_literal: py::quote_py_string(csv_pattern),
+        json_pattern: json_pattern,
+        json_literal: py::quote_py_string(json_pattern),
+        indexes: indexes,
+        search_indexes: search_indexes,
+        validation_checks: validation_checks
+    });
+}
+
+let fk_checks = [];
+let forward_navs = [];
+for s in all_tables {
+    let source_entry = #{
+        class_name: py::class_name_from_fqn(s.fqn),
+        member_name: table_member_name(s)
+    };
+    for item in s.items {
+        if item.is_field {
+            let field = item.as_field();
+            if field.has_foreign_key {
+                let fk = field.foreign_key;
+                let target_table = find_table_by_fqn(all_tables, fk.target_table_fqn);
+                if target_table != () {
+                    fk_checks.push(#{
+                        source_member: source_entry.member_name,
+                        source_table: s.name,
+                        source_table_literal: py::quote_py_string(s.name),
+                        field_name: field.name,
+                        field_name_literal: py::quote_py_string(field.name),
+                        target_member: table_member_name(target_table),
+                        target_method: index_method_name("get", fk.target_field),
+                        target_table: target_table.name
+                    });
+                    forward_navs.push(#{
+                        method_name: forward_nav_method_name(s, field.name),
+                        source_class: py::class_name_from_fqn(s.fqn),
+                        source_table: s.name,
+                        field_name: field.name,
+                        target_class: py::class_name_from_fqn(target_table.fqn),
+                        target_member: table_member_name(target_table),
+                        target_method: index_method_name("get", fk.target_field)
+                    });
+                }
+            }
+        }
+    }
+}
+
+let reverse_navs = [];
+for s in all_tables {
+    for rel in s.relations {
+        let source_table = find_table_by_fqn(all_tables, rel.source_table_fqn);
+        if source_table != () {
+            reverse_navs.push(#{
+                method_name: reverse_nav_method_name(s, rel.name),
+                target_class: py::class_name_from_fqn(s.fqn),
+                target_key_field: "id",
+                source_class: py::class_name_from_fqn(source_table.fqn),
+                source_member: table_member_name(source_table),
+                source_method: index_method_name("find", rel.source_field)
+            });
+        }
+    }
+}
+
+let base_name = file.path;
+if base_name.contains("/") {
+    let parts = base_name.split("/");
+    base_name = parts[parts.len() - 1];
+}
+if base_name.ends_with(".poly") {
+    base_name = base_name.sub_string(0, base_name.len() - 5);
+}
+let module_name = base_name;
+let container_name = py::class_name_from_fqn(base_name + ".Container");
+%endlogic
+# Generated by PolyGen. DO NOT EDIT.
+# Source: {{file.path}}
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+import re
+from typing import Iterable, Optional
+
+from .{{module_name}} import (
+%for entry in entries
+    {{entry.class_name}},
+    {{entry.csv_loader}},
+    {{entry.json_loader}},
+%endfor
+)
+
+
+def _search_normalize(value: str, policy: str) -> str:
+    if policy == "none":
+        return value
+    if policy == "lower":
+        return value.lower()
+    if policy == "trim":
+        return value.strip()
+    return value.strip().lower()
+
+
+def _search_tokens(value: str, mode: str, n: int, min_len: int, normalize: str) -> list[str]:
+    normalized = _search_normalize(value, normalize)
+    tokens: list[str] = []
+    seen: set[str] = set()
+
+    def add(token: str) -> None:
+        if token not in seen:
+            seen.add(token)
+            tokens.append(token)
+
+    if mode == "exact":
+        if len(normalized) > 0 or min_len <= 0:
+            add(normalized)
+    elif mode == "word":
+        for part in normalized.split():
+            if len(part) >= min_len:
+                add(part)
+    else:
+        if n <= 0:
+            raise ValueError("Search ngram size must be positive.")
+        if len(normalized) >= max(min_len, n):
+            for i in range(0, len(normalized) - n + 1):
+                token = normalized[i:i + n]
+                if len(token) >= min_len:
+                    add(token)
+
+    return tokens
+
+
+def _add_group(index: dict[object, list[object]], key: object, row: object) -> None:
+    index.setdefault(key, []).append(row)
+
+
+def _intersect_rows(postings: list[list[object]]) -> list[object]:
+    if len(postings) == 0:
+        return []
+    matching_ids = {id(row) for row in postings[0]}
+    for rows in postings[1:]:
+        matching_ids &= {id(row) for row in rows}
+        if len(matching_ids) == 0:
+            break
+    return [row for row in postings[0] if id(row) in matching_ids]
+
+
+@dataclass
+class ValidationError:
+    table_name: str
+    field_name: str
+    row_key: str
+    message: str
+    constraint_type: str
+
+
+@dataclass
+class ValidationResult:
+    errors: list[ValidationError] = field(default_factory=list)
+
+    def add_error(self, error: ValidationError) -> None:
+        self.errors.append(error)
+
+    def merge(self, other: "ValidationResult") -> None:
+        self.errors.extend(other.errors)
+
+    def is_valid(self) -> bool:
+        return len(self.errors) == 0
+
+    def error_count(self) -> int:
+        return len(self.errors)
+
+
+class ValidationException(Exception):
+    def __init__(self, result: ValidationResult) -> None:
+        super().__init__(f"validation failed with {result.error_count()} error(s)")
+        self.result = result
+
+
+%for entry in entries
+class {{entry.table_class}}:
+    def __init__(self) -> None:
+        self._rows: list[{{entry.class_name}}] = []
+%for idx in entry.indexes
+        self._{{idx.attr_name}}: dict[object, {{idx.value_type}}] = {}
+%endfor
+%for search in entry.search_indexes
+        self._{{search.attr_name}}: dict[object, list[{{entry.class_name}}]] = {}
+%endfor
+
+    def all(self) -> list[{{entry.class_name}}]:
+        return list(self._rows)
+
+    def count(self) -> int:
+        return len(self._rows)
+
+    def add_row(self, row: {{entry.class_name}}) -> {{entry.class_name}}:
+        self._rows.append(row)
+%for idx in entry.indexes
+%if idx.is_unique
+        self._{{idx.attr_name}}[{{idx.key_expr}}] = row
+%else
+        self._{{idx.attr_name}}.setdefault({{idx.key_expr}}, []).append(row)
+%endif
+%endfor
+%for search in entry.search_indexes
+        value = row.{{search.field_attr}}
+        if value is not None:
+%if search.is_token_mode
+            for token in _search_tokens(value, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}"):
+                _add_group(self._{{search.attr_name}}, token, row)
+%else
+%if search.is_exact_string
+            key = _search_normalize(value, "{{search.normalize}}")
+%else
+            key = value
+%endif
+            _add_group(self._{{search.attr_name}}, key, row)
+%endif
+%endfor
+        return row
+
+    def load_all(self, rows: Iterable[{{entry.class_name}}]) -> None:
+        for row in rows:
+            self.add_row(row)
+
+    def clear(self) -> None:
+        self._rows.clear()
+%for idx in entry.indexes
+        self._{{idx.attr_name}}.clear()
+%endfor
+%for search in entry.search_indexes
+        self._{{search.attr_name}}.clear()
+%endfor
+
+    def validate(self) -> ValidationResult:
+        result = ValidationResult()
+%for check in entry.validation_checks
+        for row in self._rows:
+            value = row.{{check.field_name}}
+%if check.is_optional
+            if value is None:
+                continue
+%endif
+%if check.kind == "max_length"
+            if len(value) > {{check.limit}}:
+                result.add_error(ValidationError(
+                    table_name="{{entry.def.name}}",
+                    field_name={{check.field_literal}},
+                    row_key=str(getattr(row, "id", "")),
+                    message=f"length {len(value)} exceeds maximum {{check.limit}}",
+                    constraint_type="MaxLength",
+                ))
+%elif check.kind == "range"
+            if value < {{check.min}} or value > {{check.max}}:
+                result.add_error(ValidationError(
+                    table_name="{{entry.def.name}}",
+                    field_name={{check.field_literal}},
+                    row_key=str(getattr(row, "id", "")),
+                    message=f"value {value!r} is outside range [{{check.min}}, {{check.max}}]",
+                    constraint_type="Range",
+                ))
+%elif check.kind == "regex"
+            if re.search({{check.pattern_literal}}, value) is None:
+                result.add_error(ValidationError(
+                    table_name="{{entry.def.name}}",
+                    field_name={{check.field_literal}},
+                    row_key=str(getattr(row, "id", "")),
+                    message=f"value {value!r} does not match pattern {{check.pattern_literal}}",
+                    constraint_type="Regex",
+                ))
+%endif
+%endfor
+%for idx in entry.indexes
+%if idx.is_unique
+        seen: set[object] = set()
+        for row in self._rows:
+            key = {{idx.key_expr}}
+            if key in seen:
+                result.add_error(ValidationError(
+                    table_name="{{entry.def.name}}",
+                    field_name="{{idx.def.name}}",
+                    row_key=str(getattr(row, "id", "")),
+                    message=f"duplicate value {key!r} violates unique constraint",
+                    constraint_type="Unique",
+                ))
+            else:
+                seen.add(key)
+%endif
+%endfor
+        return result
+
+%for idx in entry.indexes
+%if idx.is_unique
+    def {{idx.get_method}}(self, key: object) -> Optional[{{entry.class_name}}]:
+        return self._{{idx.attr_name}}.get(key)
+
+%else
+    def {{idx.find_method}}(self, key: object) -> list[{{entry.class_name}}]:
+        return list(self._{{idx.attr_name}}.get(key, []))
+
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+    def {{search.method}}(self, query: str) -> list[{{entry.class_name}}]:
+        tokens = _search_tokens(query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}")
+        if len(tokens) == 0:
+            return []
+        postings: list[list[object]] = []
+        for token in tokens:
+            rows = self._{{search.attr_name}}.get(token)
+            if rows is None:
+                return []
+            postings.append(rows)
+        return _intersect_rows(postings)
+
+%else
+    def {{search.method}}(self, key: object) -> list[{{entry.class_name}}]:
+%if search.is_exact_string
+        if key is None:
+            return []
+        normalized_key = _search_normalize(str(key), "{{search.normalize}}")
+        return list(self._{{search.attr_name}}.get(normalized_key, []))
+%else
+        return list(self._{{search.attr_name}}.get(key, []))
+%endif
+
+%endif
+%endfor
+
+%endfor
+class {{container_name}}:
+    def __init__(self) -> None:
+%for entry in entries
+        self.{{entry.member_name}} = {{entry.table_class}}()
+%endfor
+
+    def clear(self) -> None:
+%for entry in entries
+        self.{{entry.member_name}}.clear()
+%endfor
+
+%for entry in entries
+    def load_{{entry.member_name}}_from_csv(self, path: str | Path) -> None:
+        self.{{entry.member_name}}.load_all({{entry.csv_loader}}(path))
+
+    def load_{{entry.member_name}}_from_json(self, path: str | Path) -> None:
+        self.{{entry.member_name}}.load_all({{entry.json_loader}}(path))
+
+%endfor
+    def load_from_csv(self, root: str | Path) -> None:
+        root_path = Path(root)
+%for entry in entries
+%if entry.csv_pattern != ""
+        self.load_{{entry.member_name}}_from_csv(root_path / {{entry.csv_literal}})
+%endif
+%endfor
+
+    def load_from_json(self, root: str | Path) -> None:
+        root_path = Path(root)
+%for entry in entries
+%if entry.json_pattern != ""
+        self.load_{{entry.member_name}}_from_json(root_path / {{entry.json_literal}})
+%endif
+%endfor
+
+    def validate_all(self) -> ValidationResult:
+        result = ValidationResult()
+%for entry in entries
+        result.merge(self.{{entry.member_name}}.validate())
+%endfor
+%for check in fk_checks
+        for row in self.{{check.source_member}}.all():
+            target = self.{{check.target_member}}.{{check.target_method}}(row.{{check.field_name}})
+            if target is None:
+                result.add_error(ValidationError(
+                    table_name={{check.source_table_literal}},
+                    field_name={{check.field_name_literal}},
+                    row_key=str(getattr(row, "id", "")),
+                    message=f"foreign key reference not found in {{check.target_table}}: {row.{{check.field_name}}!r}",
+                    constraint_type="ForeignKey",
+                ))
+%endfor
+        return result
+
+    def validate_or_raise(self) -> None:
+        result = self.validate_all()
+        if not result.is_valid():
+            raise ValidationException(result)
+
+%for nav in forward_navs
+    def {{nav.method_name}}(self, row: {{nav.source_class}}) -> Optional[{{nav.target_class}}]:
+        key = row.{{nav.field_name}}
+        if key is None:
+            return None
+        return self.{{nav.target_member}}.{{nav.target_method}}(key)
+
+%endfor
+%for nav in reverse_navs
+    def {{nav.method_name}}(self, row: {{nav.target_class}}) -> list[{{nav.source_class}}]:
+        return self.{{nav.source_member}}.{{nav.source_method}}(row.{{nav.target_key_field}})
+
+%endfor

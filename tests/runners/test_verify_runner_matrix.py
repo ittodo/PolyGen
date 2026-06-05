@@ -24,6 +24,7 @@ def write_run_all_bat(
     include_guard: bool = True,
     include_options: bool = True,
     include_help: bool = True,
+    include_optional_toolchains: bool = True,
     include_verify: bool = True,
     include_python_guard: bool = True,
     include_windows_py_fallback: bool = True,
@@ -46,8 +47,27 @@ def write_run_all_bat(
         ":usage\n"
         "echo   tests\\runners\\run_all.bat --list\n"
         "echo   tests\\runners\\run_all.bat --verify\n"
+        "echo   tests\\runners\\run_all.bat --optional-toolchains\n"
+        "echo   tests\\runners\\run_all.bat --optional-toolchains-strict\n"
+        "echo   tests\\runners\\run_all.bat --optional-toolchains-dry-run\n"
         "echo   tests\\runners\\run_all.bat --help\n"
         if include_help
+        else ""
+    )
+    optional_toolchains = (
+        'if /i "%~1"=="--optional-toolchains" (\n'
+        "call :select_python\n"
+        '!PYTHON_BIN! "%SCRIPT_DIR%run_optional_toolchains.py"\n'
+        ")\n"
+        'if /i "%~1"=="--optional-toolchains-strict" (\n'
+        "call :select_python\n"
+        '!PYTHON_BIN! "%SCRIPT_DIR%run_optional_toolchains.py" --fail-on-missing\n'
+        ")\n"
+        'if /i "%~1"=="--optional-toolchains-dry-run" (\n'
+        "call :select_python\n"
+        '!PYTHON_BIN! "%SCRIPT_DIR%run_optional_toolchains.py" --dry-run\n'
+        ")\n"
+        if include_optional_toolchains
         else ""
     )
     fallback_guard = (
@@ -103,6 +123,11 @@ def write_run_all_bat(
         "    exit /b %VERIFY_EXIT%\n"
         ")\n"
         f'{"%PYTHON_BIN%" if regression_uses_selected_python else "python"} "%SCRIPT_DIR%test_verify_runner_matrix.py"\n'
+        '%PYTHON_BIN% "%SCRIPT_DIR%test_check_optional_toolchains.py"\n'
+        '%PYTHON_BIN% "%SCRIPT_DIR%test_run_optional_toolchains.py"\n'
+        '%PYTHON_BIN% "%SCRIPT_DIR%kotlin\\test_run_kotlin_runtime.py"\n'
+        '%PYTHON_BIN% "%SCRIPT_DIR%swift\\test_run_swift_runtime.py"\n'
+        '%PYTHON_BIN% "%SCRIPT_DIR%unreal\\test_compile_unreal.py"\n'
         if include_verify
         else ""
     )
@@ -115,7 +140,7 @@ def write_run_all_bat(
         else ""
     )
     root.joinpath("run_all.bat").write_text(
-        f'@echo off\nset "DEFAULT_RUNNERS={" ".join(runners)}"\n{options}{help_guard}{verify}{python_guard}{before_invocations_no_bytecode}{verify_invocations}{after_invocations_no_bytecode}{guard}',
+        f'@echo off\nset "DEFAULT_RUNNERS={" ".join(runners)}"\n{options}{help_guard}{optional_toolchains}{verify}{python_guard}{before_invocations_no_bytecode}{verify_invocations}{after_invocations_no_bytecode}{guard}',
         encoding="utf-8",
     )
 
@@ -132,6 +157,29 @@ def write_actual_run_all_bat(root: Path, runners: list[str]) -> None:
     root.joinpath("run_all.bat").write_text(text, encoding="utf-8")
 
 
+def write_verify_helper_tests(root: Path) -> None:
+    root.joinpath("test_check_optional_toolchains.py").write_text(
+        "print('toolchain verifier ok')\n",
+        encoding="utf-8",
+    )
+    root.joinpath("test_run_optional_toolchains.py").write_text(
+        "print('optional runner verifier ok')\n",
+        encoding="utf-8",
+    )
+    helpers = {
+        "kotlin": "test_run_kotlin_runtime.py",
+        "swift": "test_run_swift_runtime.py",
+        "unreal": "test_compile_unreal.py",
+    }
+    for dirname, filename in helpers.items():
+        helper_dir = root / dirname
+        helper_dir.mkdir()
+        helper_dir.joinpath(filename).write_text(
+            "print('helper verifier ok')\n",
+            encoding="utf-8",
+        )
+
+
 def write_run_all_sh(
     root: Path,
     runners: list[str],
@@ -139,6 +187,7 @@ def write_run_all_sh(
     include_guard: bool = True,
     include_options: bool = True,
     include_help: bool = True,
+    include_optional_toolchains: bool = True,
     include_verify: bool = True,
     include_python_guard: bool = True,
     include_no_bytecode_guard: bool = True,
@@ -155,9 +204,25 @@ def write_run_all_sh(
         "--help|-h)\n"
         "    echo 'tests/runners/run_all.sh --list'\n"
         "    echo 'tests/runners/run_all.sh --verify'\n"
+        "    echo 'tests/runners/run_all.sh --optional-toolchains'\n"
+        "    echo 'tests/runners/run_all.sh --optional-toolchains-strict'\n"
+        "    echo 'tests/runners/run_all.sh --optional-toolchains-dry-run'\n"
         "    echo 'tests/runners/run_all.sh --help'\n"
         "    ;;\n"
         if include_help
+        else ""
+    )
+    optional_toolchains = (
+        "--optional-toolchains)\n"
+        "    python run_optional_toolchains.py\n"
+        "    ;;\n"
+        "--optional-toolchains-strict)\n"
+        "    python run_optional_toolchains.py --fail-on-missing\n"
+        "    ;;\n"
+        "--optional-toolchains-dry-run)\n"
+        "    python run_optional_toolchains.py --dry-run\n"
+        "    ;;\n"
+        if include_optional_toolchains
         else ""
     )
     python_guard = (
@@ -174,6 +239,11 @@ def write_run_all_sh(
     no_bytecode_guard = (
         'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/verify_runner_matrix.py"\n'
         'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_verify_runner_matrix.py"\n'
+        'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_check_optional_toolchains.py"\n'
+        'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_run_optional_toolchains.py"\n'
+        'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/kotlin/test_run_kotlin_runtime.py"\n'
+        'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/swift/test_run_swift_runtime.py"\n'
+        'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/unreal/test_compile_unreal.py"\n'
         if include_no_bytecode_guard
         else ""
     )
@@ -196,7 +266,7 @@ def write_run_all_sh(
         else ""
     )
     root.joinpath("run_all.sh").write_text(
-        f"#!/usr/bin/env bash\nDEFAULT_RUNNERS=(\n{body}\n)\n{options}{help_guard}{verify}{python_guard}{no_bytecode_guard}{guard}",
+        f"#!/usr/bin/env bash\nDEFAULT_RUNNERS=(\n{body}\n)\n{options}{help_guard}{optional_toolchains}{verify}{python_guard}{no_bytecode_guard}{guard}",
         encoding="utf-8",
     )
 
@@ -208,6 +278,29 @@ def write_runner_dir(root: Path, name: str, *, bat: bool = True, sh: bool = True
         runner_dir.joinpath("run_tests.bat").write_text("@echo off\n", encoding="utf-8")
     if sh:
         runner_dir.joinpath("run_tests.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+
+def write_optional_runner(
+    root: Path,
+    name: str,
+    gates: list[tuple[str, str]],
+) -> None:
+    runner_dir = root / name
+    runner_dir.mkdir()
+    bat_lines = ["@echo off"]
+    sh_lines = ["#!/usr/bin/env bash"]
+    for env_name, helper_name in gates:
+        bat_lines.append(f'if "%{env_name}%"=="1" python "%~dp0{helper_name}"')
+        sh_lines.append(f"if [ \"${{{env_name}:-0}}\" = \"1\" ]; then python \"$SCRIPT_DIR/{helper_name}\"; fi")
+        runner_dir.joinpath(helper_name).write_text("print('optional gate')\n", encoding="utf-8")
+    runner_dir.joinpath("run_tests.bat").write_text(
+        "\n".join(bat_lines) + "\n",
+        encoding="utf-8",
+    )
+    runner_dir.joinpath("run_tests.sh").write_text(
+        "\n".join(sh_lines) + "\n",
+        encoding="utf-8",
+    )
 
 
 def write_tracking_runner(root: Path, name: str, *, exit_code: int = 0) -> None:
@@ -255,6 +348,39 @@ class VerifyRunnerMatrixTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("PASSED: 3 runner entries are synchronized", output)
 
+    def test_valid_optional_runner_gates_pass(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            runners = ["kotlin", "swift", "unreal"]
+            write_run_all_bat(root, runners)
+            write_run_all_sh(root, runners)
+            write_optional_runner(
+                root,
+                "kotlin",
+                [
+                    ("POLYGEN_KOTLIN_COMPILE", "compile_kotlin.py"),
+                    ("POLYGEN_KOTLIN_RUNTIME", "run_kotlin_runtime.py"),
+                ],
+            )
+            write_optional_runner(
+                root,
+                "swift",
+                [
+                    ("POLYGEN_SWIFT_COMPILE", "compile_swift.py"),
+                    ("POLYGEN_SWIFT_RUNTIME", "run_swift_runtime.py"),
+                ],
+            )
+            write_optional_runner(
+                root,
+                "unreal",
+                [("POLYGEN_UNREAL_COMPILE", "compile_unreal.py")],
+            )
+
+            exit_code, output = self.run_matrix(root)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("PASSED: 3 runner entries are synchronized", output)
+
     def test_windows_list_option_matches_bat_runner_matrix(self) -> None:
         if os.name != "nt":
             self.skipTest("Windows batch option test")
@@ -285,7 +411,38 @@ class VerifyRunnerMatrixTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("tests\\runners\\run_all.bat --list", result.stdout)
                 self.assertIn("tests\\runners\\run_all.bat --verify", result.stdout)
+                self.assertIn("tests\\runners\\run_all.bat --optional-toolchains", result.stdout)
+                self.assertIn("tests\\runners\\run_all.bat --optional-toolchains-strict", result.stdout)
+                self.assertIn("tests\\runners\\run_all.bat --optional-toolchains-dry-run", result.stdout)
                 self.assertIn("tests\\runners\\run_all.bat --help", result.stdout)
+
+    def test_windows_optional_toolchain_options_execute_python_runner(self) -> None:
+        if os.name != "nt":
+            self.skipTest("Windows batch execution test")
+
+        for option, expected_args in (
+            ("--optional-toolchains", ""),
+            ("--optional-toolchains-strict", "--fail-on-missing"),
+            ("--optional-toolchains-dry-run", "--dry-run"),
+        ):
+            with self.subTest(option=option), TemporaryDirectory() as temp:
+                root = Path(temp)
+                write_actual_run_all_bat(root, ["rust"])
+                root.joinpath("run_optional_toolchains.py").write_text(
+                    "import sys\n"
+                    "print('optional runner args=' + ' '.join(sys.argv[1:]))\n",
+                    encoding="utf-8",
+                )
+
+                result = subprocess.run(
+                    ["cmd", "/c", str(root / "run_all.bat"), option],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn(f"optional runner args={expected_args}", result.stdout)
 
     def test_windows_verify_uses_py_launcher_when_python_is_missing(self) -> None:
         if os.name != "nt":
@@ -294,6 +451,7 @@ class VerifyRunnerMatrixTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             write_actual_run_all_bat(root, ["rust"])
+            write_verify_helper_tests(root)
             root.joinpath("verify_runner_matrix.py").write_text(
                 "from pathlib import Path\n"
                 "Path(__file__).with_name('live_marker.txt').write_text('ok', encoding='utf-8')\n"
@@ -338,6 +496,7 @@ class VerifyRunnerMatrixTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             write_actual_run_all_bat(root, ["rust"])
+            write_verify_helper_tests(root)
             root.joinpath("verify_runner_matrix.py").write_text(
                 "print('live verifier should not run')\n",
                 encoding="utf-8",
@@ -372,6 +531,7 @@ class VerifyRunnerMatrixTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             write_actual_run_all_bat(root, ["rust"])
+            write_verify_helper_tests(root)
             root.joinpath("verify_runner_matrix.py").write_text(
                 "import sys\n"
                 "print('live verifier failed')\n"
@@ -650,6 +810,20 @@ class VerifyRunnerMatrixTests(unittest.TestCase):
         self.assertIn("run_all.bat: missing", output)
         self.assertIn("run_all.sh: missing", output)
 
+    def test_missing_optional_toolchains_option_fails(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_run_all_bat(root, ["csharp"], include_optional_toolchains=False)
+            write_run_all_sh(root, ["csharp"], include_optional_toolchains=False)
+            write_runner_dir(root, "csharp")
+
+            exit_code, output = self.run_matrix(root)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("run_all scripts must expose --optional-toolchains", output)
+        self.assertIn("run_all.bat: missing", output)
+        self.assertIn("run_all.sh: missing", output)
+
     def test_missing_verify_steps_fails(self) -> None:
         with TemporaryDirectory() as temp:
             root = Path(temp)
@@ -791,6 +965,41 @@ class VerifyRunnerMatrixTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("must include both Windows and POSIX scripts", output)
         self.assertIn("rust: missing run_tests.sh", output)
+
+    def test_missing_optional_runner_gate_fails(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_run_all_bat(root, ["kotlin"])
+            write_run_all_sh(root, ["kotlin"])
+            write_runner_dir(root, "kotlin")
+
+            exit_code, output = self.run_matrix(root)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("optional runner gates must stay wired", output)
+        self.assertIn("kotlin: missing compile_kotlin.py", output)
+        self.assertIn("kotlin: missing run_kotlin_runtime.py", output)
+        self.assertIn("kotlin/run_tests.bat: missing", output)
+        self.assertIn("POLYGEN_KOTLIN_COMPILE", output)
+        self.assertIn("POLYGEN_KOTLIN_RUNTIME", output)
+        self.assertIn("compile_kotlin.py", output)
+        self.assertIn("run_kotlin_runtime.py", output)
+
+    def test_missing_unreal_optional_runner_gate_fails(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_run_all_bat(root, ["unreal"])
+            write_run_all_sh(root, ["unreal"])
+            write_runner_dir(root, "unreal")
+
+            exit_code, output = self.run_matrix(root)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("optional runner gates must stay wired", output)
+        self.assertIn("unreal: missing compile_unreal.py", output)
+        self.assertIn("unreal/run_tests.bat: missing", output)
+        self.assertIn("POLYGEN_UNREAL_COMPILE", output)
+        self.assertIn("compile_unreal.py", output)
 
     def test_posix_runner_order_mismatch_fails(self) -> None:
         with TemporaryDirectory() as temp:

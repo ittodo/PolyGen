@@ -1,0 +1,304 @@
+%logic
+// Go SQLite accessor generator.
+
+fn join_with(arr, sep) {
+    let result = "";
+    let i = 0;
+    for item in arr {
+        if i > 0 { result += sep; }
+        result += item;
+        i += 1;
+    }
+    result
+}
+
+fn is_sqlite_table(struct_datasource, ns_datasource) {
+    if struct_datasource != () && struct_datasource != "" {
+        return struct_datasource == "sqlite";
+    }
+    if ns_datasource != () && ns_datasource != "" {
+        return ns_datasource == "sqlite";
+    }
+    return false;
+}
+
+fn table_name_from_fqn(fqn) {
+    let name = fqn + "";
+    name.replace(".", "_");
+    return name;
+}
+
+fn field_go_name(field_name) {
+    return to_pascal_case(field_name);
+}
+
+fn base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn base_name(t) {
+    let b = base_type(t);
+    if b.lang_type != "" {
+        return b.lang_type;
+    }
+    return b.type_name;
+}
+
+fn optional_scan_type(t) {
+    let name = base_name(t);
+    if name == "string" {
+        return "sql.NullString";
+    }
+    if name == "bool" {
+        return "sql.NullBool";
+    }
+    if name == "f32" || name == "f64" {
+        return "sql.NullFloat64";
+    }
+    return "sql.NullInt64";
+}
+
+fn optional_value_expr(t, var_name) {
+    let name = base_name(t);
+    if name == "string" {
+        return var_name + ".String";
+    }
+    if name == "bool" {
+        return var_name + ".Bool";
+    }
+    if name == "f32" {
+        return "float32(" + var_name + ".Float64)";
+    }
+    if name == "f64" {
+        return var_name + ".Float64";
+    }
+    let go_type = go_lang_type(base_type(t));
+    return go_type + "(" + var_name + ".Int64)";
+}
+
+fn optional_valid_field(t) {
+    let name = base_name(t);
+    if name == "string" || name == "bool" {
+        return "Valid";
+    }
+    if name == "f32" || name == "f64" {
+        return "Valid";
+    }
+    return "Valid";
+}
+
+fn collect_sqlite_tables_from_namespace(ns, inherited_datasource) {
+    let tables = [];
+    let ns_datasource = inherited_datasource;
+    if ns.datasource != () && ns.datasource != "" {
+        ns_datasource = ns.datasource;
+    }
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed && is_sqlite_table(s.datasource, ns_datasource) {
+                tables.push(#{
+                    name: s.name,
+                    fqn: s.fqn,
+                    table_name: table_name_from_fqn(s.fqn),
+                    struct_def: s
+                });
+            }
+        } else if item.is_namespace() {
+            let child_tables = collect_sqlite_tables_from_namespace(item.as_namespace(), ns_datasource);
+            for child_table in child_tables {
+                tables.push(child_table);
+            }
+        }
+    }
+    return tables;
+}
+
+let sqlite_tables = [];
+for f in schema.files {
+    if f.path == () || f.path == "" { continue; }
+    for ns in f.namespaces {
+        let tables = collect_sqlite_tables_from_namespace(ns, "");
+        for tbl in tables {
+            sqlite_tables.push(tbl);
+        }
+    }
+}
+
+let has_tables = sqlite_tables.len() > 0;
+
+let tidx = 0;
+for tbl in sqlite_tables {
+    let s = tbl.struct_def;
+    let columns = [];
+    let scan_targets = [];
+    let scan_var_lines = [];
+    let assign_lines = [];
+    let field_count = 0;
+    let id_field = ();
+    let id_type = "int64";
+
+    for item in s.items {
+        if item.is_field() {
+            let field = item.as_field();
+            let go_name = field_go_name(field.name);
+            columns.push(field.name);
+            field_count += 1;
+            if id_field == () {
+                id_field = field.name;
+                id_type = go_lang_type(base_type(field.field_type));
+            }
+
+            if field.field_type.is_option {
+                let scan_var = to_camel_case(field.name) + "Value";
+                scan_var_lines.push("    var " + scan_var + " " + optional_scan_type(field.field_type));
+                scan_targets.push("&" + scan_var);
+                let value_expr = optional_value_expr(field.field_type, scan_var);
+                assign_lines.push("    if " + scan_var + "." + optional_valid_field(field.field_type) + " {");
+                assign_lines.push("        value := " + value_expr);
+                assign_lines.push("        obj." + go_name + " = &value");
+                assign_lines.push("    }");
+            } else {
+                scan_targets.push("&obj." + go_name);
+            }
+        }
+    }
+
+    sqlite_tables[tidx].field_name = to_pascal_case(s.name) + "s";
+    sqlite_tables[tidx].field_member = to_pascal_case(s.name) + "s";
+    sqlite_tables[tidx].columns = join_with(columns, ", ");
+    sqlite_tables[tidx].scan_targets = join_with(scan_targets, ", ");
+    sqlite_tables[tidx].scan_var_body = join_with(scan_var_lines, "\n");
+    sqlite_tables[tidx].assign_body = join_with(assign_lines, "\n");
+    sqlite_tables[tidx].has_scan_vars = scan_var_lines.len() > 0;
+    sqlite_tables[tidx].has_assignments = assign_lines.len() > 0;
+    sqlite_tables[tidx].id_field = id_field;
+    sqlite_tables[tidx].id_type = id_type;
+    sqlite_tables[tidx].has_id = id_field != ();
+    sqlite_tables[tidx].load_method = "Load" + to_pascal_case(s.name) + "s";
+    sqlite_tables[tidx].get_method = "Get" + to_pascal_case(s.name) + "ById";
+    tidx += 1;
+}
+%endlogic
+// Code generated by PolyGen. DO NOT EDIT.
+// SQLite accessor for @datasource("sqlite") tables.
+%blank
+package polygen
+%blank
+%if has_tables
+import (
+    "database/sql"
+)
+%blank
+type DbTable[T any] struct {
+    tableName string
+    rows []T
+}
+%blank
+func NewDbTable[T any](tableName string) DbTable[T] {
+    return DbTable[T]{tableName: tableName, rows: make([]T, 0)}
+}
+%blank
+func (t *DbTable[T]) All() []T { return t.rows }
+func (t *DbTable[T]) Count() int { return len(t.rows) }
+func (t *DbTable[T]) Clear() { t.rows = t.rows[:0] }
+%blank
+type SqliteDb struct {
+    db *sql.DB
+%for tbl in sqlite_tables
+    {{tbl.field_member}} DbTable[{{tbl.name}}]
+%endfor
+}
+%blank
+func NewSqliteDb(db *sql.DB) *SqliteDb {
+    return &SqliteDb{
+        db: db,
+%for tbl in sqlite_tables
+        {{tbl.field_member}}: NewDbTable[{{tbl.name}}]("{{tbl.table_name}}"),
+%endfor
+    }
+}
+%blank
+func OpenSqliteDb(driverName string, dataSourceName string) (*SqliteDb, error) {
+    db, err := sql.Open(driverName, dataSourceName)
+    if err != nil {
+        return nil, err
+    }
+    return NewSqliteDb(db), nil
+}
+%blank
+func (s *SqliteDb) Close() error {
+    if s.db == nil {
+        return nil
+    }
+    return s.db.Close()
+}
+%blank
+func (s *SqliteDb) LoadAll() error {
+%for tbl in sqlite_tables
+    if err := s.{{tbl.load_method}}(); err != nil {
+        return err
+    }
+%endfor
+    return nil
+}
+%blank
+%for tbl in sqlite_tables
+func (s *SqliteDb) {{tbl.load_method}}() error {
+    rows, err := s.db.Query("SELECT {{tbl.columns}} FROM {{tbl.table_name}}")
+    if err != nil {
+        return err
+    }
+    defer rows.Close()
+%blank
+    s.{{tbl.field_member}}.Clear()
+    for rows.Next() {
+        obj, err := scan{{tbl.name}}(rows)
+        if err != nil {
+            return err
+        }
+        s.{{tbl.field_member}}.rows = append(s.{{tbl.field_member}}.rows, obj)
+    }
+    return rows.Err()
+}
+%blank
+%if tbl.has_id
+func (s *SqliteDb) {{tbl.get_method}}(id {{tbl.id_type}}) (*{{tbl.name}}, error) {
+    row := s.db.QueryRow("SELECT {{tbl.columns}} FROM {{tbl.table_name}} WHERE {{tbl.id_field}} = ?", id)
+    obj, err := scan{{tbl.name}}(row)
+    if err == sql.ErrNoRows {
+        return nil, nil
+    }
+    if err != nil {
+        return nil, err
+    }
+    return &obj, nil
+}
+%blank
+%endif
+%endfor
+%for tbl in sqlite_tables
+type {{tbl.name}}Scanner interface {
+    Scan(dest ...any) error
+}
+%blank
+func scan{{tbl.name}}(scanner {{tbl.name}}Scanner) ({{tbl.name}}, error) {
+    var obj {{tbl.name}}
+%if tbl.has_scan_vars
+{{tbl.scan_var_body}}
+%endif
+    if err := scanner.Scan({{tbl.scan_targets}}); err != nil {
+        return obj, err
+    }
+%if tbl.has_assignments
+{{tbl.assign_body}}
+%endif
+    return obj, nil
+}
+%blank
+%endfor
+%endif

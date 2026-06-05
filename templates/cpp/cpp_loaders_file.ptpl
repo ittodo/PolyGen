@@ -78,6 +78,30 @@ fn enum_validator_specialization(enum_def, enum_type) {
     return result;
 }
 
+fn enum_parser_specialization(enum_def, enum_type) {
+    let result = "template<>\n";
+    result += "struct enum_parser<" + enum_type + "> {\n";
+    result += "    static " + enum_type + " parse(std::string_view raw) {\n";
+    result += "        const auto normalized = trim_csv_cell(std::string(raw));\n";
+
+    for item in enum_def.items {
+        if item.is_member() {
+            let member = item.as_member();
+            result += "        if (normalized == \"" + member.name + "\") return " + enum_type + "::" + member.name + ";\n";
+        }
+    }
+
+    result += "        return checked_enum_from_i32<" + enum_type + ">(parse_enum_i32(normalized));\n";
+    result += "    }\n";
+    result += "    static " + enum_type + " parse_json(const polygen::JsonValue& value) {\n";
+    result += "        if (value.is_string()) return parse(value.as_string());\n";
+    result += "        if (value.is_number()) return checked_enum_from_i32<" + enum_type + ">(value.as_i32());\n";
+    result += "        throw std::runtime_error(\"invalid enum value for " + enum_type + "\");\n";
+    result += "    }\n";
+    result += "};";
+    return result;
+}
+
 fn enum_validators_from_struct(s, namespace_name) {
     let validators = [];
     for si in s.items {
@@ -92,6 +116,22 @@ fn enum_validators_from_struct(s, namespace_name) {
         }
     }
     return validators;
+}
+
+fn enum_parsers_from_struct(s, namespace_name) {
+    let parsers = [];
+    for si in s.items {
+        if si.is_inline_enum() {
+            let e = si.as_inline_enum();
+            parsers.push(enum_parser_specialization(e, get_full_cpp_type(namespace_name + "." + s.name, e.name)));
+        } else if si.is_embedded_struct() {
+            let es = si.as_embedded_struct();
+            for nested_parser in enum_parsers_from_struct(es, namespace_name + "." + es.name) {
+                parsers.push(nested_parser);
+            }
+        }
+    }
+    return parsers;
 }
 
 fn enum_validators_from_namespace(ns) {
@@ -113,6 +153,27 @@ fn enum_validators_from_namespace(ns) {
         }
     }
     return validators;
+}
+
+fn enum_parsers_from_namespace(ns) {
+    let parsers = [];
+    for item in ns.items {
+        if item.is_enum() {
+            let e = item.as_enum();
+            parsers.push(enum_parser_specialization(e, get_full_cpp_type(ns.name, e.name)));
+        } else if item.is_struct() {
+            let s = item.as_struct();
+            for struct_parser in enum_parsers_from_struct(s, ns.name) {
+                parsers.push(struct_parser);
+            }
+        } else if item.is_namespace() {
+            let child_ns = item.as_namespace();
+            for child_parser in enum_parsers_from_namespace(child_ns) {
+                parsers.push(child_parser);
+            }
+        }
+    }
+    return parsers;
 }
 
 fn collect_struct_entries_from_struct(s, namespace_name) {
@@ -236,6 +297,155 @@ fn bin_write_expr(type_ref, value_expr) {
         return "write_checked_enum(writer, " + value_expr + ")";
     }
     return "write_" + n + "(writer, " + value_expr + ")";
+}
+
+fn csv_parse_expr(type_ref, value_expr) {
+    let n = type_ref.type_name;
+    if n == "string" { return value_expr; }
+    if n == "bool" { return "parse_csv_bool(" + value_expr + ")"; }
+    if n == "u8" { return "static_cast<uint8_t>(polygen::CsvReader::parse_u32(" + value_expr + "))"; }
+    if n == "u16" { return "static_cast<uint16_t>(polygen::CsvReader::parse_u32(" + value_expr + "))"; }
+    if n == "u32" { return "polygen::CsvReader::parse_u32(" + value_expr + ")"; }
+    if n == "u64" { return "polygen::CsvReader::parse_u64(" + value_expr + ")"; }
+    if n == "i8" { return "static_cast<int8_t>(polygen::CsvReader::parse_i32(" + value_expr + "))"; }
+    if n == "i16" { return "static_cast<int16_t>(polygen::CsvReader::parse_i32(" + value_expr + "))"; }
+    if n == "i32" { return "polygen::CsvReader::parse_i32(" + value_expr + ")"; }
+    if n == "i64" { return "polygen::CsvReader::parse_i64(" + value_expr + ")"; }
+    if n == "f32" { return "polygen::CsvReader::parse_f32(" + value_expr + ")"; }
+    if n == "f64" { return "polygen::CsvReader::parse_f64(" + value_expr + ")"; }
+    if n == "bytes" { return "std::vector<uint8_t>{}"; }
+    if n == "timestamp" { return "polygen::ticks_to_time_point(polygen::CsvReader::parse_i64(" + value_expr + "))"; }
+    if type_ref.is_enum { return "parse_checked_enum_csv<" + get_type_fqn(type_ref) + ">(" + value_expr + ")"; }
+    return "";
+}
+
+fn json_value_expr(type_ref, value_expr) {
+    let n = type_ref.type_name;
+    if n == "string" { return value_expr + ".as_string()"; }
+    if n == "bool" { return value_expr + ".as_bool()"; }
+    if n == "u8" { return "static_cast<uint8_t>(" + value_expr + ".as_i32())"; }
+    if n == "u16" { return "static_cast<uint16_t>(" + value_expr + ".as_i32())"; }
+    if n == "u32" { return "static_cast<uint32_t>(" + value_expr + ".as_i32())"; }
+    if n == "u64" { return "static_cast<uint64_t>(" + value_expr + ".as_number())"; }
+    if n == "i8" { return "static_cast<int8_t>(" + value_expr + ".as_i32())"; }
+    if n == "i16" { return "static_cast<int16_t>(" + value_expr + ".as_i32())"; }
+    if n == "i32" { return value_expr + ".as_i32()"; }
+    if n == "i64" { return value_expr + ".as_i64()"; }
+    if n == "f32" { return "static_cast<float>(" + value_expr + ".as_number())"; }
+    if n == "f64" { return value_expr + ".as_number()"; }
+    if n == "bytes" { return "std::vector<uint8_t>{}"; }
+    if n == "timestamp" { return "polygen::ticks_to_time_point(" + value_expr + ".as_i64())"; }
+    if type_ref.is_enum { return "parse_checked_enum_json<" + get_type_fqn(type_ref) + ">(" + value_expr + ")"; }
+    return "from_json_" + n + "(" + value_expr + ")";
+}
+
+fn generate_json_read(s, namespace_fqn) {
+    let result = "";
+    let full_type = get_full_cpp_type(namespace_fqn, s.name);
+
+    result += "inline " + full_type + " from_json_" + s.name + "(const polygen::JsonValue& value) {\n";
+    result += "    if (!value.is_object()) throw std::runtime_error(\"expected JSON object for " + s.name + "\");\n";
+    result += "    " + full_type + " obj;\n";
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            let t = f.field_type;
+            let n = f.name;
+            let field_expr = "value[\"" + n + "\"]";
+            if t.is_list {
+                result += "    if (!" + field_expr + ".is_null()) {\n";
+                result += "        if (!" + field_expr + ".is_array()) throw std::runtime_error(\"expected JSON array for " + n + "\");\n";
+                result += "        for (const auto& item : " + field_expr + ".as_array()) obj." + n + ".push_back(" + json_value_expr(t, "item") + ");\n";
+                result += "    }\n";
+            } else if t.is_option {
+                result += "    if (!" + field_expr + ".is_null()) obj." + n + " = " + json_value_expr(t.inner, field_expr) + ";\n";
+            } else {
+                result += "    if (!" + field_expr + ".is_null()) obj." + n + " = " + json_value_expr(t, field_expr) + ";\n";
+            }
+        }
+    }
+    result += "    return obj;\n";
+    result += "}";
+    return result;
+}
+
+fn generate_csv_read(s, namespace_fqn) {
+    let result = "";
+    let full_type = get_full_cpp_type(namespace_fqn, s.name);
+
+    result += "inline " + full_type + " from_csv_" + s.name + "(const polygen::CsvReader& row) {\n";
+    result += "    " + full_type + " obj;\n";
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            let t = f.field_type;
+            let n = f.name;
+            let cell_var = "cell_" + n;
+            result += "    { const auto " + cell_var + " = row.get(\"" + n + "\");\n";
+            if t.is_list {
+                if t.is_enum || t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+                    result += "      for (const auto& item : split_csv_list(" + cell_var + ")) obj." + n + ".push_back(" + csv_parse_expr(t, "item") + ");\n";
+                } else if t.is_struct {
+                    result += "      if (!" + cell_var + ".empty()) {\n";
+                    result += "          auto json = polygen::JsonParser::parse(" + cell_var + ");\n";
+                    result += "          if (!json.is_array()) throw std::runtime_error(\"invalid JSON array for " + n + "\");\n";
+                    result += "          for (const auto& item : json.as_array()) obj." + n + ".push_back(" + json_value_expr(t, "item") + ");\n";
+                    result += "      }\n";
+                }
+            } else if t.is_option {
+                if t.inner.is_struct {
+                    result += "      if (!" + cell_var + ".empty()) obj." + n + " = " + json_value_expr(t.inner, "polygen::JsonParser::parse(" + cell_var + ")") + ";\n";
+                } else {
+                    result += "      if (!" + cell_var + ".empty()) obj." + n + " = " + csv_parse_expr(t.inner, cell_var) + ";\n";
+                }
+            } else if t.is_struct {
+                result += "      if (!" + cell_var + ".empty()) obj." + n + " = " + json_value_expr(t, "polygen::JsonParser::parse(" + cell_var + ")") + ";\n";
+            } else {
+                result += "      obj." + n + " = " + csv_parse_expr(t, cell_var) + ";\n";
+            }
+            result += "    }\n";
+        }
+    }
+    result += "    return obj;\n";
+    result += "}";
+    return result;
+}
+
+fn generate_csv_load(s, namespace_fqn) {
+    let full_type = get_full_cpp_type(namespace_fqn, s.name);
+    let result = "";
+    result += "inline std::vector<" + full_type + "> load_" + s.name + "_from_csv(std::istream& stream) {\n";
+    result += "    polygen::CsvReader reader(stream);\n";
+    result += "    std::vector<" + full_type + "> rows;\n";
+    result += "    while (reader.next()) rows.push_back(from_csv_" + s.name + "(reader));\n";
+    result += "    return rows;\n";
+    result += "}\n";
+    result += "inline std::vector<" + full_type + "> load_" + s.name + "_from_csv_file(const std::string& path) {\n";
+    result += "    std::ifstream file(path);\n";
+    result += "    if (!file) throw std::runtime_error(\"failed to open CSV file: \" + path);\n";
+    result += "    return load_" + s.name + "_from_csv(file);\n";
+    result += "}";
+    return result;
+}
+
+fn generate_json_load(s, namespace_fqn) {
+    let full_type = get_full_cpp_type(namespace_fqn, s.name);
+    let result = "";
+    result += "inline std::vector<" + full_type + "> load_" + s.name + "_from_json(std::istream& stream) {\n";
+    result += "    std::ostringstream buffer;\n";
+    result += "    buffer << stream.rdbuf();\n";
+    result += "    auto json = polygen::JsonParser::parse(buffer.str());\n";
+    result += "    if (!json.is_array()) throw std::runtime_error(\"expected JSON array for " + s.name + "\");\n";
+    result += "    std::vector<" + full_type + "> rows;\n";
+    result += "    for (const auto& item : json.as_array()) rows.push_back(from_json_" + s.name + "(item));\n";
+    result += "    return rows;\n";
+    result += "}\n";
+    result += "inline std::vector<" + full_type + "> load_" + s.name + "_from_json_file(const std::string& path) {\n";
+    result += "    std::ifstream file(path);\n";
+    result += "    if (!file) throw std::runtime_error(\"failed to open JSON file: \" + path);\n";
+    result += "    return load_" + s.name + "_from_json(file);\n";
+    result += "}";
+    return result;
 }
 
 // Generate binary read function body for a struct
@@ -379,10 +589,14 @@ if has_file {
 let has_structs = all_structs.len() > 0;
 
 let all_enum_validators = [];
+let all_enum_parsers = [];
 if has_file {
     for ns in file.namespaces {
         for validator in enum_validators_from_namespace(ns) {
             all_enum_validators.push(validator);
+        }
+        for parser in enum_parsers_from_namespace(ns) {
+            all_enum_parsers.push(parser);
         }
     }
 }
@@ -399,6 +613,12 @@ for entry in all_structs {
     all_structs[idx].struct_name = s.name;
     all_structs[idx].read_fwd = "inline " + full_type + " read_" + s.name + "(polygen::BinaryReader& reader);";
     all_structs[idx].write_fwd = "inline void write_" + s.name + "(polygen::BinaryWriter& writer, const " + full_type + "& obj);";
+    all_structs[idx].json_fwd = "inline " + full_type + " from_json_" + s.name + "(const polygen::JsonValue& value);";
+    all_structs[idx].csv_fwd = "inline " + full_type + " from_csv_" + s.name + "(const polygen::CsvReader& row);";
+    all_structs[idx].json_body = generate_json_read(s, ns);
+    all_structs[idx].csv_body = generate_csv_read(s, ns);
+    all_structs[idx].csv_load_body = generate_csv_load(s, ns);
+    all_structs[idx].json_load_body = generate_json_load(s, ns);
     all_structs[idx].read_body = generate_binary_read(s, ns);
     all_structs[idx].write_body = generate_binary_write(s, ns);
 
@@ -415,8 +635,42 @@ for entry in all_structs {
 %for hdr in other_includes
 #include "{{hdr}}"
 %endfor
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+#include <string_view>
+#include <type_traits>
 %blank
 namespace polygen_loaders {
+%blank
+inline std::string trim_csv_cell(const std::string& value) {
+    auto begin = value.begin();
+    while (begin != value.end() && std::isspace(static_cast<unsigned char>(*begin))) ++begin;
+    auto end = value.end();
+    while (end != begin && std::isspace(static_cast<unsigned char>(*(end - 1)))) --end;
+    return std::string(begin, end);
+}
+%blank
+inline std::vector<std::string> split_csv_list(const std::string& value) {
+    std::vector<std::string> items;
+    std::stringstream stream(value);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        auto trimmed = trim_csv_cell(item);
+        if (!trimmed.empty()) items.push_back(trimmed);
+    }
+    return items;
+}
+%blank
+inline bool parse_csv_bool(const std::string& value) {
+    auto normalized = trim_csv_cell(value);
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (normalized.empty() || normalized == "false" || normalized == "0" || normalized == "no") return false;
+    if (normalized == "true" || normalized == "1" || normalized == "yes") return true;
+    throw std::runtime_error("invalid bool value: " + value);
+}
 %blank
 %if has_enums
 #ifndef POLYGEN_CPP_CHECKED_ENUM_HELPERS
@@ -426,10 +680,20 @@ struct enum_validator {
     static bool is_valid(E) { return true; }
 };
 
+inline int32_t parse_enum_i32(std::string_view raw) {
+    const auto text = trim_csv_cell(std::string(raw));
+    try {
+        size_t consumed = 0;
+        const auto parsed = std::stoi(text, &consumed, 10);
+        if (consumed == text.size()) return static_cast<int32_t>(parsed);
+    } catch (const std::exception&) {
+    }
+    throw std::runtime_error("invalid enum value: " + std::string(raw));
+}
+
 template<typename E>
-E read_checked_enum(polygen::BinaryReader& reader) {
+E checked_enum_from_i32(int32_t raw) {
     static_assert(std::is_enum_v<E>, "Type must be an enum");
-    int32_t raw = reader.read_i32();
     E value = static_cast<E>(raw);
     if (!enum_validator<E>::is_valid(value)) {
         throw std::runtime_error("invalid enum value: " + std::to_string(raw));
@@ -438,12 +702,37 @@ E read_checked_enum(polygen::BinaryReader& reader) {
 }
 
 template<typename E>
+struct enum_parser {
+    static E parse(std::string_view raw) {
+        return checked_enum_from_i32<E>(parse_enum_i32(raw));
+    }
+    static E parse_json(const polygen::JsonValue& value) {
+        if (value.is_string()) return parse(value.as_string());
+        if (value.is_number()) return checked_enum_from_i32<E>(value.as_i32());
+        throw std::runtime_error("invalid enum value");
+    }
+};
+
+template<typename E>
+E parse_checked_enum_csv(const std::string& value) {
+    return enum_parser<E>::parse(value);
+}
+
+template<typename E>
+E parse_checked_enum_json(const polygen::JsonValue& value) {
+    return enum_parser<E>::parse_json(value);
+}
+
+template<typename E>
+E read_checked_enum(polygen::BinaryReader& reader) {
+    return checked_enum_from_i32<E>(reader.read_i32());
+}
+
+template<typename E>
 void write_checked_enum(polygen::BinaryWriter& writer, E value) {
     static_assert(std::is_enum_v<E>, "Type must be an enum");
     int32_t raw = static_cast<int32_t>(value);
-    if (!enum_validator<E>::is_valid(value)) {
-        throw std::runtime_error("invalid enum value: " + std::to_string(raw));
-    }
+    (void)checked_enum_from_i32<E>(raw);
     writer.write_i32(raw);
 }
 #endif
@@ -452,7 +741,30 @@ void write_checked_enum(polygen::BinaryWriter& writer, E value) {
 {{enum_validator}}
 %blank
 %endfor
+%for enum_parser in all_enum_parsers
+{{enum_parser}}
+%blank
+%endfor
 %endif
+// ============================================================================
+// CSV / JSON Readers
+// ============================================================================
+%blank
+%for entry in all_structs
+{{entry.json_fwd}}
+{{entry.csv_fwd}}
+%endfor
+%blank
+%for entry in all_structs
+{{entry.json_body}}
+%blank
+{{entry.csv_body}}
+%blank
+{{entry.csv_load_body}}
+%blank
+{{entry.json_load_body}}
+%blank
+%endfor
 // ============================================================================
 // Binary Readers
 // ============================================================================

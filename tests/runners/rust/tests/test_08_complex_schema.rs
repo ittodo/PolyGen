@@ -9,6 +9,7 @@ use polygen_test::schema::game::game_common::{Vec2, Vec3, Color, Element};
 use polygen_test::schema::game::game_character::{Stats, Player, NPC, EquipSlot, DialogOption, Status, AIType};
 use polygen_test::schema::game::game_item::{Item, Weapon, Rarity, BonusStat, ItemType};
 use polygen_test::schema::game::game_social::{Guild, GuildMember, Rank};
+use polygen_test::schema_container::container::SchemaContainer;
 use polygen_test::schema_loaders::BinaryIO;
 
 fn main() {
@@ -18,6 +19,7 @@ fn main() {
     test_character_types();
     test_item_types();
     test_social_system();
+    test_container_field_and_unique_validation();
     test_binary_complex();
 
     println!("=== All tests passed! ===");
@@ -146,6 +148,73 @@ fn test_social_system() {
     };
 
     assert_eq!(member.rank, Rank::Leader);
+
+    println!("    PASS");
+}
+
+fn make_validation_player(id: u32, name: &str, level: u16) -> Player {
+    Player {
+        id,
+        name: name.to_string(),
+        level,
+        experience: 0,
+        stats: Stats {
+            hp: 100,
+            max_hp: 100,
+            mp: 50,
+            max_mp: 50,
+            strength: 10,
+            agility: 8,
+            intelligence: 5,
+            vitality: 12,
+        },
+        position: Vec3 { x: 0.0, y: 0.0, z: 0.0 },
+        status: Status::Online,
+        guild_id: None,
+    }
+}
+
+fn test_container_field_and_unique_validation() {
+    println!("  Testing container field and unique validation...");
+
+    let mut invalid_fields = SchemaContainer::new();
+    invalid_fields.players.add_row(make_validation_player(
+        1,
+        "A name that is definitely longer than thirty two chars",
+        101,
+    ));
+
+    let invalid_result = invalid_fields.validate_all();
+    assert!(!invalid_result.is_valid());
+    assert_eq!(invalid_result.error_count(), 2);
+    assert!(invalid_result.errors().iter().any(|err| {
+        err.constraint_type == "MaxLength" && err.field_name == "name"
+    }));
+    assert!(invalid_result.errors().iter().any(|err| {
+        err.constraint_type == "Range" && err.field_name == "level"
+    }));
+
+    let mut invalid_regex = SchemaContainer::new();
+    invalid_regex
+        .players
+        .add_row(make_validation_player(2, "Invalid!", 10));
+
+    let regex_result = invalid_regex.validate_all();
+    assert!(!regex_result.is_valid());
+    assert!(regex_result.errors().iter().any(|err| {
+        err.constraint_type == "Regex" && err.field_name == "name"
+    }));
+
+    let mut duplicate = SchemaContainer::new();
+    duplicate.players.add_row(make_validation_player(1, "Hero A", 10));
+    duplicate.players.add_row(make_validation_player(1, "Hero B", 10));
+
+    let duplicate_result = duplicate.validate_all();
+    assert!(!duplicate_result.is_valid());
+    assert!(duplicate_result
+        .errors()
+        .iter()
+        .any(|err| err.constraint_type == "Unique"));
 
     println!("    PASS");
 }

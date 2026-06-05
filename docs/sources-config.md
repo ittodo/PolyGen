@@ -1,6 +1,6 @@
 # Sources Config
 
-> 최종 업데이트: 2026-06-03
+> 최종 업데이트: 2026-06-05
 
 `.poly` files describe schema shape. `*.sources.toml` files describe runtime input paths such as CSV and JSON load sources.
 
@@ -39,6 +39,8 @@ csv = "data/monsters.csv"
 - `*.sources.toml` overrides legacy `@load` annotations.
 - Legacy `@load` remains supported for compatibility.
 - New schemas should prefer sources config instead of `@load`.
+- C#, C++, Rust, Go, TypeScript, Python, Kotlin, and Swift generated containers can use these paths for root-directory based CSV/JSON loading. Go also generates per-table Binary I/O loaders for binary files.
+- Go CSV loaders parse primitive lists from comma-separated cells and embed/embedded-list fields from JSON cells, for example `tags` as `[{"name":"tag","color":"red"}]`.
 
 ## Validation
 
@@ -48,4 +50,3 @@ PolyGen validates that:
 - load settings target tables, not embeds
 - `csv` and `json` values are non-empty strings
 - unsupported keys are rejected
-

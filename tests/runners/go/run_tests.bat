@@ -33,7 +33,7 @@ if not exist "%POLYGEN%" (
 )
 
 REM Test cases
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed 11_relations_indexes
 
 REM Create output directory
 if exist "%OUTPUT_DIR%" rmdir /s /q "%OUTPUT_DIR%"
@@ -114,6 +114,18 @@ if exist "!SCRIPT_DIR!tests\!CASE_NAME!_test.go" (
     copy /Y "!SCRIPT_DIR!tests\!CASE_NAME!_test.go" "polygen_integration_test.go" >nul
     if errorlevel 1 (
         echo   FAILED ^(could not copy smoke test^)
+        set /a FAILED+=1
+        cd /d "!PROJECT_ROOT!"
+        exit /b 0
+    )
+)
+
+if "%CASE_NAME%"=="09_sqlite" (
+    set "GET_LOG=!TEST_OUTPUT!\go_get_sqlite.log"
+    go get modernc.org/sqlite@v1.51.0 > "!GET_LOG!" 2>&1
+    if errorlevel 1 (
+        echo   FAILED ^(go get sqlite driver error^)
+        type "!GET_LOG!"
         set /a FAILED+=1
         cd /d "!PROJECT_ROOT!"
         exit /b 0

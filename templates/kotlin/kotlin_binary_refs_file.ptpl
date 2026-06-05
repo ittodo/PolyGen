@@ -1,0 +1,472 @@
+%logic
+import "templates/kotlin/rhai_utils/type_mapping" as kt;
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn table_name_from_fqn(fqn) {
+    let name = fqn + "";
+    name.replace(".", "_");
+    name
+}
+
+fn table_member_name(s) {
+    to_camel_case(s.name) + "s"
+}
+
+fn table_class_name(s) {
+    kt::class_name_from_fqn(s.fqn) + "BinaryRefTable"
+}
+
+fn method_suffix(field_name) {
+    to_pascal_case(field_name)
+}
+
+fn index_method_name(prefix, field_name) {
+    prefix + "By" + method_suffix(field_name)
+}
+
+fn index_api_name(idx) {
+    if idx.is_composite {
+        let result = "";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += "_";
+            }
+            result += idx.fields[i].name;
+        }
+        return result;
+    }
+    idx.field_name
+}
+
+fn index_key_type(field_type) {
+    let base = field_type;
+    if base.is_option {
+        base = base.inner;
+    }
+    kt::kt_type(base)
+}
+
+fn index_entry_key_type(idx) {
+    if idx.is_composite {
+        return "List<Any>";
+    }
+    index_key_type(idx.field_type)
+}
+
+fn index_row_key_expr(idx) {
+    if idx.is_composite {
+        let result = "listOf(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += "row." + idx.fields[i].name;
+        }
+        result += ")";
+        return result;
+    }
+    "row." + idx.field_name
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    t
+}
+
+fn is_search_target_enabled(search) {
+    search.target == "csharp" || search.target == "kotlin" || search.target == "kotlin_binary_ref"
+}
+
+fn is_supported_search(field) {
+    if !field.has_search_index {
+        return false;
+    }
+    let search = field.search_index;
+    if !is_search_target_enabled(search) {
+        return false;
+    }
+    let t = field.field_type;
+    if t.is_list {
+        return false;
+    }
+    let base = search_base_type(t);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    if base.type_name == "string" || base.type_name == "bool" || base.type_name == "timestamp" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.type_name != "bytes" && base.type_name != "f32" && base.type_name != "f64" {
+        return true;
+    }
+    return false;
+}
+
+fn search_key_type(field) {
+    let search = field.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "String";
+    }
+    kt::kt_type(search_base_type(field.field_type))
+}
+
+fn search_key_expr(search_entry) {
+    if search_entry.is_exact_string {
+        return "binaryRefSearchNormalize(key, \"" + search_entry.normalize + "\")";
+    }
+    "key"
+}
+
+fn search_selector_expr(search_entry) {
+    if search_entry.is_exact_string {
+        if search_entry.is_option {
+            return "row." + search_entry.field_name + "?.let { binaryRefSearchNormalize(it, \"" + search_entry.normalize + "\") }";
+        }
+        return "binaryRefSearchNormalize(row." + search_entry.field_name + ", \"" + search_entry.normalize + "\")";
+    }
+    "row." + search_entry.field_name
+}
+
+let entries = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for s in tables {
+        let indexes = [];
+        for idx in s.indexes {
+            let api_name = index_api_name(idx);
+            indexes.push(#{
+                field_name: api_name,
+                get_method: index_method_name("get", api_name),
+                find_method: index_method_name("find", api_name),
+                key_type: index_entry_key_type(idx),
+                key_expr: index_row_key_expr(idx),
+                is_unique: idx.is_unique
+            });
+        }
+        let search_indexes = [];
+        for item in s.items {
+            if item.is_field {
+                let f = item.as_field();
+                if is_supported_search(f) {
+                    let search = f.search_index;
+                    let base = search_base_type(f.field_type);
+                    search_indexes.push(#{
+                        name: search.name,
+                        method_name: "searchBy" + to_pascal_case(search.name),
+                        field_name: f.name,
+                        key_type: search_key_type(f),
+                        mode: search.mode,
+                        normalize: search.normalize,
+                        n: search.n,
+                        min: search.min,
+                        is_token_mode: search.mode == "ngram" || search.mode == "word",
+                        is_exact_string: search.mode == "exact" && base.type_name == "string",
+                        is_option: f.field_type.is_option,
+                        key_expr: search_key_expr(#{
+                            is_exact_string: search.mode == "exact" && base.type_name == "string",
+                            normalize: search.normalize
+                        }),
+                        selector_expr: search_selector_expr(#{
+                            is_exact_string: search.mode == "exact" && base.type_name == "string",
+                            is_option: f.field_type.is_option,
+                            field_name: f.name,
+                            normalize: search.normalize
+                        })
+                    });
+                }
+            }
+        }
+        entries.push(#{
+            def: s,
+            class_name: kt::class_name_from_fqn(s.fqn),
+            table_class: table_class_name(s),
+            member_name: table_member_name(s),
+            table_name: table_name_from_fqn(s.fqn),
+            indexes: indexes,
+            search_indexes: search_indexes
+        });
+    }
+}
+
+let has_tables = entries.len() > 0;
+%endlogic
+// Generated by PolyGen. DO NOT EDIT.
+// Source: {{file.path}}
+
+%if has_tables
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+private val POLYGEN_BINARY_REF_MAGIC = byteArrayOf(0x50, 0x59, 0x47, 0x42, 0x52, 0x45, 0x46, 0x31)
+
+class BinaryRef<T>(
+    val tableName: String,
+    val ordinal: Int,
+    val payload: ByteArray,
+    private val loader: (ByteArray) -> T
+) {
+    private var cached: T? = null
+
+    fun get(): T {
+        val existing = cached
+        if (existing != null) {
+            return existing
+        }
+        val value = loader(payload)
+        cached = value
+        return value
+    }
+}
+
+open class BinaryRefTable<T>(
+    val tableName: String,
+    payloads: Iterable<ByteArray>,
+    private val loader: (ByteArray) -> T
+) {
+    private val refs: List<BinaryRef<T>> = payloads.mapIndexed { ordinal, payload ->
+        BinaryRef(tableName, ordinal, payload.copyOf(), loader)
+    }
+
+    fun count(): Int = refs.size
+    fun refs(): List<BinaryRef<T>> = refs.toList()
+    fun all(): List<T> = refs.map { it.get() }
+    fun getRef(ordinal: Int): BinaryRef<T>? = refs.getOrNull(ordinal)
+    fun payloads(): List<ByteArray> = refs.map { it.payload.copyOf() }
+
+    fun <K> getBy(key: K, selector: (T) -> K): BinaryRef<T>? =
+        refs.firstOrNull { selector(it.get()) == key }
+
+    fun <K> findBy(key: K, selector: (T) -> K): List<BinaryRef<T>> =
+        refs.filter { selector(it.get()) == key }
+
+    fun <K> searchExact(key: K, selector: (T) -> K?): List<BinaryRef<T>> =
+        refs.filter { selector(it.get()) == key }
+
+    fun searchText(query: String, mode: String, n: Int, min: Int, normalize: String, selector: (T) -> String?): List<BinaryRef<T>> {
+        val queryTokens = binaryRefSearchTokens(query, mode, n, min, normalize)
+        if (queryTokens.isEmpty()) {
+            return emptyList()
+        }
+        return refs.filter { ref ->
+            val value = selector(ref.get()) ?: return@filter false
+            val rowTokens = binaryRefSearchTokens(value, mode, n, min, normalize).toSet()
+            queryTokens.all { rowTokens.contains(it) }
+        }
+    }
+}
+
+%for entry in entries
+class {{entry.table_class}}(
+    payloads: Iterable<ByteArray>
+) : BinaryRefTable<{{entry.class_name}}>({{entry.table_name | quote}}, payloads, ::read{{entry.class_name}}FromBinary) {
+    companion object {
+        fun fromRows(rows: Iterable<{{entry.class_name}}>): {{entry.table_class}} =
+            {{entry.table_class}}(rows.map { it.toBinary() })
+    }
+
+%for idx in entry.indexes
+%if idx.is_unique
+    fun {{idx.get_method}}(key: {{idx.key_type}}): BinaryRef<{{entry.class_name}}>? =
+        getBy(key) { row -> {{idx.key_expr}} }
+
+%else
+    fun {{idx.find_method}}(key: {{idx.key_type}}): List<BinaryRef<{{entry.class_name}}>> =
+        findBy(key) { row -> {{idx.key_expr}} }
+
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+    fun {{search.method_name}}(query: String): List<BinaryRef<{{entry.class_name}}>> =
+        searchText(query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}") { row -> row.{{search.field_name}} }
+
+%else
+    fun {{search.method_name}}(key: {{search.key_type}}): List<BinaryRef<{{entry.class_name}}>> =
+        searchExact({{search.key_expr}}) { row -> {{search.selector_expr}} }
+
+%endif
+%endfor
+}
+
+%endfor
+class BinaryRefDocument(
+%for entry in entries
+    val {{entry.member_name}}: {{entry.table_class}},
+%endfor
+) {
+    companion object {
+        fun fromContainer(container: SchemaContainer): BinaryRefDocument =
+            BinaryRefDocument(
+%for entry in entries
+                {{entry.member_name}} = {{entry.table_class}}.fromRows(container.{{entry.member_name}}.all()),
+%endfor
+            )
+
+        fun fromByteArray(bytes: ByteArray): BinaryRefDocument {
+            val tables = readBinaryRefDocument(bytes)
+            return BinaryRefDocument(
+%for entry in entries
+                {{entry.member_name}} = {{entry.table_class}}(tables[{{entry.table_name | quote}}] ?: emptyList()),
+%endfor
+            )
+        }
+
+        fun open(path: String): BinaryRefDocument =
+            fromByteArray(File(path).readBytes())
+    }
+
+    fun toByteArray(): ByteArray =
+        writeBinaryRefDocument(
+            listOf(
+%for entry in entries
+                {{entry.table_name | quote}} to {{entry.member_name}}.payloads(),
+%endfor
+            )
+        )
+
+    fun save(path: String) {
+        File(path).writeBytes(toByteArray())
+    }
+}
+
+private fun writeU32(out: ByteArrayOutputStream, value: Int) {
+    out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array())
+}
+
+private fun readU32(bytes: ByteArray, offset: Int): Pair<Int, Int> {
+    if (offset + 4 > bytes.size) {
+        throw IllegalArgumentException("Unexpected end of PolyGen BinaryRef package.")
+    }
+    val value = ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
+    return value to offset + 4
+}
+
+private fun writeString(out: ByteArrayOutputStream, value: String) {
+    val encoded = value.encodeToByteArray()
+    writeU32(out, encoded.size)
+    out.write(encoded)
+}
+
+private fun readString(bytes: ByteArray, offset: Int): Pair<String, Int> {
+    val (length, start) = readU32(bytes, offset)
+    val end = start + length
+    if (end > bytes.size) {
+        throw IllegalArgumentException("Unexpected end of PolyGen BinaryRef package.")
+    }
+    return bytes.copyOfRange(start, end).decodeToString() to end
+}
+
+private fun readBytes(bytes: ByteArray, offset: Int): Pair<ByteArray, Int> {
+    val (length, start) = readU32(bytes, offset)
+    val end = start + length
+    if (end > bytes.size) {
+        throw IllegalArgumentException("Unexpected end of PolyGen BinaryRef package.")
+    }
+    return bytes.copyOfRange(start, end) to end
+}
+
+private fun binaryRefSearchNormalize(value: String, policy: String): String {
+    var result = value
+    if (policy == "trim" || policy == "lower_trim") {
+        result = result.trim()
+    }
+    if (policy == "lower" || policy == "lower_trim") {
+        result = result.lowercase()
+    }
+    return result
+}
+
+private fun binaryRefSearchTokens(value: String, mode: String, n: Int, min: Int, normalize: String): List<String> {
+    val normalized = binaryRefSearchNormalize(value, normalize)
+    val tokens = linkedSetOf<String>()
+    when (mode) {
+        "exact" -> if (normalized.isNotEmpty() || min <= 0) tokens.add(normalized)
+        "word" -> normalized.split(Regex("\\s+"))
+            .filter { it.length >= min }
+            .forEach { tokens.add(it) }
+        else -> {
+            require(n > 0) { "search ngram size must be positive" }
+            if (normalized.length >= maxOf(n, min)) {
+                for (index in 0..(normalized.length - n)) {
+                    val token = normalized.substring(index, index + n)
+                    if (token.length >= min) {
+                        tokens.add(token)
+                    }
+                }
+            }
+        }
+    }
+    return tokens.toList()
+}
+
+private fun writeBinaryRefDocument(tables: List<Pair<String, List<ByteArray>>>): ByteArray {
+    val out = ByteArrayOutputStream()
+    out.write(POLYGEN_BINARY_REF_MAGIC)
+    writeU32(out, tables.size)
+    for ((tableName, payloads) in tables) {
+        writeString(out, tableName)
+        writeU32(out, payloads.size)
+        for (payload in payloads) {
+            writeU32(out, payload.size)
+            out.write(payload)
+        }
+    }
+    return out.toByteArray()
+}
+
+private fun readBinaryRefDocument(bytes: ByteArray): Map<String, List<ByteArray>> {
+    if (!bytes.copyOfRange(0, POLYGEN_BINARY_REF_MAGIC.size).contentEquals(POLYGEN_BINARY_REF_MAGIC)) {
+        throw IllegalArgumentException("Invalid PolyGen BinaryRef package header.")
+    }
+    var offset = POLYGEN_BINARY_REF_MAGIC.size
+    val tableCountResult = readU32(bytes, offset)
+    val tableCount = tableCountResult.first
+    offset = tableCountResult.second
+    val tables = mutableMapOf<String, List<ByteArray>>()
+    repeat(tableCount) {
+        val tableNameResult = readString(bytes, offset)
+        val tableName = tableNameResult.first
+        offset = tableNameResult.second
+        val rowCountResult = readU32(bytes, offset)
+        val rowCount = rowCountResult.first
+        offset = rowCountResult.second
+        val rows = mutableListOf<ByteArray>()
+        repeat(rowCount) {
+            val rowResult = readBytes(bytes, offset)
+            rows.add(rowResult.first)
+            offset = rowResult.second
+        }
+        tables[tableName] = rows
+    }
+    return tables
+}
+%else
+// No table definitions were found in this file.
+%endif

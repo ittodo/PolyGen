@@ -418,6 +418,7 @@ output += `    ${field_name} ${field_type} \`validate:"required,max=${max_len}"\
 schema.files              // FileDef[] - 파일 목록
 schema.files[0].name      // 파일 이름
 schema.files[0].namespaces // NamespaceDef[] - 네임스페이스 목록
+schema.files[0].all_tables // StructDef[] - 생성 대상 테이블 flat 목록
 
 namespace.name            // 네임스페이스 이름
 namespace.fqn             // 완전한 이름 (예: "game.character")

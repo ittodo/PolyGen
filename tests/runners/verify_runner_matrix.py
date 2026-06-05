@@ -7,6 +7,17 @@ from pathlib import Path
 
 RUNNERS_DIR = Path(__file__).resolve().parent
 RUNNER_NAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
+OPTIONAL_RUNNER_GATES = {
+    "kotlin": [
+        ("POLYGEN_KOTLIN_COMPILE", "compile_kotlin.py"),
+        ("POLYGEN_KOTLIN_RUNTIME", "run_kotlin_runtime.py"),
+    ],
+    "swift": [
+        ("POLYGEN_SWIFT_COMPILE", "compile_swift.py"),
+        ("POLYGEN_SWIFT_RUNTIME", "run_swift_runtime.py"),
+    ],
+    "unreal": [("POLYGEN_UNREAL_COMPILE", "compile_unreal.py")],
+}
 
 
 def read_bat_runners() -> list[str]:
@@ -122,12 +133,18 @@ def report_missing_help_guards() -> bool:
             ":usage",
             "tests\\runners\\run_all.bat --list",
             "tests\\runners\\run_all.bat --verify",
+            "tests\\runners\\run_all.bat --optional-toolchains",
+            "tests\\runners\\run_all.bat --optional-toolchains-strict",
+            "tests\\runners\\run_all.bat --optional-toolchains-dry-run",
             "tests\\runners\\run_all.bat --help",
         ],
         "run_all.sh": [
             "--help|-h)",
             "tests/runners/run_all.sh --list",
             "tests/runners/run_all.sh --verify",
+            "tests/runners/run_all.sh --optional-toolchains",
+            "tests/runners/run_all.sh --optional-toolchains-strict",
+            "tests/runners/run_all.sh --optional-toolchains-dry-run",
             "tests/runners/run_all.sh --help",
         ],
     }
@@ -144,6 +161,41 @@ def report_missing_help_guards() -> bool:
     return failed
 
 
+def report_missing_optional_toolchain_option() -> bool:
+    failed = False
+    required_snippets = {
+        "run_all.bat": [
+            'if /i "%~1"=="--optional-toolchains" (',
+            'if /i "%~1"=="--optional-toolchains-strict" (',
+            'if /i "%~1"=="--optional-toolchains-dry-run" (',
+            "run_optional_toolchains.py",
+            "--fail-on-missing",
+            "--dry-run",
+            "call :select_python",
+            "!PYTHON_BIN!",
+        ],
+        "run_all.sh": [
+            "--optional-toolchains)",
+            "--optional-toolchains-strict)",
+            "--optional-toolchains-dry-run)",
+            "run_optional_toolchains.py",
+            "--fail-on-missing",
+            "--dry-run",
+        ],
+    }
+
+    for filename, snippets in required_snippets.items():
+        text = (RUNNERS_DIR / filename).read_text(encoding="utf-8")
+        missing = missing_snippets(text, snippets)
+        if missing:
+            if not failed:
+                print("FAILED: run_all scripts must expose --optional-toolchains")
+            print(f"  {filename}: missing {', '.join(missing)}")
+            failed = True
+
+    return failed
+
+
 def report_missing_verify_steps() -> bool:
     failed = False
     required_snippets = {
@@ -152,11 +204,21 @@ def report_missing_verify_steps() -> bool:
             ":verify",
             "verify_runner_matrix.py",
             "test_verify_runner_matrix.py",
+            "test_check_optional_toolchains.py",
+            "test_run_optional_toolchains.py",
+            "kotlin\\test_run_kotlin_runtime.py",
+            "swift\\test_run_swift_runtime.py",
+            "unreal\\test_compile_unreal.py",
         ],
         "run_all.sh": [
             "--verify)",
             "verify_runner_matrix.py",
             "test_verify_runner_matrix.py",
+            "test_check_optional_toolchains.py",
+            "test_run_optional_toolchains.py",
+            "kotlin/test_run_kotlin_runtime.py",
+            "swift/test_run_swift_runtime.py",
+            "unreal/test_compile_unreal.py",
         ],
     }
 
@@ -180,10 +242,20 @@ def report_missing_verify_python_invocations() -> bool:
             'set "VERIFY_EXIT=%ERRORLEVEL%"',
             "exit /b %VERIFY_EXIT%",
             '%PYTHON_BIN% "%SCRIPT_DIR%test_verify_runner_matrix.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%test_check_optional_toolchains.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%test_run_optional_toolchains.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%kotlin\\test_run_kotlin_runtime.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%swift\\test_run_swift_runtime.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%unreal\\test_compile_unreal.py"',
         ],
         "run_all.sh": [
             'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/verify_runner_matrix.py"',
             'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_verify_runner_matrix.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_check_optional_toolchains.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_run_optional_toolchains.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/kotlin/test_run_kotlin_runtime.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/swift/test_run_swift_runtime.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/unreal/test_compile_unreal.py"',
         ],
     }
 
@@ -241,10 +313,20 @@ def report_missing_no_bytecode_guards() -> bool:
             'set "PYTHONDONTWRITEBYTECODE=1"',
             '%PYTHON_BIN% "%SCRIPT_DIR%verify_runner_matrix.py"',
             '%PYTHON_BIN% "%SCRIPT_DIR%test_verify_runner_matrix.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%test_check_optional_toolchains.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%test_run_optional_toolchains.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%kotlin\\test_run_kotlin_runtime.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%swift\\test_run_swift_runtime.py"',
+            '%PYTHON_BIN% "%SCRIPT_DIR%unreal\\test_compile_unreal.py"',
         ],
         "run_all.sh": [
             'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/verify_runner_matrix.py"',
             'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_verify_runner_matrix.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_check_optional_toolchains.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/test_run_optional_toolchains.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/kotlin/test_run_kotlin_runtime.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/swift/test_run_swift_runtime.py"',
+            'PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$SCRIPT_DIR/unreal/test_compile_unreal.py"',
         ],
     }
 
@@ -308,6 +390,37 @@ def report_incomplete_runner_dirs() -> bool:
     return failed
 
 
+def report_missing_optional_runner_gates() -> bool:
+    failed = False
+    for runner, gates in OPTIONAL_RUNNER_GATES.items():
+        runner_dir = RUNNERS_DIR / runner
+        if not has_runner_script(runner_dir):
+            continue
+
+        for _, helper_name in gates:
+            if not (runner_dir / helper_name).is_file():
+                if not failed:
+                    print("FAILED: optional runner gates must stay wired")
+                print(f"  {runner}: missing {helper_name}")
+                failed = True
+
+        for script_name in ("run_tests.bat", "run_tests.sh"):
+            script_path = runner_dir / script_name
+            if not script_path.is_file():
+                continue
+
+            text = script_path.read_text(encoding="utf-8")
+            for env_name, helper_name in gates:
+                missing = missing_snippets(text, [env_name, helper_name])
+                if missing:
+                    if not failed:
+                        print("FAILED: optional runner gates must stay wired")
+                    print(f"  {runner}/{script_name}: missing {', '.join(missing)}")
+                    failed = True
+
+    return failed
+
+
 def report_mismatch(label: str, expected: list[str], actual: list[str]) -> bool:
     if expected == actual:
         return False
@@ -355,11 +468,13 @@ def main() -> int:
     failed |= report_missing_runtime_guards()
     failed |= report_missing_option_guards()
     failed |= report_missing_help_guards()
+    failed |= report_missing_optional_toolchain_option()
     failed |= report_missing_verify_steps()
     failed |= report_missing_verify_python_invocations()
     failed |= report_missing_python_guards()
     failed |= report_missing_no_bytecode_guards()
     failed |= report_incomplete_runner_dirs()
+    failed |= report_missing_optional_runner_gates()
     failed |= report_mismatch("run_all.sh vs run_all.bat", bat_runners, sh_runners)
     failed |= report_set_mismatch("runner directories vs run_all.bat", bat_runners, dir_runners)
 

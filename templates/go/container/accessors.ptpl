@@ -7,20 +7,71 @@ func (t *{{struct.name | suffix("Table")}}) Count() int { return len(t.rows) }
 %blank
 %for idx in struct.indexes
 %logic
-let idx_type = go_lang_type(idx.field_type);
+let idx_type = go_index_key_type(struct, idx);
+let idx_member = go_index_member_name(idx);
+let idx_method = go_index_method_name(idx);
 %endlogic
 %if idx.is_unique
-// {{idx.field_name | pascal_case | prefix("GetBy")}} gets a row by {{idx.field_name}} (unique).
-func (t *{{struct.name | suffix("Table")}}) {{idx.field_name | pascal_case | prefix("GetBy")}}(key {{idx_type}}) *{{struct.name}} {
-	val, _ := t.{{idx.field_name | pascal_case | prefix("by")}}.Get(key)
+// {{idx_method}} gets a row by the {{idx.name}} index (unique).
+func (t *{{struct.name | suffix("Table")}}) {{idx_method}}(key {{idx_type}}) *{{struct.name}} {
+	val, _ := t.{{idx_member}}.Get(key)
 	return val
 }
 %blank
 %else
-// {{idx.field_name | pascal_case | prefix("GetBy")}} gets rows by {{idx.field_name}} (group).
-func (t *{{struct.name | suffix("Table")}}) {{idx.field_name | pascal_case | prefix("GetBy")}}(key {{idx_type}}) []*{{struct.name}} {
-	return t.{{idx.field_name | pascal_case | prefix("by")}}.Get(key)
+// {{idx_method}} gets rows by the {{idx.name}} index (group).
+func (t *{{struct.name | suffix("Table")}}) {{idx_method}}(key {{idx_type}}) []*{{struct.name}} {
+	return t.{{idx_member}}.Get(key)
 }
 %blank
+%endif
+%endfor
+%for item in struct.items
+%if item.is_field
+%logic
+let field = as_field(item);
+%endlogic
+%if go_search_supported(field)
+%logic
+let search_type = go_search_key_type(field);
+let search_var = go_search_var_name(field);
+let search_method = go_search_method_name(field);
+let base = go_search_base_type(field.field_type);
+let base_name = go_search_base_name(field.field_type);
+let search_mode = go_search_mode(field);
+let search_n = go_search_n(field);
+let search_min = go_search_min(field);
+let search_normalize = go_search_normalize(field);
+%endlogic
+%if search_mode == "ngram" || search_mode == "word"
+// {{search_method}} searches rows by {{field.name}}.
+func (t *{{struct.name | suffix("Table")}}) {{search_method}}(query string) []*{{struct.name}} {
+	tokens := searchTokens(query, "{{search_mode}}", {{search_n}}, {{search_min}}, "{{search_normalize}}")
+	if len(tokens) == 0 {
+		return nil
+	}
+	postings := make([][]*{{struct.name}}, 0, len(tokens))
+	for _, token := range tokens {
+		rows := t.{{search_var}}.Get(token)
+		if len(rows) == 0 {
+			return nil
+		}
+		postings = append(postings, rows)
+	}
+	return searchIntersect(postings)
+}
+%blank
+%else
+// {{search_method}} searches rows by {{field.name}}.
+func (t *{{struct.name | suffix("Table")}}) {{search_method}}(key {{search_type}}) []*{{struct.name}} {
+%if base_name == "string"
+	return t.{{search_var}}.Get(searchNormalize(key, "{{search_normalize}}"))
+%else
+	return t.{{search_var}}.Get(key)
+%endif
+}
+%blank
+%endif
+%endif
 %endif
 %endfor

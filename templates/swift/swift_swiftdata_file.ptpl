@@ -23,7 +23,7 @@ fn render_enum(e, owner_fqn) {
             if m.value != () {
                 value = m.value;
             }
-            out += "    case " + to_camel_case(m.name) + " = " + value + "\n";
+            out += "    case " + swift::identifier(to_camel_case(m.name)) + " = " + value + "\n";
             next_value = value + 1;
         }
     }

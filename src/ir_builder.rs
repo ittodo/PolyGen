@@ -142,11 +142,11 @@ fn add_definition_to_items(
             items.push(NamespaceItem::Namespace(Box::new(new_ns)));
         }
         Definition::Table(table) => {
-            items.push(NamespaceItem::Struct(convert_table_to_struct(
+            items.push(NamespaceItem::Struct(Box::new(convert_table_to_struct(
                 table,
                 current_ns,
                 inherited_datasource,
-            )));
+            ))));
         }
         Definition::Enum(e) => {
             items.push(NamespaceItem::Enum(convert_enum_to_enum_def(
@@ -154,9 +154,9 @@ fn add_definition_to_items(
             )));
         }
         Definition::Embed(embed) => {
-            items.push(NamespaceItem::Struct(convert_embed_to_struct(
+            items.push(NamespaceItem::Struct(Box::new(convert_embed_to_struct(
                 embed, current_ns,
-            )));
+            ))));
         }
         Definition::Comment(c) => {
             items.push(NamespaceItem::Comment(c.clone()));
@@ -234,13 +234,13 @@ fn convert_table_to_struct(
                 items.extend(
                     new_nested_structs
                         .into_iter()
-                        .map(StructItem::EmbeddedStruct),
+                        .map(|s| StructItem::EmbeddedStruct(Box::new(s))),
                 );
                 items.extend(new_nested_enums.into_iter().map(StructItem::InlineEnum));
             }
             TableMember::Embed(embed) => {
-                items.push(StructItem::EmbeddedStruct(convert_embed_to_struct(
-                    embed, &fqn,
+                items.push(StructItem::EmbeddedStruct(Box::new(
+                    convert_embed_to_struct(embed, &fqn),
                 )));
             }
             TableMember::Enum(e) => {
@@ -842,7 +842,7 @@ mod tests {
         ns.items.iter().find_map(|item| {
             if let NamespaceItem::Struct(s) = item {
                 if s.name == name {
-                    return Some(s);
+                    return Some(s.as_ref());
                 }
             }
             None
@@ -1125,6 +1125,47 @@ mod tests {
 
         // Since UniqueStatus is unique, it should be resolved as enum
         assert!(status_field.field_type.is_enum);
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_field_type_is_resolved() -> TestResult {
+        let post = Definition::Table(Table {
+            metadata: vec![Metadata::Annotation(Annotation {
+                name: Some("index".to_string()),
+                args: vec![
+                    AnnotationArg::Positional(Literal::Identifier("author_id".to_string())),
+                    AnnotationArg::Positional(Literal::Identifier("status".to_string())),
+                ],
+            })],
+            name: Some("Post".to_string()),
+            members: vec![
+                make_field_basic("author_id", BasicType::U32),
+                make_field_path("status", vec!["Status"]),
+            ],
+        });
+        let asts = vec![make_ast(vec![
+            make_enum("Status", vec!["Draft", "Published"]),
+            post,
+        ])];
+        let ctx = build_ir(&asts);
+
+        let ns = &ctx.files[0].namespaces[0];
+        let post = require_struct(ns, "Post")?;
+        let composite = post
+            .indexes
+            .iter()
+            .find(|idx| idx.name == "ByAuthorIdStatus")
+            .ok_or_else(|| "missing composite index".to_string())?;
+        let status_key = composite
+            .fields
+            .iter()
+            .find(|field| field.name == "status")
+            .ok_or_else(|| "missing status index field".to_string())?;
+
+        assert!(status_key.field_type.is_enum);
+        assert!(!status_key.field_type.is_struct);
+        assert_eq!(status_key.field_type.fqn, "Status");
         Ok(())
     }
 

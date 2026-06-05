@@ -30,6 +30,7 @@ All runners live in `tests/runners/<lang>/`. Execute from project root.
 | Target     | Windows command                             | POSIX command                              | Prerequisites            |
 |------------|---------------------------------------------|--------------------------------------------|--------------------------|
 | All/subset | `tests\runners\run_all.bat [runner...]`      | `bash tests/runners/run_all.sh [runner...]` | runner-specific tools    |
+| Optional toolchains | `tests\runners\run_all.bat --optional-toolchains` | `bash tests/runners/run_all.sh --optional-toolchains` | ready Kotlin/Swift/Unreal toolchains |
 | C#         | `tests\runners\csharp\run_tests.bat`        | `bash tests/runners/csharp/run_tests.sh`   | dotnet SDK 8.0           |
 | C++        | `tests\runners\cpp\run_tests.bat`           | `bash tests/runners/cpp/run_tests.sh`      | MSVC or g++              |
 | Rust       | `tests\runners\rust\run_tests.bat`          | `bash tests/runners/rust/run_tests.sh`     | cargo                    |
@@ -50,12 +51,18 @@ All runners live in `tests/runners/<lang>/`. Execute from project root.
 - No target specified: ask which runner(s), or use `run_all` when the user asks to test all.
 - `run_all` accepts optional runner names, e.g. `tests\runners\run_all.bat sqlite rust`.
 - `run_all --list` prints supported runner names.
+- `run_all --optional-toolchains` checks Kotlin/Swift/Unreal readiness and runs only ready optional compile/runtime gates.
+- `run_all --optional-toolchains-strict` fails if any optional target is missing.
+- `run_all --optional-toolchains-dry-run` prints ready target commands without running them.
+  Readiness-discovered env such as Swift `SWIFTC`, `SDKROOT`, runtime PATH, and Unreal UBT/project/target/header-dir settings is passed to the child runner.
 - `run_all --verify` checks that `run_all.bat`, `run_all.sh`, and runner directories
-  stay synchronized and retain ordered Python availability/fallback, selected-Python live/regression invocation, pre-invocation no-bytecode, runtime runner-argument, `--list`, `--help`, and live/regression `--verify` guards, then runs focused verifier regression tests for duplicate,
+  stay synchronized and retain ordered Python availability/fallback, selected-Python live/regression invocation, pre-invocation no-bytecode, runtime runner-argument, `--list`, `--help`, optional toolchain routing, and live/regression `--verify` guards, then runs focused verifier regression tests for duplicate,
   empty, malformed, invalid, missing, extra, one-sided runners, and Windows `--list`
   and `--help` output/default/default-validation/subset/failure/unknown-runner/invalid-argument/metachar drift.
+  Windows `--optional-toolchains` routing is covered by execution regression tests.
   Live matrix verification failures must short-circuit before regression tests run.
   On Windows, fallback from hidden/missing `python` to the `py -3` launcher and the no-Python failure exit code are covered by execution regression tests.
+  The verify path also runs optional toolchain checker/runner helper tests and Kotlin/Swift/Unreal optional gate helper regression tests.
 
 ## Output Filtering
 
@@ -74,7 +81,7 @@ Schemas in `tests/integration/`:
 01_basic_types    02_imports           03_nested_namespaces
 04_inline_enums   05_embedded_structs  06_arrays_and_optionals
 07_indexes        08_complex_schema    09_sqlite
-10_pack_embed
+10_pack_embed      11_relations_indexes
 ```
 
 Test files per language:
@@ -94,7 +101,8 @@ Test files per language:
    - C# SQLite: needs `Microsoft.Data.Sqlite` in generated `.csproj`
    - Rust SQLite: needs `rusqlite` in generated `Cargo.toml`
    - Rust: add new module to generated `lib.rs` if file set changes
-5. Run runner to verify
+5. Update `tests/runners/verify_runner_matrix.py` and `tests/runners/test_verify_runner_matrix.py` when the runner matrix, options, or helper gates change
+6. Run the affected runner and `tests\runners\run_all.bat --verify`
 
 ## Test File Patterns
 

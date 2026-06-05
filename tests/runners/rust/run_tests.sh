@@ -45,6 +45,7 @@ TEST_CASES=(
     "08_complex_schema"
     "09_sqlite"
     "10_pack_embed"
+    "11_relations_indexes"
 )
 
 # Create generated directory
@@ -164,6 +165,7 @@ pub mod polygen_support;
 pub mod schema;
 pub mod schema_loaders;
 pub mod schema_container;
+pub mod schema_binary_refs;
 pub mod schema_redis_keys;
 pub mod schema_sqlite_accessor;
 LIBRS
@@ -173,6 +175,7 @@ pub mod polygen_support;
 pub mod schema;
 pub mod schema_loaders;
 pub mod schema_container;
+pub mod schema_binary_refs;
 pub mod schema_redis_keys;
 LIBRS
     fi

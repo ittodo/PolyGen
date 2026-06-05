@@ -25,7 +25,7 @@ fn render_enum(e, owner_fqn) {
         return "@Serializable\nenum class " + enum_name + " {\n}\n\n";
     }
 
-    let out = "@Serializable\n";
+    let out = "@Serializable(with = " + enum_name + "Serializer::class)\n";
     out += "enum class " + enum_name + "(val value: Int) {\n";
     for i in 0..members.len() {
         let member = members[i];
@@ -34,7 +34,42 @@ fn render_enum(e, owner_fqn) {
     }
     out += "\n";
     out += "    companion object {\n";
-    out += "        fun fromValue(value: Int): " + enum_name + " = entries.first { it.value == value }\n";
+    out += "        fun fromValue(value: Int): " + enum_name + " = entries.firstOrNull { it.value == value }\n";
+    out += "            ?: throw IllegalArgumentException(\"invalid enum discriminant for " + enum_name + ": $value\")\n";
+    out += "\n";
+    out += "        fun fromNameOrValue(raw: String): " + enum_name + " {\n";
+    out += "            val trimmed = raw.trim()\n";
+    out += "            trimmed.toIntOrNull()?.let { return fromValue(it) }\n";
+    out += "            return try {\n";
+    out += "                enumValueOf<" + enum_name + ">(trimmed)\n";
+    out += "            } catch (exc: IllegalArgumentException) {\n";
+    out += "                throw IllegalArgumentException(\"invalid enum for " + enum_name + ": $raw\", exc)\n";
+    out += "            }\n";
+    out += "        }\n";
+    out += "    }\n";
+    out += "}\n\n";
+    out += "object " + enum_name + "Serializer : KSerializer<" + enum_name + "> {\n";
+    out += "    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor(\"" + enum_name + "\", PrimitiveKind.STRING)\n\n";
+    out += "    override fun deserialize(decoder: Decoder): " + enum_name + " {\n";
+    out += "        return try {\n";
+    out += "            val jsonDecoder = decoder as? JsonDecoder\n";
+    out += "            if (jsonDecoder != null) {\n";
+    out += "                val element = jsonDecoder.decodeJsonElement()\n";
+    out += "                if (element is JsonPrimitive) {\n";
+    out += "                    element.intOrNull?.let { return " + enum_name + ".fromValue(it) }\n";
+    out += "                    if (element.isString) {\n";
+    out += "                        return " + enum_name + ".fromNameOrValue(element.content)\n";
+    out += "                    }\n";
+    out += "                }\n";
+    out += "                throw SerializationException(\"invalid enum for " + enum_name + ": $element\")\n";
+    out += "            }\n";
+    out += "            " + enum_name + ".fromNameOrValue(decoder.decodeString())\n";
+    out += "        } catch (exc: IllegalArgumentException) {\n";
+    out += "            throw SerializationException(exc.message ?: \"invalid enum for " + enum_name + "\", exc)\n";
+    out += "        }\n";
+    out += "    }\n\n";
+    out += "    override fun serialize(encoder: Encoder, value: " + enum_name + ") {\n";
+    out += "        encoder.encodeString(value.name)\n";
     out += "    }\n";
     out += "}\n\n";
     out
@@ -74,6 +109,237 @@ fn render_struct(s) {
     }
 
     out += ")\n\n";
+    if s.is_embed && s.pack_separator != () {
+        out += render_pack_helpers(s, fields);
+    }
+    out += render_binary_helpers(s, fields);
+    out
+}
+
+fn binary_read_expr(type_ref, reader_expr) {
+    if type_ref.is_option {
+        return reader_expr + ".readOptional { " + binary_read_expr(type_ref.inner, "it") + " }";
+    }
+    if type_ref.is_list {
+        return reader_expr + ".readList { " + binary_read_expr(type_ref.inner, "it") + " }";
+    }
+    if type_ref.is_enum {
+        return kt::class_name_for_type(type_ref) + ".fromValue(" + reader_expr + ".readI32())";
+    }
+    if type_ref.is_struct {
+        return "read" + kt::class_name_for_type(type_ref) + "Binary(" + reader_expr + ")";
+    }
+
+    switch type_ref.type_name {
+        "string" => reader_expr + ".readString()",
+        "bytes" => reader_expr + ".readBytes()",
+        "bool" => reader_expr + ".readBool()",
+        "u8" => reader_expr + ".readU8()",
+        "i8" => reader_expr + ".readI8()",
+        "u16" => reader_expr + ".readU16()",
+        "i16" => reader_expr + ".readI16()",
+        "u32" => reader_expr + ".readU32()",
+        "i32" => reader_expr + ".readI32()",
+        "u64" => reader_expr + ".readU64()",
+        "i64" => reader_expr + ".readI64()",
+        "f32" => reader_expr + ".readF32()",
+        "f64" => reader_expr + ".readF64()",
+        "timestamp" => reader_expr + ".readInstant()",
+        _ => reader_expr + ".readI32()"
+    }
+}
+
+fn binary_write_expr(type_ref, writer_expr, value_expr) {
+    if type_ref.is_option {
+        return writer_expr + ".writeOptional(" + value_expr + ") { w, v -> " + binary_write_expr(type_ref.inner, "w", "v") + " }";
+    }
+    if type_ref.is_list {
+        return writer_expr + ".writeList(" + value_expr + ") { w, v -> " + binary_write_expr(type_ref.inner, "w", "v") + " }";
+    }
+    if type_ref.is_enum {
+        return writer_expr + ".writeI32(" + value_expr + ".value)";
+    }
+    if type_ref.is_struct {
+        return value_expr + ".writeBinary(" + writer_expr + ")";
+    }
+
+    switch type_ref.type_name {
+        "string" => writer_expr + ".writeString(" + value_expr + ")",
+        "bytes" => writer_expr + ".writeBytes(" + value_expr + ")",
+        "bool" => writer_expr + ".writeBool(" + value_expr + ")",
+        "u8" => writer_expr + ".writeU8(" + value_expr + ")",
+        "i8" => writer_expr + ".writeI8(" + value_expr + ")",
+        "u16" => writer_expr + ".writeU16(" + value_expr + ")",
+        "i16" => writer_expr + ".writeI16(" + value_expr + ")",
+        "u32" => writer_expr + ".writeU32(" + value_expr + ")",
+        "i32" => writer_expr + ".writeI32(" + value_expr + ")",
+        "u64" => writer_expr + ".writeU64(" + value_expr + ")",
+        "i64" => writer_expr + ".writeI64(" + value_expr + ")",
+        "f32" => writer_expr + ".writeF32(" + value_expr + ")",
+        "f64" => writer_expr + ".writeF64(" + value_expr + ")",
+        "timestamp" => writer_expr + ".writeInstant(" + value_expr + ")",
+        _ => writer_expr + ".writeI32(" + value_expr + ")"
+    }
+}
+
+fn render_binary_helpers(s, fields) {
+    let class_name = kt::class_name_from_fqn(s.fqn);
+    let out = "";
+
+    out += "fun " + class_name + ".toBinary(): ByteArray {\n";
+    out += "    val writer = PolygenBinaryWriter()\n";
+    out += "    writeBinary(writer)\n";
+    out += "    return writer.toByteArray()\n";
+    out += "}\n\n";
+
+    out += "fun " + class_name + ".writeBinary(writer: PolygenBinaryWriter) {\n";
+    if fields.len() == 0 {
+        out += "    return\n";
+    } else {
+        for field in fields {
+            out += "    " + binary_write_expr(field.field_type, "writer", field.name) + "\n";
+        }
+    }
+    out += "}\n\n";
+
+    out += "fun read" + class_name + "FromBinary(bytes: ByteArray): " + class_name + " =\n";
+    out += "    read" + class_name + "Binary(PolygenBinaryReader(bytes))\n\n";
+
+    out += "fun read" + class_name + "Binary(reader: PolygenBinaryReader): " + class_name + " =\n";
+    out += "    " + class_name + "(\n";
+    for field in fields {
+        out += "        " + field.name + " = " + binary_read_expr(field.field_type, "reader") + ",\n";
+    }
+    out += "    )\n\n";
+    out
+}
+
+fn pack_value_expr(field) {
+    let type_name = field.field_type.type_name;
+    if type_name == "bool" {
+        return "if (" + field.name + ") \"true\" else \"false\"";
+    }
+    if field.field_type.is_enum {
+        return field.name + ".value.toString()";
+    }
+    return field.name + ".toString()";
+}
+
+fn parse_value_expr(field, raw_expr) {
+    let type_name = field.field_type.type_name;
+    if type_name == "string" {
+        return raw_expr;
+    }
+    if type_name == "bool" {
+        return "parsePackedBool(" + raw_expr + ", \"" + field.name + "\")";
+    }
+    if type_name == "f32" {
+        return "parsePackedFloat(" + raw_expr + ", \"" + field.name + "\")";
+    }
+    if type_name == "f64" {
+        return "parsePackedDouble(" + raw_expr + ", \"" + field.name + "\")";
+    }
+    if type_name == "u8" || type_name == "u16" || type_name == "u32" {
+        return "parsePackedInt(" + raw_expr + ", \"" + field.name + "\", unsigned = true)";
+    }
+    if type_name == "u64" {
+        return "parsePackedLong(" + raw_expr + ", \"" + field.name + "\", unsigned = true)";
+    }
+    if type_name == "i8" || type_name == "i16" || type_name == "i32" {
+        return "parsePackedInt(" + raw_expr + ", \"" + field.name + "\")";
+    }
+    if type_name == "i64" {
+        return "parsePackedLong(" + raw_expr + ", \"" + field.name + "\")";
+    }
+    if field.field_type.is_enum {
+        return kt::class_name_for_type(field.field_type) + ".fromValue(parsePackedInt(" + raw_expr + ", \"" + field.name + "\"))";
+    }
+    return raw_expr;
+}
+
+fn render_pack_helpers(s, fields) {
+    let out = "";
+    let class_name = kt::class_name_from_fqn(s.fqn);
+    let sep = kt::string_literal(s.pack_separator);
+
+    out += "fun " + class_name + ".pack(): String = listOf(\n";
+    for field in fields {
+        out += "    " + pack_value_expr(field) + ",\n";
+    }
+    out += ").joinToString(" + sep + ")\n\n";
+
+    out += "fun unpack" + class_name + "(value: String): " + class_name + " {\n";
+    out += "    val parts = value.split(" + sep + ")\n";
+    out += "    require(parts.size == " + fields.len() + ") { \"expected " + fields.len() + " fields for " + class_name + ", got ${parts.size}\" }\n";
+
+    let has_bool = false;
+    let has_float = false;
+    let has_double = false;
+    let has_int = false;
+    let has_long = false;
+    for field in fields {
+        let tn = field.field_type.type_name;
+        if tn == "bool" { has_bool = true; }
+        if tn == "f32" { has_float = true; }
+        if tn == "f64" { has_double = true; }
+        if tn == "u8" || tn == "u16" || tn == "u32" ||
+           tn == "i8" || tn == "i16" || tn == "i32" || field.field_type.is_enum {
+            has_int = true;
+        }
+        if tn == "u64" || tn == "i64" {
+            has_long = true;
+        }
+    }
+
+    if has_bool {
+        out += "    fun parsePackedBool(raw: String, fieldName: String): Boolean = when (raw.trim().lowercase()) {\n";
+        out += "        \"true\", \"1\", \"yes\" -> true\n";
+        out += "        \"false\", \"0\", \"no\" -> false\n";
+        out += "        else -> throw IllegalArgumentException(\"invalid bool for $fieldName: $raw\")\n";
+        out += "    }\n";
+    }
+    if has_int {
+        out += "    fun parsePackedInt(raw: String, fieldName: String, unsigned: Boolean = false): Int {\n";
+        out += "        val parsed = raw.trim().toIntOrNull() ?: throw IllegalArgumentException(\"invalid integer for $fieldName: $raw\")\n";
+        out += "        require(!unsigned || parsed >= 0) { \"invalid unsigned integer for $fieldName: $raw\" }\n";
+        out += "        return parsed\n";
+        out += "    }\n";
+    }
+    if has_long {
+        out += "    fun parsePackedLong(raw: String, fieldName: String, unsigned: Boolean = false): Long {\n";
+        out += "        val parsed = raw.trim().toLongOrNull() ?: throw IllegalArgumentException(\"invalid long for $fieldName: $raw\")\n";
+        out += "        require(!unsigned || parsed >= 0L) { \"invalid unsigned long for $fieldName: $raw\" }\n";
+        out += "        return parsed\n";
+        out += "    }\n";
+    }
+    if has_float {
+        out += "    fun parsePackedFloat(raw: String, fieldName: String): Float {\n";
+        out += "        val parsed = raw.trim().toFloatOrNull() ?: throw IllegalArgumentException(\"invalid float for $fieldName: $raw\")\n";
+        out += "        require(parsed.isFinite()) { \"invalid finite float for $fieldName: $raw\" }\n";
+        out += "        return parsed\n";
+        out += "    }\n";
+    }
+    if has_double {
+        out += "    fun parsePackedDouble(raw: String, fieldName: String): Double {\n";
+        out += "        val parsed = raw.trim().toDoubleOrNull() ?: throw IllegalArgumentException(\"invalid double for $fieldName: $raw\")\n";
+        out += "        require(parsed.isFinite()) { \"invalid finite double for $fieldName: $raw\" }\n";
+        out += "        return parsed\n";
+        out += "    }\n";
+    }
+
+    out += "    return " + class_name + "(\n";
+    for i in 0..fields.len() {
+        let field = fields[i];
+        out += "        " + field.name + " = " + parse_value_expr(field, "parts[" + i + "]") + ",\n";
+    }
+    out += "    )\n";
+    out += "}\n\n";
+    out += "fun tryUnpack" + class_name + "(value: String): " + class_name + "? = try {\n";
+    out += "    unpack" + class_name + "(value)\n";
+    out += "} catch (_: IllegalArgumentException) {\n";
+    out += "    null\n";
+    out += "}\n\n";
+
     out
 }
 
@@ -91,16 +357,330 @@ fn render_namespace(ns) {
     out
 }
 
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn loader_base_name(s) {
+    "load" + kt::class_name_from_fqn(s.fqn) + "s";
+}
+
+fn base_type(t) {
+    let base = t;
+    if base.is_option || base.is_list {
+        base = base.inner;
+    }
+    base
+}
+
+fn parse_scalar_expr(t, raw_expr, field_name) {
+    if t.is_enum {
+        let enum_name = kt::class_name_for_type(t);
+        return enum_name + ".fromValue(polygenParseEnumValue<" + enum_name + ">(" + raw_expr + ", " + kt::string_literal(field_name) + ") { it.value })";
+    }
+    if t.is_struct {
+        return "polygenJson.decodeFromString<" + kt::class_name_for_type(t) + ">(" + raw_expr + ")";
+    }
+
+    switch t.type_name {
+        "string" => raw_expr,
+        "bool" => "polygenParseBool(" + raw_expr + ", " + kt::string_literal(field_name) + ")",
+        "u8" | "u16" | "u32" | "i8" | "i16" | "i32" => "polygenParseInt(" + raw_expr + ", " + kt::string_literal(field_name) + ", unsigned = " + if t.type_name.starts_with("u") { "true" } else { "false" } + ")",
+        "u64" | "i64" => "polygenParseLong(" + raw_expr + ", " + kt::string_literal(field_name) + ", unsigned = " + if t.type_name.starts_with("u") { "true" } else { "false" } + ")",
+        "f32" => "polygenParseFloat(" + raw_expr + ", " + kt::string_literal(field_name) + ")",
+        "f64" => "polygenParseDouble(" + raw_expr + ", " + kt::string_literal(field_name) + ")",
+        "bytes" => "Base64.getDecoder().decode(" + raw_expr + ".trim())",
+        "timestamp" => "Instant.parse(" + raw_expr + ".trim())",
+        _ => raw_expr
+    }
+}
+
+fn parse_csv_expr(field) {
+    let field_literal = kt::string_literal(field.name);
+    let raw = "row[" + field_literal + "]";
+    let required = "polygenRequired(" + raw + ", " + field_literal + ")";
+    let t = field.field_type;
+    if t.is_option {
+        let base = base_type(t);
+        let value = "polygenRequired(" + raw + ", " + field_literal + ")";
+        return "if (polygenIsEmpty(" + raw + ")) null else " + parse_scalar_expr(base, value, field.name);
+    }
+    if t.is_list {
+        let base = base_type(t);
+        if base.is_struct {
+            return "if (polygenIsEmpty(" + raw + ")) emptyList() else polygenJson.decodeFromString<List<" + kt::class_name_for_type(base) + ">>(" + required + ")";
+        }
+        return "polygenParseList(" + raw + ", " + field_literal + ") { item -> " + parse_scalar_expr(base, "item", field.name) + " }";
+    }
+    parse_scalar_expr(t, required, field.name)
+}
+
+fn render_csv_constructor(s) {
+    let class_name = kt::class_name_from_fqn(s.fqn);
+    let fields = [];
+    for item in s.items {
+        if item.is_field {
+            fields.push(item.as_field());
+        }
+    }
+    let out = class_name + "(\n";
+    for field in fields {
+        out += "        " + field.name + " = " + parse_csv_expr(field) + ",\n";
+    }
+    out += "    )";
+    out
+}
+
+fn render_loader_functions(tables) {
+    let out = "";
+    for s in tables {
+        let class_name = kt::class_name_from_fqn(s.fqn);
+        let base = loader_base_name(s);
+        out += "\n";
+        out += "fun " + base + "FromJson(path: String): List<" + class_name + "> =\n";
+        out += "    polygenJson.decodeFromString(File(path).readText())\n\n";
+        out += "fun " + base + "FromCsv(path: String): List<" + class_name + "> =\n";
+        out += "    polygenReadCsvRows(path).map { row ->\n";
+        out += "    " + render_csv_constructor(s) + "\n";
+        out += "    }\n";
+    }
+    out
+}
+
 let body = "";
+let tables = [];
 for ns in file.namespaces {
     body += render_namespace(ns);
+    let ns_tables = collect_tables_from_namespace(ns);
+    for table in ns_tables {
+        tables.push(table);
+    }
 }
+let loaders = render_loader_functions(tables);
 %endlogic
 // Generated by PolyGen. DO NOT EDIT.
 // Source: {{file.path}}
 
+import java.io.File
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.Base64
 import kotlinx.datetime.Instant
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
+
+private val polygenJson = Json { ignoreUnknownKeys = true }
+
+class PolygenBinaryReader(private val bytes: ByteArray) {
+    private var offset: Int = 0
+
+    private fun readExact(size: Int): ByteArray {
+        require(size >= 0 && offset + size <= bytes.size) { "unexpected end of PolyGen binary payload" }
+        val result = bytes.copyOfRange(offset, offset + size)
+        offset += size
+        return result
+    }
+
+    private fun buffer(size: Int): ByteBuffer =
+        ByteBuffer.wrap(readExact(size)).order(ByteOrder.LITTLE_ENDIAN)
+
+    fun readU8(): Int = buffer(1).get().toInt() and 0xff
+    fun readI8(): Int = buffer(1).get().toInt()
+    fun readU16(): Int = buffer(2).short.toInt() and 0xffff
+    fun readI16(): Int = buffer(2).short.toInt()
+    fun readU32(): Int = buffer(4).int
+    fun readI32(): Int = buffer(4).int
+    fun readU64(): Long = buffer(8).long
+    fun readI64(): Long = buffer(8).long
+    fun readF32(): Float = buffer(4).float
+    fun readF64(): Double = buffer(8).double
+    fun readBool(): Boolean = readU8() != 0
+    fun readBytes(): ByteArray = readExact(readU32())
+    fun readString(): String = String(readBytes(), Charsets.UTF_8)
+    fun readInstant(): Instant {
+        val ticks = readI64()
+        val epochTicks = ticks - 621355968000000000L
+        val seconds = Math.floorDiv(epochTicks, 10000000L)
+        val nanos = Math.floorMod(epochTicks, 10000000L) * 100L
+        return Instant.fromEpochSeconds(seconds, nanos)
+    }
+
+    fun <T> readOptional(reader: (PolygenBinaryReader) -> T): T? =
+        if (readBool()) reader(this) else null
+
+    fun <T> readList(reader: (PolygenBinaryReader) -> T): List<T> =
+        List(readU32()) { reader(this) }
+}
+
+class PolygenBinaryWriter {
+    private val output = ByteArrayOutputStream()
+
+    fun toByteArray(): ByteArray = output.toByteArray()
+
+    private fun writeExact(bytes: ByteArray) {
+        output.write(bytes)
+    }
+
+    private fun buffer(size: Int): ByteBuffer =
+        ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
+
+    fun writeU8(value: Int) { writeExact(byteArrayOf(value.toByte())) }
+    fun writeI8(value: Int) { writeExact(byteArrayOf(value.toByte())) }
+    fun writeU16(value: Int) { writeExact(buffer(2).putShort(value.toShort()).array()) }
+    fun writeI16(value: Int) { writeExact(buffer(2).putShort(value.toShort()).array()) }
+    fun writeU32(value: Int) { writeExact(buffer(4).putInt(value).array()) }
+    fun writeI32(value: Int) { writeExact(buffer(4).putInt(value).array()) }
+    fun writeU64(value: Long) { writeExact(buffer(8).putLong(value).array()) }
+    fun writeI64(value: Long) { writeExact(buffer(8).putLong(value).array()) }
+    fun writeF32(value: Float) { writeExact(buffer(4).putFloat(value).array()) }
+    fun writeF64(value: Double) { writeExact(buffer(8).putDouble(value).array()) }
+    fun writeBool(value: Boolean) { writeU8(if (value) 1 else 0) }
+    fun writeBytes(value: ByteArray) {
+        writeU32(value.size)
+        writeExact(value)
+    }
+    fun writeString(value: String) { writeBytes(value.toByteArray(Charsets.UTF_8)) }
+    fun writeInstant(value: Instant) {
+        val ticks = value.epochSeconds * 10000000L + value.nanosecondsOfSecond / 100L + 621355968000000000L
+        writeI64(ticks)
+    }
+    fun <T> writeOptional(value: T?, writer: (PolygenBinaryWriter, T) -> Unit) {
+        writeBool(value != null)
+        if (value != null) {
+            writer(this, value)
+        }
+    }
+    fun <T> writeList(value: List<T>, writer: (PolygenBinaryWriter, T) -> Unit) {
+        writeU32(value.size)
+        value.forEach { writer(this, it) }
+    }
+}
+
+private fun polygenIsEmpty(value: String?): Boolean = value == null || value.isEmpty()
+
+private fun polygenRequired(value: String?, fieldName: String): String =
+    if (polygenIsEmpty(value)) throw IllegalArgumentException("missing required field $fieldName") else value!!
+
+private fun polygenReadCsvRows(path: String): List<Map<String, String>> {
+    val lines = File(path).readLines()
+    if (lines.isEmpty()) {
+        return emptyList()
+    }
+    val headers = polygenSplitCsvLine(lines.first())
+    return lines.drop(1)
+        .filter { it.isNotBlank() }
+        .map { line ->
+            val values = polygenSplitCsvLine(line)
+            headers.mapIndexed { index, header -> header to values.getOrElse(index) { "" } }.toMap()
+        }
+}
+
+private fun polygenSplitCsvLine(line: String): List<String> {
+    val values = mutableListOf<String>()
+    val current = StringBuilder()
+    var inQuotes = false
+    var index = 0
+    while (index < line.length) {
+        val ch = line[index]
+        if (ch == '"') {
+            if (inQuotes && index + 1 < line.length && line[index + 1] == '"') {
+                current.append('"')
+                index += 1
+            } else {
+                inQuotes = !inQuotes
+            }
+        } else if (ch == ',' && !inQuotes) {
+            values.add(current.toString())
+            current.clear()
+        } else {
+            current.append(ch)
+        }
+        index += 1
+    }
+    values.add(current.toString())
+    return values
+}
+
+private fun <T> polygenParseList(raw: String?, fieldName: String, parser: (String) -> T): List<T> {
+    if (polygenIsEmpty(raw)) {
+        return emptyList()
+    }
+    return polygenRequired(raw, fieldName)
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .map(parser)
+}
+
+private fun polygenParseBool(raw: String, fieldName: String): Boolean = when (raw.trim().lowercase()) {
+    "true", "1", "yes" -> true
+    "false", "0", "no" -> false
+    else -> throw IllegalArgumentException("invalid bool for $fieldName: $raw")
+}
+
+private fun polygenParseInt(raw: String, fieldName: String, unsigned: Boolean = false): Int {
+    val parsed = raw.trim().toIntOrNull() ?: throw IllegalArgumentException("invalid integer for $fieldName: $raw")
+    require(!unsigned || parsed >= 0) { "invalid unsigned integer for $fieldName: $raw" }
+    return parsed
+}
+
+private fun polygenParseLong(raw: String, fieldName: String, unsigned: Boolean = false): Long {
+    val parsed = raw.trim().toLongOrNull() ?: throw IllegalArgumentException("invalid long for $fieldName: $raw")
+    require(!unsigned || parsed >= 0L) { "invalid unsigned long for $fieldName: $raw" }
+    return parsed
+}
+
+private fun polygenParseFloat(raw: String, fieldName: String): Float {
+    val parsed = raw.trim().toFloatOrNull() ?: throw IllegalArgumentException("invalid float for $fieldName: $raw")
+    require(parsed.isFinite()) { "invalid finite float for $fieldName: $raw" }
+    return parsed
+}
+
+private fun polygenParseDouble(raw: String, fieldName: String): Double {
+    val parsed = raw.trim().toDoubleOrNull() ?: throw IllegalArgumentException("invalid double for $fieldName: $raw")
+    require(parsed.isFinite()) { "invalid finite double for $fieldName: $raw" }
+    return parsed
+}
+
+private inline fun <reified T : Enum<T>> polygenParseEnumValue(raw: String, fieldName: String, valueOf: (T) -> Int): Int {
+    val trimmed = raw.trim()
+    val numeric = trimmed.toIntOrNull()
+    if (numeric != null) {
+        return numeric
+    }
+    return try {
+        valueOf(enumValueOf<T>(trimmed))
+    } catch (exc: IllegalArgumentException) {
+        throw IllegalArgumentException("invalid enum for $fieldName: $raw", exc)
+    }
+}
 
 
 {{body}}
+{{loaders}}

@@ -2,6 +2,7 @@
 // Comprehensive test combining all features (game schema)
 
 import { Game } from '../generated/08_complex_schema/typescript/schema';
+import { SchemaContainer } from '../generated/08_complex_schema/typescript/schema_container';
 
 // Test common types (Vec2, Vec3, Color, Element)
 function testCommonTypes(): void {
@@ -184,6 +185,93 @@ function testSocialSystem(): void {
     console.log("    PASS");
 }
 
+function testContainerValidationConstraints(): void {
+    console.log("  Testing Container field and unique validation...");
+
+    const stats: Game.GameCharacter.Stats = {
+        hp: 100, maxHp: 100,
+        mp: 50, maxMp: 50,
+        strength: 10, agility: 8, intelligence: 5, vitality: 12,
+    };
+
+    const invalidFields = new SchemaContainer({
+        Players: [
+            {
+                id: 1,
+                name: "A name that is definitely longer than thirty two chars",
+                level: 101,
+                experience: 0,
+                stats,
+                position: { x: 0, y: 0, z: 0 },
+                status: Game.GameCharacter.Status.Online,
+                guildId: undefined,
+            },
+        ],
+    });
+    const invalidFieldsResult = invalidFields.validateAll();
+    console.assert(!invalidFieldsResult.isValid, "max_length/range violations should fail validation");
+    console.assert(invalidFieldsResult.errorCount === 2, "max_length/range violations should report two errors");
+    console.assert(
+        invalidFieldsResult.errors.some((error) => error.constraintType === "MaxLength" && error.fieldName === "name"),
+        "name max_length violation should be reported",
+    );
+    console.assert(
+        invalidFieldsResult.errors.some((error) => error.constraintType === "Range" && error.fieldName === "level"),
+        "level range violation should be reported",
+    );
+
+    const invalidRegex = new SchemaContainer({
+        Players: [
+            {
+                id: 2,
+                name: "Invalid!",
+                level: 10,
+                experience: 0,
+                stats,
+                position: { x: 0, y: 0, z: 0 },
+                status: Game.GameCharacter.Status.Online,
+                guildId: undefined,
+            },
+        ],
+    });
+    const invalidRegexResult = invalidRegex.validateAll();
+    console.assert(!invalidRegexResult.isValid, "regex violation should fail validation");
+    console.assert(
+        invalidRegexResult.errors.some((error) => error.constraintType === "Regex" && error.fieldName === "name"),
+        "name regex violation should be reported",
+    );
+
+    const duplicate = new SchemaContainer({
+        Players: [
+            {
+                id: 1,
+                name: "Hero A",
+                level: 10,
+                experience: 0,
+                stats,
+                position: { x: 0, y: 0, z: 0 },
+                status: Game.GameCharacter.Status.Online,
+                guildId: undefined,
+            },
+            {
+                id: 1,
+                name: "Hero B",
+                level: 10,
+                experience: 0,
+                stats,
+                position: { x: 1, y: 0, z: 0 },
+                status: Game.GameCharacter.Status.Offline,
+                guildId: undefined,
+            },
+        ],
+    });
+    const duplicateResult = duplicate.validateAll();
+    console.assert(!duplicateResult.isValid, "duplicate primary key should fail validation");
+    console.assert(duplicateResult.errors.some((error) => error.constraintType === "Unique"), "unique violation should be reported");
+
+    console.log("    PASS");
+}
+
 // Main
 console.log("=== Test Case 08: Complex Schema ===");
 testCommonTypes();
@@ -191,4 +279,5 @@ testCharacterTypes();
 testItemTypes();
 testInventorySystem();
 testSocialSystem();
+testContainerValidationConstraints();
 console.log("=== All tests passed! ===");

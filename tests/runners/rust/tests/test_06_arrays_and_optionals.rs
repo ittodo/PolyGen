@@ -4,7 +4,7 @@
 use std::io::Cursor;
 
 use polygen_test::polygen_support::CsvRow;
-use polygen_test::schema::test_collections::{ArrayTest, OptionalTest, Tag};
+use polygen_test::schema::test_collections::{ArrayTest, MixedTest, OptionalTest, Tag};
 use polygen_test::schema_loaders::{BinaryIO, CsvLoadable};
 
 fn main() {
@@ -15,6 +15,7 @@ fn main() {
     test_optional_primitives();
     test_csv_array_parse_errors();
     test_csv_optional_parse_errors();
+    test_csv_json_cell_embeds();
     test_binary_arrays_optionals();
 
     println!("=== All tests passed! ===");
@@ -201,6 +202,107 @@ fn test_csv_optional_parse_errors() {
 
     let parsed = OptionalTest::from_csv_row(&bool_row).unwrap();
     assert_eq!(parsed.opt_bool, Some(true));
+
+    println!("    PASS");
+}
+
+fn test_csv_json_cell_embeds() {
+    println!("  Testing CSV JSON-cell embedded values...");
+
+    let array_row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "int_list".to_string(),
+            "string_list".to_string(),
+            "float_list".to_string(),
+            "bool_list".to_string(),
+            "tags".to_string(),
+        ],
+        vec![
+            "3".to_string(),
+            "1,2".to_string(),
+            "one,two".to_string(),
+            "1.5,2.5".to_string(),
+            "true,false".to_string(),
+            r#"[{"name":"Important","color":"red"},{"name":"Review","color":"yellow"}]"#.to_string(),
+        ],
+    );
+
+    let parsed_array = ArrayTest::from_csv_row(&array_row).unwrap();
+    assert_eq!(parsed_array.tags.len(), 2);
+    assert_eq!(parsed_array.tags[0].name, "Important");
+    assert_eq!(parsed_array.tags[1].color, "yellow");
+
+    let optional_row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "required_name".to_string(),
+            "opt_int".to_string(),
+            "opt_string".to_string(),
+            "opt_float".to_string(),
+            "opt_bool".to_string(),
+            "opt_tag".to_string(),
+        ],
+        vec![
+            "4".to_string(),
+            "WithTag".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            r#"{"name":"Optional","color":"blue"}"#.to_string(),
+        ],
+    );
+
+    let parsed_optional = OptionalTest::from_csv_row(&optional_row).unwrap();
+    let opt_tag = parsed_optional.opt_tag.expect("optional tag should parse");
+    assert_eq!(opt_tag.name, "Optional");
+    assert_eq!(opt_tag.color, "blue");
+
+    let mixed_row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "opt_tags".to_string(),
+            "meta".to_string(),
+            "history".to_string(),
+        ],
+        vec![
+            "5".to_string(),
+            r#"[{"name":"One","color":"green"}]"#.to_string(),
+            r#"{"created_by":"alice","updated_by":null,"version":3}"#.to_string(),
+            r#"[{"created_by":null,"updated_by":"bob","version":1}]"#.to_string(),
+        ],
+    );
+
+    let parsed_mixed = MixedTest::from_csv_row(&mixed_row).unwrap();
+    assert_eq!(parsed_mixed.opt_tags.len(), 1);
+    assert_eq!(parsed_mixed.opt_tags[0].name, "One");
+    let meta = parsed_mixed.meta.expect("metadata should parse");
+    assert_eq!(meta.created_by.as_deref(), Some("alice"));
+    assert_eq!(meta.version, 3);
+    assert_eq!(parsed_mixed.history.len(), 1);
+    assert_eq!(parsed_mixed.history[0].updated_by.as_deref(), Some("bob"));
+
+    let invalid_row = CsvRow::new(
+        vec![
+            "id".to_string(),
+            "int_list".to_string(),
+            "string_list".to_string(),
+            "float_list".to_string(),
+            "bool_list".to_string(),
+            "tags".to_string(),
+        ],
+        vec![
+            "6".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "not-json".to_string(),
+        ],
+    );
+    let err = ArrayTest::from_csv_row(&invalid_row).unwrap_err();
+    assert!(format!("{}", err).contains("invalid JSON for tags"));
 
     println!("    PASS");
 }

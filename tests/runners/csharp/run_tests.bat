@@ -33,7 +33,7 @@ if not exist "%POLYGEN%" (
 )
 
 REM Test cases
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed 11_relations_indexes
 
 REM Create generated directory
 if not exist "%GENERATED_DIR%" mkdir "%GENERATED_DIR%"
@@ -82,7 +82,7 @@ for %%T in (%TEST_CASES%) do (
         ) else (
             REM Create test project
             set TEST_PROJECT_DIR=!OUTPUT_DIR!\TestProject
-            mkdir "!TEST_PROJECT_DIR!"
+            if not exist "!TEST_PROJECT_DIR!" mkdir "!TEST_PROJECT_DIR!"
 
             REM Create csproj - check if SQLite test case
             if "%%T"=="09_sqlite" (

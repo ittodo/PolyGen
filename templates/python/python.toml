@@ -11,8 +11,20 @@ template = "python_pydantic_file.ptpl"
 output = "{{stem}}_pydantic.py"
 
 [[templates.extra]]
+template = "python_container_file.ptpl"
+output = "{{stem}}_container.py"
+
+[[templates.extra]]
 template = "python_sqlalchemy_file.ptpl"
 output = "{{stem}}_sqlalchemy.py"
+
+[[templates.extra]]
+template = "python_sqlite_accessor_file.ptpl"
+output = "{{stem}}_sqlite_accessor.py"
+
+[[templates.extra]]
+template = "python_binary_refs_file.ptpl"
+output = "{{stem}}_binary_refs.py"
 
 [[templates.extra]]
 template = "python_redis_keys_file.ptpl"

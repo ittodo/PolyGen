@@ -40,7 +40,10 @@ fn collect_relations_from_namespace(
                     collect_relations_from_struct(s, pending);
                 }
                 NamespaceItem::Namespace(nested_ns) => {
-                    collect_relations_from_namespace(&[(**nested_ns).clone()], pending);
+                    collect_relations_from_namespace(
+                        std::slice::from_ref(nested_ns.as_ref()),
+                        pending,
+                    );
                 }
                 _ => {}
             }
@@ -85,21 +88,18 @@ fn apply_relation_to_namespaces(
 ) -> bool {
     for ns in namespaces {
         for item in &mut ns.items {
-            match item {
-                NamespaceItem::Struct(s) => {
-                    if s.fqn == pending.target_table_fqn {
-                        s.relations.push(pending.relation.clone());
-                        return true;
-                    }
+            let applied = match item {
+                NamespaceItem::Struct(s) if s.fqn == pending.target_table_fqn => {
+                    s.relations.push(pending.relation.clone());
+                    true
                 }
                 NamespaceItem::Namespace(nested_ns) => {
-                    if apply_relation_to_namespaces(&mut [(**nested_ns).clone()], pending) {
-                        // Need to update the boxed namespace
-                        // This is a bit awkward due to the Box
-                        return true;
-                    }
+                    apply_relation_to_namespaces(std::slice::from_mut(nested_ns.as_mut()), pending)
                 }
-                _ => {}
+                _ => false,
+            };
+            if applied {
+                return true;
             }
         }
     }

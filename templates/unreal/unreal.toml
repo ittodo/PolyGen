@@ -26,6 +26,11 @@ output = "PolygenHotReload.h"
 per_file = false
 
 [[templates.extra]]
+template = "unreal_registry_file.ptpl"
+output = "PolygenRegistry.h"
+per_file = false
+
+[[templates.extra]]
 template = "unreal_redis_keys_file.ptpl"
 output = "Polygen{{stem | pascal_case}}RedisKeys.h"
 

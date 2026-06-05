@@ -76,8 +76,8 @@ pub struct NamespaceDef {
 /// An item that can appear directly within a namespace.
 #[derive(Serialize, Debug, Clone)]
 pub enum NamespaceItem {
-    /// A struct (table) definition.
-    Struct(StructDef),
+    /// A struct (table) definition, boxed to keep enum variants compact.
+    Struct(Box<StructDef>),
     /// An enum definition.
     Enum(EnumDef),
     /// A comment.
@@ -226,8 +226,8 @@ pub enum StructItem {
     Comment(String),
     /// An annotation.
     Annotation(AnnotationDef),
-    /// An embedded struct (nested type).
-    EmbeddedStruct(StructDef),
+    /// An embedded struct (nested type), boxed to keep enum variants compact.
+    EmbeddedStruct(Box<StructDef>),
     /// An inline enum (nested enum type).
     InlineEnum(EnumDef),
 }

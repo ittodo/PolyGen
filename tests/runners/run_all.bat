@@ -10,6 +10,24 @@ if /i "%~1"=="-h" goto :usage
 if /i "%~1"=="/?" goto :usage
 if /i "%~1"=="--list" goto :list
 if /i "%~1"=="--verify" goto :verify
+if /i "%~1"=="--optional-toolchains" (
+    call :select_python
+    if errorlevel 1 exit /b 1
+    !PYTHON_BIN! "%SCRIPT_DIR%run_optional_toolchains.py"
+    exit /b !ERRORLEVEL!
+)
+if /i "%~1"=="--optional-toolchains-strict" (
+    call :select_python
+    if errorlevel 1 exit /b 1
+    !PYTHON_BIN! "%SCRIPT_DIR%run_optional_toolchains.py" --fail-on-missing
+    exit /b !ERRORLEVEL!
+)
+if /i "%~1"=="--optional-toolchains-dry-run" (
+    call :select_python
+    if errorlevel 1 exit /b 1
+    !PYTHON_BIN! "%SCRIPT_DIR%run_optional_toolchains.py" --dry-run
+    exit /b !ERRORLEVEL!
+)
 
 set PASSED=0
 set FAILED=0
@@ -107,10 +125,16 @@ echo   tests\runners\run_all.bat
 echo   tests\runners\run_all.bat sqlite rust
 echo   tests\runners\run_all.bat --list
 echo   tests\runners\run_all.bat --verify
+echo   tests\runners\run_all.bat --optional-toolchains
+echo   tests\runners\run_all.bat --optional-toolchains-strict
+echo   tests\runners\run_all.bat --optional-toolchains-dry-run
 echo   tests\runners\run_all.bat --help
 echo.
 echo Runs all integration runners, or only the runner names passed as arguments.
 echo --verify checks runner matrix synchronization and verifier regression tests.
+echo --optional-toolchains runs ready Kotlin/Swift/Unreal optional runtime or compile gates.
+echo --optional-toolchains-strict fails if any optional toolchain target is not ready.
+echo --optional-toolchains-dry-run prints ready optional toolchain gate commands without running them.
 exit /b 0
 
 :list
@@ -119,6 +143,47 @@ exit /b 0
 
 :verify
 echo === Verifying runner matrix ===
+call :select_python
+if errorlevel 1 exit /b 1
+set "PYTHONDONTWRITEBYTECODE=1"
+%PYTHON_BIN% "%SCRIPT_DIR%verify_runner_matrix.py"
+set "VERIFY_EXIT=%ERRORLEVEL%"
+if %VERIFY_EXIT% neq 0 (
+    exit /b %VERIFY_EXIT%
+)
+echo.
+echo === Verifying runner matrix regression tests ===
+%PYTHON_BIN% "%SCRIPT_DIR%test_verify_runner_matrix.py"
+set "VERIFY_EXIT=%ERRORLEVEL%"
+if %VERIFY_EXIT% neq 0 (
+    exit /b %VERIFY_EXIT%
+)
+echo.
+echo === Verifying optional runner gate helper tests ===
+%PYTHON_BIN% "%SCRIPT_DIR%test_check_optional_toolchains.py"
+set "VERIFY_EXIT=%ERRORLEVEL%"
+if %VERIFY_EXIT% neq 0 (
+    exit /b %VERIFY_EXIT%
+)
+%PYTHON_BIN% "%SCRIPT_DIR%test_run_optional_toolchains.py"
+set "VERIFY_EXIT=%ERRORLEVEL%"
+if %VERIFY_EXIT% neq 0 (
+    exit /b %VERIFY_EXIT%
+)
+%PYTHON_BIN% "%SCRIPT_DIR%kotlin\test_run_kotlin_runtime.py"
+set "VERIFY_EXIT=%ERRORLEVEL%"
+if %VERIFY_EXIT% neq 0 (
+    exit /b %VERIFY_EXIT%
+)
+%PYTHON_BIN% "%SCRIPT_DIR%swift\test_run_swift_runtime.py"
+set "VERIFY_EXIT=%ERRORLEVEL%"
+if %VERIFY_EXIT% neq 0 (
+    exit /b %VERIFY_EXIT%
+)
+%PYTHON_BIN% "%SCRIPT_DIR%unreal\test_compile_unreal.py"
+exit /b %ERRORLEVEL%
+
+:select_python
 where python >nul 2>nul
 if errorlevel 1 (
     where py >nul 2>nul
@@ -129,16 +194,7 @@ if errorlevel 1 (
 ) else (
     set "PYTHON_BIN=python"
 )
-set "PYTHONDONTWRITEBYTECODE=1"
-%PYTHON_BIN% "%SCRIPT_DIR%verify_runner_matrix.py"
-set "VERIFY_EXIT=%ERRORLEVEL%"
-if %VERIFY_EXIT% neq 0 (
-    exit /b %VERIFY_EXIT%
-)
-echo.
-echo === Verifying runner matrix regression tests ===
-%PYTHON_BIN% "%SCRIPT_DIR%test_verify_runner_matrix.py"
-exit /b %ERRORLEVEL%
+exit /b 0
 
 :python_not_found
 echo FAILED ^(python not found^)

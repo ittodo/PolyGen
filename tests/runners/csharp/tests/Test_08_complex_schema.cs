@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using Polygen.Common;
+using Schema.Container;
 
 class Program
 {
@@ -162,6 +164,65 @@ class Program
         passed++;
     }
 
+    static game.character.Player MakeValidationPlayer(uint id, string name, ushort level)
+    {
+        return new game.character.Player
+        {
+            id = id,
+            name = name,
+            level = level,
+            experience = 0,
+            stats = new game.character.Stats
+            {
+                hp = 100, max_hp = 100,
+                mp = 50, max_mp = 50,
+                strength = 10, agility = 8, intelligence = 5, vitality = 12
+            },
+            position = new game.common.Vec3 { x = 0.0f, y = 0.0f, z = 0.0f },
+            status = game.character.Player.Status.Online,
+            guild_id = null
+        };
+    }
+
+    static bool HasValidationError(ValidationResult result, string constraintType, string fieldName)
+    {
+        foreach (var error in result.Errors)
+        {
+            if (error.ConstraintType == constraintType && error.FieldName == fieldName)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static void TestContainerValidationConstraints()
+    {
+        Console.WriteLine("  Testing Container field validation...");
+
+        var invalidFields = new SchemaDataContainer();
+        invalidFields.Players.Add(MakeValidationPlayer(
+            1,
+            "A name that is definitely longer than thirty two chars",
+            101));
+
+        var invalidResult = invalidFields.ValidateAll();
+        Assert(!invalidResult.IsValid, "max_length/range violations should fail validation");
+        Assert(invalidResult.ErrorCount == 2, "max_length/range violations should report two errors");
+        Assert(HasValidationError(invalidResult, "MaxLength", "name"), "name max_length violation");
+        Assert(HasValidationError(invalidResult, "Range", "level"), "level range violation");
+
+        var invalidRegex = new SchemaDataContainer();
+        invalidRegex.Players.Add(MakeValidationPlayer(2, "Invalid!", 10));
+
+        var regexResult = invalidRegex.ValidateAll();
+        Assert(!regexResult.IsValid, "regex violation should fail validation");
+        Assert(HasValidationError(regexResult, "Regex", "name"), "name regex violation");
+
+        Console.WriteLine("    PASS");
+        passed++;
+    }
+
     static void TestBinaryComplex()
     {
         Console.WriteLine("  Testing binary serialization of complex types...");
@@ -213,6 +274,7 @@ class Program
         TestCharacterTypes();
         TestItemTypes();
         TestSocialSystem();
+        TestContainerValidationConstraints();
         TestBinaryComplex();
 
         if (failed > 0)

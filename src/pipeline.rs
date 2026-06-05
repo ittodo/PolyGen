@@ -456,78 +456,6 @@ fn collect_datasources_from_namespace(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ir_model::{FileDef, NamespaceDef, NamespaceItem, StructDef};
-
-    fn table(name: &str, datasource: Option<&str>) -> NamespaceItem {
-        NamespaceItem::Struct(StructDef {
-            name: name.to_string(),
-            fqn: format!("game.{name}"),
-            is_embed: false,
-            datasource: datasource.map(String::from),
-            cache_strategy: None,
-            load: None,
-            is_readonly: false,
-            soft_delete_field: None,
-            pack_separator: None,
-            header: Vec::new(),
-            items: Vec::new(),
-            indexes: Vec::new(),
-            relations: Vec::new(),
-        })
-    }
-
-    #[test]
-    fn datasource_output_language_maps_cache_to_redis() {
-        assert_eq!(datasource_output_language("cache"), "redis");
-        assert_eq!(datasource_output_language("mariadb"), "mysql");
-        assert_eq!(datasource_output_language("postgres"), "postgresql");
-        assert_eq!(datasource_output_language("sqlite"), "sqlite");
-    }
-
-    #[test]
-    fn collect_datasource_output_languages_deduplicates_cache_and_redis() {
-        let context = SchemaContext {
-            files: vec![FileDef {
-                path: "schema.poly".to_string(),
-                namespaces: vec![NamespaceDef {
-                    name: "game".to_string(),
-                    datasource: Some("cache".to_string()),
-                    items: vec![table("Session", None), table("HotData", Some("redis"))],
-                }],
-                renames: Vec::new(),
-            }],
-        };
-
-        assert_eq!(collect_datasource_output_languages(&context), vec!["redis"]);
-    }
-
-    #[test]
-    fn collect_datasource_output_languages_normalizes_aliases() {
-        let context = SchemaContext {
-            files: vec![FileDef {
-                path: "schema.poly".to_string(),
-                namespaces: vec![NamespaceDef {
-                    name: "game".to_string(),
-                    datasource: Some("mariadb".to_string()),
-                    items: vec![
-                        table("Audit", Some("postgres")),
-                        table("Session", Some("cache")),
-                    ],
-                }],
-                renames: Vec::new(),
-            }],
-        };
-
-        assert_eq!(
-            collect_datasource_output_languages(&context),
-            vec!["mysql", "postgresql", "redis"]
-        );
-    }
-}
-
 /// Parses and merges all schema files starting from an initial entry point.
 ///
 /// This function performs a breadth-first traversal of schema files, following
@@ -647,4 +575,76 @@ fn parse_and_merge_schemas_inner(
     }
 
     Ok(all_asts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir_model::{FileDef, NamespaceDef, NamespaceItem, StructDef};
+
+    fn table(name: &str, datasource: Option<&str>) -> NamespaceItem {
+        NamespaceItem::Struct(Box::new(StructDef {
+            name: name.to_string(),
+            fqn: format!("game.{name}"),
+            is_embed: false,
+            datasource: datasource.map(String::from),
+            cache_strategy: None,
+            load: None,
+            is_readonly: false,
+            soft_delete_field: None,
+            pack_separator: None,
+            header: Vec::new(),
+            items: Vec::new(),
+            indexes: Vec::new(),
+            relations: Vec::new(),
+        }))
+    }
+
+    #[test]
+    fn datasource_output_language_maps_cache_to_redis() {
+        assert_eq!(datasource_output_language("cache"), "redis");
+        assert_eq!(datasource_output_language("mariadb"), "mysql");
+        assert_eq!(datasource_output_language("postgres"), "postgresql");
+        assert_eq!(datasource_output_language("sqlite"), "sqlite");
+    }
+
+    #[test]
+    fn collect_datasource_output_languages_deduplicates_cache_and_redis() {
+        let context = SchemaContext {
+            files: vec![FileDef {
+                path: "schema.poly".to_string(),
+                namespaces: vec![NamespaceDef {
+                    name: "game".to_string(),
+                    datasource: Some("cache".to_string()),
+                    items: vec![table("Session", None), table("HotData", Some("redis"))],
+                }],
+                renames: Vec::new(),
+            }],
+        };
+
+        assert_eq!(collect_datasource_output_languages(&context), vec!["redis"]);
+    }
+
+    #[test]
+    fn collect_datasource_output_languages_normalizes_aliases() {
+        let context = SchemaContext {
+            files: vec![FileDef {
+                path: "schema.poly".to_string(),
+                namespaces: vec![NamespaceDef {
+                    name: "game".to_string(),
+                    datasource: Some("mariadb".to_string()),
+                    items: vec![
+                        table("Audit", Some("postgres")),
+                        table("Session", Some("cache")),
+                    ],
+                }],
+                renames: Vec::new(),
+            }],
+        };
+
+        assert_eq!(
+            collect_datasource_output_languages(&context),
+            vec!["mysql", "postgresql", "redis"]
+        );
+    }
 }

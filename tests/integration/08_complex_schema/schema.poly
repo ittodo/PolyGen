@@ -66,7 +66,7 @@ namespace game {
         @taggable
         table Player {
             id: u32 primary_key;
-            name: string unique max_length(32);
+            name: string unique max_length(32) regex("^[A-Za-z0-9_ ]+$");
             level: u16 default(1) range(1, 100);
             experience: u64 default(0);
             stats: Stats;

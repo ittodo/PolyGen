@@ -301,7 +301,7 @@ prelude = ["rhai_utils/type_mapping.rhai"]
 ```
 file.path                        파일 경로
 file.namespaces                  네임스페이스 목록
-file.all_tables                  모든 테이블 (flat)
+file.all_tables                  모든 생성 대상 테이블 (flat, %logic Rhai에서도 사용 가능)
 file.container_name              PascalCase 파일명
 file.all_tables_interface_list   인터페이스 목록 문자열
 ```

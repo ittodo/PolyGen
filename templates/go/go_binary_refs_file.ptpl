@@ -1,0 +1,1015 @@
+%logic
+// Go indexed binary ref generator.
+
+fn go_ref_name(s) {
+    s.name + "Ref"
+}
+
+fn go_table_name(s) {
+    s.name + "RefTable"
+}
+
+fn go_codec_name(s) {
+    s.name + "RefCodec"
+}
+
+fn go_binary_ref_supported_field(t) {
+    if t.is_list {
+        return false;
+    }
+    let base = if t.is_option { t.inner } else { t };
+    if base.lang_type == "string" || base.lang_type == "bytes" || base.lang_type == "bool" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.lang_type != "timestamp" {
+        return true;
+    }
+    return false;
+}
+
+fn go_binary_ref_index_field_type(struct_def, index_field) {
+    for item in struct_def.items {
+        if item.is_field() {
+            let field = as_field(item);
+            if field.name == index_field.name {
+                return field.field_type;
+            }
+        }
+    }
+    return index_field.field_type;
+}
+
+fn go_binary_ref_single_index_type(struct_def, idx) {
+    for item in struct_def.items {
+        if item.is_field() {
+            let field = as_field(item);
+            if field.name == idx.field_name {
+                return field.field_type;
+            }
+        }
+    }
+    return idx.field_type;
+}
+
+fn go_binary_ref_supported_index(struct_def, idx) {
+    if idx.is_composite {
+        for field in idx.fields {
+            if !go_binary_ref_supported_index_type(go_binary_ref_index_field_type(struct_def, field)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return go_binary_ref_supported_index_type(go_binary_ref_single_index_type(struct_def, idx));
+}
+
+fn go_binary_ref_supported_index_type(t) {
+    if t.is_option || t.is_list {
+        return false;
+    }
+    let base = if t.is_option { t.inner } else { t };
+    if base.lang_type == "string" || base.lang_type == "bool" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.lang_type != "bytes" && base.lang_type != "f32" && base.lang_type != "f64" && base.lang_type != "timestamp" {
+        return true;
+    }
+    return false;
+}
+
+fn go_binary_ref_writer_method(t) {
+    if t.lang_type == "string" { return "WriteString"; }
+    if t.lang_type == "bytes" { return "WriteBytes"; }
+    if t.lang_type == "bool" { return "WriteBool"; }
+    if t.lang_type == "u8" { return "WriteUint8"; }
+    if t.lang_type == "i8" { return "WriteInt8"; }
+    if t.lang_type == "u16" { return "WriteUint16"; }
+    if t.lang_type == "i16" { return "WriteInt16"; }
+    if t.lang_type == "u32" { return "WriteUint32"; }
+    if t.lang_type == "i32" { return "WriteInt32"; }
+    if t.lang_type == "u64" { return "WriteUint64"; }
+    if t.lang_type == "i64" { return "WriteInt64"; }
+    if t.lang_type == "f32" { return "WriteFloat32"; }
+    if t.lang_type == "f64" { return "WriteFloat64"; }
+    return "WriteInt32";
+}
+
+fn go_binary_ref_reader_method(t) {
+    if t.lang_type == "string" { return "ReadString"; }
+    if t.lang_type == "bool" { return "ReadBool"; }
+    if t.lang_type == "u8" { return "ReadUint8"; }
+    if t.lang_type == "i8" { return "ReadInt8"; }
+    if t.lang_type == "u16" { return "ReadUint16"; }
+    if t.lang_type == "i16" { return "ReadInt16"; }
+    if t.lang_type == "u32" { return "ReadUint32"; }
+    if t.lang_type == "i32" { return "ReadInt32"; }
+    if t.lang_type == "u64" { return "ReadUint64"; }
+    if t.lang_type == "i64" { return "ReadInt64"; }
+    if t.lang_type == "f32" { return "ReadFloat32"; }
+    if t.lang_type == "f64" { return "ReadFloat64"; }
+    return "ReadInt32";
+}
+
+fn go_binary_ref_read_at_func(t) {
+    if t.lang_type == "string" { return "BinaryRefReadStringAt"; }
+    if t.lang_type == "bytes" { return "BinaryRefReadBytesAt"; }
+    if t.lang_type == "bool" { return "BinaryRefReadBoolAt"; }
+    if t.lang_type == "u8" { return "BinaryRefReadUint8At"; }
+    if t.lang_type == "i8" { return "BinaryRefReadInt8At"; }
+    if t.lang_type == "u16" { return "BinaryRefReadUint16At"; }
+    if t.lang_type == "i16" { return "BinaryRefReadInt16At"; }
+    if t.lang_type == "u32" { return "BinaryRefReadUint32At"; }
+    if t.lang_type == "i32" { return "BinaryRefReadInt32At"; }
+    if t.lang_type == "u64" { return "BinaryRefReadUint64At"; }
+    if t.lang_type == "i64" { return "BinaryRefReadInt64At"; }
+    if t.lang_type == "f32" { return "BinaryRefReadFloat32At"; }
+    if t.lang_type == "f64" { return "BinaryRefReadFloat64At"; }
+    return "BinaryRefReadInt32At";
+}
+
+fn go_binary_ref_search_target_enabled(search) {
+    return search.target == "csharp" || search.target == "go" || search.target == "go_binary_ref";
+}
+
+fn go_binary_ref_search_supported(field) {
+    if !field.has_search_index {
+        return false;
+    }
+    if !go_binary_ref_search_target_enabled(field.search_index) {
+        return false;
+    }
+    let t = field.field_type;
+    if t.is_list {
+        return false;
+    }
+    let base = go_search_base_type(t);
+    let mode = go_search_mode(field);
+    if mode == "ngram" || mode == "word" {
+        return base.lang_type == "string";
+    }
+    if mode != "exact" {
+        return false;
+    }
+    if base.lang_type == "string" || base.lang_type == "bool" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.lang_type != "bytes" && base.lang_type != "f32" && base.lang_type != "f64" && base.lang_type != "timestamp" {
+        return true;
+    }
+    return false;
+}
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace() {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+let all_tables = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for s in tables {
+        all_tables.push(s);
+    }
+}
+
+let entries = [];
+for s in all_tables {
+    let fields = [];
+    let field_index = 0;
+    for item in s.items {
+        if item.is_field() {
+            let f = as_field(item);
+            let base = if f.field_type.is_option { f.field_type.inner } else { f.field_type };
+            if go_binary_ref_supported_field(f.field_type) {
+                fields.push(#{
+                    def: f,
+                    index: field_index,
+                    go_name: to_pascal_case(f.name),
+                    go_type: go_lang_type(f.field_type),
+                    base_type: go_lang_type(base),
+                    write_method: go_binary_ref_writer_method(base),
+                    read_at_func: go_binary_ref_read_at_func(base),
+                    is_option: f.field_type.is_option,
+                    is_string: base.lang_type == "string",
+                    is_bytes: base.lang_type == "bytes",
+                    is_enum: base.is_enum
+                });
+            }
+            field_index += 1;
+        }
+    }
+
+    let indexes = [];
+    for idx in s.indexes {
+        if idx.is_composite && go_binary_ref_supported_index(s, idx) {
+            let key_fields = [];
+            for field in idx.fields {
+                let field_type = go_binary_ref_index_field_type(s, field);
+                let base = if field_type.is_option { field_type.inner } else { field_type };
+                key_fields.push(#{
+                    name: field.name,
+                    go_name: to_pascal_case(field.name),
+                    key_var: "key" + to_pascal_case(field.name),
+                    key_type: go_lang_type(base),
+                    write_method: go_binary_ref_writer_method(base),
+                    read_method: go_binary_ref_reader_method(base),
+                    is_enum: base.is_enum
+                });
+            }
+            indexes.push(#{
+                def: idx,
+                var_name: to_camel_case(idx.name),
+                method_suffix: to_pascal_case(idx.name),
+                field_go_name: "",
+                key_type: go_index_key_type(s, idx),
+                write_method: "",
+                read_method: "",
+                is_unique: idx.is_unique,
+                is_unique_literal: if idx.is_unique { "true" } else { "false" },
+                is_enum: false,
+                is_composite: true,
+                fields: key_fields
+            });
+        } else if go_binary_ref_supported_index(s, idx) {
+            let field_type = go_binary_ref_single_index_type(s, idx);
+            let base = if field_type.is_option { field_type.inner } else { field_type };
+            indexes.push(#{
+                def: idx,
+                var_name: to_camel_case(idx.name),
+                method_suffix: to_pascal_case(idx.name),
+                field_go_name: to_pascal_case(idx.field_name),
+                key_type: go_lang_type(base),
+                write_method: go_binary_ref_writer_method(base),
+                read_method: go_binary_ref_reader_method(base),
+                is_unique: idx.is_unique,
+                is_unique_literal: if idx.is_unique { "true" } else { "false" },
+                is_enum: base.is_enum,
+                is_composite: false,
+                fields: []
+            });
+        }
+    }
+
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = as_field(item);
+            if go_binary_ref_search_supported(f) {
+                let base = go_search_base_type(f.field_type);
+                let mode = go_search_mode(f);
+                search_indexes.push(#{
+                    def: f,
+                    name: f.search_index.name,
+                    var_name: "search" + to_pascal_case(f.search_index.name),
+                    method_suffix: to_pascal_case(f.search_index.name),
+                    field_go_name: to_pascal_case(f.name),
+                    key_type: if mode == "ngram" || mode == "word" { "string" } else { go_lang_type(base) },
+                    write_method: if mode == "ngram" || mode == "word" { "WriteString" } else { go_binary_ref_writer_method(base) },
+                    read_method: if mode == "ngram" || mode == "word" { "ReadString" } else { go_binary_ref_reader_method(base) },
+                    mode: mode,
+                    normalize: go_search_normalize(f),
+                    n: go_search_n(f),
+                    min: go_search_min(f),
+                    is_token_mode: mode == "ngram" || mode == "word",
+                    is_exact_string: mode == "exact" && base.lang_type == "string",
+                    is_option: f.field_type.is_option,
+                    is_enum: base.is_enum
+                });
+            }
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        ref_name: go_ref_name(s),
+        table_name: go_table_name(s),
+        codec_name: go_codec_name(s),
+        fields: fields,
+        field_count: field_index,
+        indexes: indexes,
+        index_count: indexes.len(),
+        search_indexes: search_indexes,
+        search_index_count: search_indexes.len(),
+        member_name: s.name + "s"
+    });
+}
+
+let base_name = file.path;
+if base_name.contains("/") {
+    let parts = base_name.split("/");
+    base_name = parts[parts.len() - 1];
+}
+if base_name.ends_with(".poly") {
+    base_name = base_name.sub_string(0, base_name.len() - 5);
+}
+let context_name = to_pascal_case(base_name) + "BinaryRefContext";
+let binary_container_name = to_pascal_case(base_name) + "BinaryRefContainer";
+let entry_count = entries.len;
+%endlogic
+// Code generated by PolyGen. DO NOT EDIT.
+// Source: {{source_path}}
+
+package polygen
+
+import (
+	"bytes"
+	"fmt"
+	"strings"
+)
+
+func binaryRefSearchNormalize(value string, policy string) string {
+	result := value
+	if policy == "trim" || policy == "lower_trim" {
+		result = strings.TrimSpace(result)
+	}
+	if policy == "lower" || policy == "lower_trim" {
+		result = strings.ToLower(result)
+	}
+	return result
+}
+
+func binaryRefSearchTokens(value string, mode string, n int, min int, normalize string) []string {
+	normalized := binaryRefSearchNormalize(value, normalize)
+	seen := make(map[string]struct{})
+	add := func(token string) {
+		if len(token) >= min {
+			seen[token] = struct{}{}
+		}
+	}
+	switch mode {
+	case "exact":
+		if normalized != "" || min <= 0 {
+			seen[normalized] = struct{}{}
+		}
+	case "word":
+		for _, token := range strings.Fields(normalized) {
+			add(token)
+		}
+	default:
+		if n <= 0 {
+			panic("search ngram size must be positive")
+		}
+		runes := []rune(normalized)
+		if len(runes) >= n && len(runes) >= min {
+			for i := 0; i <= len(runes)-n; i++ {
+				add(string(runes[i : i+n]))
+			}
+		}
+	}
+	tokens := make([]string, 0, len(seen))
+	for token := range seen {
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
+
+func binaryRefSearchAdd[K comparable](m map[K][]int, key K, ordinal int) {
+	m[key] = append(m[key], ordinal)
+}
+
+func binaryRefSearchIntersect(postings [][]int) []int {
+	if len(postings) == 0 {
+		return nil
+	}
+	result := make([]int, 0)
+	for _, candidate := range postings[0] {
+		matched := true
+		for i := 1; i < len(postings); i++ {
+			found := false
+			for _, value := range postings[i] {
+				if value == candidate {
+					found = true
+					break
+				}
+			}
+			if !found {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			result = append(result, candidate)
+		}
+	}
+	return result
+}
+
+%for entry in entries
+type {{entry.ref_name}} struct {
+	owner *BinaryDocumentOwner
+	rowOffset int
+}
+
+%for field in entry.fields
+%if field.is_option
+func (r {{entry.ref_name}}) Has{{field.go_name}}() (bool, error) {
+	offset, err := BinaryRefGetFieldOffset(r.owner.Bytes, r.rowOffset, {{field.index}})
+	return offset >= 0, err
+}
+
+func (r {{entry.ref_name}}) {{field.go_name}}() ({{field.go_type}}, error) {
+	offset, err := BinaryRefGetFieldOffset(r.owner.Bytes, r.rowOffset, {{field.index}})
+	var zero {{field.go_type}}
+	if err != nil || offset < 0 {
+		return zero, err
+	}
+%if field.is_enum
+	raw, err := BinaryRefReadInt32At(r.owner.Bytes, offset)
+	if err != nil {
+		return zero, err
+	}
+	value := {{field.base_type}}(raw)
+	if !isValid{{field.base_type}}Value(value) {
+		return zero, fmt.Errorf("invalid enum value for {{field.base_type}}: %d", raw)
+	}
+	return &value, nil
+%else
+	value, err := {{field.read_at_func}}(r.owner.Bytes, offset)
+	if err != nil {
+		return zero, err
+	}
+	return &value, nil
+%endif
+}
+
+%else
+func (r {{entry.ref_name}}) {{field.go_name}}() ({{field.go_type}}, error) {
+	offset, err := BinaryRefRequireFieldOffset(r.owner.Bytes, r.rowOffset, {{field.index}})
+	var zero {{field.go_type}}
+	if err != nil {
+		return zero, err
+	}
+%if field.is_enum
+	raw, err := BinaryRefReadInt32At(r.owner.Bytes, offset)
+	if err != nil {
+		return zero, err
+	}
+	value := {{field.go_type}}(raw)
+	if !isValid{{field.go_type}}Value(value) {
+		return zero, fmt.Errorf("invalid enum value for {{field.go_type}}: %d", raw)
+	}
+	return value, nil
+%else
+	return {{field.read_at_func}}(r.owner.Bytes, offset)
+%endif
+}
+
+%endif
+%endfor
+type {{entry.codec_name}} struct{}
+
+func ({{entry.codec_name}}) writeRow(row *{{entry.def.name}}) ([]byte, error) {
+	builder, err := NewBinaryRefRowBuilder({{entry.field_count}})
+	if err != nil {
+		return nil, err
+	}
+%for field in entry.fields
+%if field.is_option
+	if row.{{field.go_name}} != nil {
+		if err := builder.SetField({{field.index}}, func(w *BinaryWriter) error {
+%if field.is_enum
+			return binaryWrite{{field.base_type}}Value(w, *row.{{field.go_name}})
+%else
+			return w.{{field.write_method}}(*row.{{field.go_name}})
+%endif
+		}); err != nil {
+			return nil, err
+		}
+	}
+%else
+	if err := builder.SetField({{field.index}}, func(w *BinaryWriter) error {
+%if field.is_enum
+		return binaryWrite{{field.go_type}}Value(w, row.{{field.go_name}})
+%else
+		return w.{{field.write_method}}(row.{{field.go_name}})
+%endif
+	}); err != nil {
+		return nil, err
+	}
+%endif
+%endfor
+	return builder.Bytes()
+}
+
+type {{entry.table_name}} struct {
+	owner *BinaryDocumentOwner
+	rowOffsets []int
+%for idx in entry.indexes
+%if idx.is_unique
+	{{idx.var_name}} map[{{idx.key_type}}]int
+%else
+	{{idx.var_name}} map[{{idx.key_type}}][]int
+%endif
+%endfor
+%for search in entry.search_indexes
+	{{search.var_name}} map[{{search.key_type}}][]int
+%endfor
+}
+
+func (t *{{entry.table_name}}) Count() int { return len(t.rowOffsets) }
+
+func (t *{{entry.table_name}}) At(index int) {{entry.ref_name}} {
+	return {{entry.ref_name}}{owner: t.owner, rowOffset: t.rowOffsets[index]}
+}
+
+func (t *{{entry.table_name}}) refsFromOrdinals(ordinals []int) []{{entry.ref_name}} {
+	if len(ordinals) == 0 {
+		return nil
+	}
+	refs := make([]{{entry.ref_name}}, 0, len(ordinals))
+	for _, ordinal := range ordinals {
+		if ordinal >= 0 && ordinal < len(t.rowOffsets) {
+			refs = append(refs, {{entry.ref_name}}{owner: t.owner, rowOffset: t.rowOffsets[ordinal]})
+		}
+	}
+	return refs
+}
+
+%for idx in entry.indexes
+%if idx.is_unique
+func (t *{{entry.table_name}}) Get{{idx.method_suffix}}(key {{idx.key_type}}) ({{entry.ref_name}}, bool) {
+	offset, ok := t.{{idx.var_name}}[key]
+	if !ok {
+		return {{entry.ref_name}}{}, false
+	}
+	return {{entry.ref_name}}{owner: t.owner, rowOffset: offset}, true
+}
+
+%else
+func (t *{{entry.table_name}}) Find{{idx.method_suffix}}(key {{idx.key_type}}) []{{entry.ref_name}} {
+	offsets := t.{{idx.var_name}}[key]
+	refs := make([]{{entry.ref_name}}, 0, len(offsets))
+	for _, offset := range offsets {
+		refs = append(refs, {{entry.ref_name}}{owner: t.owner, rowOffset: offset})
+	}
+	return refs
+}
+
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+func (t *{{entry.table_name}}) SearchBy{{search.method_suffix}}(query string) []{{entry.ref_name}} {
+	tokens := binaryRefSearchTokens(query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}")
+	if len(tokens) == 0 {
+		return nil
+	}
+	postings := make([][]int, 0, len(tokens))
+	for _, token := range tokens {
+		ordinals := t.{{search.var_name}}[token]
+		if len(ordinals) == 0 {
+			return nil
+		}
+		postings = append(postings, ordinals)
+	}
+	return t.refsFromOrdinals(binaryRefSearchIntersect(postings))
+}
+
+%else
+func (t *{{entry.table_name}}) SearchBy{{search.method_suffix}}(key {{search.key_type}}) []{{entry.ref_name}} {
+%if search.is_exact_string
+	return t.refsFromOrdinals(t.{{search.var_name}}[binaryRefSearchNormalize(key, "{{search.normalize}}")])
+%else
+	return t.refsFromOrdinals(t.{{search.var_name}}[key])
+%endif
+}
+
+%endif
+%endfor
+func ({{entry.table_name}}) write(writer *BinaryWriter, sourceRows []*{{entry.def.name}}) error {
+	if err := writer.WriteString("{{entry.def.fqn}}"); err != nil {
+		return err
+	}
+	type binaryRefRow struct {
+		row *{{entry.def.name}}
+		offset int
+		bytes []byte
+	}
+	rows := make([]binaryRefRow, 0, len(sourceRows))
+	cursor := 0
+	codec := {{entry.codec_name}}{}
+	for _, row := range sourceRows {
+		rowBytes, err := codec.writeRow(row)
+		if err != nil {
+			return err
+		}
+		rows = append(rows, binaryRefRow{row: row, offset: cursor, bytes: rowBytes})
+		cursor += len(rowBytes)
+	}
+	if err := writer.WriteInt32(int32(len(rows))); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := writer.WriteInt32(int32(row.offset)); err != nil {
+			return err
+		}
+	}
+	if err := writer.WriteInt32({{entry.index_count}}); err != nil {
+		return err
+	}
+%for idx in entry.indexes
+	if err := writer.WriteString("{{idx.def.name}}"); err != nil { return err }
+	if err := writer.WriteBool({{idx.is_unique_literal}}); err != nil { return err }
+%if idx.is_unique
+	{
+		index := make(map[{{idx.key_type}}]int)
+		for _, row := range rows {
+%if idx.is_composite
+			key := {{idx.key_type}}{
+%for field in idx.fields
+				{{field.go_name}}: row.row.{{field.go_name}},
+%endfor
+			}
+			index[key] = row.offset
+%else
+			index[row.row.{{idx.field_go_name}}] = row.offset
+%endif
+		}
+		if err := writer.WriteInt32(int32(len(index))); err != nil { return err }
+		for key, offset := range index {
+%if idx.is_composite
+%for field in idx.fields
+%if field.is_enum
+			if err := writer.WriteInt32(int32(key.{{field.go_name}})); err != nil { return err }
+%else
+			if err := writer.{{field.write_method}}(key.{{field.go_name}}); err != nil { return err }
+%endif
+%endfor
+%else
+%if idx.is_enum
+			if err := writer.WriteInt32(int32(key)); err != nil { return err }
+%else
+			if err := writer.{{idx.write_method}}(key); err != nil { return err }
+%endif
+%endif
+			if err := writer.WriteInt32(int32(offset)); err != nil { return err }
+		}
+	}
+%else
+	{
+		index := make(map[{{idx.key_type}}][]int)
+		for _, row := range rows {
+%if idx.is_composite
+			key := {{idx.key_type}}{
+%for field in idx.fields
+				{{field.go_name}}: row.row.{{field.go_name}},
+%endfor
+			}
+			index[key] = append(index[key], row.offset)
+%else
+			index[row.row.{{idx.field_go_name}}] = append(index[row.row.{{idx.field_go_name}}], row.offset)
+%endif
+		}
+		if err := writer.WriteInt32(int32(len(index))); err != nil { return err }
+		for key, offsets := range index {
+%if idx.is_composite
+%for field in idx.fields
+%if field.is_enum
+			if err := writer.WriteInt32(int32(key.{{field.go_name}})); err != nil { return err }
+%else
+			if err := writer.{{field.write_method}}(key.{{field.go_name}}); err != nil { return err }
+%endif
+%endfor
+%else
+%if idx.is_enum
+			if err := writer.WriteInt32(int32(key)); err != nil { return err }
+%else
+			if err := writer.{{idx.write_method}}(key); err != nil { return err }
+%endif
+%endif
+			if err := writer.WriteInt32(int32(len(offsets))); err != nil { return err }
+			for _, offset := range offsets {
+				if err := writer.WriteInt32(int32(offset)); err != nil { return err }
+			}
+		}
+	}
+%endif
+%endfor
+	if err := writer.WriteInt32({{entry.search_index_count}}); err != nil {
+		return err
+	}
+%for search in entry.search_indexes
+	if err := writer.WriteString("{{search.name}}"); err != nil { return err }
+	if err := writer.WriteString("{{search.mode}}"); err != nil { return err }
+%if search.is_token_mode
+	{
+		index := make(map[string][]int)
+		for ordinal, row := range rows {
+%if search.is_option
+			if row.row.{{search.field_go_name}} == nil { continue }
+			for _, token := range binaryRefSearchTokens(*row.row.{{search.field_go_name}}, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}") {
+				binaryRefSearchAdd(index, token, ordinal)
+			}
+%else
+			for _, token := range binaryRefSearchTokens(row.row.{{search.field_go_name}}, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}") {
+				binaryRefSearchAdd(index, token, ordinal)
+			}
+%endif
+		}
+		if err := writer.WriteInt32(int32(len(index))); err != nil { return err }
+		for key, ordinals := range index {
+			if err := writer.WriteString(key); err != nil { return err }
+			if err := writer.WriteInt32(int32(len(ordinals))); err != nil { return err }
+			for _, ordinal := range ordinals {
+				if err := writer.WriteInt32(int32(ordinal)); err != nil { return err }
+			}
+		}
+	}
+%else
+	{
+		index := make(map[{{search.key_type}}][]int)
+		for ordinal, row := range rows {
+%if search.is_option
+			if row.row.{{search.field_go_name}} == nil { continue }
+%if search.is_exact_string
+			key := binaryRefSearchNormalize(*row.row.{{search.field_go_name}}, "{{search.normalize}}")
+%else
+			key := *row.row.{{search.field_go_name}}
+%endif
+%else
+%if search.is_exact_string
+			key := binaryRefSearchNormalize(row.row.{{search.field_go_name}}, "{{search.normalize}}")
+%else
+			key := row.row.{{search.field_go_name}}
+%endif
+%endif
+			binaryRefSearchAdd(index, key, ordinal)
+		}
+		if err := writer.WriteInt32(int32(len(index))); err != nil { return err }
+		for key, ordinals := range index {
+%if search.is_enum
+			if err := writer.WriteInt32(int32(key)); err != nil { return err }
+%else
+			if err := writer.{{search.write_method}}(key); err != nil { return err }
+%endif
+			if err := writer.WriteInt32(int32(len(ordinals))); err != nil { return err }
+			for _, ordinal := range ordinals {
+				if err := writer.WriteInt32(int32(ordinal)); err != nil { return err }
+			}
+		}
+	}
+%endif
+%endfor
+	if err := writer.WriteInt32(int32(cursor)); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := writer.WriteRaw(row.bytes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func read{{entry.table_name}}(owner *BinaryDocumentOwner, reader *BinaryRefCursor) (*{{entry.table_name}}, error) {
+	tableName, err := reader.ReadString()
+	if err != nil {
+		return nil, err
+	}
+	if tableName != "{{entry.def.fqn}}" {
+		return nil, fmt.Errorf("expected table {{entry.def.fqn}} but found %s", tableName)
+	}
+	rowCount, err := reader.ReadInt32()
+	if err != nil {
+		return nil, err
+	}
+	if rowCount < 0 {
+		return nil, fmt.Errorf("negative row count")
+	}
+	rowOffsets := make([]int, int(rowCount))
+	for i := 0; i < int(rowCount); i++ {
+		offset, err := reader.ReadInt32()
+		if err != nil {
+			return nil, err
+		}
+		rowOffsets[i] = int(offset)
+	}
+	indexCount, err := reader.ReadInt32()
+	if err != nil {
+		return nil, err
+	}
+	if indexCount != {{entry.index_count}} {
+		return nil, fmt.Errorf("unexpected index count for {{entry.def.fqn}}: %d", indexCount)
+	}
+%for idx in entry.indexes
+%if idx.is_unique
+	{{idx.var_name}} := make(map[{{idx.key_type}}]int)
+%else
+	{{idx.var_name}} := make(map[{{idx.key_type}}][]int)
+%endif
+	{
+		indexName, err := reader.ReadString()
+		if err != nil { return nil, err }
+		if indexName != "{{idx.def.name}}" { return nil, fmt.Errorf("expected index {{idx.def.name}} but found %s", indexName) }
+		isUnique, err := reader.ReadBool()
+		if err != nil { return nil, err }
+		if isUnique != {{idx.is_unique_literal}} { return nil, fmt.Errorf("binary index uniqueness does not match generated schema") }
+		entryCount, err := reader.ReadInt32()
+		if err != nil { return nil, err }
+		if entryCount < 0 { return nil, fmt.Errorf("negative index entry count") }
+		for i := 0; i < int(entryCount); i++ {
+%if idx.is_composite
+%for field in idx.fields
+%if field.is_enum
+			raw{{field.key_var}}, err := reader.ReadInt32()
+			if err != nil { return nil, err }
+			{{field.key_var}} := {{field.key_type}}(raw{{field.key_var}})
+%else
+			{{field.key_var}}, err := reader.{{field.read_method}}()
+			if err != nil { return nil, err }
+%endif
+%endfor
+			key := {{idx.key_type}}{
+%for field in idx.fields
+				{{field.go_name}}: {{field.key_var}},
+%endfor
+			}
+%else
+%if idx.is_enum
+			rawKey, err := reader.ReadInt32()
+			if err != nil { return nil, err }
+			key := {{idx.key_type}}(rawKey)
+%else
+			key, err := reader.{{idx.read_method}}()
+			if err != nil { return nil, err }
+%endif
+%endif
+%if idx.is_unique
+			offset, err := reader.ReadInt32()
+			if err != nil { return nil, err }
+			{{idx.var_name}}[key] = int(offset)
+%else
+			valueCount, err := reader.ReadInt32()
+			if err != nil { return nil, err }
+			if valueCount < 0 { return nil, fmt.Errorf("negative group index value count") }
+			offsets := make([]int, int(valueCount))
+			for j := 0; j < int(valueCount); j++ {
+				offset, err := reader.ReadInt32()
+				if err != nil { return nil, err }
+				offsets[j] = int(offset)
+			}
+			{{idx.var_name}}[key] = offsets
+%endif
+		}
+	}
+%endfor
+	searchIndexCount, err := reader.ReadInt32()
+	if err != nil {
+		return nil, err
+	}
+	if searchIndexCount != {{entry.search_index_count}} {
+		return nil, fmt.Errorf("unexpected search index count for {{entry.def.fqn}}: %d", searchIndexCount)
+	}
+%for search in entry.search_indexes
+	{{search.var_name}} := make(map[{{search.key_type}}][]int)
+	{
+		searchIndexName, err := reader.ReadString()
+		if err != nil { return nil, err }
+		if searchIndexName != "{{search.name}}" { return nil, fmt.Errorf("expected search index {{search.name}} but found %s", searchIndexName) }
+		searchMode, err := reader.ReadString()
+		if err != nil { return nil, err }
+		if searchMode != "{{search.mode}}" { return nil, fmt.Errorf("binary search mode does not match generated schema") }
+		entryCount, err := reader.ReadInt32()
+		if err != nil { return nil, err }
+		if entryCount < 0 { return nil, fmt.Errorf("negative search index entry count") }
+		for i := 0; i < int(entryCount); i++ {
+%if search.is_enum
+			rawKey, err := reader.ReadInt32()
+			if err != nil { return nil, err }
+			key := {{search.key_type}}(rawKey)
+%else
+			key, err := reader.{{search.read_method}}()
+			if err != nil { return nil, err }
+%endif
+			valueCount, err := reader.ReadInt32()
+			if err != nil { return nil, err }
+			if valueCount < 0 { return nil, fmt.Errorf("negative search index value count") }
+			ordinals := make([]int, int(valueCount))
+			for j := 0; j < int(valueCount); j++ {
+				ordinal, err := reader.ReadInt32()
+				if err != nil { return nil, err }
+				ordinals[j] = int(ordinal)
+			}
+			{{search.var_name}}[key] = ordinals
+		}
+	}
+%endfor
+	rowBlockLength, err := reader.ReadInt32()
+	if err != nil {
+		return nil, err
+	}
+	if rowBlockLength < 0 {
+		return nil, fmt.Errorf("negative row block length")
+	}
+	rowBlockStart := reader.Position()
+	if err := reader.Skip(int(rowBlockLength)); err != nil {
+		return nil, err
+	}
+	for i := range rowOffsets {
+		rowOffsets[i] += rowBlockStart
+	}
+%for idx in entry.indexes
+%if idx.is_unique
+	for key, offset := range {{idx.var_name}} {
+		{{idx.var_name}}[key] = rowBlockStart + offset
+	}
+%else
+	for key, offsets := range {{idx.var_name}} {
+		for i := range offsets {
+			offsets[i] += rowBlockStart
+		}
+		{{idx.var_name}}[key] = offsets
+	}
+%endif
+%endfor
+	return &{{entry.table_name}}{
+		owner: owner,
+		rowOffsets: rowOffsets,
+%for idx in entry.indexes
+		{{idx.var_name}}: {{idx.var_name}},
+%endfor
+%for search in entry.search_indexes
+		{{search.var_name}}: {{search.var_name}},
+%endfor
+	}, nil
+}
+
+%endfor
+type {{binary_container_name}} struct {
+%for entry in entries
+	{{entry.member_name}} []*{{entry.def.name}}
+%endfor
+}
+
+type {{context_name}} struct {
+	owner *BinaryDocumentOwner
+%for entry in entries
+	{{entry.member_name}} *{{entry.table_name}}
+%endfor
+}
+
+func Open{{context_name}}(input []byte) (*{{context_name}}, error) {
+	owner := NewBinaryDocumentOwner(input)
+	reader := NewBinaryRefCursor(input)
+	if err := BinaryRefReadHeader(reader); err != nil {
+		return nil, err
+	}
+	tableCount, err := reader.ReadInt32()
+	if err != nil {
+		return nil, err
+	}
+	if tableCount != {{entry_count}} {
+		return nil, fmt.Errorf("unexpected table count: %d", tableCount)
+	}
+%for entry in entries
+	{{entry.member_name}}, err := read{{entry.table_name}}(owner, reader)
+	if err != nil {
+		return nil, err
+	}
+%endfor
+	return &{{context_name}}{
+		owner: owner,
+%for entry in entries
+		{{entry.member_name}}: {{entry.member_name}},
+%endfor
+	}, nil
+}
+
+func Save{{context_name}}(container *{{binary_container_name}}) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := NewBinaryWriter(&buf)
+	if err := BinaryRefWriteHeader(writer); err != nil {
+		return nil, err
+	}
+	if err := writer.WriteInt32({{entry_count}}); err != nil {
+		return nil, err
+	}
+%for entry in entries
+	if err := ({{entry.table_name}}{}).write(writer, container.{{entry.member_name}}); err != nil {
+		return nil, err
+	}
+%endfor
+	return buf.Bytes(), nil
+}

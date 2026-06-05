@@ -18,6 +18,7 @@
 #include <memory>
 #include <type_traits>
 #include <functional>
+#include <tuple>
 #include <unordered_map>
 #include <map>
 #include <deque>
@@ -290,6 +291,12 @@ public:
     // Bytes: u32 length + raw bytes
     void write_bytes(const std::vector<uint8_t>& value) {
         write_u32(static_cast<uint32_t>(value.size()));
+        if (!value.empty()) {
+            stream_.write(reinterpret_cast<const char*>(value.data()), value.size());
+        }
+    }
+
+    void write_raw(const std::vector<uint8_t>& value) {
         if (!value.empty()) {
             stream_.write(reinterpret_cast<const char*>(value.data()), value.size());
         }
@@ -610,8 +617,25 @@ private:
 // Container Index Types
 // ============================================================================
 
+struct TupleHash {
+    template<typename... Args>
+    size_t operator()(const std::tuple<Args...>& value) const {
+        size_t seed = 0;
+        std::apply([&seed](const auto&... items) {
+            (hash_combine(seed, items), ...);
+        }, value);
+        return seed;
+    }
+
+private:
+    template<typename T>
+    static void hash_combine(size_t& seed, const T& value) {
+        seed ^= std::hash<T>{}(value) + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+    }
+};
+
 // Unique index: maps a single key to a single row
-template<typename K, typename V>
+template<typename K, typename V, typename Hash = std::hash<K>>
 class UniqueIndex {
 public:
     void insert(const K& key, V* value) {
@@ -630,12 +654,12 @@ public:
     void clear() { index_.clear(); }
 
 private:
-    std::unordered_map<K, V*> index_;
+    std::unordered_map<K, V*, Hash> index_;
 };
 
 // Specialization for string keys
-template<typename V>
-class UniqueIndex<std::string, V> {
+template<typename V, typename Hash>
+class UniqueIndex<std::string, V, Hash> {
 public:
     void insert(const std::string& key, V* value) {
         index_[key] = value;
@@ -657,7 +681,7 @@ private:
 };
 
 // Group index: maps a single key to multiple rows
-template<typename K, typename V>
+template<typename K, typename V, typename Hash = std::hash<K>>
 class GroupIndex {
 public:
     void insert(const K& key, V* value) {
@@ -676,13 +700,13 @@ public:
     void clear() { index_.clear(); }
 
 private:
-    std::unordered_map<K, std::vector<V*>> index_;
+    std::unordered_map<K, std::vector<V*>, Hash> index_;
     static inline std::vector<V*> empty_;
 };
 
 // Specialization for string keys
-template<typename V>
-class GroupIndex<std::string, V> {
+template<typename V, typename Hash>
+class GroupIndex<std::string, V, Hash> {
 public:
     void insert(const std::string& key, V* value) {
         index_[key].push_back(value);
@@ -899,6 +923,14 @@ private:
 
 class BinaryRefFormat {
 public:
+    static void write_header(BinaryWriter& writer) {
+        static constexpr std::array<uint8_t, 8> magic = {'P', 'G', 'B', 'R', 'E', 'F', '1', 0};
+        for (uint8_t value : magic) {
+            writer.write_u8(value);
+        }
+        writer.write_i32(2);
+    }
+
     static void read_header(BinaryReader& reader) {
         static constexpr std::array<uint8_t, 8> magic = {'P', 'G', 'B', 'R', 'E', 'F', '1', 0};
         for (uint8_t expected : magic) {
@@ -907,8 +939,15 @@ public:
             }
         }
         const int32_t version = reader.read_i32();
-        if (version != 1) {
+        if (version != 2) {
             throw std::runtime_error("Unsupported PolyGen binary ref version: " + std::to_string(version));
+        }
+    }
+
+    static void write_string(BinaryWriter& writer, const std::string& value) {
+        writer.write_i32(static_cast<int32_t>(value.size()));
+        for (char ch : value) {
+            writer.write_u8(static_cast<uint8_t>(ch));
         }
     }
 

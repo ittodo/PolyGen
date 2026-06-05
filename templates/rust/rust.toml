@@ -48,6 +48,11 @@ output = "{{stem}}_loaders.rs"
 template = "rust_container_file.ptpl"
 output = "{{stem}}_container.rs"
 
+# Indexed BinaryRef document API
+[[templates.extra]]
+template = "rust_binary_refs_file.ptpl"
+output = "{{stem}}_binary_refs.rs"
+
 # Redis key helpers (no client dependency)
 [[templates.extra]]
 template = "rust_redis_keys_file.ptpl"

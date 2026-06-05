@@ -48,7 +48,12 @@ fn render_struct(s) {
         }
     }
     if fields.len() == 0 {
-        out += "    pass\n\n";
+        out += "    @classmethod\n";
+        out += "    def from_dict(cls, data: Mapping[str, Any]) -> " + class_name + ":\n";
+        out += "        return cls()\n\n";
+        out += "    @classmethod\n";
+        out += "    def from_csv_row(cls, row: Mapping[str, Any]) -> " + class_name + ":\n";
+        out += "        return cls.from_dict(row)\n\n";
         return out;
     }
 
@@ -60,7 +65,267 @@ fn render_struct(s) {
         }
         out += "\n";
     }
+
+    if s.is_embed && s.pack_separator != () {
+        out += render_pack_methods(s, fields);
+    }
+
+    out += render_from_dict_methods(class_name, fields);
+    out += render_binary_methods(class_name, fields);
     out + "\n"
+}
+
+fn coerce_args(type_ref) {
+    let base = type_ref;
+    if base.is_option || base.is_list {
+        base = base.inner;
+    }
+
+    if base.is_enum {
+        return "enum_cls=" + py::class_name_for_type(base);
+    }
+    if base.is_struct {
+        return "model_cls=" + py::class_name_for_type(base);
+    }
+    "type_name=" + py::quote_py_string(base.type_name)
+}
+
+fn parse_field_expr(field, source_expr) {
+    let field_name = py::quote_py_string(field.name);
+    let args = coerce_args(field.field_type);
+    if field.field_type.is_option {
+        return "_coerce_optional(" + source_expr + ", " + field_name + ", " + args + ")";
+    }
+    if field.field_type.is_list {
+        return "_coerce_list(" + source_expr + ", " + field_name + ", " + args + ")";
+    }
+    "_coerce_value(" + source_expr + ", " + field_name + ", " + args + ")"
+}
+
+fn render_from_dict_methods(class_name, fields) {
+    let out = "\n";
+    out += "    @classmethod\n";
+    out += "    def from_dict(cls, data: Mapping[str, Any]) -> " + class_name + ":\n";
+    out += "        return cls(\n";
+    for field in fields {
+        let field_literal = py::quote_py_string(field.name);
+        out += "            " + field.name + "=" + parse_field_expr(field, "data.get(" + field_literal + ")") + ",\n";
+    }
+    out += "        )\n\n";
+    out += "    @classmethod\n";
+    out += "    def from_csv_row(cls, row: Mapping[str, Any]) -> " + class_name + ":\n";
+    out += "        return cls.from_dict(row)\n";
+    out
+}
+
+fn binary_reader_expr(type_ref, reader_expr) {
+    if type_ref.is_option {
+        return reader_expr + ".read_optional(lambda r: " + binary_reader_expr(type_ref.inner, "r") + ")";
+    }
+    if type_ref.is_list {
+        return reader_expr + ".read_list(lambda r: " + binary_reader_expr(type_ref.inner, "r") + ")";
+    }
+    if type_ref.is_enum {
+        return py::class_name_for_type(type_ref) + "(" + reader_expr + ".read_i32())";
+    }
+    if type_ref.is_struct {
+        return py::class_name_for_type(type_ref) + ".read_binary(" + reader_expr + ")";
+    }
+    switch type_ref.type_name {
+        "string" => reader_expr + ".read_string()",
+        "bytes" => reader_expr + ".read_bytes()",
+        "bool" => reader_expr + ".read_bool()",
+        "u8" => reader_expr + ".read_u8()",
+        "i8" => reader_expr + ".read_i8()",
+        "u16" => reader_expr + ".read_u16()",
+        "i16" => reader_expr + ".read_i16()",
+        "u32" => reader_expr + ".read_u32()",
+        "i32" => reader_expr + ".read_i32()",
+        "u64" => reader_expr + ".read_u64()",
+        "i64" => reader_expr + ".read_i64()",
+        "f32" => reader_expr + ".read_f32()",
+        "f64" => reader_expr + ".read_f64()",
+        "timestamp" => reader_expr + ".read_timestamp()",
+        _ => reader_expr + ".read_i32()"
+    }
+}
+
+fn binary_write_expr(type_ref, writer_expr, value_expr) {
+    if type_ref.is_option {
+        return writer_expr + ".write_optional(" + value_expr + ", lambda w, v: " + binary_write_expr(type_ref.inner, "w", "v") + ")";
+    }
+    if type_ref.is_list {
+        return writer_expr + ".write_list(" + value_expr + ", lambda w, v: " + binary_write_expr(type_ref.inner, "w", "v") + ")";
+    }
+    if type_ref.is_enum {
+        return "_write_enum(" + writer_expr + ", " + py::class_name_for_type(type_ref) + ", " + value_expr + ")";
+    }
+    if type_ref.is_struct {
+        return value_expr + ".write_binary(" + writer_expr + ")";
+    }
+    switch type_ref.type_name {
+        "string" => writer_expr + ".write_string(" + value_expr + ")",
+        "bytes" => writer_expr + ".write_bytes(" + value_expr + ")",
+        "bool" => writer_expr + ".write_bool(" + value_expr + ")",
+        "u8" => writer_expr + ".write_u8(" + value_expr + ")",
+        "i8" => writer_expr + ".write_i8(" + value_expr + ")",
+        "u16" => writer_expr + ".write_u16(" + value_expr + ")",
+        "i16" => writer_expr + ".write_i16(" + value_expr + ")",
+        "u32" => writer_expr + ".write_u32(" + value_expr + ")",
+        "i32" => writer_expr + ".write_i32(" + value_expr + ")",
+        "u64" => writer_expr + ".write_u64(" + value_expr + ")",
+        "i64" => writer_expr + ".write_i64(" + value_expr + ")",
+        "f32" => writer_expr + ".write_f32(" + value_expr + ")",
+        "f64" => writer_expr + ".write_f64(" + value_expr + ")",
+        "timestamp" => writer_expr + ".write_timestamp(" + value_expr + ")",
+        _ => writer_expr + ".write_i32(int(" + value_expr + "))"
+    }
+}
+
+fn render_binary_methods(class_name, fields) {
+    let out = "\n";
+    out += "    @classmethod\n";
+    out += "    def read_binary(cls, reader: _BinaryReader) -> " + class_name + ":\n";
+    out += "        return cls(\n";
+    for field in fields {
+        out += "            " + field.name + "=" + binary_reader_expr(field.field_type, "reader") + ",\n";
+    }
+    out += "        )\n\n";
+
+    out += "    @classmethod\n";
+    out += "    def from_binary(cls, data: bytes | bytearray | memoryview) -> " + class_name + ":\n";
+    out += "        return cls.read_binary(_BinaryReader(data))\n\n";
+
+    out += "    def write_binary(self, writer: _BinaryWriter) -> None:\n";
+    if fields.len() == 0 {
+        out += "        return None\n";
+    } else {
+        for field in fields {
+            out += "        " + binary_write_expr(field.field_type, "writer", "self." + field.name) + "\n";
+        }
+    }
+    out += "\n";
+
+    out += "    def to_binary(self) -> bytes:\n";
+    out += "        writer = _BinaryWriter()\n";
+    out += "        self.write_binary(writer)\n";
+    out += "        return writer.to_bytes()\n";
+    out
+}
+
+fn pack_value_expr(field) {
+    let t = field.field_type;
+    let name = field.name;
+    let type_name = t.type_name;
+    if type_name == "bool" {
+        return "'true' if self." + name + " else 'false'";
+    }
+    if t.is_enum {
+        return "str(int(self." + name + "))";
+    }
+    return "str(self." + name + ")";
+}
+
+fn parse_value_expr(field, raw_expr) {
+    let t = field.field_type;
+    let type_name = t.type_name;
+    if type_name == "string" {
+        return raw_expr;
+    }
+    if type_name == "bool" {
+        return "_parse_bool(" + raw_expr + ", '" + field.name + "')";
+    }
+    if type_name == "f32" || type_name == "f64" {
+        return "_parse_float(" + raw_expr + ", '" + field.name + "')";
+    }
+    if type_name == "u8" || type_name == "u16" || type_name == "u32" || type_name == "u64" {
+        return "_parse_int(" + raw_expr + ", '" + field.name + "', unsigned=True)";
+    }
+    if type_name == "i8" || type_name == "i16" || type_name == "i32" || type_name == "i64" {
+        return "_parse_int(" + raw_expr + ", '" + field.name + "')";
+    }
+    if t.is_enum {
+        return py::class_name_for_type(t) + "(_parse_int(" + raw_expr + ", '" + field.name + "'))";
+    }
+    return raw_expr;
+}
+
+fn render_pack_methods(s, fields) {
+    let out = "";
+    let sep = py::quote_py_string(s.pack_separator);
+    let class_name = py::class_name_from_fqn(s.fqn);
+
+    out += "\n";
+    out += "    def pack(self) -> str:\n";
+    out += "        return " + sep + ".join([\n";
+    for field in fields {
+        out += "            " + pack_value_expr(field) + ",\n";
+    }
+    out += "        ])\n\n";
+
+    out += "    @classmethod\n";
+    out += "    def unpack(cls, value: str) -> " + class_name + ":\n";
+    out += "        parts = value.split(" + sep + ")\n";
+    out += "        if len(parts) != " + fields.len() + ":\n";
+    out += "            raise ValueError(f'expected " + fields.len() + " fields for " + class_name + ", got {len(parts)}')\n";
+
+    let has_bool = false;
+    let has_float = false;
+    let has_int = false;
+    for field in fields {
+        let tn = field.field_type.type_name;
+        if tn == "bool" { has_bool = true; }
+        if tn == "f32" || tn == "f64" { has_float = true; }
+        if tn == "u8" || tn == "u16" || tn == "u32" || tn == "u64" ||
+           tn == "i8" || tn == "i16" || tn == "i32" || tn == "i64" || field.field_type.is_enum {
+            has_int = true;
+        }
+    }
+
+    if has_bool {
+        out += "        def _parse_bool(raw: str, field_name: str) -> bool:\n";
+        out += "            normalized = raw.strip().lower()\n";
+        out += "            if normalized in ('true', '1', 'yes'):\n";
+        out += "                return True\n";
+        out += "            if normalized in ('false', '0', 'no'):\n";
+        out += "                return False\n";
+        out += "            raise ValueError(f'invalid bool for {field_name}: {raw}')\n";
+    }
+    if has_int {
+        out += "        def _parse_int(raw: str, field_name: str, unsigned: bool = False) -> int:\n";
+        out += "            try:\n";
+        out += "                parsed = int(raw.strip())\n";
+        out += "            except ValueError as exc:\n";
+        out += "                raise ValueError(f'invalid integer for {field_name}: {raw}') from exc\n";
+        out += "            if unsigned and parsed < 0:\n";
+        out += "                raise ValueError(f'invalid unsigned integer for {field_name}: {raw}')\n";
+        out += "            return parsed\n";
+    }
+    if has_float {
+        out += "        def _parse_float(raw: str, field_name: str) -> float:\n";
+        out += "            try:\n";
+        out += "                parsed = float(raw.strip())\n";
+        out += "            except ValueError as exc:\n";
+        out += "                raise ValueError(f'invalid float for {field_name}: {raw}') from exc\n";
+        out += "            if not math.isfinite(parsed):\n";
+        out += "                raise ValueError(f'invalid finite float for {field_name}: {raw}')\n";
+        out += "            return parsed\n";
+    }
+
+    out += "        return cls(\n";
+    for i in 0..fields.len() {
+        let field = fields[i];
+        out += "            " + field.name + "=" + parse_value_expr(field, "parts[" + i + "]") + ",\n";
+    }
+    out += "        )\n\n";
+    out += "    @classmethod\n";
+    out += "    def try_unpack(cls, value: str) -> Optional[" + class_name + "]:\n";
+    out += "        try:\n";
+    out += "            return cls.unpack(value)\n";
+    out += "        except (ValueError, TypeError):\n";
+    out += "            return None\n";
+
+    out
 }
 
 fn render_namespace(ns) {
@@ -77,20 +342,339 @@ fn render_namespace(ns) {
     out
 }
 
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn load_function_base(s) {
+    "load_" + to_snake_case(py::class_name_from_fqn(s.fqn)) + "s"
+}
+
+fn render_loader_functions(tables) {
+    let out = "";
+    for s in tables {
+        let class_name = py::class_name_from_fqn(s.fqn);
+        let base = load_function_base(s);
+        out += "\n";
+        out += "def " + base + "_from_json(path: str | Path) -> list[" + class_name + "]:\n";
+        out += "    rows = _read_json_array(path)\n";
+        out += "    return [" + class_name + ".from_dict(row) for row in rows]\n\n";
+        out += "def " + base + "_from_csv(path: str | Path) -> list[" + class_name + "]:\n";
+        out += "    return [" + class_name + ".from_csv_row(row) for row in _read_csv_rows(path)]\n";
+    }
+    out
+}
+
 let body = "";
+let tables = [];
 for ns in file.namespaces {
     body += render_namespace(ns);
+    let ns_tables = collect_tables_from_namespace(ns);
+    for table in ns_tables {
+        tables.push(table);
+    }
 }
+let loaders = render_loader_functions(tables);
 %endlogic
 # Generated by PolyGen. DO NOT EDIT.
 # Source: {{file.path}}
 
 from __future__ import annotations
 
+import base64
+import csv
+import json
+import struct
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import IntEnum
-from typing import Optional
+import math
+from pathlib import Path
+from typing import Any, Mapping, Optional
+
+
+_TICKS_PER_SECOND = 10_000_000
+_UNIX_EPOCH_TICKS = 621_355_968_000_000_000
+
+
+class _BinaryReader:
+    def __init__(self, data: bytes | bytearray | memoryview):
+        self._data = memoryview(data)
+        self._offset = 0
+
+    def read_exact(self, size: int) -> bytes:
+        end = self._offset + size
+        if size < 0 or end > len(self._data):
+            raise EOFError("unexpected end of PolyGen binary payload")
+        value = self._data[self._offset:end].tobytes()
+        self._offset = end
+        return value
+
+    def _unpack(self, fmt: str) -> Any:
+        size = struct.calcsize(fmt)
+        value = struct.unpack(fmt, self.read_exact(size))[0]
+        return value
+
+    def read_u8(self) -> int:
+        return self._unpack("<B")
+
+    def read_i8(self) -> int:
+        return self._unpack("<b")
+
+    def read_u16(self) -> int:
+        return self._unpack("<H")
+
+    def read_i16(self) -> int:
+        return self._unpack("<h")
+
+    def read_u32(self) -> int:
+        return self._unpack("<I")
+
+    def read_i32(self) -> int:
+        return self._unpack("<i")
+
+    def read_u64(self) -> int:
+        return self._unpack("<Q")
+
+    def read_i64(self) -> int:
+        return self._unpack("<q")
+
+    def read_f32(self) -> float:
+        return self._unpack("<f")
+
+    def read_f64(self) -> float:
+        return self._unpack("<d")
+
+    def read_bool(self) -> bool:
+        return self.read_u8() != 0
+
+    def read_bytes(self) -> bytes:
+        return self.read_exact(self.read_u32())
+
+    def read_string(self) -> str:
+        return self.read_bytes().decode("utf-8")
+
+    def read_timestamp(self) -> datetime:
+        ticks = self.read_i64()
+        seconds, tick_remainder = divmod(ticks - _UNIX_EPOCH_TICKS, _TICKS_PER_SECOND)
+        return datetime.fromtimestamp(seconds, timezone.utc).replace(microsecond=tick_remainder // 10)
+
+    def read_optional(self, read_fn: Any) -> Any:
+        if not self.read_bool():
+            return None
+        return read_fn(self)
+
+    def read_list(self, read_fn: Any) -> list[Any]:
+        return [read_fn(self) for _ in range(self.read_u32())]
+
+
+class _BinaryWriter:
+    def __init__(self):
+        self._data = bytearray()
+
+    def to_bytes(self) -> bytes:
+        return bytes(self._data)
+
+    def write_exact(self, data: bytes | bytearray | memoryview) -> None:
+        self._data.extend(data)
+
+    def _pack(self, fmt: str, value: Any) -> None:
+        self.write_exact(struct.pack(fmt, value))
+
+    def write_u8(self, value: int) -> None:
+        self._pack("<B", value)
+
+    def write_i8(self, value: int) -> None:
+        self._pack("<b", value)
+
+    def write_u16(self, value: int) -> None:
+        self._pack("<H", value)
+
+    def write_i16(self, value: int) -> None:
+        self._pack("<h", value)
+
+    def write_u32(self, value: int) -> None:
+        self._pack("<I", value)
+
+    def write_i32(self, value: int) -> None:
+        self._pack("<i", value)
+
+    def write_u64(self, value: int) -> None:
+        self._pack("<Q", value)
+
+    def write_i64(self, value: int) -> None:
+        self._pack("<q", value)
+
+    def write_f32(self, value: float) -> None:
+        self._pack("<f", value)
+
+    def write_f64(self, value: float) -> None:
+        self._pack("<d", value)
+
+    def write_bool(self, value: bool) -> None:
+        self.write_u8(1 if value else 0)
+
+    def write_bytes(self, value: bytes | bytearray | memoryview) -> None:
+        data = bytes(value)
+        self.write_u32(len(data))
+        self.write_exact(data)
+
+    def write_string(self, value: str) -> None:
+        self.write_bytes(value.encode("utf-8"))
+
+    def write_timestamp(self, value: datetime) -> None:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        value = value.astimezone(timezone.utc)
+        ticks = int(value.timestamp()) * _TICKS_PER_SECOND + value.microsecond * 10 + _UNIX_EPOCH_TICKS
+        self.write_i64(ticks)
+
+    def write_optional(self, value: Any, write_fn: Any) -> None:
+        self.write_bool(value is not None)
+        if value is not None:
+            write_fn(self, value)
+
+    def write_list(self, value: list[Any], write_fn: Any) -> None:
+        self.write_u32(len(value))
+        for item in value:
+            write_fn(self, item)
+
+
+def _checked_enum(enum_cls: type[IntEnum], value: Any) -> IntEnum:
+    if isinstance(value, enum_cls):
+        return value
+    return enum_cls(int(value))
+
+
+def _write_enum(writer: _BinaryWriter, enum_cls: type[IntEnum], value: Any) -> None:
+    writer.write_i32(int(_checked_enum(enum_cls, value)))
+
+
+def _is_empty(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value == "")
+
+
+def _read_json_array(path: str | Path) -> list[Mapping[str, Any]]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("JSON loader expects an array of objects")
+    for item in data:
+        if not isinstance(item, Mapping):
+            raise ValueError("JSON loader expects every item to be an object")
+    return data
+
+
+def _read_csv_rows(path: str | Path) -> list[Mapping[str, str]]:
+    with Path(path).open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _coerce_optional(value: Any, field_name: str, **kwargs: Any) -> Any:
+    if _is_empty(value):
+        return None
+    return _coerce_value(value, field_name, **kwargs)
+
+
+def _coerce_list(value: Any, field_name: str, **kwargs: Any) -> list[Any]:
+    if _is_empty(value):
+        return []
+    if isinstance(value, list):
+        raw_items = value
+    elif kwargs.get("model_cls") is not None:
+        raw_items = json.loads(value)
+    elif isinstance(value, str) and value.strip().startswith("["):
+        raw_items = json.loads(value)
+    elif isinstance(value, str):
+        raw_items = [part.strip() for part in value.split(",") if part.strip() != ""]
+    else:
+        raise ValueError(f"invalid list for {field_name}: {value!r}")
+    if not isinstance(raw_items, list):
+        raise ValueError(f"invalid list for {field_name}: {value!r}")
+    return [_coerce_value(item, field_name, **kwargs) for item in raw_items]
+
+
+def _coerce_value(
+    value: Any,
+    field_name: str,
+    *,
+    type_name: str | None = None,
+    enum_cls: type[IntEnum] | None = None,
+    model_cls: type[Any] | None = None,
+) -> Any:
+    if _is_empty(value):
+        raise ValueError(f"missing required field {field_name}")
+
+    if model_cls is not None:
+        if isinstance(value, model_cls):
+            return value
+        if isinstance(value, str):
+            value = json.loads(value)
+        if not isinstance(value, Mapping):
+            raise ValueError(f"invalid object for {field_name}: {value!r}")
+        return model_cls.from_dict(value)
+
+    if enum_cls is not None:
+        if isinstance(value, enum_cls):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            try:
+                return enum_cls(int(raw))
+            except ValueError:
+                try:
+                    return enum_cls[raw]
+                except KeyError as exc:
+                    raise ValueError(f"invalid enum for {field_name}: {value!r}") from exc
+        return enum_cls(int(value))
+
+    if type_name == "string":
+        return str(value)
+    if type_name == "bool":
+        if isinstance(value, bool):
+            return value
+        normalized = str(value).strip().lower()
+        if normalized in ("true", "1", "yes"):
+            return True
+        if normalized in ("false", "0", "no"):
+            return False
+        raise ValueError(f"invalid bool for {field_name}: {value!r}")
+    if type_name in ("u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64"):
+        parsed = int(str(value).strip())
+        if type_name.startswith("u") and parsed < 0:
+            raise ValueError(f"invalid unsigned integer for {field_name}: {value!r}")
+        return parsed
+    if type_name in ("f32", "f64"):
+        parsed = float(str(value).strip())
+        if not math.isfinite(parsed):
+            raise ValueError(f"invalid finite float for {field_name}: {value!r}")
+        return parsed
+    if type_name == "bytes":
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, list):
+            return bytes(value)
+        return base64.b64decode(str(value))
+    if type_name == "timestamp":
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(str(value))
+
+    return value
 
 
 {{body}}
+{{loaders}}

@@ -244,12 +244,12 @@ fn get_index_key_type_cs(idx) {
         let result = "(";
         for i in 0..idx.fields.len() {
             if i > 0 { result += ", "; }
-            result += cs_map_type(idx.fields[i].field_type);
+            result += cs_type(idx.fields[i].field_type.lang_type);
         }
         result += ")";
         return result;
     } else {
-        return cs_map_type(idx.field_type);
+        return cs_type(idx.field_type.lang_type);
     }
 }
 

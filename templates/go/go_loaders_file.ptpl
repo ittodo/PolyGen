@@ -1,0 +1,825 @@
+%logic
+// Go generated CSV/JSON/Binary loaders.
+
+fn go_loader_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    if t.is_list {
+        return t.inner;
+    }
+    return t;
+}
+
+fn go_loader_value_parser(t) {
+    let base = go_loader_base_type(t);
+    let name = if base.lang_type != "" { base.lang_type } else { base.type_name };
+    if name == "string" { return "csvParseStringValue"; }
+    if name == "bytes" { return "csvParseBytesValue"; }
+    if name == "bool" { return "csvParseBoolValue"; }
+    if name == "u8" { return "csvParseUint8Value"; }
+    if name == "u16" { return "csvParseUint16Value"; }
+    if name == "u32" { return "csvParseUint32Value"; }
+    if name == "u64" { return "csvParseUint64Value"; }
+    if name == "i8" { return "csvParseInt8Value"; }
+    if name == "i16" { return "csvParseInt16Value"; }
+    if name == "i32" { return "csvParseInt32Value"; }
+    if name == "i64" { return "csvParseInt64Value"; }
+    if name == "f32" { return "csvParseFloat32Value"; }
+    if name == "f64" { return "csvParseFloat64Value"; }
+    if base.is_enum { return "csvParse" + go_lang_type(base) + "Value"; }
+    return "";
+}
+
+fn go_loader_csv_expr(f) {
+    let t = f.field_type;
+    let parser = go_loader_value_parser(t);
+    let base = go_loader_base_type(t);
+    if parser == "" {
+        let col = "\"" + to_snake_case(f.name) + "\"";
+        if t.is_option && t.inner.is_struct {
+            return "csvParseOptionalJSON[" + go_lang_type(t.inner) + "](row, " + col + ")";
+        }
+        if t.is_list && t.inner.is_struct {
+            return "csvParseListJSON[" + go_lang_type(t.inner) + "](row, " + col + ")";
+        }
+        if base.is_struct {
+            return "csvParseRequiredJSON[" + go_lang_type(base) + "](row, " + col + ")";
+        }
+        return "";
+    }
+    let col = "\"" + to_snake_case(f.name) + "\"";
+    if t.is_option {
+        return "csvParseOptional[" + go_lang_type(t.inner) + "](row, " + col + ", " + parser + ")";
+    }
+    if t.is_list {
+        let inner = t.inner;
+        if inner.is_struct || inner.lang_type == "bytes" || inner.type_name == "bytes" {
+            return "";
+        }
+        return "csvParseList[" + go_lang_type(inner) + "](row, " + col + ", " + parser + ")";
+    }
+    return "csvParseRequired[" + go_lang_type(t) + "](row, " + col + ", " + parser + ")";
+}
+
+fn go_loader_zero_value(t) {
+    if t.is_option || t.is_list {
+        return "nil";
+    }
+    let name = if t.lang_type != "" { t.lang_type } else { t.type_name };
+    if name == "string" { return "\"\""; }
+    if name == "bytes" { return "nil"; }
+    if name == "bool" { return "false"; }
+    if t.is_enum { return "0"; }
+    if t.is_primitive { return "0"; }
+    return go_lang_type(t) + "{}";
+}
+
+fn go_binary_reader_method(t) {
+    let name = if t.lang_type != "" { t.lang_type } else { t.type_name };
+    if name == "string" { return "ReadString"; }
+    if name == "bytes" { return "ReadBytes"; }
+    if name == "bool" { return "ReadBool"; }
+    if name == "u8" { return "ReadUint8"; }
+    if name == "u16" { return "ReadUint16"; }
+    if name == "u32" { return "ReadUint32"; }
+    if name == "u64" { return "ReadUint64"; }
+    if name == "i8" { return "ReadInt8"; }
+    if name == "i16" { return "ReadInt16"; }
+    if name == "i32" { return "ReadInt32"; }
+    if name == "i64" { return "ReadInt64"; }
+    if name == "f32" { return "ReadFloat32"; }
+    if name == "f64" { return "ReadFloat64"; }
+    return "";
+}
+
+fn go_binary_writer_method(t) {
+    let name = if t.lang_type != "" { t.lang_type } else { t.type_name };
+    if name == "string" { return "WriteString"; }
+    if name == "bytes" { return "WriteBytes"; }
+    if name == "bool" { return "WriteBool"; }
+    if name == "u8" { return "WriteUint8"; }
+    if name == "u16" { return "WriteUint16"; }
+    if name == "u32" { return "WriteUint32"; }
+    if name == "u64" { return "WriteUint64"; }
+    if name == "i8" { return "WriteInt8"; }
+    if name == "i16" { return "WriteInt16"; }
+    if name == "i32" { return "WriteInt32"; }
+    if name == "i64" { return "WriteInt64"; }
+    if name == "f32" { return "WriteFloat32"; }
+    if name == "f64" { return "WriteFloat64"; }
+    return "";
+}
+
+fn go_binary_read_direct_expr(t, reader_expr) {
+    if t.is_enum {
+        return "binaryRead" + go_lang_type(t) + "Value(" + reader_expr + ")";
+    }
+    let method = go_binary_reader_method(t);
+    if method != "" {
+        return reader_expr + "." + method + "()";
+    }
+    return "Read" + t.type_name + "Binary(" + reader_expr + ")";
+}
+
+fn go_binary_read_expr(t, reader_expr) {
+    if t.is_option {
+        return "binaryReadOptional[" + go_lang_type(t.inner) + "](" + reader_expr + ", func(r *BinaryReader) (" + go_lang_type(t.inner) + ", error) { return " + go_binary_read_direct_expr(t.inner, "r") + " })";
+    }
+    if t.is_list {
+        return "binaryReadList[" + go_lang_type(t.inner) + "](" + reader_expr + ", func(r *BinaryReader) (" + go_lang_type(t.inner) + ", error) { return " + go_binary_read_direct_expr(t.inner, "r") + " })";
+    }
+    return go_binary_read_direct_expr(t, reader_expr);
+}
+
+fn go_binary_write_direct_expr(t, value_expr, writer_expr) {
+    if t.is_enum {
+        return "binaryWrite" + go_lang_type(t) + "Value(" + writer_expr + ", " + value_expr + ")";
+    }
+    let method = go_binary_writer_method(t);
+    if method != "" {
+        return writer_expr + "." + method + "(" + value_expr + ")";
+    }
+    return value_expr + ".WriteBinary(" + writer_expr + ")";
+}
+
+fn go_binary_write_expr(t, value_expr, writer_expr) {
+    if t.is_option {
+        return "binaryWriteOptional[" + go_lang_type(t.inner) + "](" + writer_expr + ", " + value_expr + ", func(w *BinaryWriter, item " + go_lang_type(t.inner) + ") error { return " + go_binary_write_direct_expr(t.inner, "item", "w") + " })";
+    }
+    if t.is_list {
+        return "binaryWriteList[" + go_lang_type(t.inner) + "](" + writer_expr + ", " + value_expr + ", func(w *BinaryWriter, item " + go_lang_type(t.inner) + ") error { return " + go_binary_write_direct_expr(t.inner, "item", "w") + " })";
+    }
+    return go_binary_write_direct_expr(t, value_expr, writer_expr);
+}
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace() {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn collect_structs_from_struct(s) {
+    let structs = [s];
+    for item in s.items {
+        if item.is_embedded_struct() {
+            let child_structs = collect_structs_from_struct(item.as_embedded_struct());
+            for child in child_structs {
+                structs.push(child);
+            }
+        }
+    }
+    return structs;
+}
+
+fn collect_enums_from_struct(s) {
+    let enums = [];
+    for item in s.items {
+        if item.is_inline_enum() {
+            enums.push(item.as_inline_enum());
+        } else if item.is_embedded_struct() {
+            let child_enums = collect_enums_from_struct(item.as_embedded_struct());
+            for child in child_enums {
+                enums.push(child);
+            }
+        }
+    }
+    return enums;
+}
+
+fn collect_enums_from_namespace(ns) {
+    let enums = [];
+    for item in ns.items {
+        if item.is_enum() {
+            enums.push(item.as_enum());
+        } else if item.is_struct() {
+            let struct_enums = collect_enums_from_struct(item.as_struct());
+            for enum_def in struct_enums {
+                enums.push(enum_def);
+            }
+        } else if item.is_namespace() {
+            let child_enums = collect_enums_from_namespace(item.as_namespace());
+            for child in child_enums {
+                enums.push(child);
+            }
+        }
+    }
+    return enums;
+}
+
+fn collect_structs_from_namespace(ns) {
+    let structs = [];
+    for item in ns.items {
+        if item.is_struct() {
+            let item_structs = collect_structs_from_struct(item.as_struct());
+            for s in item_structs {
+                structs.push(s);
+            }
+        } else if item.is_namespace() {
+            let child_structs = collect_structs_from_namespace(item.as_namespace());
+            for child in child_structs {
+                structs.push(child);
+            }
+        }
+    }
+    return structs;
+}
+
+let all_tables = [];
+let all_structs = [];
+let all_enums = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for s in tables {
+        all_tables.push(s);
+    }
+    let structs = collect_structs_from_namespace(ns);
+    for s in structs {
+        all_structs.push(s);
+    }
+    let enums = collect_enums_from_namespace(ns);
+    for enum_def in enums {
+        all_enums.push(enum_def);
+    }
+}
+
+let enum_entries = [];
+for enum_def in all_enums {
+    let members = [];
+    for item in enum_def.items {
+        if item.is_member() {
+            let member = item.as_member();
+            members.push(#{
+                raw_name: member.name,
+                raw_name_lower: member.name.to_lower(),
+                const_name: enum_def.name + member.name,
+                const_name_lower: (enum_def.name + member.name).to_lower()
+            });
+        }
+    }
+    enum_entries.push(#{
+        name: enum_def.name,
+        members: members
+    });
+}
+
+let struct_entries = [];
+for s in all_structs {
+    let fields = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = as_field(item);
+            fields.push(#{
+                def: f,
+                go_name: to_pascal_case(f.name),
+                go_type: go_lang_type(f.field_type),
+                var_name: to_camel_case(f.name),
+                binary_read_expr: go_binary_read_expr(f.field_type, "reader"),
+                binary_write_expr: go_binary_write_expr(f.field_type, "value." + to_pascal_case(f.name), "writer")
+            });
+        }
+    }
+    struct_entries.push(#{
+        def: s,
+        fields: fields
+    });
+}
+
+let entries = [];
+for s in all_tables {
+    let fields = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = as_field(item);
+            fields.push(#{
+                def: f,
+                go_name: to_pascal_case(f.name),
+                go_type: go_lang_type(f.field_type),
+                var_name: to_camel_case(f.name),
+                csv_expr: go_loader_csv_expr(f),
+                zero_value: go_loader_zero_value(f.field_type)
+            });
+        }
+    }
+
+    let csv_pattern = "";
+    let json_pattern = "";
+    if s.load != () {
+        if s.load.csv != () {
+            csv_pattern = s.load.csv;
+        }
+        if s.load.json != () {
+            json_pattern = s.load.json;
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        fields: fields,
+        member_name: to_pascal_case(s.name) + "s",
+        csv_pattern: csv_pattern,
+        json_pattern: json_pattern
+    });
+}
+
+let base_name = file.path;
+if base_name.contains("/") {
+    let parts = base_name.split("/");
+    base_name = parts[parts.len() - 1];
+}
+if base_name.ends_with(".poly") {
+    base_name = base_name.sub_string(0, base_name.len() - 5);
+}
+let container_name = to_pascal_case(base_name) + "Container";
+%endlogic
+// Code generated by PolyGen. DO NOT EDIT.
+// Source: {{source_path}}
+
+package polygen
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+type csvValueParser[T any] func(string) (T, error)
+
+func csvParseRequired[T any](row *CsvRow, column string, parse csvValueParser[T]) (T, error) {
+	raw, ok := row.Get(column)
+	var zero T
+	if !ok {
+		return zero, fmt.Errorf("missing required CSV column %q", column)
+	}
+	value, err := parse(raw)
+	if err != nil {
+		return zero, fmt.Errorf("invalid CSV column %q value %q: %w", column, raw, err)
+	}
+	return value, nil
+}
+
+func csvParseOptional[T any](row *CsvRow, column string, parse csvValueParser[T]) (*T, error) {
+	raw, ok := row.Get(column)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	value, err := parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CSV column %q value %q: %w", column, raw, err)
+	}
+	return &value, nil
+}
+
+func csvParseList[T any](row *CsvRow, column string, parse csvValueParser[T]) ([]T, error) {
+	raw, ok := row.Get(column)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	values := make([]T, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		value, err := parse(trimmed)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CSV column %q list item %q: %w", column, trimmed, err)
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
+
+func csvParseRequiredJSON[T any](row *CsvRow, column string) (T, error) {
+	raw, ok := row.Get(column)
+	var value T
+	if !ok {
+		return value, fmt.Errorf("missing required CSV column %q", column)
+	}
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return value, fmt.Errorf("invalid CSV column %q JSON value %q: %w", column, raw, err)
+	}
+	return value, nil
+}
+
+func csvParseOptionalJSON[T any](row *CsvRow, column string) (*T, error) {
+	raw, ok := row.Get(column)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var value T
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return nil, fmt.Errorf("invalid CSV column %q JSON value %q: %w", column, raw, err)
+	}
+	return &value, nil
+}
+
+func csvParseListJSON[T any](row *CsvRow, column string) ([]T, error) {
+	raw, ok := row.Get(column)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var values []T
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil, fmt.Errorf("invalid CSV column %q JSON list %q: %w", column, raw, err)
+	}
+	return values, nil
+}
+
+func csvParseStringValue(raw string) (string, error) { return raw, nil }
+func csvParseBytesValue(raw string) ([]byte, error) { return []byte(raw), nil }
+
+func csvParseBoolValue(raw string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "1", "yes":
+		return true, nil
+	case "false", "0", "no":
+		return false, nil
+	default:
+		return false, fmt.Errorf("expected bool")
+	}
+}
+
+func csvParseUint8Value(raw string) (uint8, error) {
+	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 8)
+	return uint8(value), err
+}
+func csvParseUint16Value(raw string) (uint16, error) {
+	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 16)
+	return uint16(value), err
+}
+func csvParseUint32Value(raw string) (uint32, error) {
+	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 32)
+	return uint32(value), err
+}
+func csvParseUint64Value(raw string) (uint64, error) {
+	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64)
+	return value, err
+}
+func csvParseInt8Value(raw string) (int8, error) {
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 8)
+	return int8(value), err
+}
+func csvParseInt16Value(raw string) (int16, error) {
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 16)
+	return int16(value), err
+}
+func csvParseInt32Value(raw string) (int32, error) {
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 32)
+	return int32(value), err
+}
+func csvParseInt64Value(raw string) (int64, error) {
+	return strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+}
+func csvParseFloat32Value(raw string) (float32, error) {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 32)
+	return float32(value), err
+}
+func csvParseFloat64Value(raw string) (float64, error) {
+	return strconv.ParseFloat(strings.TrimSpace(raw), 64)
+}
+func csvParseEnumValue[T ~int32](raw string) (T, error) {
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 32)
+	return T(value), err
+}
+
+%for enum_entry in enum_entries
+func parse{{enum_entry.name}}Value(raw string) ({{enum_entry.name}}, error) {
+	trimmed := strings.TrimSpace(raw)
+	if value, err := strconv.ParseInt(trimmed, 10, 32); err == nil {
+		return {{enum_entry.name}}(value), nil
+	}
+	switch strings.ToLower(trimmed) {
+%for member in enum_entry.members
+	case "{{member.raw_name_lower}}", "{{member.const_name_lower}}":
+		return {{member.const_name}}, nil
+%endfor
+	default:
+		return 0, fmt.Errorf("expected {{enum_entry.name}} name or numeric value")
+	}
+}
+
+func csvParse{{enum_entry.name}}Value(raw string) ({{enum_entry.name}}, error) {
+	return parse{{enum_entry.name}}Value(raw)
+}
+
+func isValid{{enum_entry.name}}Value(value {{enum_entry.name}}) bool {
+	switch value {
+%for member in enum_entry.members
+	case {{member.const_name}}:
+		return true
+%endfor
+	default:
+		return false
+	}
+}
+
+func (value *{{enum_entry.name}}) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "null" {
+		return fmt.Errorf("expected {{enum_entry.name}} name or numeric JSON value")
+	}
+	if numeric, err := strconv.ParseInt(trimmed, 10, 32); err == nil {
+		*value = {{enum_entry.name}}(numeric)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return fmt.Errorf("expected {{enum_entry.name}} name or numeric JSON value: %w", err)
+	}
+	parsed, err := parse{{enum_entry.name}}Value(text)
+	if err != nil {
+		return err
+	}
+	*value = parsed
+	return nil
+}
+
+func binaryRead{{enum_entry.name}}Value(reader *BinaryReader) ({{enum_entry.name}}, error) {
+	raw, err := reader.ReadInt32()
+	if err != nil {
+		return 0, err
+	}
+	value := {{enum_entry.name}}(raw)
+	if !isValid{{enum_entry.name}}Value(value) {
+		return 0, fmt.Errorf("invalid enum value for {{enum_entry.name}}: %d", raw)
+	}
+	return value, nil
+}
+
+func binaryWrite{{enum_entry.name}}Value(writer *BinaryWriter, value {{enum_entry.name}}) error {
+	if !isValid{{enum_entry.name}}Value(value) {
+		return fmt.Errorf("invalid enum value for {{enum_entry.name}}: %d", int32(value))
+	}
+	return writer.WriteInt32(int32(value))
+}
+
+%endfor
+
+func binaryReadOptional[T any](reader *BinaryReader, read func(*BinaryReader) (T, error)) (*T, error) {
+	hasValue, err := reader.ReadBool()
+	if err != nil {
+		return nil, err
+	}
+	if !hasValue {
+		return nil, nil
+	}
+	value, err := read(reader)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
+func binaryWriteOptional[T any](writer *BinaryWriter, value *T, write func(*BinaryWriter, T) error) error {
+	if value == nil {
+		return writer.WriteBool(false)
+	}
+	if err := writer.WriteBool(true); err != nil {
+		return err
+	}
+	return write(writer, *value)
+}
+
+func binaryReadList[T any](reader *BinaryReader, read func(*BinaryReader) (T, error)) ([]T, error) {
+	count, err := reader.ReadUint32()
+	if err != nil {
+		return nil, err
+	}
+	values := make([]T, 0, int(count))
+	for i := uint32(0); i < count; i++ {
+		value, err := read(reader)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
+
+func binaryWriteList[T any](writer *BinaryWriter, values []T, write func(*BinaryWriter, T) error) error {
+	if err := writer.WriteUint32(uint32(len(values))); err != nil {
+		return err
+	}
+	for _, value := range values {
+		if err := write(writer, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+%for entry in struct_entries
+func Read{{entry.def.name}}Binary(reader *BinaryReader) ({{entry.def.name}}, error) {
+	var err error
+%for field in entry.fields
+	{{field.var_name}}, err := {{field.binary_read_expr}}
+	if err != nil {
+		return {{entry.def.name}}{}, err
+	}
+%endfor
+	return {{entry.def.name}}{
+%for field in entry.fields
+		{{field.go_name}}: {{field.var_name}},
+%endfor
+	}, nil
+}
+
+func (value *{{entry.def.name}}) WriteBinary(writer *BinaryWriter) error {
+%for field in entry.fields
+	if err := {{field.binary_write_expr}}; err != nil {
+		return err
+	}
+%endfor
+	return nil
+}
+
+%endfor
+%for entry in entries
+func {{entry.def.name}}FromCsvRow(row *CsvRow) (*{{entry.def.name}}, error) {
+	var err error
+%for field in entry.fields
+%if field.csv_expr != ""
+	{{field.var_name}}, err := {{field.csv_expr}}
+	if err != nil {
+		return nil, err
+	}
+%else
+%if field.zero_value == "nil"
+	var {{field.var_name}} {{field.go_type}}
+%else
+	{{field.var_name}} := {{field.zero_value}}
+%endif
+%endif
+%endfor
+	return &{{entry.def.name}}{
+%for field in entry.fields
+		{{field.go_name}}: {{field.var_name}},
+%endfor
+	}, nil
+}
+
+func Load{{entry.def.name}}sFromCsv(path string) ([]*{{entry.def.name}}, error) {
+	reader, err := NewCsvReader(path)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*{{entry.def.name}}, 0, len(rows))
+	for _, row := range rows {
+		value, err := {{entry.def.name}}FromCsvRow(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	return result, nil
+}
+
+func Load{{entry.def.name}}sFromJson(path string) ([]*{{entry.def.name}}, error) {
+	values, err := LoadJSONSlice[{{entry.def.name}}](path)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*{{entry.def.name}}, 0, len(values))
+	for i := range values {
+		result = append(result, &values[i])
+	}
+	return result, nil
+}
+
+func Load{{entry.def.name}}sFromBinary(path string) ([]*{{entry.def.name}}, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	reader := NewBinaryReader(file)
+	count, err := reader.ReadUint32()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*{{entry.def.name}}, 0, int(count))
+	for i := uint32(0); i < count; i++ {
+		value, err := Read{{entry.def.name}}Binary(reader)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, &value)
+	}
+	return result, nil
+}
+
+func Save{{entry.def.name}}sToBinary(path string, rows []*{{entry.def.name}}) error {
+	var buf bytes.Buffer
+	writer := NewBinaryWriter(&buf)
+	if err := writer.WriteUint32(uint32(len(rows))); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := row.WriteBinary(writer); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, buf.Bytes(), 0644)
+}
+
+func (c *{{container_name}}) Load{{entry.def.name}}sFromCsv(path string) error {
+	rows, err := Load{{entry.def.name}}sFromCsv(path)
+	if err != nil {
+		return err
+	}
+	c.{{entry.member_name}}.LoadAll(rows)
+	return nil
+}
+
+func (c *{{container_name}}) Load{{entry.def.name}}sFromJson(path string) error {
+	rows, err := Load{{entry.def.name}}sFromJson(path)
+	if err != nil {
+		return err
+	}
+	c.{{entry.member_name}}.LoadAll(rows)
+	return nil
+}
+
+func (c *{{container_name}}) Load{{entry.def.name}}sFromBinary(path string) error {
+	rows, err := Load{{entry.def.name}}sFromBinary(path)
+	if err != nil {
+		return err
+	}
+	c.{{entry.member_name}}.LoadAll(rows)
+	return nil
+}
+
+%endfor
+func (c *{{container_name}}) LoadFromCsv(root string) error {
+%for entry in entries
+%if entry.csv_pattern != ""
+	if err := c.Load{{entry.def.name}}sFromCsv(filepath.Join(root, "{{entry.csv_pattern}}")); err != nil {
+		return err
+	}
+%endif
+%endfor
+	return nil
+}
+
+func (c *{{container_name}}) LoadFromJson(root string) error {
+%for entry in entries
+%if entry.json_pattern != ""
+	if err := c.Load{{entry.def.name}}sFromJson(filepath.Join(root, "{{entry.json_pattern}}")); err != nil {
+		return err
+	}
+%endif
+%endfor
+	return nil
+}
+
+func (c *{{container_name}}) LoadFromCsvDirectory(dir string) error {
+%for entry in entries
+	{{entry.def.name | camel_case}}CsvPath := filepath.Join(dir, "{{entry.def.name}}.csv")
+	if _, err := os.Stat({{entry.def.name | camel_case}}CsvPath); err == nil {
+		if err := c.Load{{entry.def.name}}sFromCsv({{entry.def.name | camel_case}}CsvPath); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+%endfor
+	return nil
+}
+
+func (c *{{container_name}}) LoadFromJsonDirectory(dir string) error {
+%for entry in entries
+	{{entry.def.name | camel_case}}JsonPath := filepath.Join(dir, "{{entry.def.name}}.json")
+	if _, err := os.Stat({{entry.def.name | camel_case}}JsonPath); err == nil {
+		if err := c.Load{{entry.def.name}}sFromJson({{entry.def.name | camel_case}}JsonPath); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+%endfor
+	return nil
+}

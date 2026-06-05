@@ -5,7 +5,83 @@ package polygen
 %blank
 import (
 	"fmt"
+	"strings"
 )
+%blank
+func searchNormalize(value string, policy string) string {
+	result := value
+	if policy == "trim" || policy == "lower_trim" {
+		result = strings.TrimSpace(result)
+	}
+	if policy == "lower" || policy == "lower_trim" {
+		result = strings.ToLower(result)
+	}
+	return result
+}
+%blank
+func searchTokens(value string, mode string, n int, min int, normalize string) []string {
+	normalized := searchNormalize(value, normalize)
+	seen := make(map[string]struct{})
+	add := func(token string) {
+		if len(token) >= min {
+			seen[token] = struct{}{}
+		}
+	}
+%blank
+	switch mode {
+	case "exact":
+		if normalized != "" || min <= 0 {
+			seen[normalized] = struct{}{}
+		}
+	case "word":
+		for _, token := range strings.Fields(normalized) {
+			add(token)
+		}
+	default:
+		if n <= 0 {
+			panic("search ngram size must be positive")
+		}
+		runes := []rune(normalized)
+		if len(runes) >= n && len(runes) >= min {
+			for i := 0; i <= len(runes)-n; i++ {
+				add(string(runes[i : i+n]))
+			}
+		}
+	}
+%blank
+	tokens := make([]string, 0, len(seen))
+	for token := range seen {
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
+%blank
+func searchIntersect[T comparable](postings [][]T) []T {
+	if len(postings) == 0 {
+		return nil
+	}
+	result := make([]T, 0)
+	for _, candidate := range postings[0] {
+		matched := true
+		for i := 1; i < len(postings); i++ {
+			found := false
+			for _, value := range postings[i] {
+				if value == candidate {
+					found = true
+					break
+				}
+			}
+			if !found {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			result = append(result, candidate)
+		}
+	}
+	return result
+}
 %blank
 %for table in file.all_tables
 %if !table.is_embed

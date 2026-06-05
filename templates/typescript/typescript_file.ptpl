@@ -1,9 +1,595 @@
 %-- TypeScript main template. Context: file, schema
+%logic
+fn ts_string(value) {
+    let escaped = value + "";
+    escaped.replace("\\", "\\\\");
+    escaped.replace("\"", "\\\"");
+    "\"" + escaped + "\""
+}
+
+fn to_pascal_from_fqn(fqn) {
+    let n = fqn + "";
+    n.replace(".", "_");
+    to_pascal_case(n)
+}
+
+fn get_actual_namespace(fqn) {
+    let parts = fqn.split(".");
+    let result = "";
+    for part in parts {
+        if part.len() > 0 {
+            let first = part.sub_string(0, 1);
+            if first == first.to_upper() {
+                break;
+            }
+            if result != "" { result += "."; }
+            result += part;
+        }
+    }
+    result
+}
+
+fn collect_namespace_paths(ns, parent_path) {
+    let current_path = if parent_path == "" {
+        to_pascal_case(ns.name)
+    } else {
+        parent_path + "." + to_pascal_case(ns.name)
+    };
+    let entries = [#{ name: ns.name, path: current_path }];
+    for item in ns.items {
+        if item.is_namespace() {
+            let child_entries = collect_namespace_paths(item.as_namespace(), current_path);
+            for child in child_entries {
+                entries.push(child);
+            }
+        }
+    }
+    entries
+}
+
+fn ts_namespace_from_fqn(ns_fqn, namespace_entries) {
+    if ns_fqn == "" {
+        return "";
+    }
+    for entry in namespace_entries {
+        if entry.name == ns_fqn {
+            return entry.path;
+        }
+    }
+    return to_pascal_case(ns_fqn);
+}
+
+fn local_type_expr(t, namespace_entries) {
+    if t.is_option {
+        return local_type_expr(t.inner, namespace_entries) + " | undefined";
+    }
+    if t.is_list {
+        return local_type_expr(t.inner, namespace_entries) + "[]";
+    }
+    if t.lang_type == "string" { return "string"; }
+    if t.lang_type == "bool" { return "boolean"; }
+    if t.lang_type == "bytes" { return "Uint8Array"; }
+    if t.lang_type == "timestamp" { return "Date"; }
+    if t.is_primitive { return "number"; }
+    if t.is_enum || t.is_struct {
+        let ns = "";
+        if t.namespace_fqn != () && t.namespace_fqn != "" {
+            ns = get_actual_namespace(t.namespace_fqn);
+        }
+        let prefix = if ns == "" { "" } else { ts_namespace_from_fqn(ns, namespace_entries) + "." };
+        return prefix + t.type_name;
+    }
+    return t.type_name;
+}
+
+fn local_object_type(s, namespace_entries) {
+    let ns = get_actual_namespace(s.fqn);
+    let prefix = if ns == "" { "" } else { ts_namespace_from_fqn(ns, namespace_entries) + "." };
+    prefix + s.name
+}
+
+fn collect_embedded_structs(s) {
+    let result = [];
+    for item in s.items {
+        if item.is_embedded_struct() {
+            let child = item.as_embedded_struct();
+            result.push(child);
+            let nested = collect_embedded_structs(child);
+            for n in nested {
+                result.push(n);
+            }
+        }
+    }
+    result
+}
+
+fn collect_structs_from_namespace(ns) {
+    let result = [];
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            result.push(s);
+            let nested = collect_embedded_structs(s);
+            for n in nested {
+                result.push(n);
+            }
+        } else if item.is_namespace() {
+            let child_structs = collect_structs_from_namespace(item.as_namespace());
+            for child in child_structs {
+                result.push(child);
+            }
+        }
+    }
+    result
+}
+
+fn parse_required_expr(t, value_expr, field_name, namespace_entries) {
+    let quoted = ts_string(field_name);
+    if t.is_list {
+        let inner = parse_required_expr(t.inner, "item", field_name, namespace_entries);
+        return "polygenParseArray(" + value_expr + ", " + quoted + ", item => " + inner + ")";
+    }
+    if t.lang_type == "string" {
+        return "polygenParseString(polygenRequired(" + value_expr + ", " + quoted + "), " + quoted + ")";
+    }
+    if t.lang_type == "bool" {
+        return "polygenParseBool(polygenRequired(" + value_expr + ", " + quoted + "), " + quoted + ")";
+    }
+    if t.lang_type == "timestamp" {
+        return "polygenParseDate(polygenRequired(" + value_expr + ", " + quoted + "), " + quoted + ")";
+    }
+    if t.lang_type == "bytes" {
+        return "polygenParseBytes(polygenRequired(" + value_expr + ", " + quoted + "), " + quoted + ")";
+    }
+    if t.is_enum {
+        let enum_type = local_type_expr(t, namespace_entries);
+        return "polygenParseEnum(polygenRequired(" + value_expr + ", " + quoted + "), " + quoted + ", " + enum_type + ") as " + enum_type;
+    }
+    if t.is_primitive {
+        if t.lang_type == "f32" || t.lang_type == "f64" {
+            return "polygenParseFloat(polygenRequired(" + value_expr + ", " + quoted + "), " + quoted + ")";
+        }
+        return "polygenParseInteger(polygenRequired(" + value_expr + ", " + quoted + "), " + quoted + ")";
+    }
+    if t.is_struct {
+        return "from" + to_pascal_from_fqn(t.fqn) + "Json(polygenRequired(" + value_expr + ", " + quoted + "))";
+    }
+    return value_expr;
+}
+
+fn parse_expr(t, value_expr, field_name, namespace_entries) {
+    if t.is_option {
+        return "polygenIsEmpty(" + value_expr + ") ? undefined : " + parse_required_expr(t.inner, value_expr, field_name, namespace_entries);
+    }
+    return parse_required_expr(t, value_expr, field_name, namespace_entries);
+}
+
+fn binary_writer_method(type_name) {
+    if type_name == "bool" { return "writeBool"; }
+    if type_name == "u8" { return "writeU8"; }
+    if type_name == "i8" { return "writeI8"; }
+    if type_name == "u16" { return "writeU16"; }
+    if type_name == "i16" { return "writeI16"; }
+    if type_name == "u32" { return "writeU32"; }
+    if type_name == "i32" { return "writeI32"; }
+    if type_name == "u64" { return "writeU64"; }
+    if type_name == "i64" { return "writeI64"; }
+    if type_name == "f32" { return "writeF32"; }
+    if type_name == "f64" { return "writeF64"; }
+    ""
+}
+
+fn binary_reader_expr(type_name, reader_expr) {
+    if type_name == "bool" { return reader_expr + ".readBool()"; }
+    if type_name == "u8" { return reader_expr + ".readU8()"; }
+    if type_name == "i8" { return reader_expr + ".readI8()"; }
+    if type_name == "u16" { return reader_expr + ".readU16()"; }
+    if type_name == "i16" { return reader_expr + ".readI16()"; }
+    if type_name == "u32" { return reader_expr + ".readU32()"; }
+    if type_name == "i32" { return reader_expr + ".readI32()"; }
+    if type_name == "u64" { return reader_expr + ".readU64()"; }
+    if type_name == "i64" { return reader_expr + ".readI64()"; }
+    if type_name == "f32" { return reader_expr + ".readF32()"; }
+    if type_name == "f64" { return reader_expr + ".readF64()"; }
+    reader_expr + ".readI32()"
+}
+
+fn binary_write_stmt(t, writer_expr, value_expr, namespace_entries) {
+    if t.is_option {
+        let inner_stmt = binary_write_stmt(t.inner, writer_expr, "item", namespace_entries);
+        return "polygenWriteOptional(" + writer_expr + ", " + value_expr + ", item => { " + inner_stmt + " });";
+    }
+    if t.is_list {
+        let inner_stmt = binary_write_stmt(t.inner, writer_expr, "item", namespace_entries);
+        return "polygenWriteList(" + writer_expr + ", " + value_expr + ", item => { " + inner_stmt + " });";
+    }
+    if t.lang_type == "string" {
+        return "BinaryRefFormat.writeString(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.lang_type == "bytes" {
+        return "BinaryRefFormat.writeBytes(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.lang_type == "timestamp" {
+        return "BinaryRefFormat.writeTimestamp(" + writer_expr + ", " + value_expr + ");";
+    }
+    if t.is_enum {
+        let enum_type = local_type_expr(t, namespace_entries);
+        return "polygenWriteEnum(" + writer_expr + ", " + enum_type + ", " + value_expr + " as number, " + ts_string(enum_type) + ");";
+    }
+    if t.is_primitive {
+        let method = binary_writer_method(t.lang_type);
+        if method != "" {
+            return writer_expr + "." + method + "(" + value_expr + ");";
+        }
+    }
+    if t.is_struct {
+        return "write" + to_pascal_from_fqn(t.fqn) + "Binary(" + writer_expr + ", " + value_expr + ");";
+    }
+    ""
+}
+
+fn binary_read_expr(t, reader_expr, namespace_entries) {
+    if t.is_option {
+        let inner = binary_read_expr(t.inner, reader_expr, namespace_entries);
+        return "polygenReadOptional(" + reader_expr + ", () => " + inner + ")";
+    }
+    if t.is_list {
+        let inner = binary_read_expr(t.inner, reader_expr, namespace_entries);
+        return "polygenReadList(" + reader_expr + ", () => " + inner + ")";
+    }
+    if t.lang_type == "string" {
+        return "BinaryRefFormat.readString(" + reader_expr + ")";
+    }
+    if t.lang_type == "bytes" {
+        return "polygenReadBytes(" + reader_expr + ")";
+    }
+    if t.lang_type == "timestamp" {
+        return "new Date(" + reader_expr + ".readI64() / 10000 - 62135596800000)";
+    }
+    if t.is_enum {
+        let enum_type = local_type_expr(t, namespace_entries);
+        return "polygenReadEnum(" + enum_type + ", " + reader_expr + ".readI32(), " + ts_string(enum_type) + ") as " + enum_type;
+    }
+    if t.is_primitive {
+        return binary_reader_expr(t.lang_type, reader_expr);
+    }
+    if t.is_struct {
+        return "read" + to_pascal_from_fqn(t.fqn) + "Binary(" + reader_expr + ")";
+    }
+    "undefined"
+}
+
+let namespace_entries = [];
+let all_structs = [];
+let table_structs = [];
+for ns in file.namespaces {
+    let paths = collect_namespace_paths(ns, "");
+    for path in paths {
+        namespace_entries.push(path);
+    }
+    let structs = collect_structs_from_namespace(ns);
+    for s in structs {
+        all_structs.push(s);
+        if !s.is_embed {
+            table_structs.push(s);
+        }
+    }
+}
+
+let struct_entries = [];
+for s in all_structs {
+    let json_fields = [];
+    let csv_fields = [];
+    let binary_fields = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            let camel_name = to_camel_case(f.name);
+            let json_value_expr = "polygenField(obj, " + ts_string(camel_name) + ", " + ts_string(f.name) + ")";
+            let csv_value_expr = "row[" + ts_string(f.name) + "]";
+            json_fields.push(#{
+                name: camel_name,
+                parsed_expr: parse_expr(f.field_type, json_value_expr, f.name, namespace_entries)
+            });
+            csv_fields.push(#{
+                name: camel_name,
+                parsed_expr: parse_expr(f.field_type, csv_value_expr, f.name, namespace_entries)
+            });
+            binary_fields.push(#{
+                name: camel_name,
+                write_stmt: binary_write_stmt(f.field_type, "writer", "value." + camel_name, namespace_entries),
+                read_expr: binary_read_expr(f.field_type, "reader", namespace_entries)
+            });
+        }
+    }
+    struct_entries.push(#{
+        name: s.name,
+        function_prefix: to_pascal_from_fqn(s.fqn),
+        type_name: local_object_type(s, namespace_entries),
+        json_fields: json_fields,
+        csv_fields: csv_fields,
+        binary_fields: binary_fields
+    });
+}
+
+let table_entries = [];
+for s in table_structs {
+    table_entries.push(#{
+        name: s.name,
+        function_prefix: to_pascal_from_fqn(s.fqn),
+        type_name: local_object_type(s, namespace_entries)
+    });
+}
+%endlogic
 // Generated by PolyGen
 // Source: {{file.path}}
 // Do not edit manually!
+
+import { readFileSync } from "node:fs";
+import { BinaryRefFormat, BinaryRefReader, BinaryRefWriter } from "./binary_ref";
+
+export class PolygenLoadError extends Error {
+    constructor(message: string, readonly fieldName?: string, readonly value?: unknown) {
+        super(message);
+        this.name = "PolygenLoadError";
+    }
+}
+
+function polygenReadText(path: string): string {
+    return readFileSync(path, "utf8");
+}
+
+function polygenSplitCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === "\"") {
+            if (inQuotes && line[i + 1] === "\"") {
+                current += "\"";
+                i += 1;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (ch === "," && !inQuotes) {
+            result.push(current);
+            current = "";
+        } else {
+            current += ch;
+        }
+    }
+    result.push(current);
+    return result;
+}
+
+function polygenReadCsvRows(path: string): Record<string, string>[] {
+    const text = polygenReadText(path).replace(/^\uFEFF/, "");
+    const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+    if (lines.length === 0) return [];
+    const headers = polygenSplitCsvLine(lines[0]).map(header => header.trim());
+    return lines.slice(1).map(line => {
+        const values = polygenSplitCsvLine(line);
+        const row: Record<string, string> = {};
+        headers.forEach((header, index) => {
+            row[header] = values[index] ?? "";
+        });
+        return row;
+    });
+}
+
+function polygenIsEmpty(value: unknown): boolean {
+    return value === undefined || value === null || value === "";
+}
+
+function polygenRequired(value: unknown, fieldName: string): unknown {
+    if (polygenIsEmpty(value)) {
+        throw new PolygenLoadError(`Missing required field: ${fieldName}`, fieldName, value);
+    }
+    return value;
+}
+
+function polygenObject(value: unknown, fieldName: string): Record<string, unknown> {
+    const parsed = typeof value === "string" ? JSON.parse(value) as unknown : value;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new PolygenLoadError(`Expected object for field: ${fieldName}`, fieldName, value);
+    }
+    return parsed as Record<string, unknown>;
+}
+
+function polygenField(source: Record<string, unknown>, camelName: string, sourceName: string): unknown {
+    if (Object.prototype.hasOwnProperty.call(source, camelName)) return source[camelName];
+    return source[sourceName];
+}
+
+function polygenParseString(value: unknown, fieldName: string): string {
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    throw new PolygenLoadError(`Invalid string field: ${fieldName}`, fieldName, value);
+}
+
+function polygenParseBool(value: unknown, fieldName: string): boolean {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+        if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+    }
+    throw new PolygenLoadError(`Invalid bool field: ${fieldName}`, fieldName, value);
+}
+
+function polygenParseInteger(value: unknown, fieldName: string): number {
+    const parsed = typeof value === "number" ? value : Number(String(value).trim());
+    if (!Number.isInteger(parsed) || !Number.isFinite(parsed)) {
+        throw new PolygenLoadError(`Invalid integer field: ${fieldName}`, fieldName, value);
+    }
+    return parsed;
+}
+
+function polygenParseFloat(value: unknown, fieldName: string): number {
+    const parsed = typeof value === "number" ? value : Number(String(value).trim());
+    if (!Number.isFinite(parsed)) {
+        throw new PolygenLoadError(`Invalid number field: ${fieldName}`, fieldName, value);
+    }
+    return parsed;
+}
+
+function polygenParseDate(value: unknown, fieldName: string): Date {
+    const date = value instanceof Date ? value : new Date(String(value));
+    if (Number.isNaN(date.getTime())) {
+        throw new PolygenLoadError(`Invalid timestamp field: ${fieldName}`, fieldName, value);
+    }
+    return date;
+}
+
+function polygenParseBytes(value: unknown, fieldName: string): Uint8Array {
+    if (value instanceof Uint8Array) return value;
+    if (Array.isArray(value)) return Uint8Array.from(value.map(item => polygenParseInteger(item, fieldName)));
+    if (typeof value === "string") {
+        const binary = atob(value);
+        return Uint8Array.from(binary, ch => ch.charCodeAt(0));
+    }
+    throw new PolygenLoadError(`Invalid bytes field: ${fieldName}`, fieldName, value);
+}
+
+function polygenParseEnum<E extends Record<string, string | number>>(value: unknown, fieldName: string, enumType: E): E[keyof E] {
+    const raw = String(value).trim();
+    const numeric = Number(raw);
+    if (Number.isInteger(numeric) && enumType[numeric] !== undefined) {
+        return numeric as E[keyof E];
+    }
+    const named = enumType[raw as keyof E];
+    if (typeof named === "number") {
+        return named as E[keyof E];
+    }
+    throw new PolygenLoadError(`Invalid enum field: ${fieldName}`, fieldName, value);
+}
+
+function polygenParseArray<T>(value: unknown, fieldName: string, parser: (item: unknown) => T): T[] {
+    if (polygenIsEmpty(value)) return [];
+    let rawItems: unknown;
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        rawItems = trimmed.startsWith("[") ? JSON.parse(trimmed) as unknown : trimmed.split(",").map(item => item.trim()).filter(item => item.length > 0);
+    } else {
+        rawItems = value;
+    }
+    if (!Array.isArray(rawItems)) {
+        throw new PolygenLoadError(`Invalid array field: ${fieldName}`, fieldName, value);
+    }
+    return rawItems.map(parser);
+}
+
+function polygenReadBytes(reader: BinaryRefReader): Uint8Array {
+    const length = reader.readI32();
+    if (length < 0) {
+        throw new PolygenLoadError("Negative binary payload length");
+    }
+    return reader.readBytes(length);
+}
+
+function polygenReadOptional<T>(reader: BinaryRefReader, read: () => T): T | undefined {
+    return reader.readBool() ? read() : undefined;
+}
+
+function polygenWriteOptional<T>(writer: BinaryRefWriter, value: T | undefined | null, write: (value: T) => void): void {
+    if (value === undefined || value === null) {
+        writer.writeBool(false);
+        return;
+    }
+    writer.writeBool(true);
+    write(value);
+}
+
+function polygenReadList<T>(reader: BinaryRefReader, read: () => T): T[] {
+    const length = reader.readI32();
+    if (length < 0) {
+        throw new PolygenLoadError("Negative binary list length");
+    }
+    const values: T[] = [];
+    for (let index = 0; index < length; index++) {
+        values.push(read());
+    }
+    return values;
+}
+
+function polygenWriteList<T>(writer: BinaryRefWriter, values: T[], write: (value: T) => void): void {
+    writer.writeI32(values.length);
+    for (const value of values) {
+        write(value);
+    }
+}
+
+function polygenReadEnum<E extends Record<string, string | number>>(enumType: E, value: number, enumName: string): E[keyof E] {
+    if (Number.isInteger(value) && enumType[value] !== undefined) {
+        return value as E[keyof E];
+    }
+    throw new PolygenLoadError(`Invalid enum value for ${enumName}: ${value}`, enumName, value);
+}
+
+function polygenWriteEnum<E extends Record<string, string | number>>(writer: BinaryRefWriter, enumType: E, value: number, enumName: string): void {
+    writer.writeI32(polygenReadEnum(enumType, value, enumName) as number);
+}
 %blank
 %for ns in file.namespaces
 %include "section/namespace_block" with ns
 %blank
+%endfor
+
+%for s in struct_entries
+export function from{{s.function_prefix}}Json(value: unknown): {{s.type_name}} {
+    const obj = polygenObject(value, "{{s.type_name}}");
+    return {
+%for field in s.json_fields
+        {{field.name}}: {{field.parsed_expr}},
+%endfor
+    };
+}
+
+export function from{{s.function_prefix}}Csv(row: Record<string, string>): {{s.type_name}} {
+    return {
+%for field in s.csv_fields
+        {{field.name}}: {{field.parsed_expr}},
+%endfor
+    };
+}
+
+export function write{{s.function_prefix}}Binary(writer: BinaryRefWriter, value: {{s.type_name}}): void {
+%for field in s.binary_fields
+    {{field.write_stmt}}
+%endfor
+}
+
+export function to{{s.function_prefix}}Binary(value: {{s.type_name}}): Uint8Array {
+    const writer = new BinaryRefWriter();
+    write{{s.function_prefix}}Binary(writer, value);
+    return writer.toUint8Array();
+}
+
+export function read{{s.function_prefix}}Binary(reader: BinaryRefReader): {{s.type_name}} {
+    return {
+%for field in s.binary_fields
+        {{field.name}}: {{field.read_expr}},
+%endfor
+    };
+}
+
+export function from{{s.function_prefix}}Binary(input: ArrayBuffer | Uint8Array): {{s.type_name}} {
+    return read{{s.function_prefix}}Binary(new BinaryRefReader(input));
+}
+
+%endfor
+%for s in table_entries
+export function load{{s.function_prefix}}sFromJson(path: string): {{s.type_name}}[] {
+    const value = JSON.parse(polygenReadText(path)) as unknown;
+    if (!Array.isArray(value)) {
+        throw new PolygenLoadError("Expected top-level JSON array", "{{s.name}}", value);
+    }
+    return value.map(item => from{{s.function_prefix}}Json(item));
+}
+
+export function load{{s.function_prefix}}sFromCsv(path: string): {{s.type_name}}[] {
+    return polygenReadCsvRows(path).map(row => from{{s.function_prefix}}Csv(row));
+}
+
 %endfor

@@ -10,5 +10,17 @@ main = "kotlin_file.ptpl"
 template = "kotlin_redis_keys_file.ptpl"
 output = "{{stem}}_redis_keys.kt"
 
+[[templates.extra]]
+template = "kotlin_container_file.ptpl"
+output = "{{stem}}_container.kt"
+
+[[templates.extra]]
+template = "kotlin_sqlite_accessor_file.ptpl"
+output = "{{stem}}_sqlite_accessor.kt"
+
+[[templates.extra]]
+template = "kotlin_binary_refs_file.ptpl"
+output = "{{stem}}_binary_refs.kt"
+
 [rhai]
 prelude = ["rhai_utils/type_mapping.rhai"]

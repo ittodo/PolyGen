@@ -30,6 +30,47 @@ fn container_search_key_type(f) {
     return cs_type(base.lang_type);
 }
 
+fn container_index_key_type_from_type(t) {
+    let base = t;
+    if base.is_option {
+        base = base.inner;
+    }
+    if base.lang_type == "timestamp" { return "DateTime"; }
+    if base.is_enum { return "global::" + base.fqn; }
+    if base.is_primitive { return cs_type(base.lang_type); }
+    return "global::" + base.fqn;
+}
+
+fn container_index_key_type(idx) {
+    if idx.is_composite {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += container_index_key_type_from_type(idx.fields[i].field_type);
+        }
+        result += ")";
+        return result;
+    }
+    container_index_key_type_from_type(idx.field_type)
+}
+
+fn container_index_key_expr(idx) {
+    if idx.is_composite {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += "row." + idx.fields[i].name;
+        }
+        result += ")";
+        return result;
+    }
+    "row." + idx.field_name
+}
+
 fn container_search_has_value_condition(f) {
     let t = f.field_type;
     if !t.is_option {
@@ -98,6 +139,16 @@ fn container_search_is_supported(f) {
     return false;
 }
 
+let index_entries = [];
+for idx in struct.indexes {
+    index_entries.push(#{
+        name: idx.name,
+        is_unique: idx.is_unique,
+        key_type: container_index_key_type(idx),
+        key_expr: container_index_key_expr(idx)
+    });
+}
+
 let search_indexes = [];
 for item in struct.items {
     if item.is_field() {
@@ -128,11 +179,11 @@ for item in struct.items {
 /// </summary>
 public class {{struct.name}}Table : DataTableBase<{{struct.name}}>
 {
-%for idx in struct.indexes
+%for idx in index_entries
 %if idx.is_unique
-    public UniqueIndex<{{idx.field_type | lang_type}}, {{struct.name}}> {{idx.name}} { get; } = new();
+    public UniqueIndex<{{idx.key_type}}, {{struct.name}}> {{idx.name}} { get; } = new();
 %else
-    public GroupIndex<{{idx.field_type | lang_type}}, {{struct.name}}> {{idx.name}} { get; } = new();
+    public GroupIndex<{{idx.key_type}}, {{struct.name}}> {{idx.name}} { get; } = new();
 %endif
 %endfor
 %for search in search_indexes
@@ -161,8 +212,8 @@ public class {{struct.name}}Table : DataTableBase<{{struct.name}}>
 
     protected override void OnRowAdded({{struct.name}} row)
     {
-%for idx in struct.indexes
-        {{idx.name}}.Add(row.{{idx.field_name}}, row);
+%for idx in index_entries
+        {{idx.name}}.Add({{idx.key_expr}}, row);
 %endfor
 %for search in search_indexes
 %if search.has_value_condition != ""
@@ -188,7 +239,7 @@ public class {{struct.name}}Table : DataTableBase<{{struct.name}}>
 
     protected override void OnCleared()
     {
-%for idx in struct.indexes
+%for idx in index_entries
         {{idx.name}}.Clear();
 %endfor
 %for search in search_indexes

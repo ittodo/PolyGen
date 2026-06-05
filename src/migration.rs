@@ -17,7 +17,8 @@ pub enum SchemaChange {
     TableAdded {
         table_name: String,
         namespace: String,
-        struct_def: StructDef,
+        /// Added table definition, boxed to keep the change enum compact.
+        struct_def: Box<StructDef>,
     },
     /// A table was removed (warning).
     TableRemoved {
@@ -119,7 +120,7 @@ impl MigrationDiff {
                 diff.changes.push(SchemaChange::TableAdded {
                     table_name: table.name.clone(),
                     namespace: table.namespace.clone(),
-                    struct_def: table.struct_def.clone(),
+                    struct_def: Box::new(table.struct_def.clone()),
                 });
             }
         }
@@ -375,7 +376,7 @@ impl MigrationDiff {
                 diff.changes.push(SchemaChange::TableAdded {
                     table_name: table.name.clone(),
                     namespace: table.namespace.clone(),
-                    struct_def: table.struct_def.clone(),
+                    struct_def: Box::new(table.struct_def.clone()),
                 });
             }
         }
@@ -686,7 +687,7 @@ fn extract_tables_from_namespace(ns: &NamespaceDef, tables: &mut HashMap<String,
                         namespace: ns.name.clone(),
                         full_name,
                         columns,
-                        struct_def: s.clone(),
+                        struct_def: (**s).clone(),
                     },
                 );
             }

@@ -50,6 +50,7 @@ TEST_SCHEMAS=(
     "08_complex_schema"
     "09_sqlite"
     "10_pack_embed"
+    "11_relations_indexes"
 )
 
 PASSED=0
@@ -113,6 +114,17 @@ for test_name in "${TEST_SCHEMAS[@]}"; do
     if [ -f "$SCRIPT_DIR/tests/${test_name}_test.go" ]; then
         if ! cp "$SCRIPT_DIR/tests/${test_name}_test.go" polygen_integration_test.go; then
             echo -e "${RED}  FAIL: Could not copy smoke test${NC}"
+            FAILED=$((FAILED + 1))
+            cd "$PROJECT_ROOT"
+            continue
+        fi
+    fi
+
+    if [ "$test_name" = "09_sqlite" ]; then
+        GET_LOG="$TEST_OUTPUT/go_get_sqlite.log"
+        if ! go get modernc.org/sqlite@v1.51.0 > "$GET_LOG" 2>&1; then
+            echo -e "${RED}  FAIL: go get sqlite driver failed${NC}"
+            cat "$GET_LOG" | sed 's/^/    /'
             FAILED=$((FAILED + 1))
             cd "$PROJECT_ROOT"
             continue

@@ -91,8 +91,10 @@ embed ColorAlpha {
 기본값은 `;`입니다. `separator`를 지정할 때는 named parameter `separator`만 허용되며,
 값은 한 글자 문자열이어야 합니다. 코드 생성 대상 언어들이 char delimiter를 사용하므로
 빈 문자열, 여러 글자 문자열, 작은따옴표, 백슬래시는 검증 단계에서 오류로 처리됩니다.
-Go 생성물은 `Pack`, `Unpack<Type>`, `TryUnpack<Type>` 함수를 만들며, 숫자 unpack은
-범위 오류와 `NaN`/`Inf`를 실패로 처리합니다.
+Go/Python/Kotlin/Swift 생성물은 `Pack`/`pack`, `Unpack`/`unpack`, `TryUnpack`/`try_unpack`
+계열 API를 만들며, 숫자 unpack은 범위 오류와 `NaN`/`Inf`를 실패로 처리합니다.
+Unreal 생성물은 packed embed USTRUCT에 `Pack`, `Unpack`, `TryUnpack`을 만들고 field count,
+finite float, unsigned negative 입력을 방어합니다.
 
 #### @datasource - 데이터소스 지정
 
@@ -194,10 +196,10 @@ table Player {
 - 테이블/필드 이름 변경 추적
 - 마이그레이션 SQL 자동 생성
 
-### 1.4 @search - 필드별 역색인 (C# Container/BinaryRef 구현)
+### 1.4 @search - 필드별 역색인 (C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift Container, Unreal Registry, C#/C++/TypeScript/Go/Python/Kotlin/Swift BinaryRef 구현)
 
 `@search`는 각 searchable field에 붙는 역색인(inverted index) 생성 힌트입니다. 데이터 무결성 제약이
-아니라 C# Container/BinaryRef 같은 산출물에서 검색용 파생 인덱스를 만들기 위한 metadata이므로
+아니라 Container/BinaryRef 같은 산출물에서 검색용 파생 인덱스를 만들기 위한 metadata이므로
 attribute/constraint가 아니라 field-level annotation으로 둡니다.
 
 #### 지원 문법
@@ -263,13 +265,17 @@ table Item {
 | `min` | integer | `n` | 검색어 최소 길이 |
 | `normalize` | identifier/string | `lower_trim` for string | `none`, `lower`, `trim`, `lower_trim` |
 | `name` | string/identifier | `By<Field>` 또는 `Search<Field>` | 생성 API/index 이름 |
-| `target` | identifier/string | `csharp` | 산출물 제한. `csharp`, `csharp_container`, `csharp_binary_ref` |
+| `target` | identifier/string | `csharp` | 산출물 제한. `csharp`, `csharp_container`, `csharp_binary_ref`, `rust`, `rust_container`, `cpp`, `cpp_container`, `cpp_binary_ref`, `typescript`, `typescript_container`, `typescript_binary_ref`, `go`, `go_container`, `go_binary_ref`, `python`, `python_container`, `python_binary_ref`, `kotlin`, `kotlin_container`, `kotlin_binary_ref`, `swift`, `swift_container`, `swift_binary_ref`, `unreal`, `unreal_registry` |
 
-#### C# 생성
+#### 생성 API
 
-일반 Container와 BinaryRef는 같은 `SearchBy<Field>` API를 생성합니다.
+C# 일반 Container와 BinaryRef는 같은 `SearchBy<Field>` API를 생성합니다. TypeScript
+Container/BinaryRef는 `searchBy<Field>` API를 생성하고, Go Container/BinaryRef는 `SearchBy<Field>` API를
+생성합니다. C++ Container/BinaryRef, Rust Container, Python Container/BinaryRef는 언어 명명 규칙에 맞춰
+`search_by_<field>` API를 생성합니다. Kotlin/Swift Container/BinaryRef는 `searchBy<Field>` API를
+생성합니다. Unreal Registry는 `Search<Table>By<Field>` Blueprint query helper를 생성합니다.
 
-- 일반 Container: row를 `Add`할 때 메모리 postings를 갱신하고 row 객체를 반환합니다.
+- 일반 Container: row를 `Add`/`add_row`할 때 메모리 postings를 갱신하고 row 객체 참조를 반환합니다.
 - BinaryRef: 파일에 row ordinal 기반 postings를 저장하고 lazy row ref를 반환합니다.
 
 BinaryRef 파일에는 row offset 대신 row ordinal 기반 postings를 저장합니다.
@@ -595,10 +601,10 @@ CREATE TABLE Player (
 | `@index` | ✅ | ✅ | ✅ | ✅ |
 | `@datasource` | ✅ | ✅ | ✅ | ✅ |
 | `@cache` | ✅ | ✅ | ✅ | ✅ |
-| `@pack` | ✅ | ✅ | ✅ | ✅ |
+| `@pack` | ✅ | ✅ | ✅ | ✅ C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal |
 | `@readonly` | ✅ | ✅ | ✅ | ✅ |
 | `@soft_delete` | ✅ | ✅ | ✅ | ✅ |
-| `@search` | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef |
+| `@search` | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef, C++ Container/BinaryRef, Rust Container, TypeScript Container/BinaryRef, Go Container/BinaryRef, Python/Kotlin/Swift Container/BinaryRef, Unreal Registry |
 | `@renamed_from` | ❌ | ❌ | ❌ | ❌ |
 
 ### 5.2 어트리뷰트

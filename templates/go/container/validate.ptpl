@@ -65,6 +65,25 @@ let row_key_expr = go_row_key_expr(struct);
 %endif
 %endfor
 	}
+%for idx in struct.indexes
+%if idx.is_unique
+%logic
+let idx_type = go_index_key_type(struct, idx);
+let idx_key = go_index_key_expr(struct, idx, "row");
+let idx_seen = "seen" + to_pascal_case(idx.name);
+%endlogic
+	{{idx_seen}} := make(map[{{idx_type}}]struct{})
+	for _, row := range t.rows {
+		key := {{idx_key}}
+		if _, ok := {{idx_seen}}[key]; ok {
+			rowKey := fmt.Sprintf("%v", {{row_key_expr}})
+			result.AddError(UniqueError("{{struct.name}}", "{{idx.name}}", rowKey, key))
+		} else {
+			{{idx_seen}}[key] = struct{}{}
+		}
+	}
+%endif
+%endfor
 	return result
 }
 %blank

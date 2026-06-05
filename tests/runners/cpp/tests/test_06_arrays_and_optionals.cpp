@@ -4,11 +4,27 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <sstream>
+#include <stdexcept>
+#include <string>
 
 #include "schema.hpp"
 #include "schema_loaders.hpp"
 
 using namespace test::collections;
+
+std::string csv_quote(const std::string& value) {
+    std::string out = "\"";
+    for (char ch : value) {
+        if (ch == '"') {
+            out += "\"\"";
+        } else {
+            out += ch;
+        }
+    }
+    out += "\"";
+    return out;
+}
 
 void test_array_primitives() {
     std::cout << "  Testing ArrayTest with primitive arrays..." << std::endl;
@@ -175,6 +191,86 @@ void test_mixed_arrays_optionals() {
     std::cout << "    PASS" << std::endl;
 }
 
+void test_csv_loaders() {
+    std::cout << "  Testing generated CSV loaders..." << std::endl;
+
+    {
+        std::stringstream csv;
+        csv << "id,int_list,string_list,float_list,bool_list,tags\n";
+        csv << "3,\"1,2\",\"one,two\",\"1.5,2.5\",\"yes,no,1,0\","
+            << csv_quote("[{\"name\":\"Important\",\"color\":\"red\"},{\"name\":\"Review\",\"color\":\"yellow\"}]")
+            << "\n";
+
+        auto rows = polygen_loaders::load_ArrayTest_from_csv(csv);
+        assert(rows.size() == 1);
+        assert(rows[0].int_list.size() == 2);
+        assert(rows[0].int_list[1] == 2);
+        assert(rows[0].string_list[0] == "one");
+        assert(std::abs(rows[0].float_list[1] - 2.5f) < 0.001f);
+        assert(rows[0].bool_list.size() == 4);
+        assert(rows[0].bool_list[0] == true);
+        assert(rows[0].bool_list[1] == false);
+        assert(rows[0].tags.size() == 2);
+        assert(rows[0].tags[1].color == "yellow");
+    }
+
+    {
+        std::stringstream csv;
+        csv << "id,required_name,opt_int,opt_string,opt_float,opt_bool,opt_tag\n";
+        csv << "4,WithTag,,,3.25,yes,"
+            << csv_quote("{\"name\":\"Optional\",\"color\":\"blue\"}")
+            << "\n";
+
+        auto rows = polygen_loaders::load_OptionalTest_from_csv(csv);
+        assert(rows.size() == 1);
+        assert(!rows[0].opt_int.has_value());
+        assert(rows[0].opt_float.has_value());
+        assert(std::abs(*rows[0].opt_float - 3.25) < 0.0001);
+        assert(rows[0].opt_bool.has_value());
+        assert(*rows[0].opt_bool == true);
+        assert(rows[0].opt_tag.has_value());
+        assert(rows[0].opt_tag->name == "Optional");
+    }
+
+    {
+        std::stringstream csv;
+        csv << "id,opt_tags,meta,history\n";
+        csv << "5,"
+            << csv_quote("[{\"name\":\"One\",\"color\":\"green\"}]")
+            << ","
+            << csv_quote("{\"created_by\":\"alice\",\"updated_by\":null,\"version\":3}")
+            << ","
+            << csv_quote("[{\"created_by\":null,\"updated_by\":\"bob\",\"version\":1}]")
+            << "\n";
+
+        auto rows = polygen_loaders::load_MixedTest_from_csv(csv);
+        assert(rows.size() == 1);
+        assert(rows[0].opt_tags.size() == 1);
+        assert(rows[0].meta.has_value());
+        assert(rows[0].meta->created_by.has_value());
+        assert(*rows[0].meta->created_by == "alice");
+        assert(rows[0].meta->version == 3);
+        assert(rows[0].history.size() == 1);
+        assert(rows[0].history[0].updated_by.has_value());
+        assert(*rows[0].history[0].updated_by == "bob");
+    }
+
+    {
+        std::stringstream csv;
+        csv << "id,int_list,string_list,float_list,bool_list,tags\n";
+        csv << "6,,,,,not-json\n";
+        bool failed = false;
+        try {
+            (void)polygen_loaders::load_ArrayTest_from_csv(csv);
+        } catch (const std::exception& ex) {
+            failed = std::string(ex.what()).find("invalid JSON array for tags") != std::string::npos;
+        }
+        assert(failed);
+    }
+
+    std::cout << "    PASS" << std::endl;
+}
+
 void test_binary_arrays_optionals() {
     std::cout << "  Testing binary serialization with arrays and optionals..." << std::endl;
 
@@ -222,6 +318,7 @@ int main() {
     test_optional_primitives();
     test_optional_complex_type();
     test_mixed_arrays_optionals();
+    test_csv_loaders();
     test_binary_arrays_optionals();
 
     std::cout << "=== All tests passed! ===" << std::endl;

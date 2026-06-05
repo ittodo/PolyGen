@@ -1,0 +1,618 @@
+%logic
+// Rust BinaryRef generator.
+// Generates indexed row refs backed by a shared binary document.
+
+import "templates/rust/rhai_utils/type_mapping" as rust_types;
+
+fn to_pascal(name) {
+    let result = "";
+    let capitalize_next = true;
+    for i in 0..name.len() {
+        let c = name.sub_string(i, 1);
+        if c == "_" || c == "-" || c == "." {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result += c.to_upper();
+            capitalize_next = false;
+        } else {
+            result += c;
+        }
+    }
+    result
+}
+
+fn pluralize(name) {
+    if name.ends_with("y") {
+        return name.sub_string(0, name.len() - 1) + "ies";
+    } else if name.ends_with("s") || name.ends_with("x") || name.ends_with("ch") || name.ends_with("sh") {
+        return name + "es";
+    }
+    return name + "s";
+}
+
+fn namespace_path(ns_fqn) {
+    if ns_fqn == "" {
+        return "";
+    }
+    return rust_types::ns_to_module_name(ns_fqn);
+}
+
+fn type_path(t) {
+    if t.is_primitive || rust_types::is_primitive_name(t.type_name) {
+        return rust_types::map_primitive(t.type_name);
+    }
+    let ns_path = namespace_path(t.namespace_fqn);
+    if ns_path == "" {
+        return "crate::schema::" + t.type_name;
+    }
+    return "crate::schema::" + ns_path + "::" + t.type_name;
+}
+
+fn key_type(t) {
+    let base = if t.is_option { t.inner } else { t };
+    return type_path(base);
+}
+
+fn can_index_type(t) {
+    if t.is_option || t.is_list {
+        return false;
+    }
+    if t.type_name == "bytes" {
+        return false;
+    }
+    return true;
+}
+
+fn can_index(idx) {
+    if idx.is_composite {
+        for field in idx.fields {
+            if !can_index_type(field.field_type) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return can_index_type(idx.field_type);
+}
+
+fn index_key_type(idx) {
+    if idx.is_composite {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 { result += ", "; }
+            result += key_type(idx.fields[i].field_type);
+        }
+        result += ")";
+        return result;
+    }
+    return key_type(idx.field_type);
+}
+
+fn index_key_expr(idx) {
+    if idx.is_composite {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 { result += ", "; }
+            result += "row." + idx.fields[i].name + ".clone()";
+        }
+        result += ")";
+        return result;
+    }
+    return "row." + idx.field_name + ".clone()";
+}
+
+fn search_target_enabled(search) {
+    return search.target == "csharp" || search.target == "rust" || search.target == "rust_binary_ref";
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn can_search(field) {
+    if !field.has_search_index {
+        return false;
+    }
+    let search = field.search_index;
+    if !search_target_enabled(search) {
+        return false;
+    }
+    if field.field_type.is_list {
+        return false;
+    }
+    let base = search_base_type(field.field_type);
+    if base.type_name == "bytes" || base.is_struct {
+        return false;
+    }
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    return search.mode == "exact";
+}
+
+fn can_getter(field_type, owner_struct) {
+    if field_type.is_option || field_type.is_list || field_type.is_struct || field_type.is_enum {
+        return false;
+    }
+    return true;
+}
+
+fn search_key_type(field) {
+    let search = field.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "String";
+    }
+    return key_type(field.field_type);
+}
+
+fn search_key_expr(field) {
+    let search = field.search_index;
+    let base = search_base_type(field.field_type);
+    if base.type_name == "string" {
+        if field.field_type.is_option {
+            return "normalize_string(value, \"" + search.normalize + "\")";
+        }
+        return "normalize_string(&row." + field.name + ", \"" + search.normalize + "\")";
+    }
+    return "row." + field.name + ".clone()";
+}
+
+fn search_query_arg(field) {
+    let search = field.search_index;
+    let base = search_base_type(field.field_type);
+    if search.mode == "ngram" || search.mode == "word" || base.type_name == "string" {
+        return "&str";
+    }
+    return key_type(field.field_type);
+}
+
+fn search_query_expr(field) {
+    let search = field.search_index;
+    let base = search_base_type(field.field_type);
+    if base.type_name == "string" {
+        return "normalize_string(query, \"" + search.normalize + "\")";
+    }
+    return "query";
+}
+
+fn collect_structs_from_namespace(ns, namespace_path_value) {
+    let entries = [];
+
+    for item in ns.items {
+        if item.is_struct() {
+            let s = item.as_struct();
+            if !s.is_embed {
+                let rust_path = if namespace_path_value == "" {
+                    "crate::schema::" + s.name
+                } else {
+                    "crate::schema::" + namespace_path_value + "::" + s.name
+                };
+                entries.push(#{ def: s, rust_path: rust_path });
+            }
+        } else if item.is_namespace() {
+            let child = item.as_namespace();
+            let child_path = if namespace_path_value == "" {
+                rust_types::ns_to_module_name(child.name)
+            } else {
+                namespace_path_value + "::" + rust_types::ns_to_module_name(child.name)
+            };
+            let child_entries = collect_structs_from_namespace(child, child_path);
+            for entry in child_entries {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries
+}
+
+fn table_entry(entry) {
+    let s = entry.def;
+    let safe = to_pascal(s.fqn);
+    let indexes = [];
+    let searches = [];
+    let fields = [];
+
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if can_getter(f.field_type, s) {
+                fields.push(#{
+                    name: f.name,
+                    method_name: to_snake_case(f.name),
+                    type_name: key_type(f.field_type)
+                });
+            }
+            if can_search(f) {
+                let search = f.search_index;
+                searches.push(#{
+                    name: search.name,
+                    field_name: f.name,
+                    method_name: "search_by_" + to_snake_case(search.name),
+                    member_name: "search_by_" + to_snake_case(search.name),
+                    key_type: search_key_type(f),
+                    query_arg: search_query_arg(f),
+                    query_expr: search_query_expr(f),
+                    key_expr: search_key_expr(f),
+                    is_token_mode: search.mode == "ngram" || search.mode == "word",
+                    is_optional: f.field_type.is_option,
+                    mode: search.mode,
+                    n: search.n,
+                    min: search.min,
+                    normalize: search.normalize
+                });
+            }
+        }
+    }
+
+    if s.indexes != () {
+        for idx in s.indexes {
+            if can_index(idx) {
+                indexes.push(#{
+                    name: idx.name,
+                    field_name: idx.field_name,
+                    member_name: to_snake_case(idx.name),
+                    method_name: if idx.is_unique || idx.is_composite { "get_" + to_snake_case(idx.name) } else { "find_" + to_snake_case(idx.name) },
+                    key_type: index_key_type(idx),
+                    key_expr: index_key_expr(idx),
+                    is_unique: idx.is_unique
+                });
+            }
+        }
+    }
+
+    return #{
+        def: s,
+        rust_path: entry.rust_path,
+        ref_name: safe + "Ref",
+        table_name: safe + "RefTable",
+        doc_member: to_snake_case(s.name) + "s",
+        container_member: to_snake_case(s.name) + "s",
+        indexes: indexes,
+        searches: searches,
+        fields: fields
+    };
+}
+
+let tables = [];
+for schema_file in schema.files {
+    for ns in schema_file.namespaces {
+        let entries = collect_structs_from_namespace(ns, rust_types::ns_to_module_name(ns.name));
+        for entry in entries {
+            tables.push(table_entry(entry));
+        }
+    }
+}
+
+let has_tables = tables.len() > 0;
+let table_count = tables.len();
+%endlogic
+%if has_tables
+//! Generated by PolyGen - Rust BinaryRef document API
+//! Source: {{file.path}}
+%blank
+use std::collections::{HashMap, HashSet};
+use std::io::{Cursor, Error, ErrorKind, Read, Result as IoResult, Seek, Write};
+use std::sync::Arc;
+%blank
+use crate::polygen_support::{BinaryIO, BinaryReadExt, BinaryWriteExt};
+use crate::schema_container::container::SchemaContainer;
+%blank
+const BINARY_REF_MAGIC: &[u8; 8] = b"PGBRUST1";
+%blank
+fn invalid_data(message: impl Into<String>) -> Error {
+    Error::new(ErrorKind::InvalidData, message.into())
+}
+%blank
+fn normalize_string(value: &str, policy: &str) -> String {
+    match policy {
+        "lower" => value.to_lowercase(),
+        "trim" => value.trim().to_string(),
+        "lower_trim" => value.trim().to_lowercase(),
+        _ => value.to_string(),
+    }
+}
+%blank
+fn search_tokens(value: &str, mode: &str, n: usize, min: usize, normalize: &str) -> Vec<String> {
+    let value = normalize_string(value, normalize);
+    if value.len() < min {
+        return Vec::new();
+    }
+    if mode == "exact" {
+        return vec![value];
+    }
+%blank
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    if mode == "word" {
+        for token in value.split_whitespace() {
+            if token.len() >= min && seen.insert(token.to_string()) {
+                result.push(token.to_string());
+            }
+        }
+        return result;
+    }
+%blank
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() < n {
+        return Vec::new();
+    }
+    for index in 0..=(chars.len() - n) {
+        let token: String = chars[index..index + n].iter().collect();
+        if seen.insert(token.clone()) {
+            result.push(token);
+        }
+    }
+    result
+}
+%blank
+fn rows_for_key<'a, K, R>(index: &HashMap<K, Vec<usize>>, rows: &'a [R], key: &K) -> Vec<&'a R>
+where
+    K: Eq + std::hash::Hash,
+{
+    index
+        .get(key)
+        .map(|indices| indices.iter().filter_map(|idx| rows.get(*idx)).collect())
+        .unwrap_or_default()
+}
+%blank
+fn rows_for_tokens<'a, R>(
+    index: &HashMap<String, Vec<usize>>,
+    rows: &'a [R],
+    tokens: Vec<String>,
+) -> Vec<&'a R> {
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+    let mut iter = tokens.iter();
+    let Some(first) = iter.next() else {
+        return Vec::new();
+    };
+    let Some(first_postings) = index.get(first) else {
+        return Vec::new();
+    };
+    let mut matches = first_postings.clone();
+    for token in iter {
+        let Some(postings) = index.get(token) else {
+            return Vec::new();
+        };
+        let set: HashSet<usize> = postings.iter().copied().collect();
+        matches.retain(|idx| set.contains(idx));
+    }
+    matches.into_iter().filter_map(|idx| rows.get(idx)).collect()
+}
+%blank
+fn write_table<T, W>(writer: &mut W, table_name: &str, rows: &[T]) -> IoResult<()>
+where
+    T: BinaryIO,
+    W: Write,
+{
+    writer.write_string(table_name)?;
+    writer.write_u32(rows.len() as u32)?;
+    for row in rows {
+        let mut payload = Vec::new();
+        row.write_binary(&mut payload)?;
+        writer.write_u32(payload.len() as u32)?;
+        writer.write_all(&payload)?;
+    }
+    Ok(())
+}
+%blank
+fn skip_table<R: Read + Seek>(reader: &mut R) -> IoResult<Vec<usize>> {
+    let row_count = reader.read_u32()? as usize;
+    let mut offsets = Vec::with_capacity(row_count);
+    for _ in 0..row_count {
+        let len = reader.read_u32()? as usize;
+        let row_offset = reader.stream_position()? as usize;
+        offsets.push(row_offset);
+        let mut skipped = vec![0u8; len];
+        reader.read_exact(&mut skipped)?;
+    }
+    Ok(offsets)
+}
+%blank
+%for table in tables
+#[derive(Clone, Debug)]
+pub struct {{table.ref_name}} {
+    owner: Arc<Vec<u8>>,
+    row_offset: usize,
+}
+%blank
+impl {{table.ref_name}} {
+    fn new(owner: Arc<Vec<u8>>, row_offset: usize) -> Self {
+        Self { owner, row_offset }
+    }
+%blank
+    pub fn to_owned(&self) -> IoResult<{{table.rust_path}}> {
+        let slice = self
+            .owner
+            .get(self.row_offset..)
+            .ok_or_else(|| invalid_data("row offset outside binary ref document"))?;
+        let mut cursor = Cursor::new(slice);
+        {{table.rust_path}}::read_binary(&mut cursor)
+    }
+%blank
+%for field in table.fields
+    pub fn {{field.method_name}}(&self) -> IoResult<{{field.type_name}}> {
+        Ok(self.to_owned()?.{{field.name}})
+    }
+%blank
+%endfor
+}
+%blank
+#[derive(Clone, Debug, Default)]
+pub struct {{table.table_name}} {
+    rows: Vec<{{table.ref_name}}>,
+%for idx in table.indexes
+%if idx.is_unique
+    {{idx.member_name}}: HashMap<{{idx.key_type}}, usize>,
+%else
+    {{idx.member_name}}: HashMap<{{idx.key_type}}, Vec<usize>>,
+%endif
+%endfor
+%for search in table.searches
+    {{search.member_name}}: HashMap<{{search.key_type}}, Vec<usize>>,
+%endfor
+}
+%blank
+impl {{table.table_name}} {
+    fn from_offsets(owner: Arc<Vec<u8>>, offsets: Vec<usize>) -> IoResult<Self> {
+        let rows: Vec<_> = offsets.into_iter().map(|offset| {{table.ref_name}}::new(owner.clone(), offset)).collect();
+        let mut table = Self {
+            rows,
+%for idx in table.indexes
+            {{idx.member_name}}: HashMap::new(),
+%endfor
+%for search in table.searches
+            {{search.member_name}}: HashMap::new(),
+%endfor
+        };
+        table.rebuild_indexes()?;
+        Ok(table)
+    }
+%blank
+    fn rebuild_indexes(&mut self) -> IoResult<()> {
+%for idx in table.indexes
+        self.{{idx.member_name}}.clear();
+%endfor
+%for search in table.searches
+        self.{{search.member_name}}.clear();
+%endfor
+        for (row_index, row_ref) in self.rows.iter().enumerate() {
+            let row = row_ref.to_owned()?;
+%for idx in table.indexes
+%if idx.is_unique
+            self.{{idx.member_name}}.insert({{idx.key_expr}}, row_index);
+%else
+            self.{{idx.member_name}}.entry({{idx.key_expr}}).or_default().push(row_index);
+%endif
+%endfor
+%for search in table.searches
+%if search.is_token_mode
+%if search.is_optional
+            if let Some(value) = row.{{search.field_name}}.as_ref() {
+                for token in search_tokens(value, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}") {
+                    self.{{search.member_name}}.entry(token).or_default().push(row_index);
+                }
+            }
+%else
+            for token in search_tokens(&row.{{search.field_name}}, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}") {
+                self.{{search.member_name}}.entry(token).or_default().push(row_index);
+            }
+%endif
+%else
+%if search.is_optional
+            if let Some(value) = row.{{search.field_name}}.as_ref() {
+                self.{{search.member_name}}.entry({{search.key_expr}}).or_default().push(row_index);
+            }
+%else
+            self.{{search.member_name}}.entry({{search.key_expr}}).or_default().push(row_index);
+%endif
+%endif
+%endfor
+        }
+        Ok(())
+    }
+%blank
+    pub fn all(&self) -> &[{{table.ref_name}}] {
+        &self.rows
+    }
+%blank
+    pub fn count(&self) -> usize {
+        self.rows.len()
+    }
+%blank
+%for idx in table.indexes
+%if idx.is_unique
+    pub fn {{idx.method_name}}(&self, key: {{idx.key_type}}) -> Option<&{{table.ref_name}}> {
+        self.{{idx.member_name}}.get(&key).and_then(|idx| self.rows.get(*idx))
+    }
+%blank
+%else
+    pub fn {{idx.method_name}}(&self, key: {{idx.key_type}}) -> Vec<&{{table.ref_name}}> {
+        rows_for_key(&self.{{idx.member_name}}, &self.rows, &key)
+    }
+%blank
+%endif
+%endfor
+%for search in table.searches
+%if search.is_token_mode
+    pub fn {{search.method_name}}(&self, query: &str) -> Vec<&{{table.ref_name}}> {
+        rows_for_tokens(
+            &self.{{search.member_name}},
+            &self.rows,
+            search_tokens(query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}"),
+        )
+    }
+%blank
+%else
+    pub fn {{search.method_name}}(&self, query: {{search.query_arg}}) -> Vec<&{{table.ref_name}}> {
+        let key = {{search.query_expr}};
+        rows_for_key(&self.{{search.member_name}}, &self.rows, &key)
+    }
+%blank
+%endif
+%endfor
+}
+%blank
+%endfor
+#[derive(Clone, Debug)]
+pub struct BinaryRefDocument {
+    owner: Arc<Vec<u8>>,
+%for table in tables
+    pub {{table.doc_member}}: {{table.table_name}},
+%endfor
+}
+%blank
+impl BinaryRefDocument {
+    pub fn bytes(&self) -> &[u8] {
+        &self.owner
+    }
+}
+%blank
+pub fn write_binary_ref_document(container: &SchemaContainer) -> IoResult<Vec<u8>> {
+    let mut writer = Vec::new();
+    writer.write_all(BINARY_REF_MAGIC)?;
+    writer.write_u32({{table_count}})?;
+%for table in tables
+    write_table(&mut writer, "{{table.def.fqn}}", container.{{table.container_member}}.all())?;
+%endfor
+    Ok(writer)
+}
+%blank
+pub fn read_binary_ref_document(bytes: Vec<u8>) -> IoResult<BinaryRefDocument> {
+    let owner = Arc::new(bytes);
+    let mut reader = Cursor::new(owner.as_slice());
+    let mut magic = [0u8; 8];
+    reader.read_exact(&mut magic)?;
+    if &magic != BINARY_REF_MAGIC {
+        return Err(invalid_data("invalid Rust BinaryRef document header"));
+    }
+    let table_count = reader.read_u32()? as usize;
+%for table in tables
+    let mut {{table.doc_member}}_offsets = Vec::new();
+%endfor
+    for _ in 0..table_count {
+        let table_name = reader.read_string()?;
+        match table_name.as_str() {
+%for table in tables
+            "{{table.def.fqn}}" => {
+                {{table.doc_member}}_offsets = skip_table(&mut reader)?;
+            }
+%endfor
+            _ => {
+                let _ = skip_table(&mut reader)?;
+            }
+        }
+    }
+    Ok(BinaryRefDocument {
+        owner: owner.clone(),
+%for table in tables
+        {{table.doc_member}}: {{table.table_name}}::from_offsets(owner.clone(), {{table.doc_member}}_offsets)?,
+%endfor
+    })
+}
+%endif

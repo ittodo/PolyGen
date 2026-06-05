@@ -2,10 +2,63 @@
 // AddRow adds a row to the table.
 func (t *{{struct.name | suffix("Table")}}) AddRow(row *{{struct.name}}) {
 %for idx in struct.indexes
+%logic
+let idx_member = go_index_member_name(idx);
+let idx_key = go_index_key_expr(struct, idx, "row");
+%endlogic
 %if idx.is_unique
-	t.{{idx.field_name | pascal_case | prefix("by")}}.Insert(row.{{idx.field_name | pascal_case}}, row)
+	t.{{idx_member}}.Insert({{idx_key}}, row)
 %else
-	t.{{idx.field_name | pascal_case | prefix("by")}}.Add(row.{{idx.field_name | pascal_case}}, row)
+	t.{{idx_member}}.Add({{idx_key}}, row)
+%endif
+%endfor
+%for item in struct.items
+%if item.is_field
+%logic
+let field = as_field(item);
+%endlogic
+%if go_search_supported(field)
+%logic
+let search_var = go_search_var_name(field);
+let base = go_search_base_type(field.field_type);
+let base_name = go_search_base_name(field.field_type);
+let search_mode = go_search_mode(field);
+let search_n = go_search_n(field);
+let search_min = go_search_min(field);
+let search_normalize = go_search_normalize(field);
+%endlogic
+%if search_mode == "ngram" || search_mode == "word"
+%if field.field_type.is_option
+	if row.{{field.name | pascal_case}} != nil {
+		for _, token := range searchTokens(*row.{{field.name | pascal_case}}, "{{search_mode}}", {{search_n}}, {{search_min}}, "{{search_normalize}}") {
+			t.{{search_var}}.Add(token, row)
+		}
+	}
+%else
+	for _, token := range searchTokens(row.{{field.name | pascal_case}}, "{{search_mode}}", {{search_n}}, {{search_min}}, "{{search_normalize}}") {
+		t.{{search_var}}.Add(token, row)
+	}
+%endif
+%else
+%if base_name == "string"
+%if field.field_type.is_option
+	if row.{{field.name | pascal_case}} != nil {
+		t.{{search_var}}.Add(searchNormalize(*row.{{field.name | pascal_case}}, "{{search_normalize}}"), row)
+	}
+%else
+	t.{{search_var}}.Add(searchNormalize(row.{{field.name | pascal_case}}, "{{search_normalize}}"), row)
+%endif
+%else
+%if field.field_type.is_option
+	if row.{{field.name | pascal_case}} != nil {
+		t.{{search_var}}.Add(*row.{{field.name | pascal_case}}, row)
+	}
+%else
+	t.{{search_var}}.Add(row.{{field.name | pascal_case}}, row)
+%endif
+%endif
+%endif
+%endif
 %endif
 %endfor
 	t.rows = append(t.rows, row)

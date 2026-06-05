@@ -1,0 +1,558 @@
+%logic
+import "templates/swift/rhai_utils/type_mapping" as swift;
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn table_name_from_fqn(fqn) {
+    let name = fqn + "";
+    name.replace(".", "_");
+    name
+}
+
+fn table_member_name(s) {
+    to_camel_case(s.name) + "s"
+}
+
+fn table_class_name(s) {
+    swift::class_name_from_fqn(s.fqn) + "BinaryRefTable"
+}
+
+fn method_suffix(field_name) {
+    to_pascal_case(field_name)
+}
+
+fn index_method_name(prefix, field_name) {
+    prefix + "By" + method_suffix(field_name)
+}
+
+fn index_api_name(idx) {
+    if idx.is_composite {
+        let result = "";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += "_";
+            }
+            result += idx.fields[i].name;
+        }
+        return result;
+    }
+    idx.field_name
+}
+
+fn index_key_type(field_type) {
+    let base = field_type;
+    if base.is_option {
+        base = base.inner;
+    }
+    swift::swift_type(base)
+}
+
+fn index_entry_key_type(idx) {
+    if idx.is_composite {
+        return "[AnyHashable]";
+    }
+    index_key_type(idx.field_type)
+}
+
+fn index_row_key_expr(idx) {
+    if idx.is_composite {
+        let result = "[";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += "AnyHashable(row." + idx.fields[i].name + ")";
+        }
+        result += "]";
+        return result;
+    }
+    "row." + idx.field_name
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    t
+}
+
+fn is_search_target_enabled(search) {
+    search.target == "csharp" || search.target == "swift" || search.target == "swift_binary_ref"
+}
+
+fn is_supported_search(field) {
+    if !field.has_search_index {
+        return false;
+    }
+    let search = field.search_index;
+    if !is_search_target_enabled(search) {
+        return false;
+    }
+    let t = field.field_type;
+    if t.is_list {
+        return false;
+    }
+    let base = search_base_type(t);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    if base.type_name == "string" || base.type_name == "bool" || base.type_name == "timestamp" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.type_name != "bytes" && base.type_name != "f32" && base.type_name != "f64" {
+        return true;
+    }
+    return false;
+}
+
+fn search_key_type(field) {
+    let search = field.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "String";
+    }
+    swift::swift_type(search_base_type(field.field_type))
+}
+
+fn search_key_expr(search_entry) {
+    if search_entry.is_exact_string {
+        return "binaryRefSearchNormalize(key, \"" + search_entry.normalize + "\")";
+    }
+    "key"
+}
+
+fn search_selector_expr(search_entry) {
+    if search_entry.is_exact_string {
+        if search_entry.is_option {
+            return "row." + search_entry.field_name + ".map { binaryRefSearchNormalize($0, \"" + search_entry.normalize + "\") }";
+        }
+        return "binaryRefSearchNormalize(row." + search_entry.field_name + ", \"" + search_entry.normalize + "\")";
+    }
+    if search_entry.is_option {
+        return "row." + search_entry.field_name;
+    }
+    "Optional(row." + search_entry.field_name + ")"
+}
+
+fn search_token_selector_expr(search_entry) {
+    if search_entry.is_option {
+        return "row." + search_entry.field_name;
+    }
+    "Optional(row." + search_entry.field_name + ")"
+}
+
+let entries = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for s in tables {
+        let indexes = [];
+        for idx in s.indexes {
+            let api_name = index_api_name(idx);
+            indexes.push(#{
+                field_name: api_name,
+                get_method: index_method_name("get", api_name),
+                find_method: index_method_name("find", api_name),
+                key_type: index_entry_key_type(idx),
+                key_expr: index_row_key_expr(idx),
+                is_unique: idx.is_unique
+            });
+        }
+        let search_indexes = [];
+        for item in s.items {
+            if item.is_field {
+                let f = item.as_field();
+                if is_supported_search(f) {
+                    let search = f.search_index;
+                    let base = search_base_type(f.field_type);
+                    search_indexes.push(#{
+                        name: search.name,
+                        method_name: "searchBy" + to_pascal_case(search.name),
+                        field_name: f.name,
+                        key_type: search_key_type(f),
+                        mode: search.mode,
+                        normalize: search.normalize,
+                        n: search.n,
+                        min: search.min,
+                        is_token_mode: search.mode == "ngram" || search.mode == "word",
+                        is_exact_string: search.mode == "exact" && base.type_name == "string",
+                        is_option: f.field_type.is_option,
+                        key_expr: search_key_expr(#{
+                            is_exact_string: search.mode == "exact" && base.type_name == "string",
+                            normalize: search.normalize
+                        }),
+                        selector_expr: search_selector_expr(#{
+                            is_exact_string: search.mode == "exact" && base.type_name == "string",
+                            is_option: f.field_type.is_option,
+                            field_name: f.name,
+                            normalize: search.normalize
+                        }),
+                        token_selector_expr: search_token_selector_expr(#{
+                            is_option: f.field_type.is_option,
+                            field_name: f.name
+                        })
+                    });
+                }
+            }
+        }
+        entries.push(#{
+            def: s,
+            class_name: swift::class_name_from_fqn(s.fqn),
+            table_class: table_class_name(s),
+            member_name: table_member_name(s),
+            table_name: table_name_from_fqn(s.fqn),
+            indexes: indexes,
+            search_indexes: search_indexes
+        });
+    }
+}
+
+let has_tables = entries.len() > 0;
+%endlogic
+// Generated by PolyGen. DO NOT EDIT.
+// Source: {{file.path}}
+
+import Foundation
+
+%if has_tables
+private let polygenBinaryRefMagic = Data([0x50, 0x59, 0x47, 0x42, 0x52, 0x45, 0x46, 0x31])
+
+enum BinaryRefError: Error, Equatable {
+    case invalidHeader
+    case unexpectedEnd
+}
+
+final class BinaryRef<T> {
+    let tableName: String
+    let ordinal: Int
+    let payload: Data
+    private let loader: (Data) throws -> T
+    private var cached: T?
+
+    init(tableName: String, ordinal: Int, payload: Data, loader: @escaping (Data) throws -> T) {
+        self.tableName = tableName
+        self.ordinal = ordinal
+        self.payload = payload
+        self.loader = loader
+    }
+
+    func get() throws -> T {
+        if let cached {
+            return cached
+        }
+        let value = try loader(payload)
+        cached = value
+        return value
+    }
+}
+
+class BinaryRefTable<T> {
+    let tableName: String
+    private let refsStorage: [BinaryRef<T>]
+
+    init(tableName: String, payloads: [Data], loader: @escaping (Data) throws -> T) {
+        self.tableName = tableName
+        self.refsStorage = payloads.enumerated().map { ordinal, payload in
+            BinaryRef(tableName: tableName, ordinal: ordinal, payload: payload, loader: loader)
+        }
+    }
+
+    func count() -> Int {
+        refsStorage.count
+    }
+
+    func refs() -> [BinaryRef<T>] {
+        refsStorage
+    }
+
+    func all() throws -> [T] {
+        try refsStorage.map { try $0.get() }
+    }
+
+    func getRef(_ ordinal: Int) -> BinaryRef<T>? {
+        guard ordinal >= 0 && ordinal < refsStorage.count else {
+            return nil
+        }
+        return refsStorage[ordinal]
+    }
+
+    func payloads() -> [Data] {
+        refsStorage.map { $0.payload }
+    }
+
+    func getBy<K: Equatable>(_ key: K, selector: (T) -> K) throws -> BinaryRef<T>? {
+        for ref in refsStorage {
+            if selector(try ref.get()) == key {
+                return ref
+            }
+        }
+        return nil
+    }
+
+    func findBy<K: Equatable>(_ key: K, selector: (T) -> K) throws -> [BinaryRef<T>] {
+        var matches: [BinaryRef<T>] = []
+        for ref in refsStorage {
+            if selector(try ref.get()) == key {
+                matches.append(ref)
+            }
+        }
+        return matches
+    }
+
+    func searchExact<K: Equatable>(_ key: K, selector: (T) -> K?) throws -> [BinaryRef<T>] {
+        var matches: [BinaryRef<T>] = []
+        for ref in refsStorage {
+            if selector(try ref.get()) == key {
+                matches.append(ref)
+            }
+        }
+        return matches
+    }
+
+    func searchText(_ query: String, mode: String, n: Int, min: Int, normalize: String, selector: (T) -> String?) throws -> [BinaryRef<T>] {
+        let queryTokens = binaryRefSearchTokens(query, mode: mode, n: n, min: min, normalize: normalize)
+        if queryTokens.isEmpty {
+            return []
+        }
+        return try refsStorage.filter { ref in
+            guard let value = selector(try ref.get()) else {
+                return false
+            }
+            let rowTokens = Set(binaryRefSearchTokens(value, mode: mode, n: n, min: min, normalize: normalize))
+            return queryTokens.allSatisfy { rowTokens.contains($0) }
+        }
+    }
+}
+
+%for entry in entries
+final class {{entry.table_class}}: BinaryRefTable<{{entry.class_name}}> {
+    init(payloads: [Data]) {
+        super.init(tableName: {{entry.table_name | quote}}, payloads: payloads, loader: {{entry.class_name}}.fromBinary)
+    }
+
+    static func fromRows<S: Sequence>(_ rows: S) throws -> {{entry.table_class}} where S.Element == {{entry.class_name}} {
+        {{entry.table_class}}(payloads: try rows.map { try $0.toBinary() })
+    }
+
+%for idx in entry.indexes
+%if idx.is_unique
+    func {{idx.get_method}}(_ key: {{idx.key_type}}) throws -> BinaryRef<{{entry.class_name}}>? {
+        try getBy(key) { row in {{idx.key_expr}} }
+    }
+
+%else
+    func {{idx.find_method}}(_ key: {{idx.key_type}}) throws -> [BinaryRef<{{entry.class_name}}>] {
+        try findBy(key) { row in {{idx.key_expr}} }
+    }
+
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+    func {{search.method_name}}(_ query: String) throws -> [BinaryRef<{{entry.class_name}}>] {
+        try searchText(query, mode: {{search.mode | quote}}, n: {{search.n}}, min: {{search.min}}, normalize: {{search.normalize | quote}}) { row in {{search.token_selector_expr}} }
+    }
+
+%else
+    func {{search.method_name}}(_ key: {{search.key_type}}) throws -> [BinaryRef<{{entry.class_name}}>] {
+        try searchExact({{search.key_expr}}) { row in {{search.selector_expr}} }
+    }
+
+%endif
+%endfor
+}
+
+%endfor
+final class BinaryRefDocument {
+%for entry in entries
+    let {{entry.member_name}}: {{entry.table_class}}
+%endfor
+
+    init(
+%for entry in entries
+        {{entry.member_name}}: {{entry.table_class}},
+%endfor
+    ) {
+%for entry in entries
+        self.{{entry.member_name}} = {{entry.member_name}}
+%endfor
+    }
+
+    static func fromContainer(_ container: SchemaContainer) throws -> BinaryRefDocument {
+        try BinaryRefDocument(
+%for entry in entries
+            {{entry.member_name}}: {{entry.table_class}}.fromRows(container.{{entry.member_name}}.all()),
+%endfor
+        )
+    }
+
+    static func fromData(_ data: Data) throws -> BinaryRefDocument {
+        let tables = try readBinaryRefDocument(data)
+        return BinaryRefDocument(
+%for entry in entries
+            {{entry.member_name}}: {{entry.table_class}}(payloads: tables[{{entry.table_name | quote}}] ?? []),
+%endfor
+        )
+    }
+
+    static func open(_ path: String) throws -> BinaryRefDocument {
+        try fromData(Data(contentsOf: URL(fileURLWithPath: path)))
+    }
+
+    func toData() -> Data {
+        writeBinaryRefDocument([
+%for entry in entries
+            ({{entry.table_name | quote}}, {{entry.member_name}}.payloads()),
+%endfor
+        ])
+    }
+
+    func save(_ path: String) throws {
+        try toData().write(to: URL(fileURLWithPath: path))
+    }
+}
+
+private func writeU32(_ output: inout Data, _ value: UInt32) {
+    var littleEndian = value.littleEndian
+    withUnsafeBytes(of: &littleEndian) { output.append(contentsOf: $0) }
+}
+
+private func readU32(_ data: Data, _ offset: inout Int) throws -> UInt32 {
+    guard offset + 4 <= data.count else {
+        throw BinaryRefError.unexpectedEnd
+    }
+    let value = data[offset..<(offset + 4)].withUnsafeBytes { raw in
+        raw.load(as: UInt32.self)
+    }
+    offset += 4
+    return UInt32(littleEndian: value)
+}
+
+private func writeString(_ output: inout Data, _ value: String) {
+    let raw = Data(value.utf8)
+    writeU32(&output, UInt32(raw.count))
+    output.append(raw)
+}
+
+private func readString(_ data: Data, _ offset: inout Int) throws -> String {
+    let raw = try readBytes(data, &offset)
+    return String(decoding: raw, as: UTF8.self)
+}
+
+private func readBytes(_ data: Data, _ offset: inout Int) throws -> Data {
+    let length = Int(try readU32(data, &offset))
+    guard offset + length <= data.count else {
+        throw BinaryRefError.unexpectedEnd
+    }
+    let raw = data[offset..<(offset + length)]
+    offset += length
+    return Data(raw)
+}
+
+private func binaryRefSearchNormalize(_ value: String, _ policy: String) -> String {
+    var result = value
+    if policy == "trim" || policy == "lower_trim" {
+        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    if policy == "lower" || policy == "lower_trim" {
+        result = result.lowercased()
+    }
+    return result
+}
+
+private func binaryRefSearchTokens(_ value: String, mode: String, n: Int, min: Int, normalize: String) -> [String] {
+    let normalized = binaryRefSearchNormalize(value, normalize)
+    var tokens: [String] = []
+    var seen = Set<String>()
+
+    func addToken(_ token: String) {
+        if !seen.contains(token) {
+            seen.insert(token)
+            tokens.append(token)
+        }
+    }
+
+    if mode == "exact" {
+        if !normalized.isEmpty || min <= 0 {
+            addToken(normalized)
+        }
+        return tokens
+    }
+
+    if mode == "word" {
+        for token in normalized.split(whereSeparator: { $0.isWhitespace }) {
+            if token.count >= min {
+                addToken(String(token))
+            }
+        }
+        return tokens
+    }
+
+    precondition(n > 0, "search ngram size must be positive")
+    if normalized.count >= max(n, min) {
+        let characters = Array(normalized)
+        for index in 0...(characters.count - n) {
+            let token = String(characters[index..<(index + n)])
+            if token.count >= min {
+                addToken(token)
+            }
+        }
+    }
+    return tokens
+}
+
+private func writeBinaryRefDocument(_ tables: [(String, [Data])]) -> Data {
+    var output = polygenBinaryRefMagic
+    writeU32(&output, UInt32(tables.count))
+    for (tableName, payloads) in tables {
+        writeString(&output, tableName)
+        writeU32(&output, UInt32(payloads.count))
+        for payload in payloads {
+            writeU32(&output, UInt32(payload.count))
+            output.append(payload)
+        }
+    }
+    return output
+}
+
+private func readBinaryRefDocument(_ data: Data) throws -> [String: [Data]] {
+    guard data.prefix(polygenBinaryRefMagic.count) == polygenBinaryRefMagic else {
+        throw BinaryRefError.invalidHeader
+    }
+    var offset = polygenBinaryRefMagic.count
+    let tableCount = Int(try readU32(data, &offset))
+    var tables: [String: [Data]] = [:]
+    for _ in 0..<tableCount {
+        let tableName = try readString(data, &offset)
+        let rowCount = Int(try readU32(data, &offset))
+        var rows: [Data] = []
+        for _ in 0..<rowCount {
+            rows.append(try readBytes(data, &offset))
+        }
+        tables[tableName] = rows
+    }
+    return tables
+}
+%else
+// No table definitions were found in this file.
+%endif

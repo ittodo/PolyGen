@@ -3,9 +3,11 @@
 let first_member = true;
 let next_discriminant = 0;
 let match_arms = "";
+let from_str_arms = "";
 for item in enum.items {
     if item.is_member {
         let member = item.as_member();
+        from_str_arms += "            \"" + member.name + "\" => Ok(Self::" + member.name + "),\n";
         if member.value != () {
             match_arms += "            " + member.value + " => Ok(Self::" + member.name + "),\n";
             next_discriminant = member.value + 1;
@@ -15,8 +17,9 @@ for item in enum.items {
         }
     }
 }
+let enum_name = enum.name;
 %endlogic
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(i32)]
 pub enum {{enum.name}} {
 %for item in enum.items
@@ -42,6 +45,22 @@ impl std::convert::TryFrom<i32> for {{enum.name}} {
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
 {{match_arms}}            other => Err(other),
+        }
+    }
+}
+%blank
+impl std::str::FromStr for {{enum.name}} {
+    type Err = String;
+%blank
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        let trimmed = raw.trim();
+        if let Ok(value) = trimmed.parse::<i32>() {
+            return Self::try_from(value)
+                .map_err(|_| format!("invalid enum value for {{enum_name}}: {}", raw));
+        }
+%blank
+        match trimmed {
+{{from_str_arms}}            _ => Err(format!("invalid enum value for {{enum_name}}: {}", raw)),
         }
     }
 }

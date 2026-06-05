@@ -30,7 +30,7 @@ if not exist "%POLYGEN%" (
     exit /b 1
 )
 
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed 11_relations_indexes
 
 if exist "%OUTPUT_DIR%" rmdir /s /q "%OUTPUT_DIR%"
 mkdir "%OUTPUT_DIR%"
@@ -77,8 +77,22 @@ for %%T in (%TEST_CASES%) do (
                 type "!VALIDATION_LOG!"
                 set /a FAILED+=1
             ) else (
-                echo   PASSED
-                set /a PASSED+=1
+                if "%POLYGEN_UNREAL_COMPILE%"=="1" (
+                    set COMPILE_LOG=!TEST_OUTPUT!\unreal_compile.log
+                    echo   Running UnrealBuildTool smoke gate...
+                    python "%SCRIPT_DIR%compile_unreal.py" "!TEST_OUTPUT!\unreal\*.h" >> "!COMPILE_LOG!" 2>&1
+                    if errorlevel 1 (
+                        echo   FAILED ^(UnrealBuildTool smoke gate error^)
+                        type "!COMPILE_LOG!"
+                        set /a FAILED+=1
+                    ) else (
+                        echo   PASSED
+                        set /a PASSED+=1
+                    )
+                ) else (
+                    echo   PASSED
+                    set /a PASSED+=1
+                )
             )
         )
     )

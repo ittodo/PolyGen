@@ -191,7 +191,7 @@ fn apply_to_struct(
 
     for item in &mut struct_def.items {
         if let crate::ir_model::StructItem::EmbeddedStruct(child) = item {
-            apply_to_struct(child, config, remaining)?;
+            apply_to_struct(child.as_mut(), config, remaining)?;
         }
     }
 
@@ -243,7 +243,7 @@ mod tests {
                 namespaces: vec![NamespaceDef {
                     name: "game".to_string(),
                     datasource: None,
-                    items: vec![NamespaceItem::Struct(StructDef {
+                    items: vec![NamespaceItem::Struct(Box::new(StructDef {
                         name: "Item".to_string(),
                         fqn: "game.Item".to_string(),
                         is_embed: false,
@@ -257,7 +257,7 @@ mod tests {
                         items: Vec::new(),
                         indexes: Vec::new(),
                         relations: Vec::new(),
-                    })],
+                    }))],
                 }],
                 renames: Vec::new(),
             }],

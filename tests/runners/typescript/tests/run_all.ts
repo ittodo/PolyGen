@@ -9,6 +9,7 @@ const testModules = [
     './test_08_complex_schema.ts',
     './test_09_sqlite.ts',
     './test_10_pack_embed.ts',
+    './test_11_relations_indexes.ts',
 ];
 
 console.assert = (condition?: boolean, ...data: unknown[]): void => {

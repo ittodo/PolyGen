@@ -88,6 +88,12 @@ fn adjust_struct_typerefs(s: &mut StructDef, registry: &TypeRegistry, parent_fqn
             StructItem::InlineEnum(_) | StructItem::Annotation(_) | StructItem::Comment(_) => {}
         }
     }
+
+    for index in &mut s.indexes {
+        for field in &mut index.fields {
+            adjust_typeref(&mut field.field_type, registry, parent_fqn);
+        }
+    }
 }
 
 /// Adjusts a single TypeRef's is_enum/is_struct flags using the registry.

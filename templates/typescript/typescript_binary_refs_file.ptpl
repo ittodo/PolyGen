@@ -114,6 +114,10 @@ fn ts_full_type(t, namespace_entries) {
     return t.type_name;
 }
 
+fn is_enum_like(t) {
+    return t.is_enum || (!t.is_primitive && t.namespace_fqn != "" && !t.is_list && !t.is_option);
+}
+
 fn object_type(s, namespace_entries) {
     let ns = namespace_from_fqn(s);
     let prefix = if ns == "" { "" } else { ts_namespace_from_fqn(ns, namespace_entries) + "." };
@@ -133,7 +137,10 @@ fn read_direct_expr(t, offset_expr, namespace_entries) {
     if t.lang_type == "f32" { return "BinaryRefFormat.readF32(this.owner.bytes, " + offset_expr + ")"; }
     if t.lang_type == "f64" { return "BinaryRefFormat.readF64(this.owner.bytes, " + offset_expr + ")"; }
     if t.lang_type == "timestamp" { return "BinaryRefFormat.readTimestamp(this.owner.bytes, " + offset_expr + ")"; }
-    if t.is_enum { return "BinaryRefFormat.readI32(this.owner.bytes, " + offset_expr + ") as " + ts_full_type(t, namespace_entries); }
+    if is_enum_like(t) {
+        let enum_type = ts_full_type(t, namespace_entries);
+        return "binaryRefReadEnum(" + enum_type + ", BinaryRefFormat.readI32(this.owner.bytes, " + offset_expr + "), \"" + enum_type + "\") as " + enum_type;
+    }
     return "";
 }
 
@@ -152,7 +159,7 @@ fn writer_method(k) {
     return "";
 }
 
-fn write_inner_stmt(t, value_expr, writer_expr) {
+fn write_inner_stmt(t, value_expr, writer_expr, namespace_entries) {
     if t.lang_type == "string" {
         return "BinaryRefFormat.writeString(" + writer_expr + ", " + value_expr + ");";
     }
@@ -162,8 +169,9 @@ fn write_inner_stmt(t, value_expr, writer_expr) {
     if t.lang_type == "timestamp" {
         return "BinaryRefFormat.writeTimestamp(" + writer_expr + ", " + value_expr + ");";
     }
-    if t.is_enum {
-        return writer_expr + ".writeI32(" + value_expr + " as number);";
+    if is_enum_like(t) {
+        let enum_type = ts_full_type(t, namespace_entries);
+        return "binaryRefWriteEnum(" + writer_expr + ", " + enum_type + ", " + value_expr + " as number, \"" + enum_type + "\");";
     }
     if t.is_primitive {
         return writer_expr + "." + writer_method(t.lang_type) + "(" + value_expr + ");";
@@ -174,7 +182,10 @@ fn write_inner_stmt(t, value_expr, writer_expr) {
 fn read_key_expr(t, reader_expr, namespace_entries) {
     if t.lang_type == "string" { return "BinaryRefFormat.readString(" + reader_expr + ")"; }
     if t.lang_type == "timestamp" { return "new Date(" + reader_expr + ".readI64() / 10000 - 62135596800000)"; }
-    if t.is_enum { return reader_expr + ".readI32() as " + ts_full_type(t, namespace_entries); }
+    if is_enum_like(t) {
+        let enum_type = ts_full_type(t, namespace_entries);
+        return "binaryRefReadEnum(" + enum_type + ", " + reader_expr + ".readI32(), \"" + enum_type + "\") as " + enum_type;
+    }
     if t.lang_type == "bool" { return reader_expr + ".readBool()"; }
     let m = writer_method(t.lang_type);
     if m == "writeU8" { return reader_expr + ".readU8()"; }
@@ -190,10 +201,13 @@ fn read_key_expr(t, reader_expr, namespace_entries) {
     return reader_expr + ".readI32()";
 }
 
-fn write_key_stmt(t, key_expr, writer_expr) {
+fn write_key_stmt(t, key_expr, writer_expr, namespace_entries) {
     if t.lang_type == "string" { return "BinaryRefFormat.writeString(" + writer_expr + ", " + key_expr + ");"; }
     if t.lang_type == "timestamp" { return "BinaryRefFormat.writeTimestamp(" + writer_expr + ", " + key_expr + ");"; }
-    if t.is_enum { return writer_expr + ".writeI32(" + key_expr + " as number);"; }
+    if is_enum_like(t) {
+        let enum_type = ts_full_type(t, namespace_entries);
+        return "binaryRefWriteEnum(" + writer_expr + ", " + enum_type + ", " + key_expr + " as number, \"" + enum_type + "\");";
+    }
     if t.lang_type == "bool" { return writer_expr + ".writeBool(" + key_expr + ");"; }
     return writer_expr + "." + writer_method(t.lang_type) + "(" + key_expr + ");";
 }
@@ -202,7 +216,7 @@ fn can_read_direct(t) {
     if t.is_list { return false; }
     if t.lang_type == "string" || t.lang_type == "bytes" { return true; }
     if t.lang_type == "timestamp" { return true; }
-    if t.is_enum { return true; }
+    if is_enum_like(t) { return true; }
     if t.is_primitive { return true; }
     return false;
 }
@@ -214,11 +228,22 @@ fn is_supported_field(t) {
 }
 
 fn is_supported_index(idx) {
-    if idx.is_composite { return false; }
+    if idx.is_composite {
+        for field in idx.fields {
+            let t = field.field_type;
+            if t.is_option || t.is_list {
+                return false;
+            }
+            if !(t.lang_type == "string" || t.lang_type == "timestamp" || t.lang_type == "bool" || is_enum_like(t) || (t.is_primitive && t.lang_type != "bytes")) {
+                return false;
+            }
+        }
+        return true;
+    }
     let t = idx.field_type;
     if t.is_option || t.is_list { return false; }
     if t.lang_type == "string" || t.lang_type == "timestamp" { return true; }
-    if t.is_enum { return true; }
+    if is_enum_like(t) { return true; }
     if t.is_primitive && t.lang_type != "bytes" { return true; }
     return false;
 }
@@ -227,8 +252,137 @@ fn key_type(t, namespace_entries) {
     if t.lang_type == "string" { return "string"; }
     if t.lang_type == "timestamp" { return "Date"; }
     if t.lang_type == "bool" { return "boolean"; }
-    if t.is_enum { return ts_full_type(t, namespace_entries); }
+    if is_enum_like(t) { return ts_full_type(t, namespace_entries); }
     return "number";
+}
+
+fn index_key_type(idx, namespace_entries) {
+    if idx.is_composite {
+        let result = "readonly [";
+        for i in 0..idx.fields.len() {
+            if i > 0 { result += ", "; }
+            result += key_type(idx.fields[i].field_type, namespace_entries);
+        }
+        result += "]";
+        return result;
+    }
+    return key_type(idx.field_type, namespace_entries);
+}
+
+fn index_map_key_type(idx) {
+    if idx.is_composite {
+        return "string";
+    }
+    return key_type(idx.field_type, []);
+}
+
+fn index_row_key_expr(idx) {
+    if idx.is_composite {
+        let result = "compositeKey([";
+        for i in 0..idx.fields.len() {
+            if i > 0 { result += ", "; }
+            result += "row.row." + to_camel_case(idx.fields[i].name);
+        }
+        result += "])";
+        return result;
+    }
+    return "row.row." + to_camel_case(idx.field_name);
+}
+
+fn index_param_key_expr(idx) {
+    if idx.is_composite {
+        return "compositeKey(key)";
+    }
+    return "key";
+}
+
+fn index_write_key_stmt(idx, key_expr, writer_expr, namespace_entries) {
+    if idx.is_composite {
+        return "BinaryRefFormat.writeString(" + writer_expr + ", " + key_expr + ");";
+    }
+    return write_key_stmt(idx.field_type, key_expr, writer_expr, namespace_entries);
+}
+
+fn index_read_key_expr(idx, reader_expr, namespace_entries) {
+    if idx.is_composite {
+        return "BinaryRefFormat.readString(" + reader_expr + ")";
+    }
+    return read_key_expr(idx.field_type, reader_expr, namespace_entries);
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn is_search_target_enabled(search) {
+    return search.target == "csharp" || search.target == "typescript" || search.target == "typescript_binary_ref";
+}
+
+fn search_is_supported(f) {
+    if !f.has_search_index {
+        return false;
+    }
+    let search = f.search_index;
+    if !is_search_target_enabled(search) {
+        return false;
+    }
+    let ft = f.field_type;
+    if ft.is_list {
+        return false;
+    }
+    let base = search_base_type(ft);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.lang_type == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    if base.lang_type == "string" || base.lang_type == "timestamp" { return true; }
+    if base.lang_type == "bool" { return true; }
+    if is_enum_like(base) { return true; }
+    if base.is_primitive && base.lang_type != "bytes" && base.lang_type != "f32" && base.lang_type != "f64" { return true; }
+    return false;
+}
+
+fn search_key_type(f, namespace_entries) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "string";
+    }
+    let base = search_base_type(f.field_type);
+    return key_type(base, namespace_entries);
+}
+
+fn search_read_key_expr(f, reader_expr, namespace_entries) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "BinaryRefFormat.readString(" + reader_expr + ")";
+    }
+    return read_key_expr(search_base_type(f.field_type), reader_expr, namespace_entries);
+}
+
+fn search_write_key_stmt(f, key_expr, writer_expr, namespace_entries) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "BinaryRefFormat.writeString(" + writer_expr + ", " + key_expr + ");";
+    }
+    return write_key_stmt(search_base_type(f.field_type), key_expr, writer_expr, namespace_entries);
+}
+
+fn search_value_expr(f) {
+    return "row.row." + to_camel_case(f.name);
+}
+
+fn search_exact_key_expr(search) {
+    let value = search_value_expr(search.def);
+    let base = search_base_type(search.def.field_type);
+    if base.lang_type == "string" {
+        return "searchNormalize(" + value + ", \"" + search.normalize + "\")";
+    }
+    return value;
 }
 
 fn field_property_code(f, field_index, namespace_entries) {
@@ -283,7 +437,7 @@ fn to_owned_assignment(f) {
     return "    obj." + name + " = this." + name + ";\n";
 }
 
-fn write_field_code(f, field_index) {
+fn write_field_code(f, field_index, namespace_entries) {
     let ft = f.field_type;
     let base = if ft.is_option { ft.inner } else { ft };
     let name = to_camel_case(f.name);
@@ -292,10 +446,10 @@ fn write_field_code(f, field_index) {
         return "";
     }
     if ft.is_option {
-        let stmt = write_inner_stmt(base, name + "Value", "w");
+        let stmt = write_inner_stmt(base, name + "Value", "w", namespace_entries);
         return "    const " + name + "Value = obj." + name + ";\n    if (" + name + "Value !== undefined && " + name + "Value !== null) builder.setField(" + idx + ", w => { " + stmt + " });";
     }
-    let stmt = write_inner_stmt(base, "obj." + name, "w");
+    let stmt = write_inner_stmt(base, "obj." + name, "w", namespace_entries);
     return "    builder.setField(" + idx + ", w => { " + stmt + " });";
 }
 
@@ -342,7 +496,7 @@ for s in all_tables {
                 index: field_index,
                 property_code: field_property_code(f, field_index, namespace_entries),
                 to_owned_assignment: to_owned_assignment(f),
-                write_code: write_field_code(f, field_index)
+                write_code: write_field_code(f, field_index, namespace_entries)
             });
             field_index += 1;
         }
@@ -355,12 +509,42 @@ for s in all_tables {
                 def: idx,
                 var_name: to_camel_case(idx.name),
                 method_suffix: to_pascal(idx.name),
-                key_type: key_type(idx.field_type, namespace_entries),
-                field_name: to_camel_case(idx.field_name),
+                key_type: index_key_type(idx, namespace_entries),
+                map_key_type: if idx.is_composite { "string" } else { key_type(idx.field_type, namespace_entries) },
+                row_key_expr: index_row_key_expr(idx),
+                param_key_expr: index_param_key_expr(idx),
                 is_unique_literal: if idx.is_unique { "true" } else { "false" },
-                write_key: write_key_stmt(idx.field_type, "key", "writer"),
-                read_key: read_key_expr(idx.field_type, "reader", namespace_entries)
+                write_key: index_write_key_stmt(idx, "key", "writer", namespace_entries),
+                read_key: index_read_key_expr(idx, "reader", namespace_entries)
             });
+        }
+    }
+
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if search_is_supported(f) {
+                let search = f.search_index;
+                let base = search_base_type(f.field_type);
+            search_indexes.push(#{
+                def: f,
+                name: search.name,
+                var_name: "search" + to_pascal(search.name),
+                method_suffix: to_pascal(search.name),
+                field_name: to_camel_case(f.name),
+                mode: search.mode,
+                normalize: search.normalize,
+                n: search.n,
+                min: search.min,
+                key_type: search_key_type(f, namespace_entries),
+                read_key: search_read_key_expr(f, "reader", namespace_entries),
+                write_key: search_write_key_stmt(f, "key", "writer", namespace_entries),
+                value_expr: search_value_expr(f),
+                exact_key_expr: search_exact_key_expr(#{ def: f, normalize: search.normalize }),
+                is_exact_string: search.mode == "exact" && base.lang_type == "string"
+            });
+            }
         }
     }
 
@@ -373,7 +557,9 @@ for s in all_tables {
         fields: fields,
         field_count: field_index,
         indexes: indexes,
-        index_count: indexes.len()
+        index_count: indexes.len(),
+        search_indexes: search_indexes,
+        search_index_count: search_indexes.len()
     });
 }
 
@@ -402,6 +588,74 @@ import {
   BinaryRefWriter,
 } from "./binary_ref";
 import * as Types from "{{type_module}}";
+
+function searchNormalize(value: string, policy: string): string {
+  let result = value;
+  if (policy === "trim" || policy === "lower_trim") result = result.trim();
+  if (policy === "lower" || policy === "lower_trim") result = result.toLowerCase();
+  return result;
+}
+
+function searchTokens(value: string, mode: string, n: number, min: number, normalize: string): string[] {
+  const normalized = searchNormalize(value, normalize);
+  const set = new Set<string>();
+  if (mode === "exact") {
+    if (normalized.length > 0 || min <= 0) set.add(normalized);
+  } else if (mode === "word") {
+    for (const part of normalized.split(/\s+/)) {
+      if (part.length >= min) set.add(part);
+    }
+  } else {
+    if (n <= 0) throw new Error("Search ngram size must be positive.");
+    if (normalized.length >= Math.max(min, n)) {
+      for (let i = 0; i <= normalized.length - n; i++) {
+        const token = normalized.slice(i, i + n);
+        if (token.length >= min) set.add(token);
+      }
+    }
+  }
+  return [...set];
+}
+
+function searchAdd<K>(map: Map<K, number[]>, key: K, ordinal: number): void {
+  let values = map.get(key);
+  if (values === undefined) {
+    values = [];
+    map.set(key, values);
+  }
+  values.push(ordinal);
+}
+
+function searchIntersect(postings: number[][]): number[] {
+  if (postings.length === 0) return [];
+  const sorted = postings.map(p => [...p]).sort((a, b) => a.length - b.length);
+  let current = new Set(sorted[0]);
+  for (let i = 1; i < sorted.length; i++) {
+    const next = new Set(sorted[i]);
+    current = new Set([...current].filter(value => next.has(value)));
+    if (current.size === 0) break;
+  }
+  return [...current].sort((a, b) => a - b);
+}
+
+function compositeKey(parts: readonly unknown[]): string {
+  return JSON.stringify(parts.map(part => part instanceof Date ? part.getTime() : part));
+}
+
+function binaryRefIsEnumValue(enumType: Record<string, string | number>, value: number): boolean {
+  return Number.isInteger(value) && enumType[value] !== undefined;
+}
+
+function binaryRefReadEnum(enumType: Record<string, string | number>, value: number, enumName: string): number {
+  if (!binaryRefIsEnumValue(enumType, value)) {
+    throw new Error(`Invalid enum value for ${enumName}: ${value}`);
+  }
+  return value;
+}
+
+function binaryRefWriteEnum(writer: BinaryRefWriter, enumType: Record<string, string | number>, value: number, enumName: string): void {
+  writer.writeI32(binaryRefReadEnum(enumType, value, enumName));
+}
 
 export interface {{container_name}} {
 %for entry in entries
@@ -449,10 +703,13 @@ export class {{entry.table_name}} {
     private readonly rowOffsets: number[]
 %for idx in entry.indexes
 %if idx.def.is_unique
-    , private readonly {{idx.var_name}}: Map<{{idx.key_type}}, number>
+    , private readonly {{idx.var_name}}: Map<{{idx.map_key_type}}, number>
 %else
-    , private readonly {{idx.var_name}}: Map<{{idx.key_type}}, number[]>
+    , private readonly {{idx.var_name}}: Map<{{idx.map_key_type}}, number[]>
 %endif
+%endfor
+%for search in entry.search_indexes
+    , private readonly {{search.var_name}}: Map<{{search.key_type}}, number[]>
 %endfor
   ) {}
 
@@ -471,14 +728,41 @@ export class {{entry.table_name}} {
 %for idx in entry.indexes
 %if idx.def.is_unique
   get{{idx.method_suffix}}(key: {{idx.key_type}}): {{entry.ref_name}} | undefined {
-    const offset = this.{{idx.var_name}}.get(key);
+    const offset = this.{{idx.var_name}}.get({{idx.param_key_expr}});
     return offset === undefined ? undefined : new {{entry.ref_name}}(this.owner, offset);
   }
 
 %else
   find{{idx.method_suffix}}(key: {{idx.key_type}}): {{entry.ref_name}}[] {
-    const offsets = this.{{idx.var_name}}.get(key);
+    const offsets = this.{{idx.var_name}}.get({{idx.param_key_expr}});
     return offsets === undefined ? [] : offsets.map(offset => new {{entry.ref_name}}(this.owner, offset));
+  }
+
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.mode == "ngram" || search.mode == "word"
+  searchBy{{search.method_suffix}}(query: string): {{entry.ref_name}}[] {
+    const tokens = searchTokens(query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}");
+    if (tokens.length === 0) return [];
+    const postings: number[][] = [];
+    for (const token of tokens) {
+      const ordinals = this.{{search.var_name}}.get(token);
+      if (ordinals === undefined) return [];
+      postings.push(ordinals);
+    }
+    return searchIntersect(postings).map(ordinal => new {{entry.ref_name}}(this.owner, this.rowOffsets[ordinal]));
+  }
+
+%else
+  searchBy{{search.method_suffix}}(key: {{search.key_type}}): {{entry.ref_name}}[] {
+%if search.is_exact_string
+    const normalized = searchNormalize(key, "{{search.normalize}}");
+    const ordinals = this.{{search.var_name}}.get(normalized);
+%else
+    const ordinals = this.{{search.var_name}}.get(key);
+%endif
+    return ordinals === undefined ? [] : ordinals.map(ordinal => new {{entry.ref_name}}(this.owner, this.rowOffsets[ordinal]));
   }
 
 %endif
@@ -502,8 +786,8 @@ export class {{entry.table_name}} {
     writer.writeBool({{idx.is_unique_literal}});
 %if idx.def.is_unique
     {
-      const map = new Map<{{idx.key_type}}, number>();
-      for (const row of rows) map.set(row.row.{{idx.field_name}}, row.offset);
+      const map = new Map<{{idx.map_key_type}}, number>();
+      for (const row of rows) map.set({{idx.row_key_expr}}, row.offset);
       writer.writeI32(map.size);
       for (const [key, offset] of map) {
         {{idx.write_key}}
@@ -512,9 +796,9 @@ export class {{entry.table_name}} {
     }
 %else
     {
-      const map = new Map<{{idx.key_type}}, number[]>();
+      const map = new Map<{{idx.map_key_type}}, number[]>();
       for (const row of rows) {
-        const key = row.row.{{idx.field_name}};
+        const key = {{idx.row_key_expr}};
         let offsets = map.get(key);
         if (offsets === undefined) {
           offsets = [];
@@ -527,6 +811,47 @@ export class {{entry.table_name}} {
         {{idx.write_key}}
         writer.writeI32(offsets.length);
         for (const offset of offsets) writer.writeI32(offset);
+      }
+    }
+%endif
+%endfor
+    writer.writeI32({{entry.search_index_count}});
+%for search in entry.search_indexes
+    BinaryRefFormat.writeString(writer, "{{search.name}}");
+    BinaryRefFormat.writeString(writer, "{{search.mode}}");
+%if search.mode == "ngram" || search.mode == "word"
+    {
+      const map = new Map<string, number[]>();
+      for (let ordinal = 0; ordinal < rows.length; ordinal++) {
+        const row = rows[ordinal];
+        const value = {{search.value_expr}};
+        if (value === undefined || value === null) continue;
+        for (const token of searchTokens(value, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}")) {
+          searchAdd(map, token, ordinal);
+        }
+      }
+      writer.writeI32(map.size);
+      for (const [key, ordinals] of map) {
+        {{search.write_key}}
+        writer.writeI32(ordinals.length);
+        for (const ordinal of ordinals) writer.writeI32(ordinal);
+      }
+    }
+%else
+    {
+      const map = new Map<{{search.key_type}}, number[]>();
+      for (let ordinal = 0; ordinal < rows.length; ordinal++) {
+        const row = rows[ordinal];
+        const value = {{search.value_expr}};
+        if (value === undefined || value === null) continue;
+        const key = {{search.exact_key_expr}};
+        searchAdd(map, key, ordinal);
+      }
+      writer.writeI32(map.size);
+      for (const [key, ordinals] of map) {
+        {{search.write_key}}
+        writer.writeI32(ordinals.length);
+        for (const ordinal of ordinals) writer.writeI32(ordinal);
       }
     }
 %endif
@@ -549,9 +874,9 @@ export class {{entry.table_name}} {
 
 %for idx in entry.indexes
 %if idx.def.is_unique
-    const {{idx.var_name}} = new Map<{{idx.key_type}}, number>();
+    const {{idx.var_name}} = new Map<{{idx.map_key_type}}, number>();
 %else
-    const {{idx.var_name}} = new Map<{{idx.key_type}}, number[]>();
+    const {{idx.var_name}} = new Map<{{idx.map_key_type}}, number[]>();
 %endif
     {
       const indexName = BinaryRefFormat.readString(reader);
@@ -571,6 +896,29 @@ export class {{entry.table_name}} {
         for (let j = 0; j < valueCount; j++) offsets.push(reader.readI32());
         {{idx.var_name}}.set(key, offsets);
 %endif
+      }
+    }
+
+%endfor
+    const searchIndexCount = reader.readI32();
+    if (searchIndexCount !== {{entry.search_index_count}}) throw new Error(`Unexpected search index count for {{entry.def.fqn}}: ${searchIndexCount}.`);
+
+%for search in entry.search_indexes
+    const {{search.var_name}} = new Map<{{search.key_type}}, number[]>();
+    {
+      const searchIndexName = BinaryRefFormat.readString(reader);
+      if (searchIndexName !== "{{search.name}}") throw new Error(`Expected search index '{{search.name}}' but found '${searchIndexName}'.`);
+      const searchMode = BinaryRefFormat.readString(reader);
+      if (searchMode !== "{{search.mode}}") throw new Error("Binary search mode does not match generated schema.");
+      const searchEntryCount = reader.readI32();
+      if (searchEntryCount < 0) throw new Error("Negative search index entry count.");
+      for (let i = 0; i < searchEntryCount; i++) {
+        const key = {{search.read_key}};
+        const valueCount = reader.readI32();
+        if (valueCount < 0) throw new Error("Negative search index value count.");
+        const ordinals: number[] = [];
+        for (let j = 0; j < valueCount; j++) ordinals.push(reader.readI32());
+        {{search.var_name}}.set(key, ordinals);
       }
     }
 
@@ -596,6 +944,9 @@ export class {{entry.table_name}} {
       rowOffsets
 %for idx in entry.indexes
       , {{idx.var_name}}
+%endfor
+%for search in entry.search_indexes
+      , {{search.var_name}}
 %endfor
     );
   }

@@ -1,6 +1,6 @@
 # PolyGen Status
 
-> 최종 업데이트: 2026-06-03
+> 최종 업데이트: 2026-06-05
 
 ---
 
@@ -42,7 +42,7 @@
 - [x] TypeScript - 인터페이스, Enum, Zod 스키마, Validation
 - [x] Go - Struct, Enum, CSV/JSON/Binary 로더, Container, Validation, Redis key helper
 - [x] Unreal Engine - USTRUCT/UENUM 매크로, CSV/JSON 로더, Hot Reload, Redis key helper
-- [x] 통합 테스트 프레임워크 (10개 테스트 케이스)
+- [x] 통합 테스트 프레임워크 (11개 테스트 케이스)
 - [x] C#/C++/Rust 통합 runner 필수 테스트 디렉터리/파일 누락 시 실패 처리 (Windows/POSIX)
 - [x] 통합 runner 실패 전환 후 잔여 `Skipped` 요약/카운터 제거
 - [x] TypeScript 통합 테스트 런타임 assertion 실행 (`tsx`, `console.assert` 실패 시 exit 1)
@@ -115,8 +115,10 @@
 - [x] C# binary mapping 비지원 타입 placeholder 제거 (`NotSupportedException` 생성)
 - [x] C# Container 중첩 namespace table/index 회귀 테스트
 - [x] C# DataContext 중첩 namespace datasource table 회귀 테스트
+- [x] C# table-level composite index, BinaryRef composite tuple-key lookup, reverse relation navigation 회귀 테스트
 - [x] C++ binary enum cardinality 처리 보강 (`Enum?`, `Enum[]`)
 - [x] C++ binary enum 직렬화/역직렬화 안전화 (`enum_validator`, invalid discriminant 에러 처리)
+- [x] C++ CSV/JSON enum name/numeric parser hardening과 invalid enum 값 거부
 - [x] C++ loader 중첩 namespace table 수집 보강 및 Linux runner `09_sqlite` parity 보정
 - [x] C++ Container 중첩 namespace indexed table 수집 보강
 - [x] Rust enum 역직렬화 안전화 (`TryFrom<i32>`, invalid discriminant 에러 처리)
@@ -124,6 +126,7 @@
 - [x] Rust CSV optional primitive 파싱 오류 처리 (invalid 값을 `None`으로 침묵 변환하지 않음)
 - [x] Rust CSV optional enum 파싱 오류 처리 (non-integer 값을 `None`으로 침묵 변환하지 않음)
 - [x] Rust CSV bool 배열 파싱 일관화 (`true/false`, `yes/no`, `1/0`)
+- [x] Rust CSV enum name/numeric parser hardening과 invalid enum 값 거부
 - [x] Rust loader 중첩 namespace table 수집 보강 및 Linux runner `09_sqlite` parity 보정
 - [x] Rust Container 중첩 namespace table/relation 수집 보강
 - [x] C#/C++/Rust/TypeScript SQLite accessor 중첩 namespace table 수집 및 `@datasource("sqlite")` 상속 보강
@@ -167,7 +170,7 @@
 
 ### 🔴 높은 우선순위
 
-#### C# `@search` 역색인
+#### C# parity 다중언어 확장
 - [x] field-level `@search` annotation 문법/파싱 확정 (`@search`, `@search(n: 3)`, `@search(mode: exact)`, identifier option 값 허용)
 - [x] AST/IR에 `SearchIndexDef` 및 field search metadata 추가
 - [x] 검증 규칙 추가 (string은 `ngram`/`word`/`exact`, 정수/bool/named enum/inline enum/timestamp는 `exact`, bytes/embed/array는 v1 금지)
@@ -177,7 +180,114 @@
 - [x] tokenizer/normalizer 공통 유틸리티 추가 (`ngram`, `word`, `exact`, `none/lower/trim/lower_trim`)
 - [x] snapshot/schema fixture 추가 및 C# runner에 Container/BinaryRef search roundtrip 테스트 추가
 - [x] `docs/schema-annotations.md`, `AGENTS.md`, `tests/agent.md`, `templates/agent.md` 구현 상태 동기화
-- [ ] C# 외 타겟의 `@search` 활용 여부와 API 정책 검토
+- [x] C# parity 기능 축과 언어별 matrix 문서화 (`docs/targets/language-support.md`)
+- [x] Rust `@search` in-memory Container API와 runner 회귀 테스트
+- [x] Rust Container FK navigation helper API와 runner 회귀 테스트
+- [x] Rust Container reverse navigation/composite tuple-key index와 runner 회귀 테스트
+- [x] Rust BinaryRef shared document/ref table/index/search API와 runner runtime 회귀 테스트
+- [x] Rust BinaryRef invalid enum discriminant read 거부 runtime 회귀 테스트
+- [x] Rust BinaryRef composite tuple-key lookup API와 runner runtime 회귀 테스트
+- [x] Rust sources config 기반 Container CSV/JSON load API와 CSV/JSON runtime 회귀 테스트
+- [x] Rust CSV JSON-cell embed/list parser hardening과 runner runtime 회귀 테스트
+- [x] Rust CSV enum name/numeric parser hardening과 runner runtime 회귀 테스트
+- [x] Rust Container field/unique validation API와 runner runtime 회귀 테스트
+- [x] C++ `@search` in-memory Container API와 runner 회귀 테스트
+- [x] C++ `@search` BinaryRef reader API와 runner 회귀 테스트
+- [x] C++ Container FK/reverse navigation helper API와 runner/smoke 회귀 테스트
+- [x] C++ Container composite tuple-key index와 runner 회귀 테스트
+- [x] C++ CSV/JSON generated loader와 primitive/list/embed/optional runtime 회귀 테스트
+- [x] C++ sources config 기반 Container CSV/JSON load API와 CSV/JSON runtime 회귀 테스트
+- [x] C++ CSV/JSON enum name/numeric parser hardening과 BinaryRef invalid enum lazy/search-key read 거부 회귀 테스트
+- [x] C++ BinaryRef composite tuple-key lookup API와 runner runtime 회귀 테스트
+- [x] C++ BinaryRef container save/open API와 runner runtime 회귀 테스트
+- [x] TypeScript `@search` BinaryRef read/write API, invalid enum discriminant 거부와 runner 회귀 테스트
+- [x] TypeScript `@search` in-memory Container API와 runner 회귀 테스트
+- [x] TypeScript BinaryRef composite index lookup API와 runner runtime 회귀 테스트
+- [x] TypeScript CSV/JSON generated loader, sources config 기반 Container CSV/JSON load API와 runtime 회귀 테스트
+- [x] TypeScript Binary I/O row-level read/write API, list/embed/optional/enum roundtrip, invalid enum discriminant 거부와 runtime 회귀 테스트
+- [x] TypeScript Container FK validation API와 runner runtime 회귀 테스트
+- [x] TypeScript Container field/unique validation API와 runner runtime 회귀 테스트
+- [x] TypeScript Container reverse navigation/composite index API와 runner runtime 회귀 테스트
+- [x] Go `@search` in-memory Container API와 runner 회귀 테스트
+- [x] Go SQLite accessor 생성 및 fake/modernc `database/sql` driver 기반 load/get/optional null runtime 회귀 테스트
+- [x] Go BinaryRef read/write, invalid enum discriminant 거부 및 `@search` API와 runner 회귀 테스트
+- [x] Go BinaryRef composite key lookup API와 runner runtime 회귀 테스트
+- [x] Python Container/index/FK validation API와 runner 회귀 테스트
+- [x] Go CSV/JSON generated loader, sources config 기반 Container CSV/JSON load API, runner runtime 회귀 테스트
+- [x] Go CSV/JSON enum name/numeric parser hardening과 runner runtime 회귀 테스트
+- [x] Python sources config 기반 Container CSV/JSON load API와 CSV/JSON runtime 회귀 테스트
+- [x] Kotlin sources config 기반 Container CSV/JSON load API와 구조 회귀 테스트
+- [x] Swift sources config 기반 Container CSV/JSON load API와 구조 회귀 테스트
+- [x] Kotlin Container/index/FK validation API와 runner 구조 회귀 테스트
+- [x] Go Binary I/O generated loader, optional/list/embed roundtrip, invalid enum discriminant 거부, runner 회귀 테스트
+- [x] Swift Container/index/FK validation API와 runner 구조 회귀 테스트
+- [x] Go embed/list CSV JSON-cell parser hardening과 runner 회귀 테스트
+- [x] Go Container FK navigation helper API와 runner 회귀 테스트
+- [x] Go Container reverse navigation/composite key index API와 runner 회귀 테스트
+- [x] Go Container field/unique validation API와 runner runtime 회귀 테스트
+- [x] Unreal 엔진 친화 parity 정책 정의 (`TArray`, `TMap`, hot reload, Blueprint 노출)
+- [x] Unreal read-only registry/index subsystem과 Blueprint query API 설계/구현
+- [x] Unreal `@search` postings 기반 Blueprint query API 설계/구현
+- [x] Unreal registry FK/reverse navigation Blueprint helper API와 runner 구조 회귀 테스트
+- [x] Python `@pack` Pack/Unpack/TryUnpack API와 runner 회귀 테스트
+- [x] Python `@search` in-memory Container API와 runner 회귀 테스트
+- [x] Python Container FK navigation helper API와 runner 회귀 테스트
+- [x] Python Container reverse navigation/composite key index API와 runner 회귀 테스트
+- [x] Python Container field/unique validation API와 runner runtime 회귀 테스트
+- [x] Python SQLite accessor API와 runner runtime 회귀 테스트
+- [x] TypeScript Container FK navigation helper API와 runner 회귀 테스트
+- [x] Python CSV/JSON generated loader와 primitive/list/embed/optional/enum runtime 회귀 테스트
+- [x] Python Binary I/O row-level read/write API, list/embed/optional/enum roundtrip, invalid enum discriminant 거부와 runtime 회귀 테스트
+- [x] Python BinaryRef lazy document/ref table/index/search lookup API, invalid enum discriminant 거부와 runtime 회귀 테스트
+- [x] Python BinaryRef composite key lookup API와 runner runtime 회귀 테스트
+- [x] Kotlin CSV/JSON generated loader, enum name/numeric parser hardening과 primitive/list/embed/optional 구조 회귀 테스트
+- [x] Kotlin Binary I/O row-level read/write API, list/embed/optional/enum, invalid enum discriminant 거부 구조 회귀 테스트
+- [x] Kotlin BinaryRef lazy document/ref table/index/search lookup API, composite key lookup과 invalid enum discriminant lazy read 구조 회귀 테스트
+- [x] Swift CSV/JSON generated loader, enum name/numeric parser hardening과 primitive/list/embed/optional 구조 회귀 테스트
+- [x] Swift Binary I/O row-level read/write API, list/embed/optional/enum, invalid enum discriminant 거부 구조 회귀 테스트
+- [x] Swift BinaryRef lazy document/ref table/index/search lookup API, composite key lookup과 invalid enum discriminant lazy read 구조 회귀 테스트
+- [x] Kotlin `@search` in-memory Container API와 runner 구조 회귀 테스트
+- [x] Kotlin Container `@search` 지역 변수 충돌 방지, non-null search guard 정리와 validator 중복 local 선언 검사 회귀 테스트
+- [x] Kotlin Container FK navigation helper API와 runner 구조 회귀 테스트
+- [x] Kotlin Container reverse navigation/composite key index API와 runner 구조 회귀 테스트
+- [x] Kotlin Container field/unique validation API와 runner 구조 회귀 테스트
+- [x] Kotlin `@pack` pack/unpack/tryUnpack API와 runner 구조 회귀 테스트
+- [x] Kotlin SQLite accessor API와 runner 구조 회귀 테스트
+- [x] Swift `@search` in-memory Container API와 runner 구조 회귀 테스트
+- [x] Swift Container FK navigation helper API와 runner 구조 회귀 테스트
+- [x] Swift Container reverse navigation/composite key index API와 runner 구조 회귀 테스트
+- [x] Swift Container field/unique validation API와 runner 구조 회귀 테스트
+- [x] Swift Container `@search` 지역 변수 충돌 방지와 validator 중복 local 선언 검사 회귀 테스트
+- [x] Kotlin/Swift Container regex validation 메시지 quote-safe 생성과 validator 회귀 테스트
+- [x] C#/C++/Rust/Go/TypeScript Container field constraint(`MaxLength`, `Range`, `Regex`) runtime 회귀 테스트
+- [x] Swift `@pack` pack/unpack/tryUnpack API와 runner 구조 회귀 테스트
+- [x] Swift SQLite accessor API와 runner 구조 회귀 테스트
+- [x] Unreal Registry field(`MaxLength`, `Range`, `Regex`)/unique/primary/FK validation API와 combined validation 구조 회귀 테스트
+- [x] Unreal `@pack` Pack/Unpack/TryUnpack USTRUCT API와 runner 구조 회귀 테스트
+- [x] 남은 partial/none parity 축 재감사 및 다음 언어별 구현 단위 확정
+- [x] Kotlin runner optional `POLYGEN_KOTLIN_COMPILE=1` `kotlinc` compile gate 추가
+- [x] Kotlin runner optional `POLYGEN_KOTLIN_RUNTIME=1` runtime gate와 06/07/08/09/10/11 assertions 추가
+- [x] Swift runner optional `POLYGEN_SWIFT_COMPILE=1` `swiftc -typecheck` gate 추가
+- [x] Swift runner optional `POLYGEN_SWIFT_RUNTIME=1` runtime gate와 06/07/08/09/10/11 assertions 추가
+- [x] Unreal Registry `.generated.h` 마지막 include 규칙 보정 및 validator 회귀 테스트
+- [x] Unreal runner optional `POLYGEN_UNREAL_COMPILE=1` UnrealBuildTool smoke gate 추가
+- [x] Unreal Registry regex validation include를 `Internationalization/Regex.h`로 보정하고 validator 회귀 테스트 갱신
+- [x] Unreal 모델 헤더의 잘못된 `PolygenCommon.h` include 제거 및 generated local include 존재 검증 추가
+- [x] Unreal UHT-safe reflected name 정책 적용 (`FPolygen*`, `EPolygen*`) 및 explicit 0 값 없는 enum의 `PolygenInvalid = 0` 생성
+- [x] Kotlin/Swift/Unreal optional helper regression을 `run_all --verify`에 통합
+- [x] Kotlin/Swift/Unreal optional toolchain readiness checker 추가
+- [x] 준비된 optional toolchain target만 자동 실행하는 `run_optional_toolchains.py` 추가
+- [x] `run_all --optional-toolchains` 진입점 추가
+- [x] `run_all --optional-toolchains-strict`/`--optional-toolchains-dry-run` 진입점 추가
+- [x] Windows `run_all --optional-toolchains` route를 label 의존 없이 실행되도록 보정하고 실제 Kotlin/Swift ready gate 실행 회귀 테스트 추가
+- [x] Swift readiness checker의 기본 Windows 설치 layout 탐지 env(`SWIFTC`, `SDKROOT`, runtime PATH)를 optional runner에 전달
+- [x] Unreal optional compile gate wiring을 runner matrix regression 정상/누락 케이스에 명시
+- [x] Unreal optional compile helper에 `POLYGEN_UNREAL_ENGINE_ROOT` 기반 UBT discovery와 회귀 테스트 추가
+- [x] Unreal optional compile helper용 명시적 smoke fixture 생성기와 prepared fixture readiness env 자동 주입 추가
+- [x] Unreal optional compile helper/checker의 Epic Launcher manifest 기반 UBT discovery 추가
+- [x] Kotlin `POLYGEN_KOTLIN_COMPILE=1` 전체 01-11 compile gate와 `POLYGEN_KOTLIN_RUNTIME=1` 06/07/08/09/10/11 runtime assertions 실행 증거 확보 및 parity matrix full 승격
+- [x] Swift `POLYGEN_SWIFT_COMPILE=1` 전체 01-11 typecheck gate와 `POLYGEN_SWIFT_RUNTIME=1` 06/07/08/09/10/11 runtime assertions 실행 증거 확보 및 parity matrix full 승격
+- [x] Unreal UE 5.7 설치 환경에서 fixture 기반 `POLYGEN_UNREAL_COMPILE=1` UBT/UHT smoke gate 01-11 전체 통과 증거 확보
 
 #### 스키마 관리 테이블
 - [x] `_polygen_schema` 테이블 자동 생성
@@ -306,4 +416,4 @@ Python/Kotlin/Swift의 FQN 클래스명 변환은 Rhai `split` 순회 대신 `re
 
 ---
 
-*최종 업데이트: 2026-06-03*
+*최종 업데이트: 2026-06-05*

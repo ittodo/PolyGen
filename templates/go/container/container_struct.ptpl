@@ -1,4 +1,101 @@
 %-- Root container struct aggregating all data tables
+%logic
+fn go_collect_tables_from_namespace(ns) {
+	let tables = [];
+	for item in ns.items {
+		if item.is_struct {
+			let s = item.as_struct();
+			if !s.is_embed {
+				tables.push(s);
+			}
+		} else if item.is_namespace {
+			let child_tables = go_collect_tables_from_namespace(item.as_namespace());
+			for child in child_tables {
+				tables.push(child);
+			}
+		}
+	}
+	tables
+}
+
+fn go_find_table_by_fqn(all_tables, fqn) {
+	for table in all_tables {
+		if table.fqn == fqn {
+			return table;
+		}
+	}
+	()
+}
+
+fn go_nav_field_label(field_name) {
+	let label = to_snake_case(field_name);
+	if label.ends_with("_id") && label.len() > 3 {
+		return label.sub_string(0, label.len() - 3);
+	}
+	label
+}
+
+fn go_nav_method_suffix(source_table, field_name) {
+	to_pascal_case(source_table.name) + to_pascal_case(go_nav_field_label(field_name))
+}
+
+fn go_reverse_nav_method_suffix(target_table, relation_name) {
+	to_pascal_case(target_table.name) + to_pascal_case(relation_name)
+}
+
+let go_all_tables = [];
+for ns in file.namespaces {
+	let tables = go_collect_tables_from_namespace(ns);
+	for table in tables {
+		go_all_tables.push(table);
+	}
+}
+
+let go_forward_navs = [];
+for s in go_all_tables {
+	if !s.is_embed {
+		for item in s.items {
+			if item.is_field {
+				let field = as_field(item);
+				if field.foreign_key != () {
+					let fk = field.foreign_key;
+					let target_table = go_find_table_by_fqn(go_all_tables, fk.target_table_fqn);
+					if target_table != () {
+						go_forward_navs.push(#{
+							method_suffix: go_nav_method_suffix(s, field.name),
+							source_type: s.name,
+							field_name: to_pascal_case(field.name),
+							target_type: target_table.name,
+							target_member: to_pascal_case(target_table.name) + "s",
+							target_method: "GetBy" + to_pascal_case(fk.target_field),
+							is_optional: field.field_type.is_option
+						});
+					}
+				}
+			}
+		}
+	}
+}
+
+let go_reverse_navs = [];
+for s in go_all_tables {
+	if !s.is_embed {
+		for rel in s.relations {
+			let source_table = go_find_table_by_fqn(go_all_tables, rel.source_table_fqn);
+			if source_table != () {
+				go_reverse_navs.push(#{
+					method_suffix: go_reverse_nav_method_suffix(s, rel.name),
+					target_type: s.name,
+					target_key_field: "Id",
+					source_type: source_table.name,
+					source_member: to_pascal_case(source_table.name) + "s",
+					source_method: "GetBy" + to_pascal_case(rel.source_field)
+				});
+			}
+		}
+	}
+}
+%endlogic
 // {{container_name}} is the root container aggregating all data tables.
 type {{container_name}} struct {
 %for table in file.all_tables
@@ -62,3 +159,31 @@ func (c *{{container_name}}) ValidateOrError() error {
 	}
 	return nil
 }
+%blank
+%for nav in go_forward_navs
+// Get{{nav.method_suffix}} resolves the {{nav.field_name}} foreign key for a {{nav.source_type}} row.
+func (c *{{container_name}}) Get{{nav.method_suffix}}(row *{{nav.source_type}}) *{{nav.target_type}} {
+	if row == nil {
+		return nil
+	}
+%if nav.is_optional
+	if row.{{nav.field_name}} == nil {
+		return nil
+	}
+	return c.{{nav.target_member}}.{{nav.target_method}}(*row.{{nav.field_name}})
+%else
+	return c.{{nav.target_member}}.{{nav.target_method}}(row.{{nav.field_name}})
+%endif
+}
+%blank
+%endfor
+%for nav in go_reverse_navs
+// Find{{nav.method_suffix}} returns {{nav.source_type}} rows referencing a {{nav.target_type}} row.
+func (c *{{container_name}}) Find{{nav.method_suffix}}(row *{{nav.target_type}}) []*{{nav.source_type}} {
+	if row == nil {
+		return nil
+	}
+	return c.{{nav.source_member}}.{{nav.source_method}}(row.{{nav.target_key_field}})
+}
+%blank
+%endfor

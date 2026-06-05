@@ -49,6 +49,7 @@ TEST_SCHEMAS=(
     "08_complex_schema"
     "09_sqlite"
     "10_pack_embed"
+    "11_relations_indexes"
 )
 
 PASSED=0
@@ -87,8 +88,32 @@ for test_name in "${TEST_SCHEMAS[@]}"; do
         echo -e "${RED}  FAIL: No Swift files generated${NC}"
         FAILED=$((FAILED + 1))
     elif "$PYTHON_BIN" "$SCRIPT_DIR/validate_swift.py" "${OUTPUT_FILES[@]}" >"$VALIDATION_LOG" 2>&1; then
-        echo -e "${GREEN}  PASS: Swift valid${NC}"
-        PASSED=$((PASSED + 1))
+        if [ "${POLYGEN_SWIFT_RUNTIME:-0}" = "1" ]; then
+            RUNTIME_LOG="$TEST_OUTPUT/swift_runtime.log"
+            echo "  Running Swift runtime assertions..."
+            if "$PYTHON_BIN" "$SCRIPT_DIR/run_swift_runtime.py" "$test_name" "${OUTPUT_FILES[@]}" >"$RUNTIME_LOG" 2>&1; then
+                echo -e "${GREEN}  PASS: Swift valid and runtime assertions passed${NC}"
+                PASSED=$((PASSED + 1))
+            else
+                echo -e "${RED}  FAIL: Swift runtime assertions failed${NC}"
+                cat "$RUNTIME_LOG"
+                FAILED=$((FAILED + 1))
+            fi
+        elif [ "${POLYGEN_SWIFT_COMPILE:-0}" = "1" ]; then
+            COMPILE_LOG="$TEST_OUTPUT/swift_compile.log"
+            echo "  Typechecking Swift..."
+            if "$PYTHON_BIN" "$SCRIPT_DIR/compile_swift.py" "${OUTPUT_FILES[@]}" >"$COMPILE_LOG" 2>&1; then
+                echo -e "${GREEN}  PASS: Swift valid and typechecked${NC}"
+                PASSED=$((PASSED + 1))
+            else
+                echo -e "${RED}  FAIL: Swift typecheck failed${NC}"
+                cat "$COMPILE_LOG"
+                FAILED=$((FAILED + 1))
+            fi
+        else
+            echo -e "${GREEN}  PASS: Swift valid${NC}"
+            PASSED=$((PASSED + 1))
+        fi
     else
         echo -e "${RED}  FAIL: Swift validation failed${NC}"
         cat "$VALIDATION_LOG"

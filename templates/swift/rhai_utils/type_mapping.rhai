@@ -34,6 +34,21 @@ fn string_literal(value) {
     "\"" + escaped + "\""
 }
 
+fn identifier(value) {
+    switch value {
+        "associatedtype" | "class" | "deinit" | "enum" | "extension" | "fileprivate" |
+        "func" | "import" | "init" | "inout" | "internal" | "let" | "open" |
+        "operator" | "private" | "precedencegroup" | "protocol" | "public" |
+        "rethrows" | "static" | "struct" | "subscript" | "typealias" | "var" |
+        "break" | "case" | "catch" | "continue" | "default" | "defer" |
+        "do" | "else" | "fallthrough" | "for" | "guard" | "if" |
+        "in" | "repeat" | "return" | "throw" | "switch" | "where" |
+        "while" | "as" | "Any" | "false" | "is" | "nil" | "self" |
+        "Self" | "super" | "throw" | "throws" | "true" | "try" => "`" + value + "`",
+        _ => value
+    }
+}
+
 fn scalar_type(type_ref) {
     switch type_ref.type_name {
         "u8" => "UInt8",

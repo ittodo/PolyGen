@@ -228,7 +228,7 @@ mod tests {
                 SchemaChange::TableAdded {
                     namespace: "game".to_string(),
                     table_name: "Account".to_string(),
-                    struct_def: crate::ir_model::StructDef {
+                    struct_def: Box::new(crate::ir_model::StructDef {
                         name: "Account".to_string(),
                         fqn: "game.Account".to_string(),
                         is_embed: false,
@@ -242,7 +242,7 @@ mod tests {
                         items: Vec::new(),
                         indexes: Vec::new(),
                         relations: Vec::new(),
-                    },
+                    }),
                 },
             ],
             warnings: vec!["warning".to_string()],

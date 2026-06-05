@@ -2,16 +2,35 @@
 // Unreal Engine Generator Entry Point
 // Generates Unreal header files with USTRUCT/UENUM from .poly schema files
 
+import "templates/unreal/rhai_utils/type_mapping" as ue_types;
+
 // Functions for generating struct and enum code
 fn generate_enum(e) {
     let result = "";
 
-    // Add E prefix for Unreal enum naming convention
-    let enum_name = "E" + e.name;
+    let enum_name = ue_types::get_enum_name(e.name);
+    let has_zero_value = false;
+    let seen_member = false;
+
+    for enum_item in e.items {
+        if enum_item.is_member() {
+            let m = enum_item.as_member();
+            if !seen_member && m.value == () {
+                has_zero_value = true;
+            }
+            if m.value != () && (m.value == 0 || ("" + m.value) == "0") {
+                has_zero_value = true;
+            }
+            seen_member = true;
+        }
+    }
 
     result += "UENUM(BlueprintType)\n";
     result += "enum class " + enum_name + " : uint8\n";
     result += "{\n";
+    if !has_zero_value {
+        result += "    PolygenInvalid = 0 UMETA(DisplayName = \"Invalid\"),\n";
+    }
 
     for enum_item in e.items {
         if enum_item.is_member() {
@@ -33,10 +52,7 @@ fn generate_enum(e) {
 fn generate_struct(s, ns_fqn) {
     let result = "";
 
-    // Add F prefix for struct name
-    let base_struct_name = s.name;
-    let first_char = base_struct_name.sub_string(0, 1);
-    let struct_name = if first_char == "F" { base_struct_name } else { "F" + base_struct_name };
+    let struct_name = ue_types::get_struct_name(s.name);
 
     // Generate embedded structs FIRST (they must be declared before parent struct uses them)
     for item in s.items {
@@ -105,23 +121,16 @@ fn generate_struct(s, ns_fqn) {
                 else { ue_type = type_name; }
             } else {
                 // Custom type - determine if enum or struct
-                let type_first = type_name.sub_string(0, 1);
-
                 if t.is_enum || type_name == "Element" || type_name == "Status" || type_name == "ItemType" ||
                    type_name == "PlayerClass" || type_name == "Status__Enum" {
-                    ue_type = "E" + type_name;
+                    ue_type = ue_types::get_enum_name(type_name);
                     is_enum_type = true;
                 } else if type_name.contains("Type") || type_name.contains("Status") || type_name.contains("Kind") ||
                           type_name.contains("Mode") || type_name.contains("State") {
-                    ue_type = "E" + type_name;
+                    ue_type = ue_types::get_enum_name(type_name);
                     is_enum_type = true;
                 } else {
-                    // Struct type - add F prefix if not already present
-                    if type_first == "F" {
-                        ue_type = type_name;
-                    } else {
-                        ue_type = "F" + type_name;
-                    }
+                    ue_type = ue_types::get_struct_name(type_name);
                 }
             }
 
@@ -250,13 +259,17 @@ fn generate_struct(s, ns_fqn) {
             result += ");\n";
             result += "    }\n";
 
-            // Unpack() static method
-            result += "\n    /** Unpack a '" + sep + "'-separated string into fields. */\n";
-            result += "    static " + struct_name + " Unpack(const FString& Str)\n";
+            // TryUnpack() static method with validation
+            result += "\n    /** Try to unpack a '" + sep + "'-separated string into fields. */\n";
+            result += "    static bool TryUnpack(const FString& Str, " + struct_name + "& OutValue)\n";
             result += "    {\n";
-            result += "        " + struct_name + " Result;\n";
+            result += "        " + struct_name + " Parsed;\n";
             result += "        TArray<FString> Parts;\n";
             result += "        Str.ParseIntoArray(Parts, TEXT(\"" + sep + "\"), false);\n";
+            result += "        if (Parts.Num() != " + embed_fields.len() + ")\n";
+            result += "        {\n";
+            result += "            return false;\n";
+            result += "        }\n";
 
             for i in 0..embed_fields.len() {
                 let ef = embed_fields[i];
@@ -270,27 +283,63 @@ fn generate_struct(s, ns_fqn) {
                     }
                 }
 
-                result += "        if (Parts.IsValidIndex(" + idx_str + "))\n";
-                result += "        {\n";
-
                 if tn == "string" {
-                    result += "            Result." + ef.name + " = Parts[" + idx_str + "];\n";
+                    result += "        Parsed." + ef.name + " = Parts[" + idx_str + "];\n";
                 } else if tn == "bool" {
-                    result += "            Result." + ef.name + " = Parts[" + idx_str + "].ToBool();\n";
+                    result += "        {\n";
+                    result += "            const FString BoolText = Parts[" + idx_str + "].ToLower();\n";
+                    result += "            if (BoolText == TEXT(\"true\") || BoolText == TEXT(\"1\"))\n";
+                    result += "            {\n";
+                    result += "                Parsed." + ef.name + " = true;\n";
+                    result += "            }\n";
+                    result += "            else if (BoolText == TEXT(\"false\") || BoolText == TEXT(\"0\"))\n";
+                    result += "            {\n";
+                    result += "                Parsed." + ef.name + " = false;\n";
+                    result += "            }\n";
+                    result += "            else\n";
+                    result += "            {\n";
+                    result += "                return false;\n";
+                    result += "            }\n";
+                    result += "        }\n";
                 } else if tn == "f32" || tn == "f64" {
-                    result += "            Result." + ef.name + " = FCString::Atof(*Parts[" + idx_str + "]);\n";
+                    result += "        if (!LexTryParseString(Parsed." + ef.name + ", *Parts[" + idx_str + "]) || !FMath::IsFinite(Parsed." + ef.name + "))\n";
+                    result += "        {\n";
+                    result += "            return false;\n";
+                    result += "        }\n";
                 } else if is_enum_type {
-                    let enum_name = "E" + tn;
-                    result += "            Result." + ef.name + " = static_cast<" + enum_name + ">(FCString::Atoi(*Parts[" + idx_str + "]));\n";
-                } else if tn == "u64" || tn == "i64" {
-                    result += "            Result." + ef.name + " = FCString::Atoi64(*Parts[" + idx_str + "]);\n";
+                    let enum_name = ue_types::get_enum_name(tn);
+                    result += "        {\n";
+                    result += "            int32 EnumValue = 0;\n";
+                    result += "            if (!LexTryParseString(EnumValue, *Parts[" + idx_str + "]))\n";
+                    result += "            {\n";
+                    result += "                return false;\n";
+                    result += "            }\n";
+                    result += "            Parsed." + ef.name + " = static_cast<" + enum_name + ">(EnumValue);\n";
+                    result += "        }\n";
                 } else {
-                    result += "            Result." + ef.name + " = FCString::Atoi(*Parts[" + idx_str + "]);\n";
+                    result += "        if (!LexTryParseString(Parsed." + ef.name + ", *Parts[" + idx_str + "]))\n";
+                    result += "        {\n";
+                    result += "            return false;\n";
+                    result += "        }\n";
+                    if tn == "u16" || tn == "u32" || tn == "u64" {
+                        result += "        if (Parsed." + ef.name + " < 0)\n";
+                        result += "        {\n";
+                        result += "            return false;\n";
+                        result += "        }\n";
+                    }
                 }
-
-                result += "        }\n";
             }
 
+            result += "        OutValue = Parsed;\n";
+            result += "        return true;\n";
+            result += "    }\n";
+
+            // Unpack() static method
+            result += "\n    /** Unpack a '" + sep + "'-separated string into fields, returning defaults on invalid input. */\n";
+            result += "    static " + struct_name + " Unpack(const FString& Str)\n";
+            result += "    {\n";
+            result += "        " + struct_name + " Result;\n";
+            result += "        TryUnpack(Str, Result);\n";
             result += "        return Result;\n";
             result += "    }\n";
         }
@@ -350,7 +399,6 @@ let has_file = file.path != () && file.path != "";
 
 let pascal_name = "";
 let ns_bodies = "";
-let is_common = false;
 
 if has_file {
     let parts = file.path.split("/");
@@ -362,7 +410,6 @@ if has_file {
     let first_char = base_name.sub_string(0, 1);
     let rest = base_name.sub_string(1, base_name.len() - 1);
     pascal_name = first_char.to_upper() + rest;
-    is_common = pascal_name == "Common";
 
     for ns in file.namespaces {
         ns_bodies += generate_namespace(ns);
@@ -376,9 +423,6 @@ if has_file {
 #pragma once
 %blank
 #include "CoreMinimal.h"
-%if !is_common
-#include "PolygenCommon.h"
-%endif
 #include "Polygen{{pascal_name}}.generated.h"
 %blank
 {{ns_bodies}}

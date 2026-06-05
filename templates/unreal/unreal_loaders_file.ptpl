@@ -35,7 +35,7 @@ fn csv_parse_expr(type_ref, column_expr) {
 
     // For enums, parse as int and cast (check is_enum flag OR common patterns)
     if type_ref.is_enum || is_likely_enum(n) {
-        let enum_name = "E" + n;
+        let enum_name = ue_types::get_enum_name(n);
         return "static_cast<" + enum_name + ">(FCString::Atoi(*" + column_expr + "))";
     }
 

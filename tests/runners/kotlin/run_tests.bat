@@ -30,7 +30,7 @@ if not exist "%POLYGEN%" (
     exit /b 1
 )
 
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed 11_relations_indexes
 
 if exist "%OUTPUT_DIR%" rmdir /s /q "%OUTPUT_DIR%"
 mkdir "%OUTPUT_DIR%"
@@ -77,8 +77,34 @@ for %%T in (%TEST_CASES%) do (
                 type "!VALIDATION_LOG!"
                 set /a FAILED+=1
             ) else (
-                echo   PASSED
-                set /a PASSED+=1
+                if "%POLYGEN_KOTLIN_RUNTIME%"=="1" (
+                    set RUNTIME_LOG=!TEST_OUTPUT!\kotlin_runtime.log
+                    echo   Running Kotlin runtime assertions...
+                    python "%SCRIPT_DIR%run_kotlin_runtime.py" "%%T" "!TEST_OUTPUT!\kotlin\*.kt" >> "!RUNTIME_LOG!" 2>&1
+                    if errorlevel 1 (
+                        echo   FAILED ^(Kotlin runtime assertion error^)
+                        type "!RUNTIME_LOG!"
+                        set /a FAILED+=1
+                    ) else (
+                        echo   PASSED
+                        set /a PASSED+=1
+                    )
+                ) else if "%POLYGEN_KOTLIN_COMPILE%"=="1" (
+                    set COMPILE_LOG=!TEST_OUTPUT!\kotlin_compile.log
+                    echo   Compiling Kotlin...
+                    python "%SCRIPT_DIR%compile_kotlin.py" "!TEST_OUTPUT!\kotlin\*.kt" >> "!COMPILE_LOG!" 2>&1
+                    if errorlevel 1 (
+                        echo   FAILED ^(Kotlin compile error^)
+                        type "!COMPILE_LOG!"
+                        set /a FAILED+=1
+                    ) else (
+                        echo   PASSED
+                        set /a PASSED+=1
+                    )
+                ) else (
+                    echo   PASSED
+                    set /a PASSED+=1
+                )
             )
         )
     )

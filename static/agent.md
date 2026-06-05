@@ -18,7 +18,12 @@ static/
 │   ├── PolygenAttributes.cs    # Polygen 어트리뷰트 정의
 │   └── Validation.cs           # 검증 결과/예외 유틸리티
 └── cpp/                       # C++ 정적 파일
-    └── polygen_support.hpp     # BinaryReader/Writer, Container, validation, binary ref document support
+    └── polygen_support.hpp     # BinaryReader/Writer, Container/index incl. tuple keys, validation, binary ref v2 read/write document support
+└── go/                        # Go 정적 파일
+    └── polygen_support.go      # validation, loaders, binary IO, binary ref v2 document support
+└── typescript/                # TypeScript 정적 파일
+    ├── binary_ref.ts           # indexed binary ref v2 read/write runtime
+    └── validation.ts           # validation helpers
 ```
 
 ## Files
@@ -56,9 +61,23 @@ static/
 - **용도**: C++ 생성 코드의 공통 header-only 런타임
 - **주요 기능**:
   - `BinaryReader`/`BinaryWriter`: little-endian binary IO
-  - `DataTable`, index, validation 유틸리티
-  - `BinaryDocument`, `BinaryRefFormat`: shared ownership 기반 indexed binary lazy ref 지원
+  - `DataTable`, unique/group index, composite tuple-key hash, validation 유틸리티
+  - `BinaryDocument`, `BinaryRefFormat`: shared ownership 기반 indexed binary lazy ref v2 read/write 지원
 - **네임스페이스**: `polygen`
+
+### typescript/binary_ref.ts
+- **용도**: TypeScript indexed binary row reference 런타임 유틸리티
+- **주요 기능**:
+  - `BinaryDocumentOwner`: ref 객체가 공유하는 byte buffer owner
+  - `BinaryRefFormat`: magic/version header, table/index/search block, row-frame offset helpers
+  - `BinaryRefRowBuilder`: 필드 offset table이 있는 lazy row frame 작성
+
+### go/polygen_support.go
+- **용도**: Go 생성 코드의 공통 런타임 유틸리티
+- **주요 기능**:
+  - `BinaryReader`/`BinaryWriter`: little-endian binary IO
+  - validation, CSV/JSON loader, index 유틸리티
+  - `BinaryDocumentOwner`, `BinaryRefCursor`, `BinaryRefRowBuilder`: indexed binary ref v2 read/write 지원
 
 ### CsvUtils.cs
 - **크기**: 3.8KB

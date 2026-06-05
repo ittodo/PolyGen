@@ -8,7 +8,7 @@
         get
         {
             if (_container is Schema.Container.IHas{{relation.source_table_name}}Table c)
-                return c.{{relation.source_table_name}}s.By{{relation.source_field_pascal}}[Id];
+                return c.{{relation.source_table_name}}s.By{{relation.source_field_pascal}}[id];
             return Array.Empty<{{relation.source_table_name}}>();
         }
     }

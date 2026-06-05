@@ -1,0 +1,1026 @@
+%logic
+import "templates/python/rhai_utils/type_mapping" as py;
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn table_member_name(s) {
+    to_snake_case(s.name) + "s"
+}
+
+fn ref_name(s) {
+    py::class_name_from_fqn(s.fqn) + "Ref"
+}
+
+fn table_ref_name(s) {
+    py::class_name_from_fqn(s.fqn) + "RefTable"
+}
+
+fn codec_name(s) {
+    py::class_name_from_fqn(s.fqn) + "RefCodec"
+}
+
+fn method_suffix(name) {
+    to_snake_case(name)
+}
+
+fn is_supported_base(t) {
+    if t.type_name == "string" || t.type_name == "bytes" || t.type_name == "bool" || t.type_name == "timestamp" {
+        return true;
+    }
+    if t.is_enum {
+        return true;
+    }
+    if t.is_primitive && t.type_name != "bytes" {
+        return true;
+    }
+    return false;
+}
+
+fn is_supported_field(t) {
+    if t.is_list {
+        return false;
+    }
+    let base = if t.is_option { t.inner } else { t };
+    is_supported_base(base)
+}
+
+fn index_field_type(struct_def, index_field) {
+    for item in struct_def.items {
+        if item.is_field {
+            let field = item.as_field();
+            if field.name == index_field.name {
+                return field.field_type;
+            }
+        }
+    }
+    return index_field.field_type;
+}
+
+fn single_index_type(struct_def, idx) {
+    for item in struct_def.items {
+        if item.is_field {
+            let field = item.as_field();
+            if field.name == idx.field_name {
+                return field.field_type;
+            }
+        }
+    }
+    return idx.field_type;
+}
+
+fn is_supported_index_type(t) {
+    if t.is_option || t.is_list {
+        return false;
+    }
+    if t.type_name == "bytes" || t.type_name == "f32" || t.type_name == "f64" {
+        return false;
+    }
+    is_supported_base(t)
+}
+
+fn is_supported_index(struct_def, idx) {
+    if idx.is_composite {
+        for field in idx.fields {
+            if !is_supported_index_type(index_field_type(struct_def, field)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    is_supported_index_type(single_index_type(struct_def, idx))
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    t
+}
+
+fn is_search_target_enabled(search) {
+    search.target == "csharp" || search.target == "python" || search.target == "python_binary_ref"
+}
+
+fn is_supported_search(f) {
+    if !f.has_search_index {
+        return false;
+    }
+    let search = f.search_index;
+    if !is_search_target_enabled(search) {
+        return false;
+    }
+    let ft = f.field_type;
+    if ft.is_list {
+        return false;
+    }
+    let base = search_base_type(ft);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    if base.type_name == "string" || base.type_name == "bool" || base.type_name == "timestamp" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    if base.is_primitive && base.type_name != "bytes" && base.type_name != "f32" && base.type_name != "f64" {
+        return true;
+    }
+    return false;
+}
+
+fn read_at_expr(t, offset_expr) {
+    if t.type_name == "string" { return "_read_string_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "bytes" { return "_read_bytes_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "bool" { return "_read_bool_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "u8" { return "_read_u8_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "i8" { return "_read_i8_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "u16" { return "_read_u16_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "i16" { return "_read_i16_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "u32" { return "_read_u32_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "i32" { return "_read_i32_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "u64" { return "_read_u64_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "i64" { return "_read_i64_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "f32" { return "_read_f32_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "f64" { return "_read_f64_at(self._owner.data, " + offset_expr + ")"; }
+    if t.type_name == "timestamp" { return "_read_timestamp_at(self._owner.data, " + offset_expr + ")"; }
+    if t.is_enum { return "_types." + py::class_name_for_type(t) + "(_read_i32_at(self._owner.data, " + offset_expr + "))"; }
+    return "_read_i32_at(self._owner.data, " + offset_expr + ")";
+}
+
+fn reader_expr(t, reader_expr) {
+    if t.type_name == "string" { return reader_expr + ".read_string()"; }
+    if t.type_name == "bytes" { return reader_expr + ".read_bytes()"; }
+    if t.type_name == "bool" { return reader_expr + ".read_bool()"; }
+    if t.type_name == "u8" { return reader_expr + ".read_u8()"; }
+    if t.type_name == "i8" { return reader_expr + ".read_i8()"; }
+    if t.type_name == "u16" { return reader_expr + ".read_u16()"; }
+    if t.type_name == "i16" { return reader_expr + ".read_i16()"; }
+    if t.type_name == "u32" { return reader_expr + ".read_u32()"; }
+    if t.type_name == "i32" { return reader_expr + ".read_i32()"; }
+    if t.type_name == "u64" { return reader_expr + ".read_u64()"; }
+    if t.type_name == "i64" { return reader_expr + ".read_i64()"; }
+    if t.type_name == "f32" { return reader_expr + ".read_f32()"; }
+    if t.type_name == "f64" { return reader_expr + ".read_f64()"; }
+    if t.type_name == "timestamp" { return reader_expr + ".read_timestamp()"; }
+    if t.is_enum { return "_types." + py::class_name_for_type(t) + "(" + reader_expr + ".read_i32())"; }
+    return reader_expr + ".read_i32()";
+}
+
+fn writer_call(t, writer_expr, value_expr) {
+    if t.type_name == "string" { return writer_expr + ".write_string(" + value_expr + ")"; }
+    if t.type_name == "bytes" { return writer_expr + ".write_bytes(" + value_expr + ")"; }
+    if t.type_name == "bool" { return writer_expr + ".write_bool(" + value_expr + ")"; }
+    if t.type_name == "u8" { return writer_expr + ".write_u8(" + value_expr + ")"; }
+    if t.type_name == "i8" { return writer_expr + ".write_i8(" + value_expr + ")"; }
+    if t.type_name == "u16" { return writer_expr + ".write_u16(" + value_expr + ")"; }
+    if t.type_name == "i16" { return writer_expr + ".write_i16(" + value_expr + ")"; }
+    if t.type_name == "u32" { return writer_expr + ".write_u32(" + value_expr + ")"; }
+    if t.type_name == "i32" { return writer_expr + ".write_i32(" + value_expr + ")"; }
+    if t.type_name == "u64" { return writer_expr + ".write_u64(" + value_expr + ")"; }
+    if t.type_name == "i64" { return writer_expr + ".write_i64(" + value_expr + ")"; }
+    if t.type_name == "f32" { return writer_expr + ".write_f32(" + value_expr + ")"; }
+    if t.type_name == "f64" { return writer_expr + ".write_f64(" + value_expr + ")"; }
+    if t.type_name == "timestamp" { return writer_expr + ".write_timestamp(" + value_expr + ")"; }
+    if t.is_enum { return "_write_enum(" + writer_expr + ", _types." + py::class_name_for_type(t) + ", " + value_expr + ")"; }
+    return writer_expr + ".write_i32(int(" + value_expr + "))";
+}
+
+fn index_key_expr(idx) {
+    if idx.is_composite {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += "row." + idx.fields[i].name;
+        }
+        result += ")";
+        return result;
+    }
+    return "row." + idx.field_name;
+}
+
+fn index_api_name(idx) {
+    if idx.is_composite {
+        let result = "";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += "_";
+            }
+            result += idx.fields[i].name;
+        }
+        return result;
+    }
+    idx.field_name
+}
+
+fn index_read_key_expr(struct_def, idx) {
+    if idx.is_composite {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += reader_expr(index_field_type(struct_def, idx.fields[i]), "reader");
+        }
+        result += ")";
+        return result;
+    }
+    return reader_expr(single_index_type(struct_def, idx), "reader");
+}
+
+fn index_write_key_expr(struct_def, idx) {
+    if idx.is_composite {
+        let result = "";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += "\n            ";
+            }
+            result += writer_call(index_field_type(struct_def, idx.fields[i]), "writer", "key[" + i + "]");
+        }
+        return result;
+    }
+    return writer_call(single_index_type(struct_def, idx), "writer", "key");
+}
+
+fn key_expr(field_name, is_option) {
+    let value = "row." + field_name;
+    if is_option {
+        return value;
+    }
+    value
+}
+
+fn exact_search_key_expr(search) {
+    let value = "row." + search.field_name;
+    if search.is_exact_string {
+        return "_search_normalize(" + value + ", " + py::quote_py_string(search.normalize) + ")";
+    }
+    return value;
+}
+
+let all_tables = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for table in tables {
+        all_tables.push(table);
+    }
+}
+
+let entries = [];
+for s in all_tables {
+    let fields = [];
+    let field_index = 0;
+    for item in s.items {
+        if item.is_field {
+            let f = item.as_field();
+            let base = if f.field_type.is_option { f.field_type.inner } else { f.field_type };
+            if is_supported_field(f.field_type) {
+                fields.push(#{
+                    def: f,
+                    index: field_index,
+                    name: f.name,
+                    base: base,
+                    is_option: f.field_type.is_option,
+                    read_at: read_at_expr(base, "offset"),
+                    write_call: writer_call(base, "writer", "row." + f.name),
+                    write_value_call: writer_call(base, "writer", "value")
+                });
+            }
+            field_index += 1;
+        }
+    }
+
+    let indexes = [];
+    for idx in s.indexes {
+        if is_supported_index(s, idx) {
+            let method_name_source = index_api_name(idx);
+            indexes.push(#{
+                def: idx,
+                attr_name: to_snake_case(idx.name),
+                name_literal: py::quote_py_string(idx.name),
+                method_name: if idx.is_unique { "get_by_" + method_suffix(method_name_source) } else { "find_by_" + method_suffix(method_name_source) },
+                field_name: idx.field_name,
+                key_expr: index_key_expr(idx),
+                is_unique: idx.is_unique,
+                is_unique_literal: if idx.is_unique { "True" } else { "False" },
+                read_key: index_read_key_expr(s, idx),
+                write_key: index_write_key_expr(s, idx)
+            });
+        }
+    }
+
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field {
+            let f = item.as_field();
+            if is_supported_search(f) {
+                let search = f.search_index;
+                let base = search_base_type(f.field_type);
+                let is_token_mode = search.mode == "ngram" || search.mode == "word";
+                search_indexes.push(#{
+                    def: f,
+                    name: search.name,
+                    name_literal: py::quote_py_string(search.name),
+                    attr_name: "search_" + to_snake_case(search.name),
+                    method_name: "search_by_" + to_snake_case(search.name),
+                    field_name: f.name,
+                    mode: search.mode,
+                    mode_literal: py::quote_py_string(search.mode),
+                    normalize: search.normalize,
+                    normalize_literal: py::quote_py_string(search.normalize),
+                    n: search.n,
+                    min: search.min,
+                    is_option: f.field_type.is_option,
+                    is_token_mode: is_token_mode,
+                    is_exact_string: search.mode == "exact" && base.type_name == "string",
+                    read_key: if is_token_mode { "reader.read_string()" } else { reader_expr(base, "reader") },
+                    write_key: if is_token_mode { "writer.write_string(key)" } else { writer_call(base, "writer", "key") },
+                    exact_key_expr: exact_search_key_expr(#{
+                        field_name: f.name,
+                        is_exact_string: search.mode == "exact" && base.type_name == "string",
+                        normalize: search.normalize
+                    })
+                });
+            }
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        class_name: py::class_name_from_fqn(s.fqn),
+        fqn_literal: py::quote_py_string(s.fqn),
+        ref_name: ref_name(s),
+        table_name: table_ref_name(s),
+        codec_name: codec_name(s),
+        member_name: table_member_name(s),
+        fields: fields,
+        field_count: field_index,
+        indexes: indexes,
+        index_count: indexes.len(),
+        search_indexes: search_indexes,
+        search_index_count: search_indexes.len()
+    });
+}
+
+let base_name = file.path;
+if base_name.contains("/") {
+    let parts = base_name.split("/");
+    base_name = parts[parts.len() - 1];
+}
+if base_name.ends_with(".poly") {
+    base_name = base_name.sub_string(0, base_name.len() - 5);
+}
+let context_name = to_pascal_case(base_name) + "BinaryRefContext";
+let container_name = to_pascal_case(base_name) + "BinaryRefContainer";
+let entry_count = entries.len();
+%endlogic
+# Generated by PolyGen. DO NOT EDIT.
+# Source: {{file.path}}
+
+from __future__ import annotations
+
+import struct
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Callable, Iterable, Optional
+
+from . import {{base_name}} as _types
+
+
+_MAGIC = b"PGBREF1\0"
+_VERSION = 2
+_TICKS_PER_SECOND = 10_000_000
+_UNIX_EPOCH_TICKS = 621_355_968_000_000_000
+
+
+class _BinaryDocumentOwner:
+    def __init__(self, data: bytes | bytearray | memoryview):
+        self.data = memoryview(bytes(data))
+
+
+class _BinaryRefReader:
+    def __init__(self, data: bytes | bytearray | memoryview, offset: int = 0):
+        self._data = memoryview(data)
+        self._offset = offset
+        _check_range(self._data, offset, 0)
+
+    def position(self) -> int:
+        return self._offset
+
+    def skip(self, length: int) -> None:
+        _check_range(self._data, self._offset, length)
+        self._offset += length
+
+    def read_exact(self, size: int) -> bytes:
+        _check_range(self._data, self._offset, size)
+        value = self._data[self._offset:self._offset + size].tobytes()
+        self._offset += size
+        return value
+
+    def _unpack(self, fmt: str) -> Any:
+        size = struct.calcsize(fmt)
+        return struct.unpack(fmt, self.read_exact(size))[0]
+
+    def read_u8(self) -> int: return self._unpack("<B")
+    def read_i8(self) -> int: return self._unpack("<b")
+    def read_u16(self) -> int: return self._unpack("<H")
+    def read_i16(self) -> int: return self._unpack("<h")
+    def read_u32(self) -> int: return self._unpack("<I")
+    def read_i32(self) -> int: return self._unpack("<i")
+    def read_u64(self) -> int: return self._unpack("<Q")
+    def read_i64(self) -> int: return self._unpack("<q")
+    def read_f32(self) -> float: return self._unpack("<f")
+    def read_f64(self) -> float: return self._unpack("<d")
+    def read_bool(self) -> bool: return self.read_u8() != 0
+
+    def read_bytes(self) -> bytes:
+        length = self.read_i32()
+        if length < 0:
+            raise ValueError("negative binary payload length")
+        return self.read_exact(length)
+
+    def read_string(self) -> str:
+        return self.read_bytes().decode("utf-8")
+
+    def read_timestamp(self) -> datetime:
+        ticks = self.read_i64()
+        seconds, tick_remainder = divmod(ticks - _UNIX_EPOCH_TICKS, _TICKS_PER_SECOND)
+        return datetime.fromtimestamp(seconds, timezone.utc).replace(microsecond=tick_remainder // 10)
+
+
+class _BinaryRefWriter:
+    def __init__(self):
+        self._data = bytearray()
+
+    def to_bytes(self) -> bytes:
+        return bytes(self._data)
+
+    def write_raw(self, value: bytes | bytearray | memoryview) -> None:
+        self._data.extend(value)
+
+    def _pack(self, fmt: str, value: Any) -> None:
+        self.write_raw(struct.pack(fmt, value))
+
+    def write_u8(self, value: int) -> None: self._pack("<B", value)
+    def write_i8(self, value: int) -> None: self._pack("<b", value)
+    def write_u16(self, value: int) -> None: self._pack("<H", value)
+    def write_i16(self, value: int) -> None: self._pack("<h", value)
+    def write_u32(self, value: int) -> None: self._pack("<I", value)
+    def write_i32(self, value: int) -> None: self._pack("<i", value)
+    def write_u64(self, value: int) -> None: self._pack("<Q", value)
+    def write_i64(self, value: int) -> None: self._pack("<q", value)
+    def write_f32(self, value: float) -> None: self._pack("<f", value)
+    def write_f64(self, value: float) -> None: self._pack("<d", value)
+    def write_bool(self, value: bool) -> None: self.write_u8(1 if value else 0)
+
+    def write_bytes(self, value: bytes | bytearray | memoryview) -> None:
+        data = bytes(value)
+        self.write_i32(len(data))
+        self.write_raw(data)
+
+    def write_string(self, value: str) -> None:
+        self.write_bytes(value.encode("utf-8"))
+
+    def write_timestamp(self, value: datetime) -> None:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        value = value.astimezone(timezone.utc)
+        ticks = int(value.timestamp()) * _TICKS_PER_SECOND + value.microsecond * 10 + _UNIX_EPOCH_TICKS
+        self.write_i64(ticks)
+
+
+def _check_range(data: memoryview, offset: int, length: int) -> None:
+    if offset < 0 or length < 0 or offset > len(data) or length > len(data) - offset:
+        raise ValueError("binary ref offset is outside the document")
+
+
+def _checked_enum(enum_cls: type[Any], value: Any) -> Any:
+    if isinstance(value, enum_cls):
+        return value
+    return enum_cls(int(value))
+
+
+def _write_enum(writer: _BinaryRefWriter, enum_cls: type[Any], value: Any) -> None:
+    writer.write_i32(int(_checked_enum(enum_cls, value)))
+
+
+def _read_at(data: memoryview, offset: int, fmt: str) -> Any:
+    size = struct.calcsize(fmt)
+    _check_range(data, offset, size)
+    return struct.unpack(fmt, data[offset:offset + size])[0]
+
+
+def _read_u8_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<B")
+def _read_i8_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<b")
+def _read_u16_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<H")
+def _read_i16_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<h")
+def _read_u32_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<I")
+def _read_i32_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<i")
+def _read_u64_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<Q")
+def _read_i64_at(data: memoryview, offset: int) -> int: return _read_at(data, offset, "<q")
+def _read_f32_at(data: memoryview, offset: int) -> float: return _read_at(data, offset, "<f")
+def _read_f64_at(data: memoryview, offset: int) -> float: return _read_at(data, offset, "<d")
+def _read_bool_at(data: memoryview, offset: int) -> bool: return _read_u8_at(data, offset) != 0
+
+
+def _read_bytes_at(data: memoryview, offset: int) -> bytes:
+    length = _read_i32_at(data, offset)
+    if length < 0:
+        raise ValueError("negative binary payload length")
+    payload_offset = offset + 4
+    _check_range(data, payload_offset, length)
+    return data[payload_offset:payload_offset + length].tobytes()
+
+
+def _read_string_at(data: memoryview, offset: int) -> str:
+    return _read_bytes_at(data, offset).decode("utf-8")
+
+
+def _read_timestamp_at(data: memoryview, offset: int) -> datetime:
+    ticks = _read_i64_at(data, offset)
+    seconds, tick_remainder = divmod(ticks - _UNIX_EPOCH_TICKS, _TICKS_PER_SECOND)
+    return datetime.fromtimestamp(seconds, timezone.utc).replace(microsecond=tick_remainder // 10)
+
+
+def _write_header(writer: _BinaryRefWriter) -> None:
+    writer.write_raw(_MAGIC)
+    writer.write_i32(_VERSION)
+
+
+def _read_header(reader: _BinaryRefReader) -> None:
+    if reader.read_exact(len(_MAGIC)) != _MAGIC:
+        raise ValueError("invalid PolyGen binary ref header")
+    version = reader.read_i32()
+    if version != _VERSION:
+        raise ValueError(f"unsupported PolyGen binary ref version: {version}")
+
+
+def _get_field_offset(data: memoryview, row_offset: int, field_index: int) -> int:
+    field_count = _read_i32_at(data, row_offset)
+    if field_count < 0:
+        raise ValueError("negative binary field count")
+    if field_index < 0 or field_index >= field_count:
+        return -1
+    table_offset = row_offset + 4
+    _check_range(data, table_offset, field_count * 4)
+    relative = _read_i32_at(data, table_offset + field_index * 4)
+    if relative < 0:
+        return -1
+    absolute = row_offset + relative
+    _check_range(data, absolute, 0)
+    return absolute
+
+
+def _require_field_offset(data: memoryview, row_offset: int, field_index: int) -> int:
+    offset = _get_field_offset(data, row_offset, field_index)
+    if offset < 0:
+        raise ValueError(f"missing required binary field at index {field_index}")
+    return offset
+
+
+class _BinaryRefRowBuilder:
+    def __init__(self, field_count: int):
+        if field_count < 0:
+            raise ValueError("negative binary field count")
+        self._fields: list[Optional[bytes]] = [None] * field_count
+
+    def set_field(self, index: int, write_fn: Callable[[_BinaryRefWriter], None]) -> None:
+        writer = _BinaryRefWriter()
+        write_fn(writer)
+        self._fields[index] = writer.to_bytes()
+
+    def to_bytes(self) -> bytes:
+        writer = _BinaryRefWriter()
+        writer.write_i32(len(self._fields))
+        cursor = 4 + len(self._fields) * 4
+        for payload in self._fields:
+            if payload is None:
+                writer.write_i32(-1)
+            else:
+                writer.write_i32(cursor)
+                cursor += len(payload)
+        for payload in self._fields:
+            if payload is not None:
+                writer.write_raw(payload)
+        return writer.to_bytes()
+
+
+def _search_normalize(value: str, policy: str) -> str:
+    result = value
+    if policy in ("trim", "lower_trim"):
+        result = result.strip()
+    if policy in ("lower", "lower_trim"):
+        result = result.lower()
+    return result
+
+
+def _search_tokens(value: str, mode: str, n: int, min_size: int, normalize: str) -> list[str]:
+    normalized = _search_normalize(value, normalize)
+    tokens: set[str] = set()
+    if mode == "exact":
+        if normalized or min_size <= 0:
+            tokens.add(normalized)
+    elif mode == "word":
+        tokens.update(token for token in normalized.split() if len(token) >= min_size)
+    else:
+        if n <= 0:
+            raise ValueError("search ngram size must be positive")
+        if len(normalized) >= max(n, min_size):
+            for index in range(0, len(normalized) - n + 1):
+                token = normalized[index:index + n]
+                if len(token) >= min_size:
+                    tokens.add(token)
+    return sorted(tokens)
+
+
+def _search_intersect(postings: list[list[int]]) -> list[int]:
+    if not postings:
+        return []
+    current = set(postings[0])
+    for values in postings[1:]:
+        current &= set(values)
+        if not current:
+            return []
+    return sorted(current)
+
+
+%for entry in entries
+class {{entry.ref_name}}:
+    def __init__(self, owner: _BinaryDocumentOwner, row_offset: int):
+        self._owner = owner
+        self._row_offset = row_offset
+
+    def _required_field_offset(self, field_index: int) -> int:
+        return _require_field_offset(self._owner.data, self._row_offset, field_index)
+
+    def _optional_field_offset(self, field_index: int) -> int:
+        return _get_field_offset(self._owner.data, self._row_offset, field_index)
+
+%for field_entry in entry.fields
+%if field_entry.is_option
+    @property
+    def has_{{field_entry.name}}(self) -> bool:
+        return self._optional_field_offset({{field_entry.index}}) >= 0
+
+    @property
+    def {{field_entry.name}}(self) -> Any:
+        offset = self._optional_field_offset({{field_entry.index}})
+        if offset < 0:
+            return None
+        return {{field_entry.read_at}}
+
+%else
+    @property
+    def {{field_entry.name}}(self) -> Any:
+        offset = self._required_field_offset({{field_entry.index}})
+        return {{field_entry.read_at}}
+
+%endif
+%endfor
+    def to_owned(self) -> _types.{{entry.class_name}}:
+        return _types.{{entry.class_name}}(
+%for field_entry in entry.fields
+            {{field_entry.name}}=self.{{field_entry.name}},
+%endfor
+        )
+
+    def get(self) -> _types.{{entry.class_name}}:
+        return self.to_owned()
+
+
+class {{entry.codec_name}}:
+    @staticmethod
+    def write_row(row: _types.{{entry.class_name}}) -> bytes:
+        builder = _BinaryRefRowBuilder({{entry.field_count}})
+%for field_entry in entry.fields
+%if field_entry.is_option
+        if row.{{field_entry.name}} is not None:
+            builder.set_field({{field_entry.index}}, lambda writer, value=row.{{field_entry.name}}: {{field_entry.write_value_call}})
+%else
+        builder.set_field({{field_entry.index}}, lambda writer: {{field_entry.write_call}})
+%endif
+%endfor
+        return builder.to_bytes()
+
+
+class {{entry.table_name}}:
+    def __init__(
+        self,
+        owner: _BinaryDocumentOwner,
+        row_offsets: list[int],
+%for idx in entry.indexes
+        {{idx.attr_name}}: dict[Any, Any],
+%endfor
+%for search in entry.search_indexes
+        {{search.attr_name}}: dict[Any, list[int]],
+%endfor
+    ):
+        self._owner = owner
+        self._row_offsets = row_offsets
+%for idx in entry.indexes
+        self._{{idx.attr_name}} = {{idx.attr_name}}
+%endfor
+%for search in entry.search_indexes
+        self._{{search.attr_name}} = {{search.attr_name}}
+%endfor
+
+    def count(self) -> int:
+        return len(self._row_offsets)
+
+    def all(self) -> list[{{entry.ref_name}}]:
+        return [{{entry.ref_name}}(self._owner, offset) for offset in self._row_offsets]
+
+    def at(self, index: int) -> {{entry.ref_name}}:
+        return {{entry.ref_name}}(self._owner, self._row_offsets[index])
+
+    def _refs_from_ordinals(self, ordinals: Iterable[int]) -> list[{{entry.ref_name}}]:
+        return [{{entry.ref_name}}(self._owner, self._row_offsets[ordinal]) for ordinal in ordinals if 0 <= ordinal < len(self._row_offsets)]
+
+%for idx in entry.indexes
+%if idx.is_unique
+    def {{idx.method_name}}(self, key: Any) -> Optional[{{entry.ref_name}}]:
+        offset = self._{{idx.attr_name}}.get(key)
+        if offset is None:
+            return None
+        return {{entry.ref_name}}(self._owner, offset)
+
+%else
+    def {{idx.method_name}}(self, key: Any) -> list[{{entry.ref_name}}]:
+        return [{{entry.ref_name}}(self._owner, offset) for offset in self._{{idx.attr_name}}.get(key, [])]
+
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+    def {{search.method_name}}(self, query: str) -> list[{{entry.ref_name}}]:
+        tokens = _search_tokens(query, {{search.mode_literal}}, {{search.n}}, {{search.min}}, {{search.normalize_literal}})
+        if not tokens:
+            return []
+        postings: list[list[int]] = []
+        for token in tokens:
+            ordinals = self._{{search.attr_name}}.get(token)
+            if not ordinals:
+                return []
+            postings.append(ordinals)
+        return self._refs_from_ordinals(_search_intersect(postings))
+
+%else
+    def {{search.method_name}}(self, key: Any) -> list[{{entry.ref_name}}]:
+%if search.is_exact_string
+        key = _search_normalize(key, {{search.normalize_literal}})
+%endif
+        return self._refs_from_ordinals(self._{{search.attr_name}}.get(key, []))
+
+%endif
+%endfor
+    @staticmethod
+    def write(writer: _BinaryRefWriter, source_rows: list[_types.{{entry.class_name}}]) -> None:
+        writer.write_string({{entry.fqn_literal}})
+        rows: list[tuple[_types.{{entry.class_name}}, int, bytes]] = []
+        cursor = 0
+        for row in source_rows:
+            row_bytes = {{entry.codec_name}}.write_row(row)
+            rows.append((row, cursor, row_bytes))
+            cursor += len(row_bytes)
+
+        writer.write_i32(len(rows))
+        for _, offset, _ in rows:
+            writer.write_i32(offset)
+
+        writer.write_i32({{entry.index_count}})
+%for idx in entry.indexes
+        writer.write_string({{idx.name_literal}})
+        writer.write_bool({{idx.is_unique_literal}})
+%if idx.is_unique
+        index: dict[Any, int] = {}
+        for row, offset, _ in rows:
+            index[{{idx.key_expr}}] = offset
+        writer.write_i32(len(index))
+        for key, offset in index.items():
+            {{idx.write_key}}
+            writer.write_i32(offset)
+%else
+        index: dict[Any, list[int]] = {}
+        for row, offset, _ in rows:
+            index.setdefault({{idx.key_expr}}, []).append(offset)
+        writer.write_i32(len(index))
+        for key, offsets in index.items():
+            {{idx.write_key}}
+            writer.write_i32(len(offsets))
+            for offset in offsets:
+                writer.write_i32(offset)
+%endif
+%endfor
+        writer.write_i32({{entry.search_index_count}})
+%for search in entry.search_indexes
+        writer.write_string({{search.name_literal}})
+        writer.write_string({{search.mode_literal}})
+%if search.is_token_mode
+        search_index: dict[Any, list[int]] = {}
+        for ordinal, (row, _, _) in enumerate(rows):
+            value = row.{{search.field_name}}
+            if value is None:
+                continue
+            for token in _search_tokens(value, {{search.mode_literal}}, {{search.n}}, {{search.min}}, {{search.normalize_literal}}):
+                search_index.setdefault(token, []).append(ordinal)
+%else
+        search_index: dict[Any, list[int]] = {}
+        for ordinal, (row, _, _) in enumerate(rows):
+            value = row.{{search.field_name}}
+            if value is None:
+                continue
+            key = {{search.exact_key_expr}}
+            search_index.setdefault(key, []).append(ordinal)
+%endif
+        writer.write_i32(len(search_index))
+        for key, ordinals in search_index.items():
+            {{search.write_key}}
+            writer.write_i32(len(ordinals))
+            for ordinal in ordinals:
+                writer.write_i32(ordinal)
+%endfor
+        writer.write_i32(cursor)
+        for _, _, row_bytes in rows:
+            writer.write_raw(row_bytes)
+
+    @staticmethod
+    def read(owner: _BinaryDocumentOwner, reader: _BinaryRefReader) -> {{entry.table_name}}:
+        table_name = reader.read_string()
+        if table_name != {{entry.fqn_literal}}:
+            raise ValueError(f"expected table {{entry.def.fqn}} but found {table_name}")
+        row_count = reader.read_i32()
+        if row_count < 0:
+            raise ValueError("negative row count")
+        row_offsets = [reader.read_i32() for _ in range(row_count)]
+
+        index_count = reader.read_i32()
+        if index_count != {{entry.index_count}}:
+            raise ValueError(f"unexpected index count for {{entry.def.fqn}}: {index_count}")
+%for idx in entry.indexes
+        {{idx.attr_name}}: dict[Any, Any] = {}
+        index_name = reader.read_string()
+        if index_name != {{idx.name_literal}}:
+            raise ValueError(f"expected index {{idx.def.name}} but found {index_name}")
+        is_unique = reader.read_bool()
+        if is_unique is not {{idx.is_unique_literal}}:
+            raise ValueError("binary index uniqueness does not match generated schema")
+        entry_count = reader.read_i32()
+        if entry_count < 0:
+            raise ValueError("negative index entry count")
+        for _ in range(entry_count):
+            key = {{idx.read_key}}
+%if idx.is_unique
+            {{idx.attr_name}}[key] = reader.read_i32()
+%else
+            value_count = reader.read_i32()
+            if value_count < 0:
+                raise ValueError("negative group index value count")
+            {{idx.attr_name}}[key] = [reader.read_i32() for _ in range(value_count)]
+%endif
+%endfor
+        search_index_count = reader.read_i32()
+        if search_index_count != {{entry.search_index_count}}:
+            raise ValueError(f"unexpected search index count for {{entry.def.fqn}}: {search_index_count}")
+%for search in entry.search_indexes
+        {{search.attr_name}}: dict[Any, list[int]] = {}
+        search_index_name = reader.read_string()
+        if search_index_name != {{search.name_literal}}:
+            raise ValueError(f"expected search index {{search.name}} but found {search_index_name}")
+        search_mode = reader.read_string()
+        if search_mode != {{search.mode_literal}}:
+            raise ValueError("binary search mode does not match generated schema")
+        entry_count = reader.read_i32()
+        if entry_count < 0:
+            raise ValueError("negative search index entry count")
+        for _ in range(entry_count):
+            key = {{search.read_key}}
+            value_count = reader.read_i32()
+            if value_count < 0:
+                raise ValueError("negative search index value count")
+            {{search.attr_name}}[key] = [reader.read_i32() for _ in range(value_count)]
+%endfor
+        row_block_length = reader.read_i32()
+        if row_block_length < 0:
+            raise ValueError("negative row block length")
+        row_block_start = reader.position()
+        reader.skip(row_block_length)
+
+        row_offsets = [row_block_start + offset for offset in row_offsets]
+%for idx in entry.indexes
+%if idx.is_unique
+        {{idx.attr_name}} = {key: row_block_start + offset for key, offset in {{idx.attr_name}}.items()}
+%else
+        {{idx.attr_name}} = {key: [row_block_start + offset for offset in offsets] for key, offsets in {{idx.attr_name}}.items()}
+%endif
+%endfor
+        return {{entry.table_name}}(
+            owner,
+            row_offsets,
+%for idx in entry.indexes
+            {{idx.attr_name}},
+%endfor
+%for search in entry.search_indexes
+            {{search.attr_name}},
+%endfor
+        )
+
+
+%endfor
+@dataclass
+class {{container_name}}:
+%if entry_count == 0
+    pass
+%else
+%for entry in entries
+    {{entry.member_name}}: list[_types.{{entry.class_name}}] = field(default_factory=list)
+%endfor
+%endif
+
+
+class {{context_name}}:
+    def __init__(
+        self,
+        owner: _BinaryDocumentOwner,
+%for entry in entries
+        {{entry.member_name}}: {{entry.table_name}},
+%endfor
+    ):
+        self._owner = owner
+%for entry in entries
+        self.{{entry.member_name}} = {{entry.member_name}}
+%endfor
+
+    @classmethod
+    def open_binary(cls, data: bytes | bytearray | memoryview) -> {{context_name}}:
+        owner = _BinaryDocumentOwner(data)
+        reader = _BinaryRefReader(owner.data)
+        _read_header(reader)
+        table_count = reader.read_i32()
+        if table_count != {{entry_count}}:
+            raise ValueError(f"unexpected table count: {table_count}")
+%for entry in entries
+        {{entry.member_name}} = {{entry.table_name}}.read(owner, reader)
+%endfor
+        return cls(
+            owner,
+%for entry in entries
+            {{entry.member_name}},
+%endfor
+        )
+
+    @staticmethod
+    def save_binary(container: {{container_name}}) -> bytes:
+        writer = _BinaryRefWriter()
+        _write_header(writer)
+        writer.write_i32({{entry_count}})
+%for entry in entries
+        {{entry.table_name}}.write(writer, container.{{entry.member_name}})
+%endfor
+        return writer.to_bytes()
+
+
+class BinaryRefDocument:
+    def __init__(self, data: bytes, context: {{context_name}}):
+        self._data = data
+        self._context = context
+%for entry in entries
+        self.{{entry.member_name}} = context.{{entry.member_name}}
+%endfor
+
+    @classmethod
+    def from_bytes(cls, data: bytes | bytearray | memoryview) -> BinaryRefDocument:
+        raw = bytes(data)
+        return cls(raw, {{context_name}}.open_binary(raw))
+
+    @classmethod
+    def from_container(cls, container: Any) -> BinaryRefDocument:
+        binary_container = {{container_name}}(
+%for entry in entries
+            {{entry.member_name}}=list(container.{{entry.member_name}}.all()),
+%endfor
+        )
+        return cls.from_bytes({{context_name}}.save_binary(binary_container))
+
+    def to_bytes(self) -> bytes:
+        return self._data

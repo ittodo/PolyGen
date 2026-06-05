@@ -137,7 +137,7 @@ fn read_direct_expr(t, field_expr) {
     if t.lang_type == "f32" { return "doc_->read_f32(" + field_expr + ")"; }
     if t.lang_type == "f64" { return "doc_->read_f64(" + field_expr + ")"; }
     if t.lang_type == "timestamp" { return "polygen::ticks_to_time_point(doc_->read_i64(" + field_expr + "))"; }
-    if t.is_enum { return "static_cast<" + cpp_fqn(t.fqn) + ">(doc_->read_i32(" + field_expr + "))"; }
+    if t.is_enum { return "polygen_loaders::checked_enum_from_i32<" + cpp_fqn(t.fqn) + ">(doc_->read_i32(" + field_expr + "))"; }
     return "";
 }
 
@@ -169,6 +169,42 @@ fn reader_value_expr(t, reader_expr, current_ns, type_mappings) {
         return reader_expr + "." + get_primitive_reader(t.type_name) + "()";
     }
     return "polygen_loaders::read_" + t.type_name + "(" + reader_expr + ")";
+}
+
+fn get_primitive_writer(type_name) {
+    switch type_name {
+        "string" => "write_string",
+        "bool" => "write_bool",
+        "u8" => "write_u8",
+        "u16" => "write_u16",
+        "u32" => "write_u32",
+        "u64" => "write_u64",
+        "i8" => "write_i8",
+        "i16" => "write_i16",
+        "i32" => "write_i32",
+        "i64" => "write_i64",
+        "f32" => "write_f32",
+        "f64" => "write_f64",
+        "bytes" => "write_bytes",
+        "timestamp" => "write_timestamp",
+        _ => "write_i32"
+    }
+}
+
+fn writer_value_expr(t, writer_expr, value_expr, current_ns, type_mappings) {
+    if t.is_list {
+        let elem = t.inner;
+        let elem_type = cpp_type(elem, current_ns, type_mappings);
+        let elem_write = writer_value_expr(elem, "w", "item", current_ns, type_mappings);
+        return writer_expr + ".write_vector(" + value_expr + ", [](polygen::BinaryWriter& w, const " + elem_type + "& item) { " + elem_write + "; })";
+    }
+    if t.is_enum {
+        return "polygen_loaders::write_checked_enum(" + writer_expr + ", " + value_expr + ")";
+    }
+    if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
+        return writer_expr + "." + get_primitive_writer(t.type_name) + "(" + value_expr + ")";
+    }
+    return "polygen_loaders::write_" + t.type_name + "(" + writer_expr + ", " + value_expr + ")";
 }
 
 fn materialized_read_expr(t, field_expr, current_ns, type_mappings) {
@@ -234,19 +270,106 @@ fn to_owned_line(f, current_ns) {
     return "        obj." + f.name + " = " + f.name + "();";
 }
 
-fn is_supported_index(idx) {
-    if idx.is_composite { return false; }
-    let t = idx.field_type;
+fn is_enum_like(t) {
+    return t.is_enum || (!t.is_primitive && !cpp_types::is_primitive_name(t.type_name));
+}
+
+fn is_index_key_type(t) {
     if t.is_option || t.is_list { return false; }
     if t.lang_type == "string" || t.lang_type == "timestamp" { return true; }
-    if t.is_enum { return true; }
+    if is_enum_like(t) { return true; }
     if t.is_primitive && t.lang_type != "bytes" { return true; }
     return false;
+}
+
+fn is_supported_index(idx) {
+    if idx.is_composite {
+        for field in idx.fields {
+            if !is_index_key_type(field.field_type) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return is_index_key_type(idx.field_type);
 }
 
 fn key_type(t, current_ns, type_mappings) {
     if t.lang_type == "string" { return "std::string"; }
     return cpp_type(t, current_ns, type_mappings);
+}
+
+fn index_key_type(idx, current_ns, type_mappings) {
+    if idx.is_composite {
+        let result = "std::tuple<";
+        for i in 0..idx.fields.len() {
+            if i > 0 { result += ", "; }
+            result += key_type(idx.fields[i].field_type, current_ns, type_mappings);
+        }
+        result += ">";
+        return result;
+    }
+    return key_type(idx.field_type, current_ns, type_mappings);
+}
+
+fn index_map_key_type(idx, current_ns, type_mappings) {
+    if idx.is_composite {
+        return "std::string";
+    }
+    return key_type(idx.field_type, current_ns, type_mappings);
+}
+
+fn index_lookup_key_expr(idx) {
+    if idx.is_composite {
+        return "detail::composite_key(key)";
+    }
+    return "key";
+}
+
+fn index_tuple_expr(idx, row_expr) {
+    let result = "std::make_tuple(";
+    for i in 0..idx.fields.len() {
+        if i > 0 { result += ", "; }
+        result += row_expr + "." + idx.fields[i].name;
+    }
+    result += ")";
+    return result;
+}
+
+fn index_row_key_expr(idx, row_expr) {
+    if idx.is_composite {
+        return "detail::composite_key(" + index_tuple_expr(idx, row_expr) + ")";
+    }
+    return row_expr + "." + idx.field_name;
+}
+
+fn index_read_key_expr(idx) {
+    if idx.is_composite {
+        return "polygen::BinaryRefFormat::read_string(reader)";
+    }
+    return read_key_expr(idx.field_type);
+}
+
+fn write_key_expr(t, value_expr) {
+    if t.lang_type == "string" { return "polygen::BinaryRefFormat::write_string(writer, " + value_expr + ")"; }
+    if t.lang_type == "bool" { return "writer.write_bool(" + value_expr + ")"; }
+    if t.lang_type == "u8" { return "writer.write_u8(" + value_expr + ")"; }
+    if t.lang_type == "i8" { return "writer.write_i8(" + value_expr + ")"; }
+    if t.lang_type == "u16" { return "writer.write_u16(" + value_expr + ")"; }
+    if t.lang_type == "i16" { return "writer.write_i16(" + value_expr + ")"; }
+    if t.lang_type == "u32" { return "writer.write_u32(" + value_expr + ")"; }
+    if t.lang_type == "i32" { return "writer.write_i32(" + value_expr + ")"; }
+    if t.lang_type == "u64" { return "writer.write_u64(" + value_expr + ")"; }
+    if t.lang_type == "i64" { return "writer.write_i64(" + value_expr + ")"; }
+    if is_enum_like(t) { return "polygen_loaders::write_checked_enum(writer, " + value_expr + ")"; }
+    return "writer.write_i64(" + value_expr + ")";
+}
+
+fn index_write_key_expr(idx) {
+    if idx.is_composite {
+        return "polygen::BinaryRefFormat::write_string(writer, key)";
+    }
+    return write_key_expr(idx.field_type, "key");
 }
 
 fn read_key_expr(t) {
@@ -260,8 +383,58 @@ fn read_key_expr(t) {
     if t.lang_type == "i32" { return "reader.read_i32()"; }
     if t.lang_type == "u64" { return "reader.read_u64()"; }
     if t.lang_type == "i64" { return "reader.read_i64()"; }
-    if t.is_enum { return "static_cast<" + cpp_fqn(t.fqn) + ">(reader.read_i32())"; }
+    if is_enum_like(t) { return "polygen_loaders::checked_enum_from_i32<" + cpp_fqn(t.fqn) + ">(reader.read_i32())"; }
     return "reader.read_i64()";
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    return t;
+}
+
+fn search_is_supported(f) {
+    if !f.has_search_index {
+        return false;
+    }
+    let search = f.search_index;
+    if search.target != "csharp" && search.target != "cpp" && search.target != "cpp_binary_ref" {
+        return false;
+    }
+    let base = search_base_type(f.field_type);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.lang_type == "string";
+    }
+    return search.mode == "exact";
+}
+
+fn search_key_type(f, current_ns, type_mappings) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "std::string";
+    }
+    let base = search_base_type(f.field_type);
+    if base.lang_type == "string" {
+        return "std::string";
+    }
+    return cpp_type(base, current_ns, type_mappings);
+}
+
+fn search_read_key_expr(f) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "polygen::BinaryRefFormat::read_string(reader)";
+    }
+    return read_key_expr(search_base_type(f.field_type));
+}
+
+fn search_write_key_expr(f) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "polygen::BinaryRefFormat::write_string(writer, key)";
+    }
+    return write_key_expr(search_base_type(f.field_type), "key");
 }
 
 fn collect_tables_from_namespace(ns) {
@@ -300,10 +473,14 @@ for s in all_tables {
     for item in s.items {
         if item.is_field() {
             let f = item.as_field();
+            let base = if f.field_type.is_option { f.field_type.inner } else { f.field_type };
             fields.push(#{
                 def: f,
                 property_code: property_code(f, field_index, current_ns, cpp_type_mappings),
-                to_owned_line: to_owned_line(f, current_ns)
+                to_owned_line: to_owned_line(f, current_ns),
+                is_option: f.field_type.is_option,
+                name: f.name,
+                write_expr: writer_value_expr(base, "field_writer", if f.field_type.is_option { "row." + f.name + ".value()" } else { "row." + f.name }, current_ns, cpp_type_mappings)
             });
             field_index += 1;
         }
@@ -315,11 +492,45 @@ for s in all_tables {
             indexes.push(#{
                 def: idx,
                 member: cpp_types::to_snake_case(idx.name),
-                key_type: key_type(idx.field_type, current_ns, cpp_type_mappings),
+                key_type: index_key_type(idx, current_ns, cpp_type_mappings),
+                map_key_type: index_map_key_type(idx, current_ns, cpp_type_mappings),
                 value_type: if idx.is_unique { "size_t" } else { "std::vector<size_t>" },
-                read_key: read_key_expr(idx.field_type),
+                map_type: "std::unordered_map<" + index_map_key_type(idx, current_ns, cpp_type_mappings) + ", " + (if idx.is_unique { "size_t" } else { "std::vector<size_t>" }) + ">",
+                method_name: if idx.is_unique || idx.is_composite { "get_" + cpp_types::to_snake_case(idx.name) } else { "find_" + cpp_types::to_snake_case(idx.name) },
+                lookup_key: index_lookup_key_expr(idx),
+                row_key: index_row_key_expr(idx, "row"),
+                read_key: index_read_key_expr(idx),
+                write_key: index_write_key_expr(idx),
                 is_unique_literal: if idx.is_unique { "true" } else { "false" }
             });
+        }
+    }
+
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if search_is_supported(f) {
+                let search = f.search_index;
+                let base = search_base_type(f.field_type);
+                search_indexes.push(#{
+                    def: search,
+                    name: search.name,
+                    member: "search_" + cpp_types::to_snake_case(search.name),
+                    method_name: "search_by_" + cpp_types::to_snake_case(search.name),
+                    key_type: search_key_type(f, current_ns, cpp_type_mappings),
+                    read_key: search_read_key_expr(f),
+                    write_key: search_write_key_expr(f),
+                    field_name: f.name,
+                    is_option: f.field_type.is_option,
+                    mode: search.mode,
+                    n: search.n,
+                    min: search.min,
+                    normalize: search.normalize,
+                    is_token_mode: search.mode == "ngram" || search.mode == "word",
+                    is_exact_string: search.mode == "exact" && base.lang_type == "string"
+                });
+            }
         }
     }
 
@@ -330,8 +541,11 @@ for s in all_tables {
         table_name: table_name(s),
         member_name: cpp_types::to_snake_case(pluralize(s.name)),
         fields: fields,
+        field_count: field_index,
         indexes: indexes,
-        index_count: indexes.len
+        index_count: indexes.len,
+        search_indexes: search_indexes,
+        search_index_count: search_indexes.len
     });
 }
 
@@ -341,6 +555,7 @@ let stem = filename + "";
 stem.replace(".poly", "");
 let header_name = stem + ".hpp";
 let loaders_name = stem + "_loaders.hpp";
+let container_header_name = stem + "_container.hpp";
 let ns_name = stem + "_binary_refs";
 let entry_count = entries.len;
 %endlogic
@@ -349,16 +564,161 @@ let entry_count = entries.len;
 
 #include "{{header_name}}"
 #include "{{loaders_name}}"
+#include "{{container_header_name}}"
 #include "polygen_support.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace {{ns_name}} {
+
+namespace detail {
+inline void append_json_string(std::ostringstream& out, std::string_view value) {
+    out << '"';
+    for (char ch : value) {
+        switch (ch) {
+            case '"': out << "\\\""; break;
+            case '\\': out << "\\\\"; break;
+            case '\b': out << "\\b"; break;
+            case '\f': out << "\\f"; break;
+            case '\n': out << "\\n"; break;
+            case '\r': out << "\\r"; break;
+            case '\t': out << "\\t"; break;
+            default: out << ch; break;
+        }
+    }
+    out << '"';
+}
+
+template<typename T>
+inline void append_composite_part(std::ostringstream& out, const T& value) {
+    using D = std::decay_t<T>;
+    if constexpr (std::is_enum_v<D>) {
+        out << static_cast<std::underlying_type_t<D>>(value);
+    } else if constexpr (std::is_same_v<D, bool>) {
+        out << (value ? "true" : "false");
+    } else if constexpr (std::is_same_v<D, std::string>) {
+        append_json_string(out, value);
+    } else if constexpr (std::is_same_v<D, std::string_view>) {
+        append_json_string(out, value);
+    } else if constexpr (std::is_same_v<D, std::chrono::system_clock::time_point>) {
+        out << std::chrono::duration_cast<std::chrono::milliseconds>(value.time_since_epoch()).count();
+    } else if constexpr (std::is_integral_v<D> && sizeof(D) == 1) {
+        out << static_cast<int>(value);
+    } else {
+        out << value;
+    }
+}
+
+template<typename Tuple, size_t... I>
+inline void append_composite_tuple(std::ostringstream& out, const Tuple& value, std::index_sequence<I...>) {
+    ((out << (I == 0 ? "" : ","), append_composite_part(out, std::get<I>(value))), ...);
+}
+
+template<typename... T>
+inline std::string composite_key(const std::tuple<T...>& value) {
+    std::ostringstream out;
+    out << '[';
+    append_composite_tuple(out, value, std::index_sequence_for<T...>{});
+    out << ']';
+    return out.str();
+}
+
+inline std::string search_normalize(const std::string& value, const std::string& policy) {
+    auto begin = value.begin();
+    auto end = value.end();
+    if (policy == "trim" || policy == "lower_trim") {
+        begin = std::find_if_not(begin, end, [](unsigned char ch) { return std::isspace(ch); });
+        end = std::find_if_not(value.rbegin(), std::make_reverse_iterator(begin), [](unsigned char ch) { return std::isspace(ch); }).base();
+    }
+
+    std::string result(begin, end);
+    if (policy == "lower" || policy == "lower_trim") {
+        std::transform(result.begin(), result.end(), result.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+    }
+    return result;
+}
+
+inline std::vector<std::string> search_tokens(const std::string& value, const std::string& mode, size_t n, size_t min, const std::string& normalize_policy) {
+    const auto normalized = search_normalize(value, normalize_policy);
+    if (normalized.size() < min) {
+        return {};
+    }
+
+    std::unordered_set<std::string> seen;
+    std::vector<std::string> result;
+
+    if (mode == "word") {
+        std::istringstream input(normalized);
+        std::string token;
+        while (input >> token) {
+            if (token.size() >= min && seen.insert(token).second) {
+                result.push_back(token);
+            }
+        }
+        return result;
+    }
+
+    if (normalized.size() < n) {
+        return {};
+    }
+
+    for (size_t i = 0; i + n <= normalized.size(); ++i) {
+        auto token = normalized.substr(i, n);
+        if (seen.insert(token).second) {
+            result.push_back(std::move(token));
+        }
+    }
+    return result;
+}
+
+inline std::vector<size_t> search_intersect(
+    const std::unordered_map<std::string, std::vector<size_t>>& index,
+    const std::string& query,
+    const std::string& mode,
+    size_t n,
+    size_t min,
+    const std::string& normalize_policy) {
+    const auto tokens = search_tokens(query, mode, n, min, normalize_policy);
+    if (tokens.empty()) {
+        return {};
+    }
+
+    auto first = index.find(tokens.front());
+    if (first == index.end()) {
+        return {};
+    }
+
+    std::vector<size_t> matches = first->second;
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        auto next = index.find(tokens[i]);
+        if (next == index.end()) {
+            return {};
+        }
+        std::unordered_set<size_t> next_set(next->second.begin(), next->second.end());
+        matches.erase(std::remove_if(matches.begin(), matches.end(), [&](size_t ordinal) {
+            return next_set.find(ordinal) == next_set.end();
+        }), matches.end());
+        if (matches.empty()) {
+            return {};
+        }
+    }
+    return matches;
+}
+} // namespace detail
 
 %for entry in entries
 class {{entry.ref_name}} {
@@ -401,12 +761,18 @@ class {{entry.table_name}} {
 public:
     {{entry.table_name}}(std::shared_ptr<const polygen::BinaryDocument> doc, std::vector<size_t> row_offsets
 %for idx in entry.indexes
-        , std::unordered_map<{{idx.key_type}}, {{idx.value_type}}> {{idx.member}}
+        , {{idx.map_type}} {{idx.member}}
+%endfor
+%for search in entry.search_indexes
+        , std::unordered_map<{{search.key_type}}, std::vector<size_t>> {{search.member}}
 %endfor
     )
         : doc_(std::move(doc)), row_offsets_(std::move(row_offsets))
 %for idx in entry.indexes
         , {{idx.member}}_(std::move({{idx.member}}))
+%endfor
+%for search in entry.search_indexes
+        , {{search.member}}_(std::move({{search.member}}))
 %endfor
     {}
 
@@ -415,14 +781,14 @@ public:
 
 %for idx in entry.indexes
 %if idx.def.is_unique
-    std::optional<{{entry.ref_name}}> get_{{idx.member}}(const {{idx.key_type}}& key) const {
-        auto it = {{idx.member}}_.find(key);
+    std::optional<{{entry.ref_name}}> {{idx.method_name}}(const {{idx.key_type}}& key) const {
+        auto it = {{idx.member}}_.find({{idx.lookup_key}});
         if (it == {{idx.member}}_.end()) return std::nullopt;
         return {{entry.ref_name}}(doc_, it->second);
     }
 %else
-    std::vector<{{entry.ref_name}}> find_{{idx.member}}(const {{idx.key_type}}& key) const {
-        auto it = {{idx.member}}_.find(key);
+    std::vector<{{entry.ref_name}}> {{idx.method_name}}(const {{idx.key_type}}& key) const {
+        auto it = {{idx.member}}_.find({{idx.lookup_key}});
         if (it == {{idx.member}}_.end()) return {};
         std::vector<{{entry.ref_name}}> rows;
         rows.reserve(it->second.size());
@@ -432,6 +798,173 @@ public:
 %endif
 
 %endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+    std::vector<{{entry.ref_name}}> {{search.method_name}}(const std::string& query) const {
+        const auto ordinals = detail::search_intersect({{search.member}}_, query, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}");
+        std::vector<{{entry.ref_name}}> rows;
+        rows.reserve(ordinals.size());
+        for (auto ordinal : ordinals) rows.emplace_back(doc_, row_offsets_.at(ordinal));
+        return rows;
+    }
+%else
+    std::vector<{{entry.ref_name}}> {{search.method_name}}(const {{search.key_type}}& key) const {
+%if search.is_exact_string
+        auto it = {{search.member}}_.find(detail::search_normalize(key, "{{search.normalize}}"));
+%else
+        auto it = {{search.member}}_.find(key);
+%endif
+        if (it == {{search.member}}_.end()) return {};
+        std::vector<{{entry.ref_name}}> rows;
+        rows.reserve(it->second.size());
+        for (auto ordinal : it->second) rows.emplace_back(doc_, row_offsets_.at(ordinal));
+        return rows;
+    }
+%endif
+
+%endfor
+    static std::vector<uint8_t> write_row(const {{entry.cpp_type}}& row) {
+        std::vector<std::vector<uint8_t>> payloads;
+        std::vector<int32_t> offsets;
+        payloads.reserve({{entry.field_count}});
+        offsets.reserve({{entry.field_count}});
+        size_t cursor = sizeof(int32_t) + {{entry.field_count}} * sizeof(int32_t);
+
+%for field in entry.fields
+%if field.is_option
+        if (!row.{{field.name}}.has_value()) {
+            offsets.push_back(-1);
+        } else {
+            std::vector<uint8_t> field_bytes;
+            polygen::BinaryWriter field_writer(field_bytes);
+            {{field.write_expr}};
+            field_writer.flush();
+            offsets.push_back(static_cast<int32_t>(cursor));
+            cursor += field_bytes.size();
+            payloads.push_back(std::move(field_bytes));
+        }
+%else
+        {
+            std::vector<uint8_t> field_bytes;
+            polygen::BinaryWriter field_writer(field_bytes);
+            {{field.write_expr}};
+            field_writer.flush();
+            offsets.push_back(static_cast<int32_t>(cursor));
+            cursor += field_bytes.size();
+            payloads.push_back(std::move(field_bytes));
+        }
+%endif
+%endfor
+
+        std::vector<uint8_t> row_bytes;
+        polygen::BinaryWriter row_writer(row_bytes);
+        row_writer.write_i32(static_cast<int32_t>(offsets.size()));
+        for (auto offset : offsets) row_writer.write_i32(offset);
+        for (const auto& payload : payloads) row_writer.write_raw(payload);
+        row_writer.flush();
+        return row_bytes;
+    }
+
+    template<typename Rows>
+    static void write(polygen::BinaryWriter& writer, const Rows& source_rows) {
+        polygen::BinaryRefFormat::write_string(writer, "{{entry.def.fqn}}");
+
+        struct BinaryRefRow {
+            const {{entry.cpp_type}}* row;
+            size_t offset;
+            std::vector<uint8_t> bytes;
+        };
+
+        std::vector<BinaryRefRow> rows;
+        size_t cursor = 0;
+        for (const auto& row : source_rows) {
+            auto bytes = write_row(row);
+            rows.push_back(BinaryRefRow{&row, cursor, std::move(bytes)});
+            cursor += rows.back().bytes.size();
+        }
+
+        writer.write_i32(static_cast<int32_t>(rows.size()));
+        for (const auto& row : rows) writer.write_i32(static_cast<int32_t>(row.offset));
+
+        writer.write_i32({{entry.index_count}});
+%for idx in entry.indexes
+        polygen::BinaryRefFormat::write_string(writer, "{{idx.def.name}}");
+        writer.write_bool({{idx.is_unique_literal}});
+%if idx.def.is_unique
+        {
+            {{idx.map_type}} index;
+            for (const auto& item : rows) {
+                const auto& row = *item.row;
+                auto key = {{idx.row_key}};
+                index[key] = item.offset;
+            }
+            writer.write_i32(static_cast<int32_t>(index.size()));
+            for (const auto& kv : index) {
+                const auto& key = kv.first;
+                {{idx.write_key}};
+                writer.write_i32(static_cast<int32_t>(kv.second));
+            }
+        }
+%else
+        {
+            {{idx.map_type}} index;
+            for (const auto& item : rows) {
+                const auto& row = *item.row;
+                auto key = {{idx.row_key}};
+                index[key].push_back(item.offset);
+            }
+            writer.write_i32(static_cast<int32_t>(index.size()));
+            for (const auto& kv : index) {
+                const auto& key = kv.first;
+                {{idx.write_key}};
+                writer.write_i32(static_cast<int32_t>(kv.second.size()));
+                for (auto offset : kv.second) writer.write_i32(static_cast<int32_t>(offset));
+            }
+        }
+%endif
+%endfor
+
+        writer.write_i32({{entry.search_index_count}});
+%for search in entry.search_indexes
+        polygen::BinaryRefFormat::write_string(writer, "{{search.name}}");
+        polygen::BinaryRefFormat::write_string(writer, "{{search.mode}}");
+        {
+            std::unordered_map<{{search.key_type}}, std::vector<size_t>> search_index;
+            for (size_t ordinal = 0; ordinal < rows.size(); ++ordinal) {
+                const auto& row = *rows[ordinal].row;
+%if search.is_option
+                if (!row.{{search.field_name}}.has_value()) continue;
+                const auto& value = row.{{search.field_name}}.value();
+%else
+                const auto& value = row.{{search.field_name}};
+%endif
+%if search.is_token_mode
+                for (const auto& token : detail::search_tokens(value, "{{search.mode}}", {{search.n}}, {{search.min}}, "{{search.normalize}}")) {
+                    search_index[token].push_back(ordinal);
+                }
+%else
+%if search.is_exact_string
+                auto key = detail::search_normalize(value, "{{search.normalize}}");
+%else
+                auto key = value;
+%endif
+                search_index[key].push_back(ordinal);
+%endif
+            }
+            writer.write_i32(static_cast<int32_t>(search_index.size()));
+            for (const auto& kv : search_index) {
+                const auto& key = kv.first;
+                {{search.write_key}};
+                writer.write_i32(static_cast<int32_t>(kv.second.size()));
+                for (auto ordinal : kv.second) writer.write_i32(static_cast<int32_t>(ordinal));
+            }
+        }
+%endfor
+
+        writer.write_i32(static_cast<int32_t>(cursor));
+        for (const auto& row : rows) writer.write_raw(row.bytes);
+    }
+
     static {{entry.table_name}} read(std::shared_ptr<const polygen::BinaryDocument> doc, polygen::BinaryReader& reader) {
         const auto table_name = polygen::BinaryRefFormat::read_string(reader);
         if (table_name != "{{entry.def.fqn}}") {
@@ -447,7 +980,7 @@ public:
         if (index_count != {{entry.index_count}}) throw std::runtime_error("Unexpected binary ref index count");
 
 %for idx in entry.indexes
-        std::unordered_map<{{idx.key_type}}, {{idx.value_type}}> {{idx.member}};
+        {{idx.map_type}} {{idx.member}};
         {
             const auto index_name = polygen::BinaryRefFormat::read_string(reader);
             if (index_name != "{{idx.def.name}}") throw std::runtime_error("Unexpected binary ref index: " + index_name);
@@ -470,6 +1003,29 @@ public:
         }
 
 %endfor
+        const int32_t search_index_count = reader.read_i32();
+        if (search_index_count != {{entry.search_index_count}}) throw std::runtime_error("Unexpected binary ref search index count");
+
+%for search in entry.search_indexes
+        std::unordered_map<{{search.key_type}}, std::vector<size_t>> {{search.member}};
+        {
+            const auto search_index_name = polygen::BinaryRefFormat::read_string(reader);
+            if (search_index_name != "{{search.name}}") throw std::runtime_error("Unexpected binary ref search index: " + search_index_name);
+            const auto search_index_mode = polygen::BinaryRefFormat::read_string(reader);
+            if (search_index_mode != "{{search.mode}}") throw std::runtime_error("Binary ref search mode mismatch");
+            const int32_t entry_count = reader.read_i32();
+            if (entry_count < 0) throw std::runtime_error("Negative search index entry count");
+            for (int32_t i = 0; i < entry_count; ++i) {
+                auto key = {{search.read_key}};
+                const int32_t value_count = reader.read_i32();
+                if (value_count < 0) throw std::runtime_error("Negative search index value count");
+                auto& values = {{search.member}}[key];
+                values.reserve(static_cast<size_t>(value_count));
+                for (int32_t j = 0; j < value_count; ++j) values.push_back(static_cast<size_t>(reader.read_i32()));
+            }
+        }
+
+%endfor
         const int32_t row_block_length = reader.read_i32();
         if (row_block_length < 0) throw std::runtime_error("Negative row block length");
         const size_t row_block_start = reader.position();
@@ -488,6 +1044,9 @@ public:
 %for idx in entry.indexes
             , std::move({{idx.member}})
 %endfor
+%for search in entry.search_indexes
+            , std::move({{search.member}})
+%endfor
         );
     }
 
@@ -495,7 +1054,10 @@ private:
     std::shared_ptr<const polygen::BinaryDocument> doc_;
     std::vector<size_t> row_offsets_;
 %for idx in entry.indexes
-    std::unordered_map<{{idx.key_type}}, {{idx.value_type}}> {{idx.member}}_;
+    {{idx.map_type}} {{idx.member}}_;
+%endfor
+%for search in entry.search_indexes
+    std::unordered_map<{{search.key_type}}, std::vector<size_t>> {{search.member}}_;
 %endfor
 };
 
@@ -506,8 +1068,8 @@ public:
     {{entry.table_name}} {{entry.member_name}};
 %endfor
 
-    static BinaryRefContext open_binary(const std::string& path) {
-        auto doc = polygen::BinaryDocument::open(path);
+    static BinaryRefContext open_bytes(const std::vector<uint8_t>& bytes) {
+        auto doc = std::make_shared<polygen::BinaryDocument>(bytes);
         polygen::BinaryReader reader(doc->bytes());
         polygen::BinaryRefFormat::read_header(reader);
         const int32_t table_count = reader.read_i32();
@@ -518,6 +1080,26 @@ public:
             {{entry.table_name}}::read(doc, reader),
 %endfor
         };
+    }
+
+    static BinaryRefContext open_binary(const std::string& path) {
+        return open_bytes(polygen::read_binary_file(path));
+    }
+
+    static std::vector<uint8_t> save_binary(const schema_container::SchemaContainer& container) {
+        std::vector<uint8_t> bytes;
+        polygen::BinaryWriter writer(bytes);
+        polygen::BinaryRefFormat::write_header(writer);
+        writer.write_i32({{entry_count}});
+%for entry in entries
+        {{entry.table_name}}::write(writer, container.{{entry.member_name}}.data.rows());
+%endfor
+        writer.flush();
+        return bytes;
+    }
+
+    static void save_binary_file(const schema_container::SchemaContainer& container, const std::string& path) {
+        polygen::write_binary_file(path, save_binary(container));
     }
 };
 

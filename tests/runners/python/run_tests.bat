@@ -30,7 +30,7 @@ if not exist "%POLYGEN%" (
     exit /b 1
 )
 
-set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed
+set TEST_CASES=01_basic_types 02_imports 03_nested_namespaces 04_inline_enums 05_embedded_structs 06_arrays_and_optionals 07_indexes 08_complex_schema 09_sqlite 10_pack_embed 11_relations_indexes
 
 if exist "%OUTPUT_DIR%" rmdir /s /q "%OUTPUT_DIR%"
 mkdir "%OUTPUT_DIR%"
@@ -77,8 +77,31 @@ for %%T in (%TEST_CASES%) do (
                 type "!VALIDATION_LOG!"
                 set /a FAILED+=1
             ) else (
-                echo   PASSED
-                set /a PASSED+=1
+                if exist "!SCRIPT_DIR!tests\%%T_test.py" (
+                    copy /Y "!SCRIPT_DIR!tests\%%T_test.py" "!TEST_OUTPUT!\python\polygen_integration_test.py" >nul
+                    if errorlevel 1 (
+                        echo   FAILED ^(could not copy runtime test^)
+                        set /a FAILED+=1
+                    ) else (
+                        if not exist "!TEST_OUTPUT!\python\__init__.py" type nul > "!TEST_OUTPUT!\python\__init__.py"
+                        echo   Running runtime test...
+                        pushd "!TEST_OUTPUT!" >nul
+                        python -m python.polygen_integration_test >> "!VALIDATION_LOG!" 2>&1
+                        set RUNTIME_ERROR=!errorlevel!
+                        popd >nul
+                        if !RUNTIME_ERROR! neq 0 (
+                            echo   FAILED ^(runtime test error^)
+                            type "!VALIDATION_LOG!"
+                            set /a FAILED+=1
+                        ) else (
+                            echo   PASSED
+                            set /a PASSED+=1
+                        )
+                    )
+                ) else (
+                    echo   PASSED
+                    set /a PASSED+=1
+                )
             )
         )
     )

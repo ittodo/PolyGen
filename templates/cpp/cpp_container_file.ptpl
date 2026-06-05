@@ -23,6 +23,57 @@ fn get_full_cpp_type(namespace_fqn, type_name) {
     return "::" + ns_cpp + "::" + type_name;
 }
 
+fn get_cpp_type_from_fqn(fqn, fallback_name) {
+    if fqn == () || fqn == "" {
+        return fallback_name;
+    }
+    let result = fqn + "";
+    result.replace(".", "::");
+    return "::" + result;
+}
+
+fn find_table_entry_by_fqn(entries, fqn) {
+    for entry in entries {
+        if entry.struct_def.fqn == fqn {
+            return entry;
+        }
+    }
+    return ();
+}
+
+fn find_pk_field(struct_def) {
+    for item in struct_def.items {
+        if item.is_field() {
+            let f = item.as_field();
+            if f.is_primary_key {
+                return f.name;
+            }
+        }
+    }
+    for idx in struct_def.indexes {
+        if idx.is_unique {
+            return idx.field_name;
+        }
+    }
+    return "";
+}
+
+fn nav_field_label(field_name) {
+    let label = cpp_types::to_snake_case(field_name);
+    if label.ends_with("_id") && label.len() > 3 {
+        return label.sub_string(0, label.len() - 3);
+    }
+    return label;
+}
+
+fn nav_method_suffix(source_table, field_name) {
+    return cpp_types::to_snake_case(source_table.name) + "_" + nav_field_label(field_name);
+}
+
+fn reverse_nav_method_suffix(target_table, relation_name) {
+    return cpp_types::to_snake_case(target_table.name) + "_" + cpp_types::to_snake_case(relation_name);
+}
+
 // Pluralize a name (simple version)
 fn pluralize(name) {
     if name.ends_with("y") {
@@ -34,12 +85,32 @@ fn pluralize(name) {
     }
 }
 
+fn cpp_string_literal(value) {
+    let escaped = value + "";
+    escaped.replace("\\", "\\\\");
+    escaped.replace("\"", "\\\"");
+    return "\"" + escaped + "\"";
+}
+
+fn get_load_pattern(s, kind) {
+    if s.load == () {
+        return "";
+    }
+    if kind == "csv" && s.load.csv != () {
+        return s.load.csv + "";
+    }
+    if kind == "json" && s.load.json != () {
+        return s.load.json + "";
+    }
+    return "";
+}
+
 // Get C++ type for a single field type
 fn get_field_cpp_type(t) {
     if t.is_primitive || cpp_types::is_primitive_name(t.type_name) {
         return cpp_types::map_primitive_type(t.type_name);
     } else {
-        return t.type_name;
+        return get_full_cpp_type(t.namespace_fqn, t.type_name);
     }
 }
 
@@ -78,6 +149,57 @@ fn get_index_key_expr(index, row_var) {
     }
 }
 
+fn search_type_name_to_cpp(type_name) {
+    switch type_name {
+        "string" => "std::string",
+        "bool" => "bool",
+        "u8" => "uint8_t",
+        "u16" => "uint16_t",
+        "u32" => "uint32_t",
+        "u64" => "uint64_t",
+        "i8" => "int8_t",
+        "i16" => "int16_t",
+        "i32" => "int32_t",
+        "i64" => "int64_t",
+        "timestamp" => "std::chrono::system_clock::time_point",
+        _ => type_name
+    }
+}
+
+fn search_is_string(field) {
+    return field.field_type.type_name == "string";
+}
+
+fn search_is_supported(field) {
+    if !field.has_search_index {
+        return false;
+    }
+    let search = field.search_index;
+    if search.target != "csharp" && search.target != "cpp" && search.target != "cpp_container" {
+        return false;
+    }
+    if search.mode == "ngram" || search.mode == "word" {
+        return field.field_type.type_name == "string";
+    }
+    return search.mode == "exact";
+}
+
+fn search_key_type(field) {
+    let search = field.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "std::string";
+    }
+
+    let t = field.field_type;
+    if t.type_name == "string" {
+        return "std::string";
+    }
+    if !t.is_primitive && t.namespace_fqn != "" {
+        return get_full_cpp_type(t.namespace_fqn, t.type_name);
+    }
+    return search_type_name_to_cpp(t.type_name);
+}
+
 // Generate a table wrapper with indexes
 fn generate_table_wrapper(s, namespace_fqn) {
     let result = "";
@@ -97,11 +219,45 @@ fn generate_table_wrapper(s, namespace_fqn) {
         for idx in s.indexes {
             let key_type = get_index_key_type(idx);
             let index_member = idx.name;
+            let hash_arg = if idx.is_composite { ", polygen::TupleHash" } else { "" };
             if idx.is_unique {
-                result += "    polygen::UniqueIndex<" + key_type + ", " + full_type + "> " + index_member + ";\n";
+                result += "    polygen::UniqueIndex<" + key_type + ", " + full_type + hash_arg + "> " + index_member + ";\n";
             } else {
-                result += "    polygen::GroupIndex<" + key_type + ", " + full_type + "> " + index_member + ";\n";
+                result += "    polygen::GroupIndex<" + key_type + ", " + full_type + hash_arg + "> " + index_member + ";\n";
             }
+        }
+    }
+
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field() {
+            let field = item.as_field();
+            if search_is_supported(field) {
+                let search = field.search_index;
+                let key_type = search_key_type(field);
+                search_indexes.push(#{
+                    name: search.name,
+                    method_name: "search_by_" + cpp_types::to_snake_case(search.name),
+                    field_name: field.name,
+                    member_name: "search_" + cpp_types::to_snake_case(search.name),
+                    key_type: key_type,
+                    mode: search.mode,
+                    n: search.n,
+                    min: search.min,
+                    normalize: search.normalize,
+                    is_token_mode: search.mode == "ngram" || search.mode == "word",
+                    is_string: search_is_string(field),
+                    is_option: field.field_type.is_option
+                });
+            }
+        }
+    }
+
+    for search in search_indexes {
+        if search.is_token_mode {
+            result += "    std::unordered_map<std::string, std::vector<" + full_type + "*>> " + search.member_name + ";\n";
+        } else {
+            result += "    polygen::GroupIndex<" + search.key_type + ", " + full_type + "> " + search.member_name + ";\n";
         }
     }
 
@@ -118,11 +274,50 @@ fn generate_table_wrapper(s, namespace_fqn) {
             result += "        " + idx.name + ".insert(" + key_expr + ", &added);\n";
         }
     }
+    for search in search_indexes {
+        if search.is_token_mode {
+            if search.is_option {
+                result += "        if (added." + search.field_name + ".has_value()) {\n";
+                result += "            for (const auto& token : detail::search_tokens(*added." + search.field_name + ", \"" + search.mode + "\", " + search.n + ", " + search.min + ", \"" + search.normalize + "\")) {\n";
+                result += "                " + search.member_name + "[token].push_back(&added);\n";
+                result += "            }\n";
+                result += "        }\n";
+            } else {
+                result += "        for (const auto& token : detail::search_tokens(added." + search.field_name + ", \"" + search.mode + "\", " + search.n + ", " + search.min + ", \"" + search.normalize + "\")) {\n";
+                result += "            " + search.member_name + "[token].push_back(&added);\n";
+                result += "        }\n";
+            }
+        } else if search.is_string {
+            if search.is_option {
+                result += "        if (added." + search.field_name + ".has_value()) {\n";
+                result += "            " + search.member_name + ".insert(detail::search_normalize(*added." + search.field_name + ", \"" + search.normalize + "\"), &added);\n";
+                result += "        }\n";
+            } else {
+                result += "        " + search.member_name + ".insert(detail::search_normalize(added." + search.field_name + ", \"" + search.normalize + "\"), &added);\n";
+            }
+        } else {
+            if search.is_option {
+                result += "        if (added." + search.field_name + ".has_value()) {\n";
+                result += "            " + search.member_name + ".insert(*added." + search.field_name + ", &added);\n";
+                result += "        }\n";
+            } else {
+                result += "        " + search.member_name + ".insert(added." + search.field_name + ", &added);\n";
+            }
+        }
+    }
 
     result += "    }\n\n";
 
     result += "    void add_row(const " + full_type + "& row) {\n";
     result += "        add_row(" + full_type + "(row));\n";
+    result += "    }\n\n";
+
+    result += "    void load_all(const std::vector<" + full_type + ">& rows) {\n";
+    result += "        for (const auto& row : rows) add_row(row);\n";
+    result += "    }\n\n";
+
+    result += "    void load_all(std::vector<" + full_type + ">&& rows) {\n";
+    result += "        for (auto& row : rows) add_row(std::move(row));\n";
     result += "    }\n\n";
 
     // Accessor methods
@@ -153,6 +348,21 @@ fn generate_table_wrapper(s, namespace_fqn) {
             }
         }
     }
+    for search in search_indexes {
+        if search.is_token_mode {
+            result += "    std::vector<" + full_type + "*> " + search.method_name + "(const std::string& query) const {\n";
+            result += "        return detail::search_intersect(" + search.member_name + ", query, \"" + search.mode + "\", " + search.n + ", " + search.min + ", \"" + search.normalize + "\");\n";
+            result += "    }\n\n";
+        } else if search.is_string {
+            result += "    std::vector<" + full_type + "*> " + search.method_name + "(const std::string& key) const {\n";
+            result += "        return detail::copy_search_results(" + search.member_name + ".get(detail::search_normalize(key, \"" + search.normalize + "\")));\n";
+            result += "    }\n\n";
+        } else {
+            result += "    std::vector<" + full_type + "*> " + search.method_name + "(const " + search.key_type + "& key) const {\n";
+            result += "        return detail::copy_search_results(" + search.member_name + ".get(key));\n";
+            result += "    }\n\n";
+        }
+    }
 
     // Iterator support
     result += "    auto begin() { return data.begin(); }\n";
@@ -167,6 +377,9 @@ fn generate_table_wrapper(s, namespace_fqn) {
         for idx in s.indexes {
             result += "        " + idx.name + ".clear();\n";
         }
+    }
+    for search in search_indexes {
+        result += "        " + search.member_name + ".clear();\n";
     }
     result += "    }\n\n";
 
@@ -336,6 +549,56 @@ fn to_pascal_case(name) {
 fn generate_container(base_name, tables) {
     let result = "";
     let container_name = to_pascal_case(base_name) + "Container";
+    let forward_navs = [];
+    let reverse_navs = [];
+
+    for entry in tables {
+        let source = entry.struct_def;
+        let source_type = get_cpp_type_from_fqn(source.fqn, source.name);
+        for item in source.items {
+            if item.is_field() {
+                let field = item.as_field();
+                if field.foreign_key != () {
+                    let fk = field.foreign_key;
+                    let target_entry = find_table_entry_by_fqn(tables, fk.target_table_fqn);
+                    if target_entry != () {
+                        let target = target_entry.struct_def;
+                        forward_navs.push(#{
+                            method_name: "get_" + nav_method_suffix(source, field.name),
+                            source_type: source_type,
+                            field_name: field.name,
+                            target_type: get_cpp_type_from_fqn(target.fqn, target.name),
+                            target_member: cpp_types::to_snake_case(pluralize(target.name)),
+                            target_method: "get_by_" + cpp_types::to_snake_case(fk.target_field),
+                            is_optional: field.field_type.is_option
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    for entry in tables {
+        let target = entry.struct_def;
+        let target_pk = find_pk_field(target);
+        if target_pk == "" {
+            target_pk = "id";
+        }
+        for rel in target.relations {
+            let source_entry = find_table_entry_by_fqn(tables, rel.source_table_fqn);
+            if source_entry != () {
+                let source = source_entry.struct_def;
+                reverse_navs.push(#{
+                    method_name: "find_" + reverse_nav_method_suffix(target, rel.name),
+                    target_type: get_cpp_type_from_fqn(target.fqn, target.name),
+                    target_key_field: target_pk,
+                    source_type: get_cpp_type_from_fqn(source.fqn, source.name),
+                    source_member: cpp_types::to_snake_case(pluralize(source.name)),
+                    source_method: "get_by_" + cpp_types::to_snake_case(rel.source_field)
+                });
+            }
+        }
+    }
 
     result += "// Main data container with all tables\n";
     result += "class " + container_name + " {\n";
@@ -384,7 +647,83 @@ fn generate_container(base_name, tables) {
     result += "        if (!result.is_valid()) {\n";
     result += "            throw polygen::ValidationException(result);\n";
     result += "        }\n";
+    result += "    }\n\n";
+
+    for entry in tables {
+        let s = entry.struct_def;
+        let member_name = cpp_types::to_snake_case(pluralize(s.name));
+        if entry.csv_pattern != "" {
+            result += "    void load_" + member_name + "_from_csv(const std::filesystem::path& path) {\n";
+            result += "        " + member_name + ".load_all(polygen_loaders::load_" + s.name + "_from_csv_file(path.string()));\n";
+            result += "    }\n\n";
+        }
+        if entry.json_pattern != "" {
+            result += "    void load_" + member_name + "_from_json(const std::filesystem::path& path) {\n";
+            result += "        " + member_name + ".load_all(polygen_loaders::load_" + s.name + "_from_json_file(path.string()));\n";
+            result += "    }\n\n";
+        }
+    }
+
+    result += "    void load_from_csv(const std::filesystem::path& root) {\n";
+    for entry in tables {
+        if entry.csv_pattern != "" {
+            let s = entry.struct_def;
+            let member_name = cpp_types::to_snake_case(pluralize(s.name));
+            result += "        load_" + member_name + "_from_csv(root / " + cpp_string_literal(entry.csv_pattern) + ");\n";
+        }
+    }
+    result += "    }\n\n";
+
+    result += "    void load_from_json(const std::filesystem::path& root) {\n";
+    for entry in tables {
+        if entry.json_pattern != "" {
+            let s = entry.struct_def;
+            let member_name = cpp_types::to_snake_case(pluralize(s.name));
+            result += "        load_" + member_name + "_from_json(root / " + cpp_string_literal(entry.json_pattern) + ");\n";
+        }
+    }
     result += "    }\n";
+
+    for nav in forward_navs {
+        result += "\n";
+        result += "    " + nav.target_type + "* " + nav.method_name + "(const " + nav.source_type + "& row) {\n";
+        if nav.is_optional {
+            result += "        if (!row." + nav.field_name + ".has_value()) {\n";
+            result += "            return nullptr;\n";
+            result += "        }\n";
+            result += "        return " + nav.target_member + "." + nav.target_method + "(row." + nav.field_name + ".value());\n";
+        } else {
+            result += "        return " + nav.target_member + "." + nav.target_method + "(row." + nav.field_name + ");\n";
+        }
+        result += "    }\n\n";
+        result += "    const " + nav.target_type + "* " + nav.method_name + "(const " + nav.source_type + "& row) const {\n";
+        if nav.is_optional {
+            result += "        if (!row." + nav.field_name + ".has_value()) {\n";
+            result += "            return nullptr;\n";
+            result += "        }\n";
+            result += "        return " + nav.target_member + "." + nav.target_method + "(row." + nav.field_name + ".value());\n";
+        } else {
+            result += "        return " + nav.target_member + "." + nav.target_method + "(row." + nav.field_name + ");\n";
+        }
+        result += "    }\n";
+    }
+
+    for nav in reverse_navs {
+        result += "\n";
+        result += "    std::vector<" + nav.source_type + "*> " + nav.method_name + "(" + nav.target_type + "& row) {\n";
+        result += "        const auto& rows = " + nav.source_member + "." + nav.source_method + "(row." + nav.target_key_field + ");\n";
+        result += "        return std::vector<" + nav.source_type + "*>(rows.begin(), rows.end());\n";
+        result += "    }\n\n";
+        result += "    std::vector<const " + nav.source_type + "*> " + nav.method_name + "(const " + nav.target_type + "& row) const {\n";
+        result += "        const auto& rows = " + nav.source_member + "." + nav.source_method + "(row." + nav.target_key_field + ");\n";
+        result += "        std::vector<const " + nav.source_type + "*> result;\n";
+        result += "        result.reserve(rows.size());\n";
+        result += "        for (const auto* item : rows) {\n";
+        result += "            result.push_back(item);\n";
+        result += "        }\n";
+        result += "        return result;\n";
+        result += "    }\n";
+    }
 
     result += "};\n";
 
@@ -398,7 +737,12 @@ fn collect_indexed_tables_from_namespace(ns) {
         if item.is_struct() {
             let s = item.as_struct();
             if has_indexes(s) {
-                tables.push(#{ struct_def: s, namespace_name: ns.name });
+                tables.push(#{
+                    struct_def: s,
+                    namespace_name: ns.name,
+                    csv_pattern: get_load_pattern(s, "csv"),
+                    json_pattern: get_load_pattern(s, "json")
+                });
             }
         } else if item.is_namespace() {
             let child_tables = collect_indexed_tables_from_namespace(item.as_namespace());
@@ -467,9 +811,105 @@ if has_tables {
 #include "{{base_name}}.hpp"
 #include "{{base_name}}_loaders.hpp"
 #include "polygen_support.hpp"
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <tuple>
+#include <unordered_set>
 %blank
 namespace {{container_ns}} {
+%blank
+namespace detail {
+inline std::string search_normalize(const std::string& value, const std::string& policy) {
+    auto begin = value.begin();
+    auto end = value.end();
+    if (policy == "trim" || policy == "lower_trim") {
+        begin = std::find_if_not(begin, end, [](unsigned char ch) { return std::isspace(ch); });
+        end = std::find_if_not(value.rbegin(), std::make_reverse_iterator(begin), [](unsigned char ch) { return std::isspace(ch); }).base();
+    }
+
+    std::string result(begin, end);
+    if (policy == "lower" || policy == "lower_trim") {
+        std::transform(result.begin(), result.end(), result.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+    }
+    return result;
+}
+
+inline std::vector<std::string> search_tokens(const std::string& value, const std::string& mode, size_t n, size_t min, const std::string& normalize_policy) {
+    const auto normalized = search_normalize(value, normalize_policy);
+    if (normalized.size() < min) {
+        return {};
+    }
+
+    std::unordered_set<std::string> seen;
+    std::vector<std::string> result;
+
+    if (mode == "word") {
+        std::istringstream input(normalized);
+        std::string token;
+        while (input >> token) {
+            if (token.size() >= min && seen.insert(token).second) {
+                result.push_back(token);
+            }
+        }
+        return result;
+    }
+
+    if (normalized.size() < n) {
+        return {};
+    }
+
+    for (size_t i = 0; i + n <= normalized.size(); ++i) {
+        auto token = normalized.substr(i, n);
+        if (seen.insert(token).second) {
+            result.push_back(std::move(token));
+        }
+    }
+    return result;
+}
+
+template<typename T>
+std::vector<T*> copy_search_results(const std::vector<T*>& rows) {
+    return rows;
+}
+
+template<typename T>
+std::vector<T*> search_intersect(
+    const std::unordered_map<std::string, std::vector<T*>>& index,
+    const std::string& query,
+    const std::string& mode,
+    size_t n,
+    size_t min,
+    const std::string& normalize_policy) {
+    const auto tokens = search_tokens(query, mode, n, min, normalize_policy);
+    if (tokens.empty()) {
+        return {};
+    }
+
+    auto first = index.find(tokens.front());
+    if (first == index.end()) {
+        return {};
+    }
+
+    std::vector<T*> matches = first->second;
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        auto next = index.find(tokens[i]);
+        if (next == index.end()) {
+            return {};
+        }
+        std::unordered_set<T*> next_set(next->second.begin(), next->second.end());
+        matches.erase(std::remove_if(matches.begin(), matches.end(), [&](T* row) {
+            return next_set.find(row) == next_set.end();
+        }), matches.end());
+        if (matches.empty()) {
+            return {};
+        }
+    }
+    return matches;
+}
+} // namespace detail
 %blank
 %for entry in tables
 {{entry.wrapper_body}}

@@ -1,0 +1,765 @@
+%logic
+import "templates/swift/rhai_utils/type_mapping" as swift;
+
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn table_member_name(s) {
+    to_camel_case(s.name) + "s"
+}
+
+fn table_class_name(s) {
+    swift::class_name_from_fqn(s.fqn) + "Table"
+}
+
+fn method_suffix(field_name) {
+    to_pascal_case(field_name)
+}
+
+fn index_method_name(prefix, field_name) {
+    prefix + "By" + method_suffix(field_name)
+}
+
+fn index_api_name(idx) {
+    if idx.is_composite {
+        let result = "";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += "_";
+            }
+            result += idx.fields[i].name;
+        }
+        return result;
+    }
+    idx.field_name
+}
+
+fn find_table_by_fqn(all_tables, fqn) {
+    for table in all_tables {
+        if table.fqn == fqn {
+            return table;
+        }
+    }
+    ()
+}
+
+fn index_key_type(field_type) {
+    let base = field_type;
+    if base.is_option {
+        base = base.inner;
+    }
+    swift::swift_type(base)
+}
+
+fn index_entry_key_type(idx) {
+    if idx.is_composite {
+        return "[AnyHashable]";
+    }
+    index_key_type(idx.field_type)
+}
+
+fn index_row_key_expr(idx) {
+    if idx.is_composite {
+        let result = "[";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += "AnyHashable(row." + idx.fields[i].name + ")";
+        }
+        result += "]";
+        return result;
+    }
+    "row." + idx.field_name
+}
+
+fn search_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    t
+}
+
+fn is_supported_scalar(t) {
+    let base = search_base_type(t);
+    if base.is_list {
+        return false;
+    }
+    if base.type_name == "bytes" {
+        return false;
+    }
+    if base.type_name == "string" || base.type_name == "timestamp" || base.type_name == "bool" {
+        return true;
+    }
+    if base.is_enum {
+        return true;
+    }
+    base.is_primitive
+}
+
+fn is_search_target_enabled(search) {
+    search.target == "csharp" || search.target == "swift" || search.target == "swift_container"
+}
+
+fn search_is_supported(f) {
+    if !f.has_search_index {
+        return false;
+    }
+    let search = f.search_index;
+    if !is_search_target_enabled(search) {
+        return false;
+    }
+    let ft = f.field_type;
+    if ft.is_list {
+        return false;
+    }
+    let base = search_base_type(ft);
+    if search.mode == "ngram" || search.mode == "word" {
+        return base.type_name == "string";
+    }
+    if search.mode != "exact" {
+        return false;
+    }
+    is_supported_scalar(base)
+}
+
+fn search_key_type(f) {
+    let search = f.search_index;
+    if search.mode == "ngram" || search.mode == "word" {
+        return "String";
+    }
+    index_key_type(f.field_type)
+}
+
+fn validation_base_type(t) {
+    if t.is_option {
+        return t.inner;
+    }
+    t
+}
+
+fn validation_is_string_like(t) {
+    let base = validation_base_type(t);
+    return base.type_name == "string" || base.type_name == "bytes";
+}
+
+fn validation_is_numeric(t) {
+    let base = validation_base_type(t);
+    if !base.is_primitive {
+        return false;
+    }
+    base.type_name != "bool" && base.type_name != "string" && base.type_name != "bytes" && base.type_name != "timestamp"
+}
+
+fn nav_field_label(field_name) {
+    let label = to_snake_case(field_name);
+    if label.ends_with("_id") && label.len() > 3 {
+        return label.sub_string(0, label.len() - 3);
+    }
+    label
+}
+
+fn nav_method_suffix(source_table, field_name) {
+    to_pascal_case(source_table.name) + to_pascal_case(nav_field_label(field_name))
+}
+
+fn reverse_nav_method_suffix(target_table, relation_name) {
+    to_pascal_case(target_table.name) + to_pascal_case(relation_name)
+}
+
+let all_tables = [];
+for ns in file.namespaces {
+    let tables = collect_tables_from_namespace(ns);
+    for s in tables {
+        all_tables.push(s);
+    }
+}
+
+let entries = [];
+for s in all_tables {
+    let indexes = [];
+    for idx in s.indexes {
+        let api_name = index_api_name(idx);
+        indexes.push(#{
+            field_name: api_name,
+            attr_name: to_camel_case(idx.name),
+            get_method: index_method_name("get", api_name),
+            find_method: index_method_name("find", api_name),
+            key_type: index_entry_key_type(idx),
+            key_expr: index_row_key_expr(idx),
+            is_unique: idx.is_unique,
+            is_optional: idx.field_type.is_option
+        });
+    }
+
+    let search_indexes = [];
+    for item in s.items {
+        if item.is_field {
+            let f = item.as_field();
+            if search_is_supported(f) {
+                let search = f.search_index;
+                let base = search_base_type(f.field_type);
+                search_indexes.push(#{
+                    name: search.name,
+                    attr_name: "search" + method_suffix(search.name),
+                    method_suffix: method_suffix(search.name),
+                    field_name: f.name,
+                    value_var: to_camel_case(search.name) + "SearchValue",
+                    key_var: to_camel_case(search.name) + "SearchKey",
+                    key_type: search_key_type(f),
+                    mode: search.mode,
+                    normalize: search.normalize,
+                    n: search.n,
+                    min: search.min,
+                    is_token_mode: search.mode == "ngram" || search.mode == "word",
+                    is_exact_string: search.mode == "exact" && base.type_name == "string",
+                    is_optional: f.field_type.is_option
+                });
+            }
+        }
+    }
+
+    let validation_checks = [];
+    for item in s.items {
+        if item.is_field {
+            let f = item.as_field();
+            if f.max_length != () && validation_is_string_like(f.field_type) {
+                validation_checks.push(#{
+                    kind: "max_length",
+                    field_name: f.name,
+                    field_literal: swift::string_literal(f.name),
+                    limit: f.max_length,
+                    is_optional: f.field_type.is_option
+                });
+            }
+            if f.range != () && validation_is_numeric(f.field_type) {
+                validation_checks.push(#{
+                    kind: "range",
+                    field_name: f.name,
+                    field_literal: swift::string_literal(f.name),
+                    min: f.range.min,
+                    max: f.range.max,
+                    is_optional: f.field_type.is_option
+                });
+            }
+            if f.regex_pattern != () && validation_base_type(f.field_type).type_name == "string" {
+                validation_checks.push(#{
+                    kind: "regex",
+                    field_name: f.name,
+                    field_literal: swift::string_literal(f.name),
+                    pattern_literal: swift::string_literal(f.regex_pattern),
+                    is_optional: f.field_type.is_option
+                });
+            }
+        }
+    }
+
+    let csv_pattern = "";
+    let json_pattern = "";
+    if s.load != () {
+        if s.load.csv != () {
+            csv_pattern = s.load.csv;
+        }
+        if s.load.json != () {
+            json_pattern = s.load.json;
+        }
+    }
+
+    entries.push(#{
+        def: s,
+        class_name: swift::class_name_from_fqn(s.fqn),
+        table_class: table_class_name(s),
+        member_name: table_member_name(s),
+        load_method_suffix: to_pascal_case(table_member_name(s)),
+        csv_loader: "load" + swift::class_name_from_fqn(s.fqn) + "sFromCsv",
+        json_loader: "load" + swift::class_name_from_fqn(s.fqn) + "sFromJson",
+        csv_pattern: csv_pattern,
+        csv_literal: swift::string_literal(csv_pattern),
+        json_pattern: json_pattern,
+        json_literal: swift::string_literal(json_pattern),
+        indexes: indexes,
+        search_indexes: search_indexes,
+        validation_checks: validation_checks
+    });
+}
+
+let fk_checks = [];
+let forward_navs = [];
+for s in all_tables {
+    for item in s.items {
+        if item.is_field {
+            let field = item.as_field();
+            if field.has_foreign_key {
+                let fk = field.foreign_key;
+                let target_table = find_table_by_fqn(all_tables, fk.target_table_fqn);
+                if target_table != () {
+                    fk_checks.push(#{
+                        source_member: table_member_name(s),
+                        source_table: s.name,
+                        field_name: field.name,
+                        target_member: table_member_name(target_table),
+                        target_method: index_method_name("get", fk.target_field),
+                        target_table: target_table.name
+                    });
+                    forward_navs.push(#{
+                        method_suffix: nav_method_suffix(s, field.name),
+                        source_class: swift::class_name_from_fqn(s.fqn),
+                        field_name: field.name,
+                        target_class: swift::class_name_from_fqn(target_table.fqn),
+                        target_member: table_member_name(target_table),
+                        target_method: index_method_name("get", fk.target_field),
+                        is_optional: field.field_type.is_option
+                    });
+                }
+            }
+        }
+    }
+}
+
+let reverse_navs = [];
+for s in all_tables {
+    for rel in s.relations {
+        let source_table = find_table_by_fqn(all_tables, rel.source_table_fqn);
+        if source_table != () {
+            reverse_navs.push(#{
+                method_suffix: reverse_nav_method_suffix(s, rel.name),
+                target_class: swift::class_name_from_fqn(s.fqn),
+                target_key_field: "id",
+                source_class: swift::class_name_from_fqn(source_table.fqn),
+                source_member: table_member_name(source_table),
+                source_method: index_method_name("find", rel.source_field)
+            });
+        }
+    }
+}
+
+let base_name = file.path;
+if base_name.contains("/") {
+    let parts = base_name.split("/");
+    base_name = parts[parts.len() - 1];
+}
+if base_name.ends_with(".poly") {
+    base_name = base_name.sub_string(0, base_name.len() - 5);
+}
+let container_name = swift::class_name_from_fqn(base_name + ".Container");
+%endlogic
+// Generated by PolyGen. DO NOT EDIT.
+// Source: {{file.path}}
+
+import Foundation
+
+struct ValidationError: Hashable {
+    let tableName: String
+    let fieldName: String
+    let rowKey: String
+    let message: String
+    let constraintType: String
+}
+
+struct ValidationResult {
+    private(set) var errors: [ValidationError] = []
+
+    mutating func addError(_ error: ValidationError) {
+        errors.append(error)
+    }
+
+    mutating func merge(_ other: ValidationResult) {
+        errors.append(contentsOf: other.errors)
+    }
+
+    var isValid: Bool {
+        errors.isEmpty
+    }
+
+    var errorCount: Int {
+        errors.count
+    }
+}
+
+struct ValidationException: Error {
+    let result: ValidationResult
+}
+
+private func searchNormalize(_ value: String, _ policy: String) -> String {
+    switch policy {
+    case "none":
+        return value
+    case "lower":
+        return value.lowercased()
+    case "trim":
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    default:
+        return value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+private func searchTokens(_ value: String, mode: String, n: Int, min: Int, normalize: String) -> [String] {
+    let normalized = searchNormalize(value, normalize)
+    var seen = Set<String>()
+    var tokens: [String] = []
+
+    func add(_ token: String) {
+        if !seen.contains(token) {
+            seen.insert(token)
+            tokens.append(token)
+        }
+    }
+
+    switch mode {
+    case "exact":
+        if !normalized.isEmpty || min <= 0 {
+            add(normalized)
+        }
+    case "word":
+        for part in normalized.split(whereSeparator: { $0.isWhitespace }) {
+            let token = String(part)
+            if token.count >= min {
+                add(token)
+            }
+        }
+    default:
+        precondition(n > 0, "Search ngram size must be positive.")
+        let characters = Array(normalized)
+        if characters.count >= max(min, n) {
+            for i in 0...(characters.count - n) {
+                let token = String(characters[i..<(i + n)])
+                if token.count >= min {
+                    add(token)
+                }
+            }
+        }
+    }
+
+    return tokens
+}
+
+private func addGroup<Row>(_ index: inout [AnyHashable: [Row]], key: AnyHashable, row: Row) {
+    index[key, default: []].append(row)
+}
+
+private func intersectRows<Row: Hashable>(_ postings: [[Row]]) -> [Row] {
+    guard let first = postings.first else {
+        return []
+    }
+    var matches = Set(first)
+    for rows in postings.dropFirst() {
+        matches.formIntersection(Set(rows))
+        if matches.isEmpty {
+            break
+        }
+    }
+    return first.filter { matches.contains($0) }
+}
+
+%for entry in entries
+final class {{entry.table_class}} {
+    private var rows: [{{entry.class_name}}] = []
+%for idx in entry.indexes
+%if idx.is_unique
+    private var {{idx.attr_name}}: [{{idx.key_type}}: {{entry.class_name}}] = [:]
+%else
+    private var {{idx.attr_name}}: [{{idx.key_type}}: [{{entry.class_name}}]] = [:]
+%endif
+%endfor
+%for search in entry.search_indexes
+    private var {{search.attr_name}}: [AnyHashable: [{{entry.class_name}}]] = [:]
+%endfor
+
+    var count: Int {
+        rows.count
+    }
+
+    func all() -> [{{entry.class_name}}] {
+        rows
+    }
+
+    @discardableResult
+    func addRow(_ row: {{entry.class_name}}) -> {{entry.class_name}} {
+        rows.append(row)
+%for idx in entry.indexes
+%if idx.is_unique
+%if idx.is_optional
+        if let key = {{idx.key_expr}} {
+            {{idx.attr_name}}[key] = row
+        }
+%else
+        {{idx.attr_name}}[{{idx.key_expr}}] = row
+%endif
+%else
+%if idx.is_optional
+        if let key = {{idx.key_expr}} {
+            {{idx.attr_name}}[key, default: []].append(row)
+        }
+%else
+        {{idx.attr_name}}[{{idx.key_expr}}, default: []].append(row)
+%endif
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.is_optional
+        if let {{search.value_var}} = row.{{search.field_name}} {
+%else
+        let {{search.value_var}} = row.{{search.field_name}}
+%endif
+%if search.is_token_mode
+            for token in searchTokens({{search.value_var}}, mode: "{{search.mode}}", n: {{search.n}}, min: {{search.min}}, normalize: "{{search.normalize}}") {
+                addGroup(&{{search.attr_name}}, key: AnyHashable(token), row: row)
+            }
+%else
+%if search.is_exact_string
+            let {{search.key_var}} = searchNormalize({{search.value_var}}, "{{search.normalize}}")
+%else
+            let {{search.key_var}} = {{search.value_var}}
+%endif
+            addGroup(&{{search.attr_name}}, key: AnyHashable({{search.key_var}}), row: row)
+%endif
+%if search.is_optional
+        }
+%endif
+%endfor
+        return row
+    }
+
+    func loadAll<S: Sequence>(_ sourceRows: S) where S.Element == {{entry.class_name}} {
+        for row in sourceRows {
+            _ = addRow(row)
+        }
+    }
+
+    func validate() -> ValidationResult {
+        var result = ValidationResult()
+%for check in entry.validation_checks
+        for row in rows {
+%if check.is_optional
+            guard let value = row.{{check.field_name}} else {
+                continue
+            }
+%else
+            let value = row.{{check.field_name}}
+%endif
+%if check.kind == "max_length"
+            if value.count > {{check.limit}} {
+                result.addError(
+                    ValidationError(
+                        tableName: "{{entry.def.name}}",
+                        fieldName: {{check.field_literal}},
+                        rowKey: String(describing: row),
+                        message: "length \(value.count) exceeds maximum {{check.limit}}",
+                        constraintType: "MaxLength"
+                    )
+                )
+            }
+%elif check.kind == "range"
+            if value < {{check.min}} || value > {{check.max}} {
+                result.addError(
+                    ValidationError(
+                        tableName: "{{entry.def.name}}",
+                        fieldName: {{check.field_literal}},
+                        rowKey: String(describing: row),
+                        message: "value \(value) is outside range [{{check.min}}, {{check.max}}]",
+                        constraintType: "Range"
+                    )
+                )
+            }
+%elif check.kind == "regex"
+            if value.range(of: {{check.pattern_literal}}, options: .regularExpression) == nil {
+                result.addError(
+                    ValidationError(
+                        tableName: "{{entry.def.name}}",
+                        fieldName: {{check.field_literal}},
+                        rowKey: String(describing: row),
+                        message: "value \(value) does not match regex pattern",
+                        constraintType: "Regex"
+                    )
+                )
+            }
+%endif
+        }
+%endfor
+%for idx in entry.indexes
+%if idx.is_unique
+        var seen{{idx.get_method | pascal_case}} = Set<{{idx.key_type}}>()
+        for row in rows {
+            let key = {{idx.key_expr}}
+%if idx.is_optional
+            guard let key else {
+                continue
+            }
+%endif
+            if seen{{idx.get_method | pascal_case}}.contains(key) {
+                result.addError(
+                    ValidationError(
+                        tableName: "{{entry.def.name}}",
+                        fieldName: "{{idx.field_name}}",
+                        rowKey: String(describing: row),
+                        message: "duplicate value \(key) violates unique constraint",
+                        constraintType: "Unique"
+                    )
+                )
+            } else {
+                seen{{idx.get_method | pascal_case}}.insert(key)
+            }
+        }
+%endif
+%endfor
+        return result
+    }
+
+    func clear() {
+        rows.removeAll()
+%for idx in entry.indexes
+        {{idx.attr_name}}.removeAll()
+%endfor
+%for search in entry.search_indexes
+        {{search.attr_name}}.removeAll()
+%endfor
+    }
+
+%for idx in entry.indexes
+%if idx.is_unique
+    func {{idx.get_method}}(_ key: {{idx.key_type}}) -> {{entry.class_name}}? {
+        {{idx.attr_name}}[key]
+    }
+
+%else
+    func {{idx.find_method}}(_ key: {{idx.key_type}}) -> [{{entry.class_name}}] {
+        {{idx.attr_name}}[key] ?? []
+    }
+
+%endif
+%endfor
+%for search in entry.search_indexes
+%if search.is_token_mode
+    func searchBy{{search.method_suffix}}(_ query: String) -> [{{entry.class_name}}] {
+        let tokens = searchTokens(query, mode: "{{search.mode}}", n: {{search.n}}, min: {{search.min}}, normalize: "{{search.normalize}}")
+        if tokens.isEmpty {
+            return []
+        }
+        var postings: [[{{entry.class_name}}]] = []
+        for token in tokens {
+            guard let rowsForToken = {{search.attr_name}}[AnyHashable(token)] else {
+                return []
+            }
+            postings.append(rowsForToken)
+        }
+        return intersectRows(postings)
+    }
+
+%else
+    func searchBy{{search.method_suffix}}(_ key: {{search.key_type}}) -> [{{entry.class_name}}] {
+%if search.is_exact_string
+        let normalizedKey = searchNormalize(key, "{{search.normalize}}")
+        return {{search.attr_name}}[AnyHashable(normalizedKey)] ?? []
+%else
+        return {{search.attr_name}}[AnyHashable(key)] ?? []
+%endif
+    }
+
+%endif
+%endfor
+}
+
+%endfor
+final class {{container_name}} {
+%for entry in entries
+    let {{entry.member_name}} = {{entry.table_class}}()
+%endfor
+
+    func clear() {
+%for entry in entries
+        {{entry.member_name}}.clear()
+%endfor
+    }
+
+%for entry in entries
+    func load{{entry.load_method_suffix}}FromCsv(_ path: String) throws {
+        {{entry.member_name}}.loadAll(try {{entry.csv_loader}}(path))
+    }
+
+    func load{{entry.load_method_suffix}}FromJson(_ path: String) throws {
+        {{entry.member_name}}.loadAll(try {{entry.json_loader}}(path))
+    }
+
+%endfor
+    func loadFromCsv(_ root: String) throws {
+%for entry in entries
+%if entry.csv_pattern != ""
+        try load{{entry.load_method_suffix}}FromCsv(URL(fileURLWithPath: root).appendingPathComponent({{entry.csv_literal}}).path)
+%endif
+%endfor
+    }
+
+    func loadFromJson(_ root: String) throws {
+%for entry in entries
+%if entry.json_pattern != ""
+        try load{{entry.load_method_suffix}}FromJson(URL(fileURLWithPath: root).appendingPathComponent({{entry.json_literal}}).path)
+%endif
+%endfor
+    }
+
+    func validateAll() -> ValidationResult {
+        var result = ValidationResult()
+%for entry in entries
+        result.merge({{entry.member_name}}.validate())
+%endfor
+%for check in fk_checks
+        for row in {{check.source_member}}.all() {
+            let target = {{check.target_member}}.{{check.target_method}}(row.{{check.field_name}})
+            if target == nil {
+                result.addError(
+                    ValidationError(
+                        tableName: "{{check.source_table}}",
+                        fieldName: "{{check.field_name}}",
+                        rowKey: String(describing: row),
+                        message: "foreign key reference not found in {{check.target_table}}: \(row.{{check.field_name}})",
+                        constraintType: "ForeignKey"
+                    )
+                )
+            }
+        }
+%endfor
+        return result
+    }
+
+    func validateOrThrow() throws {
+        let result = validateAll()
+        if !result.isValid {
+            throw ValidationException(result: result)
+        }
+    }
+
+%for nav in forward_navs
+    func get{{nav.method_suffix}}(_ row: {{nav.source_class}}) -> {{nav.target_class}}? {
+%if nav.is_optional
+        guard let key = row.{{nav.field_name}} else {
+            return nil
+        }
+%else
+        let key = row.{{nav.field_name}}
+%endif
+        return {{nav.target_member}}.{{nav.target_method}}(key)
+    }
+
+%endfor
+%for nav in reverse_navs
+    func find{{nav.method_suffix}}(_ row: {{nav.target_class}}) -> [{{nav.source_class}}] {
+        {{nav.source_member}}.{{nav.source_method}}(row.{{nav.target_key_field}})
+    }
+
+%endfor
+}

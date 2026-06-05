@@ -91,6 +91,14 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
             .map(|ns| Dynamic::from(ns.clone()))
             .collect::<Vec<Dynamic>>()
     });
+    engine.register_get("all_tables", |f: &mut FileDef| {
+        let mut tables = Vec::new();
+        collect_tables_from_namespaces(&f.namespaces, &mut tables);
+        tables
+            .into_iter()
+            .map(Dynamic::from)
+            .collect::<Vec<Dynamic>>()
+    });
     engine.register_get("renames", |f: &mut FileDef| {
         f.renames
             .iter()
@@ -124,7 +132,7 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
         "as_struct",
         |item: &mut NamespaceItem| -> Result<StructDef, Box<EvalAltResult>> {
             match item {
-                NamespaceItem::Struct(s) => Ok(s.clone()),
+                NamespaceItem::Struct(s) => Ok((**s).clone()),
                 _ => Err(Box::new(EvalAltResult::ErrorSystem(
                     "Cannot convert to StructDef".to_string(),
                     Box::new(rhai::LexError::UnterminatedString),
@@ -403,7 +411,7 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
         "as_embedded_struct",
         |item: &mut StructItem| -> Result<StructDef, Box<EvalAltResult>> {
             match item {
-                StructItem::EmbeddedStruct(s) => Ok(s.clone()),
+                StructItem::EmbeddedStruct(s) => Ok((**s).clone()),
                 _ => Err(Box::new(EvalAltResult::ErrorSystem(
                     "Cannot convert to EmbeddedStruct".to_string(),
                     Box::new(rhai::LexError::UnterminatedString),
@@ -664,6 +672,24 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
         RenameKind::Table => "table".to_string(),
         RenameKind::Field => "field".to_string(),
     });
+}
+
+fn collect_tables_from_namespaces(namespaces: &[NamespaceDef], out: &mut Vec<StructDef>) {
+    for ns in namespaces {
+        for item in &ns.items {
+            match item {
+                NamespaceItem::Struct(s) => {
+                    if !s.is_embed && !s.name.ends_with("__Enum") {
+                        out.push((**s).clone());
+                    }
+                }
+                NamespaceItem::Namespace(child) => {
+                    collect_tables_from_namespaces(std::slice::from_ref(child.as_ref()), out);
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 fn register_common_helpers(

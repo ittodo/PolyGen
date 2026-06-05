@@ -79,7 +79,7 @@ fn split_qualified_type(type_name: &str) -> Option<(&str, &str)> {
 /// 한국어: 네임스페이스의 직접 항목만 검색합니다 (재귀 아님).
 pub fn find_struct_in_ns<'a>(ns: &'a NamespaceDef, target_name: &str) -> Option<&'a StructDef> {
     ns.items.iter().find_map(|item| match item {
-        NamespaceItem::Struct(s) if s.name == target_name => Some(s),
+        NamespaceItem::Struct(s) if s.name == target_name => Some(s.as_ref()),
         _ => None,
     })
 }

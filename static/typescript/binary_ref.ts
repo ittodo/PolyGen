@@ -2,7 +2,7 @@
 // Mirrors the C# BinaryRef format: eager indexes, lazy row field access.
 
 const MAGIC = new Uint8Array([0x50, 0x47, 0x42, 0x52, 0x45, 0x46, 0x31, 0x00]); // PGBREF1\0
-const VERSION = 1;
+const VERSION = 2;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 

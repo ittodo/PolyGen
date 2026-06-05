@@ -17,12 +17,16 @@ fn enum_parse_expr(type_name, value_expr, label) {
     type_name + "::try_from(" + value_expr + ").map_err(|_| LoadError::Parse(format!(\"invalid enum value for " + label + ": {}\", " + value_expr + ")))"
 }
 
+fn enum_csv_parse_expr(type_name, value_expr, label) {
+    value_expr + ".parse::<" + type_name + ">().map_err(|_| LoadError::Parse(format!(\"invalid enum value for " + label + ": {}\", " + value_expr + ")))"
+}
+
 fn enum_list_parse_expr(type_name, field_name) {
-    "row.get(\"" + field_name + "\").map(|s| s.split(',').filter(|v| !v.trim().is_empty()).map(|v| v.trim().parse::<i32>().map_err(|_| LoadError::Parse(format!(\"invalid enum value for " + field_name + ": {}\", v.trim()))).and_then(|raw| " + enum_parse_expr(type_name, "raw", field_name) + ")).collect::<Result<Vec<_>, LoadError>>()).transpose()?.unwrap_or_default()"
+    "row.get(\"" + field_name + "\").map(|s| s.split(',').filter(|v| !v.trim().is_empty()).map(|v| " + enum_csv_parse_expr(type_name, "v.trim()", field_name) + ").collect::<Result<Vec<_>, LoadError>>()).transpose()?.unwrap_or_default()"
 }
 
 fn optional_enum_parse_expr(type_name, field_name) {
-    "row.get_optional(\"" + field_name + "\").map(|s| s.parse::<i32>().map_err(|_| LoadError::Parse(format!(\"invalid enum value for " + field_name + ": {}\", s))).and_then(|raw| " + enum_parse_expr(type_name, "raw", field_name) + ")).transpose()?"
+    "row.get_optional(\"" + field_name + "\").map(|s| " + enum_csv_parse_expr(type_name, "s", field_name) + ").transpose()?"
 }
 
 fn primitive_list_parse_expr(type_name, field_name) {
@@ -52,6 +56,25 @@ fn optional_primitive_parse_expr(type_name, field_name) {
     "row.get_optional(\"" + field_name + "\").map(|s| s.parse::<" + rust_type + ">().map_err(|_| LoadError::Parse(format!(\"invalid value for " + field_name + ": {}\", s)))).transpose()?"
 }
 
+fn csv_type_path(t, rust_paths) {
+    if t.namespace_fqn != () && t.namespace_fqn != "" && rust_paths[t.namespace_fqn] != () {
+        return rust_paths[t.namespace_fqn] + "::" + t.type_name;
+    }
+    t.type_name
+}
+
+fn csv_json_cell_parse_expr(type_name, field_name) {
+    "row.get_optional(\"" + field_name + "\").map(|s| serde_json::from_str::<" + type_name + ">(s).map_err(|err| LoadError::Parse(format!(\"invalid JSON for " + field_name + ": {}\", err)))).transpose()?.unwrap_or_default()"
+}
+
+fn csv_optional_json_cell_parse_expr(type_name, field_name) {
+    "row.get_optional(\"" + field_name + "\").map(|s| serde_json::from_str::<" + type_name + ">(s).map_err(|err| LoadError::Parse(format!(\"invalid JSON for " + field_name + ": {}\", err)))).transpose()?"
+}
+
+fn csv_json_cell_list_parse_expr(type_name, field_name) {
+    "row.get_optional(\"" + field_name + "\").map(|s| serde_json::from_str::<Vec<" + type_name + ">>(s).map_err(|err| LoadError::Parse(format!(\"invalid JSON for " + field_name + ": {}\", err)))).transpose()?.unwrap_or_default()"
+}
+
 fn enum_read_expr(type_name, reader_expr) {
     reader_expr + ".read_i32().and_then(|v| " + type_name + "::try_from(v).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, format!(\"invalid enum value for " + type_name + ": {}\", v))))"
 }
@@ -65,15 +88,16 @@ fn csv_getter(f, rust_paths) {
         if t.type_name == "string" { return "row.get_optional_string(\"" + n + "\")"; }
         if t.is_enum { return optional_enum_parse_expr(enum_type_path(t, rust_paths), n); }
         if rust_types::is_primitive_name(t.type_name) { return optional_primitive_parse_expr(t.type_name, n); }
-        if t.is_struct { return "None"; }
+        if t.is_struct { return csv_optional_json_cell_parse_expr(csv_type_path(t, rust_paths), n); }
         return "None";
     }
     if t.is_list {
         if t.is_enum { return enum_list_parse_expr(enum_type_path(t, rust_paths), n); }
         if rust_types::is_primitive_name(t.type_name) { return primitive_list_parse_expr(t.type_name, n); }
+        if t.is_struct { return csv_json_cell_list_parse_expr(csv_type_path(t, rust_paths), n); }
         return "Default::default()";
     }
-    if t.is_struct { return "Default::default()"; }
+    if t.is_struct { return csv_json_cell_parse_expr(csv_type_path(t, rust_paths), n); }
     if t.type_name == "string" { return "row.get_string(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "u32" { return "row.get_u32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "u16" { return "row.get_u16(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
@@ -83,7 +107,7 @@ fn csv_getter(f, rust_paths) {
     if t.type_name == "f64" { return "row.get_f64(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "bool" { return "row.get_bool(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
     if t.type_name == "timestamp" { return "row.get_timestamp(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into()))?"; }
-    if t.is_enum { return "row.get_i32(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into())).and_then(|v| " + enum_parse_expr(enum_type_path(t, rust_paths), "v", n) + ")?"; }
+    if t.is_enum { return "row.get(\"" + n + "\").ok_or_else(|| LoadError::Parse(\"" + n + "\".into())).and_then(|s| " + enum_csv_parse_expr(enum_type_path(t, rust_paths), "s", n) + ")?"; }
     return "Default::default()";
 }
 

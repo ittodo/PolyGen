@@ -24,7 +24,7 @@ fn render_enum(e, owner_fqn) {
                 value = m.value;
             }
             members.push(#{
-                name: to_camel_case(m.name),
+                name: swift::identifier(to_camel_case(m.name)),
                 value: value
             });
             next_value = value + 1;
@@ -35,6 +35,29 @@ fn render_enum(e, owner_fqn) {
     for member in members {
         out += "    case " + member.name + " = " + member.value + "\n";
     }
+    out += "\n";
+    out += "    init(from decoder: Decoder) throws {\n";
+    out += "        let container = try decoder.singleValueContainer()\n";
+    out += "        if let rawValue = try? container.decode(Int.self), let value = " + enum_name + "(rawValue: rawValue) {\n";
+    out += "            self = value\n";
+    out += "            return\n";
+    out += "        }\n";
+    out += "        if let raw = try? container.decode(String.self) {\n";
+    out += "            if let rawValue = Int(raw), let value = " + enum_name + "(rawValue: rawValue) {\n";
+    out += "                self = value\n";
+    out += "                return\n";
+    out += "            }\n";
+    out += "            if let value = " + enum_name + ".allCases.first(where: { String(describing: $0) == raw }) {\n";
+    out += "                self = value\n";
+    out += "                return\n";
+    out += "            }\n";
+    out += "        }\n";
+    out += "        throw DecodingError.dataCorruptedError(in: container, debugDescription: \"invalid enum for " + enum_name + "\")\n";
+    out += "    }\n\n";
+    out += "    func encode(to encoder: Encoder) throws {\n";
+    out += "        var container = encoder.singleValueContainer()\n";
+    out += "        try container.encode(rawValue)\n";
+    out += "    }\n";
     out + "}\n\n"
 }
 
@@ -54,14 +77,233 @@ fn render_struct(s) {
 
     out += "struct " + class_name + ": Codable, Hashable {\n";
     for field in fields {
-        out += "    let " + field.name + ": " + swift::swift_type(field.field_type);
         let default_value = swift::property_default(field);
+        let binding = if default_value == () { "let" } else { "var" };
+        out += "    " + binding + " " + field.name + ": " + swift::swift_type(field.field_type);
         if default_value != () {
             out += " = " + default_value;
         }
         out += "\n";
     }
+    out += render_binary_methods(s, fields);
+    if s.is_embed && s.pack_separator != () {
+        out += render_pack_methods(s, fields);
+    }
     out += "}\n\n";
+    out
+}
+
+fn binary_read_expr(type_ref, reader_expr) {
+    if type_ref.is_option {
+        return "try " + reader_expr + ".readOptional { reader in " + binary_read_expr(type_ref.inner, "reader") + " }";
+    }
+    if type_ref.is_list {
+        return "try " + reader_expr + ".readList { reader in " + binary_read_expr(type_ref.inner, "reader") + " }";
+    }
+    if type_ref.is_enum {
+        return "try " + reader_expr + ".readEnum(" + swift::class_name_for_type(type_ref) + ".self)";
+    }
+    if type_ref.is_struct {
+        return "try " + swift::class_name_for_type(type_ref) + ".readBinary(from: &" + reader_expr + ")";
+    }
+
+    switch type_ref.type_name {
+        "string" => "try " + reader_expr + ".readString()",
+        "bytes" => "try " + reader_expr + ".readData()",
+        "bool" => "try " + reader_expr + ".readBool()",
+        "u8" => "try " + reader_expr + ".readUInt8()",
+        "i8" => "try " + reader_expr + ".readInt8()",
+        "u16" => "try " + reader_expr + ".readUInt16()",
+        "i16" => "try " + reader_expr + ".readInt16()",
+        "u32" => "try " + reader_expr + ".readUInt32()",
+        "i32" => "try " + reader_expr + ".readInt32()",
+        "u64" => "try " + reader_expr + ".readUInt64()",
+        "i64" => "try " + reader_expr + ".readInt64()",
+        "f32" => "try " + reader_expr + ".readFloat()",
+        "f64" => "try " + reader_expr + ".readDouble()",
+        "timestamp" => "try " + reader_expr + ".readDate()",
+        _ => "try " + reader_expr + ".readInt32()"
+    }
+}
+
+fn binary_write_expr(type_ref, writer_expr, value_expr) {
+    if type_ref.is_option {
+        return writer_expr + ".writeOptional(" + value_expr + ") { writer, value in " + binary_write_expr(type_ref.inner, "writer", "value") + " }";
+    }
+    if type_ref.is_list {
+        return writer_expr + ".writeList(" + value_expr + ") { writer, value in " + binary_write_expr(type_ref.inner, "writer", "value") + " }";
+    }
+    if type_ref.is_enum {
+        return writer_expr + ".writeInt32(Int32(" + value_expr + ".rawValue))";
+    }
+    if type_ref.is_struct {
+        return value_expr + ".writeBinary(to: &" + writer_expr + ")";
+    }
+
+    switch type_ref.type_name {
+        "string" => writer_expr + ".writeString(" + value_expr + ")",
+        "bytes" => writer_expr + ".writeData(" + value_expr + ")",
+        "bool" => writer_expr + ".writeBool(" + value_expr + ")",
+        "u8" => writer_expr + ".writeUInt8(" + value_expr + ")",
+        "i8" => writer_expr + ".writeInt8(" + value_expr + ")",
+        "u16" => writer_expr + ".writeUInt16(" + value_expr + ")",
+        "i16" => writer_expr + ".writeInt16(" + value_expr + ")",
+        "u32" => writer_expr + ".writeUInt32(" + value_expr + ")",
+        "i32" => writer_expr + ".writeInt32(" + value_expr + ")",
+        "u64" => writer_expr + ".writeUInt64(" + value_expr + ")",
+        "i64" => writer_expr + ".writeInt64(" + value_expr + ")",
+        "f32" => writer_expr + ".writeFloat(" + value_expr + ")",
+        "f64" => writer_expr + ".writeDouble(" + value_expr + ")",
+        "timestamp" => writer_expr + ".writeDate(" + value_expr + ")",
+        _ => writer_expr + ".writeInt32(" + value_expr + ")"
+    }
+}
+
+fn render_binary_methods(s, fields) {
+    let class_name = swift::class_name_from_fqn(s.fqn);
+    let out = "\n";
+
+    out += "    func toBinary() -> Data {\n";
+    out += "        var writer = PolygenBinaryWriter()\n";
+    out += "        writeBinary(to: &writer)\n";
+    out += "        return writer.data\n";
+    out += "    }\n\n";
+
+    out += "    func writeBinary(to writer: inout PolygenBinaryWriter) {\n";
+    for field in fields {
+        out += "        " + binary_write_expr(field.field_type, "writer", field.name) + "\n";
+    }
+    out += "    }\n\n";
+
+    out += "    static func fromBinary(_ data: Data) throws -> " + class_name + " {\n";
+    out += "        var reader = PolygenBinaryReader(data)\n";
+    out += "        return try readBinary(from: &reader)\n";
+    out += "    }\n\n";
+
+    out += "    static func readBinary(from reader: inout PolygenBinaryReader) throws -> " + class_name + " {\n";
+    out += "        " + class_name + "(\n";
+    for field in fields {
+        out += "            " + field.name + ": " + binary_read_expr(field.field_type, "reader") + ",\n";
+    }
+    out += "        )\n";
+    out += "    }\n";
+    out
+}
+
+fn pack_value_expr(field) {
+    let type_name = field.field_type.type_name;
+    if type_name == "bool" {
+        return field.name + " ? \"true\" : \"false\"";
+    }
+    if field.field_type.is_enum {
+        return "String(" + field.name + ".rawValue)";
+    }
+    return "String(" + field.name + ")";
+}
+
+fn parse_value_expr(field, raw_expr) {
+    let type_name = field.field_type.type_name;
+    let swift_type = swift::swift_type(field.field_type);
+    if type_name == "string" {
+        return raw_expr;
+    }
+    if type_name == "bool" {
+        return "try parsePackedBool(" + raw_expr + ", fieldName: \"" + field.name + "\")";
+    }
+    if type_name == "f32" || type_name == "f64" {
+        return "try parsePackedFloating(" + raw_expr + ", fieldName: \"" + field.name + "\", as: " + swift_type + ".self)";
+    }
+    if type_name == "u8" || type_name == "u16" || type_name == "u32" || type_name == "u64" ||
+       type_name == "i8" || type_name == "i16" || type_name == "i32" || type_name == "i64" {
+        return "try parsePackedInteger(" + raw_expr + ", fieldName: \"" + field.name + "\", as: " + swift_type + ".self)";
+    }
+    if field.field_type.is_enum {
+        return "try parsePackedEnum(" + raw_expr + ", fieldName: \"" + field.name + "\", as: " + swift_type + ".self)";
+    }
+    return raw_expr;
+}
+
+fn render_pack_methods(s, fields) {
+    let out = "";
+    let class_name = swift::class_name_from_fqn(s.fqn);
+    let sep = swift::string_literal(s.pack_separator);
+
+    out += "\n";
+    out += "    func pack() -> String {\n";
+    out += "        [\n";
+    for field in fields {
+        out += "            " + pack_value_expr(field) + ",\n";
+    }
+    out += "        ].joined(separator: " + sep + ")\n";
+    out += "    }\n\n";
+
+    out += "    static func unpack(_ value: String) throws -> " + class_name + " {\n";
+    out += "        let parts = value.split(separator: Character(" + sep + "), omittingEmptySubsequences: false).map(String.init)\n";
+    out += "        guard parts.count == " + fields.len() + " else {\n";
+    out += "            throw PolygenPackError.invalidFieldCount(type: \"" + class_name + "\", expected: " + fields.len() + ", actual: parts.count)\n";
+    out += "        }\n";
+
+    let has_bool = false;
+    let has_float = false;
+    let has_int = false;
+    let has_enum = false;
+    for field in fields {
+        let tn = field.field_type.type_name;
+        if tn == "bool" { has_bool = true; }
+        if tn == "f32" || tn == "f64" { has_float = true; }
+        if tn == "u8" || tn == "u16" || tn == "u32" || tn == "u64" ||
+           tn == "i8" || tn == "i16" || tn == "i32" || tn == "i64" {
+            has_int = true;
+        }
+        if field.field_type.is_enum {
+            has_enum = true;
+        }
+    }
+
+    if has_bool {
+        out += "        func parsePackedBool(_ raw: String, fieldName: String) throws -> Bool {\n";
+        out += "            switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {\n";
+        out += "            case \"true\", \"1\", \"yes\": return true\n";
+        out += "            case \"false\", \"0\", \"no\": return false\n";
+        out += "            default: throw PolygenPackError.invalidValue(field: fieldName, value: raw)\n";
+        out += "            }\n";
+        out += "        }\n";
+    }
+    if has_int {
+        out += "        func parsePackedInteger<T: FixedWidthInteger>(_ raw: String, fieldName: String, as type: T.Type) throws -> T {\n";
+        out += "            guard let parsed = T(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {\n";
+        out += "                throw PolygenPackError.invalidValue(field: fieldName, value: raw)\n";
+        out += "            }\n";
+        out += "            return parsed\n";
+        out += "        }\n";
+    }
+    if has_float {
+        out += "        func parsePackedFloating<T: BinaryFloatingPoint & LosslessStringConvertible>(_ raw: String, fieldName: String, as type: T.Type) throws -> T {\n";
+        out += "            guard let parsed = T(raw.trimmingCharacters(in: .whitespacesAndNewlines)), parsed.isFinite else {\n";
+        out += "                throw PolygenPackError.invalidValue(field: fieldName, value: raw)\n";
+        out += "            }\n";
+        out += "            return parsed\n";
+        out += "        }\n";
+    }
+    if has_enum {
+        out += "        func parsePackedEnum<T: RawRepresentable>(_ raw: String, fieldName: String, as type: T.Type) throws -> T where T.RawValue == Int {\n";
+        out += "            guard let rawValue = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)), let parsed = T(rawValue: rawValue) else {\n";
+        out += "                throw PolygenPackError.invalidValue(field: fieldName, value: raw)\n";
+        out += "            }\n";
+        out += "            return parsed\n";
+        out += "        }\n";
+    }
+
+    out += "        return " + class_name + "(\n";
+    for i in 0..fields.len() {
+        let field = fields[i];
+        out += "            " + field.name + ": " + parse_value_expr(field, "parts[" + i + "]") + ",\n";
+    }
+    out += "        )\n";
+    out += "    }\n\n";
+    out += "    static func tryUnpack(_ value: String) -> " + class_name + "? {\n";
+    out += "        try? unpack(value)\n";
+    out += "    }\n";
     out
 }
 
@@ -79,15 +321,435 @@ fn render_namespace(ns) {
     out
 }
 
+fn collect_tables_from_namespace(ns) {
+    let tables = [];
+    for item in ns.items {
+        if item.is_struct {
+            let s = item.as_struct();
+            if !s.is_embed {
+                tables.push(s);
+            }
+        } else if item.is_namespace {
+            let child_tables = collect_tables_from_namespace(item.as_namespace());
+            for child in child_tables {
+                tables.push(child);
+            }
+        }
+    }
+    tables
+}
+
+fn loader_base_name(s) {
+    "load" + swift::class_name_from_fqn(s.fqn) + "s"
+}
+
+fn base_type(t) {
+    let base = t;
+    if base.is_option || base.is_list {
+        base = base.inner;
+    }
+    base
+}
+
+fn parse_scalar_expr(t, raw_expr, field_name) {
+    let field_literal = swift::string_literal(field_name);
+    if t.is_enum {
+        let enum_name = swift::class_name_for_type(t);
+        return "try polygenParseEnum(" + raw_expr + ", fieldName: " + field_literal + ", as: " + enum_name + ".self)";
+    }
+    if t.is_struct {
+        return "try polygenJsonDecoder().decode(" + swift::class_name_for_type(t) + ".self, from: Data((" + raw_expr + ").utf8))";
+    }
+
+    switch t.type_name {
+        "string" => raw_expr,
+        "bool" => "try polygenParseBool(" + raw_expr + ", fieldName: " + field_literal + ")",
+        "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => "try polygenParseInteger(" + raw_expr + ", fieldName: " + field_literal + ", as: " + swift::swift_type(t) + ".self)",
+        "f32" | "f64" => "try polygenParseFloating(" + raw_expr + ", fieldName: " + field_literal + ", as: " + swift::swift_type(t) + ".self)",
+        "bytes" => "try polygenParseData(" + raw_expr + ", fieldName: " + field_literal + ")",
+        "timestamp" => "try polygenParseDate(" + raw_expr + ", fieldName: " + field_literal + ")",
+        _ => raw_expr
+    }
+}
+
+fn parse_csv_expr(field) {
+    let field_literal = swift::string_literal(field.name);
+    let raw = "row[" + field_literal + "]";
+    let required = "try polygenRequired(" + raw + ", fieldName: " + field_literal + ")";
+    let t = field.field_type;
+    if t.is_option {
+        let base = base_type(t);
+        let value = "try polygenRequired(" + raw + ", fieldName: " + field_literal + ")";
+        return "polygenIsEmpty(" + raw + ") ? nil : " + parse_scalar_expr(base, value, field.name);
+    }
+    if t.is_list {
+        let base = base_type(t);
+        if base.is_struct {
+            return "polygenIsEmpty(" + raw + ") ? [] : try polygenJsonDecoder().decode([" + swift::class_name_for_type(base) + "].self, from: Data((" + required + ").utf8))";
+        }
+        return "try polygenParseList(" + raw + ", fieldName: " + field_literal + ") { item in " + parse_scalar_expr(base, "item", field.name) + " }";
+    }
+    parse_scalar_expr(t, required, field.name)
+}
+
+fn render_csv_constructor(s) {
+    let class_name = swift::class_name_from_fqn(s.fqn);
+    let fields = collect_fields(s);
+    let out = class_name + "(\n";
+    for field in fields {
+        out += "        " + field.name + ": " + parse_csv_expr(field) + ",\n";
+    }
+    out += "    )";
+    out
+}
+
+fn render_loader_functions(tables) {
+    let out = "";
+    for s in tables {
+        let class_name = swift::class_name_from_fqn(s.fqn);
+        let base = loader_base_name(s);
+        out += "\n";
+        out += "func " + base + "FromJson(_ path: String) throws -> [" + class_name + "] {\n";
+        out += "    let data = try Data(contentsOf: URL(fileURLWithPath: path))\n";
+        out += "    return try polygenJsonDecoder().decode([" + class_name + "].self, from: data)\n";
+        out += "}\n\n";
+        out += "func " + base + "FromCsv(_ path: String) throws -> [" + class_name + "] {\n";
+        out += "    try polygenReadCsvRows(path).map { row in\n";
+        out += "    try " + render_csv_constructor(s) + "\n";
+        out += "    }\n";
+        out += "}\n";
+    }
+    out
+}
+
+fn struct_has_pack(s) {
+    if s.is_embed && s.pack_separator != () {
+        return true;
+    }
+    for item in s.items {
+        if item.is_embedded_struct {
+            if struct_has_pack(item.as_embedded_struct()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn namespace_has_pack(ns) {
+    for item in ns.items {
+        if item.is_struct {
+            if struct_has_pack(item.as_struct()) {
+                return true;
+            }
+        } else if item.is_namespace {
+            if namespace_has_pack(item.as_namespace()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 let body = "";
+let has_pack = false;
+let tables = [];
 for ns in file.namespaces {
     body += render_namespace(ns);
+    let ns_tables = collect_tables_from_namespace(ns);
+    for table in ns_tables {
+        tables.push(table);
+    }
+    if namespace_has_pack(ns) {
+        has_pack = true;
+    }
 }
+let loaders = render_loader_functions(tables);
 %endlogic
 // Generated by PolyGen. DO NOT EDIT.
 // Source: {{file.path}}
 
 import Foundation
 
+enum PolygenLoadError: Error, Equatable {
+    case missingRequiredField(String)
+    case invalidValue(field: String, value: String)
+}
+
+enum PolygenBinaryError: Error, Equatable {
+    case unexpectedEnd
+    case invalidEnumDiscriminant(Int)
+    case invalidUtf8String
+    case lengthOverflow(UInt32)
+}
+
+struct PolygenBinaryReader {
+    private let data: Data
+    private var offset: Int = 0
+
+    init(_ data: Data) {
+        self.data = data
+    }
+
+    private mutating func readFixedData(count: Int) throws -> Data {
+        guard count >= 0, offset + count <= data.count else {
+            throw PolygenBinaryError.unexpectedEnd
+        }
+        let start = data.index(data.startIndex, offsetBy: offset)
+        let end = data.index(start, offsetBy: count)
+        offset += count
+        return data[start..<end]
+    }
+
+    private mutating func readInteger<T: FixedWidthInteger>(_ type: T.Type) throws -> T {
+        let chunk = try readFixedData(count: MemoryLayout<T>.size)
+        var value: UInt64 = 0
+        for (index, byte) in chunk.enumerated() {
+            value |= UInt64(byte) << UInt64(index * 8)
+        }
+        return T(truncatingIfNeeded: value)
+    }
+
+    mutating func readUInt8() throws -> UInt8 { try readInteger(UInt8.self) }
+    mutating func readInt8() throws -> Int8 { try readInteger(Int8.self) }
+    mutating func readUInt16() throws -> UInt16 { try readInteger(UInt16.self) }
+    mutating func readInt16() throws -> Int16 { try readInteger(Int16.self) }
+    mutating func readUInt32() throws -> UInt32 { try readInteger(UInt32.self) }
+    mutating func readInt32() throws -> Int32 { try readInteger(Int32.self) }
+    mutating func readUInt64() throws -> UInt64 { try readInteger(UInt64.self) }
+    mutating func readInt64() throws -> Int64 { try readInteger(Int64.self) }
+    mutating func readFloat() throws -> Float { Float(bitPattern: try readUInt32()) }
+    mutating func readDouble() throws -> Double { Double(bitPattern: try readUInt64()) }
+    mutating func readBool() throws -> Bool { try readUInt8() != 0 }
+
+    mutating func readData() throws -> Data {
+        let count = try readUInt32()
+        guard let size = Int(exactly: count) else {
+            throw PolygenBinaryError.lengthOverflow(count)
+        }
+        return try readFixedData(count: size)
+    }
+
+    mutating func readString() throws -> String {
+        let bytes = try readData()
+        guard let value = String(data: bytes, encoding: .utf8) else {
+            throw PolygenBinaryError.invalidUtf8String
+        }
+        return value
+    }
+
+    mutating func readDate() throws -> Date {
+        let ticks = try readInt64()
+        let unixTicks = ticks - 621_355_968_000_000_000
+        return Date(timeIntervalSince1970: Double(unixTicks) / 10_000_000.0)
+    }
+
+    mutating func readEnum<T>(_ type: T.Type) throws -> T where T: RawRepresentable, T.RawValue == Int {
+        let rawValue = Int(try readInt32())
+        guard let value = T(rawValue: rawValue) else {
+            throw PolygenBinaryError.invalidEnumDiscriminant(rawValue)
+        }
+        return value
+    }
+
+    mutating func readOptional<T>(_ reader: (inout PolygenBinaryReader) throws -> T) throws -> T? {
+        try readBool() ? try reader(&self) : nil
+    }
+
+    mutating func readList<T>(_ reader: (inout PolygenBinaryReader) throws -> T) throws -> [T] {
+        let count = try readUInt32()
+        guard let size = Int(exactly: count) else {
+            throw PolygenBinaryError.lengthOverflow(count)
+        }
+        var values: [T] = []
+        values.reserveCapacity(size)
+        for _ in 0..<size {
+            values.append(try reader(&self))
+        }
+        return values
+    }
+}
+
+struct PolygenBinaryWriter {
+    private(set) var data = Data()
+
+    private mutating func writeInteger<T: FixedWidthInteger>(_ value: T) {
+        var remaining = UInt64(truncatingIfNeeded: value)
+        for _ in 0..<MemoryLayout<T>.size {
+            data.append(UInt8(truncatingIfNeeded: remaining))
+            remaining >>= 8
+        }
+    }
+
+    mutating func writeUInt8(_ value: UInt8) { writeInteger(value) }
+    mutating func writeInt8(_ value: Int8) { writeInteger(value) }
+    mutating func writeUInt16(_ value: UInt16) { writeInteger(value) }
+    mutating func writeInt16(_ value: Int16) { writeInteger(value) }
+    mutating func writeUInt32(_ value: UInt32) { writeInteger(value) }
+    mutating func writeInt32(_ value: Int32) { writeInteger(value) }
+    mutating func writeUInt64(_ value: UInt64) { writeInteger(value) }
+    mutating func writeInt64(_ value: Int64) { writeInteger(value) }
+    mutating func writeFloat(_ value: Float) { writeUInt32(value.bitPattern) }
+    mutating func writeDouble(_ value: Double) { writeUInt64(value.bitPattern) }
+    mutating func writeBool(_ value: Bool) { writeUInt8(value ? 1 : 0) }
+
+    mutating func writeData(_ value: Data) {
+        precondition(value.count <= Int(UInt32.max), "PolyGen binary data length exceeds UInt32.max")
+        writeUInt32(UInt32(value.count))
+        data.append(value)
+    }
+
+    mutating func writeString(_ value: String) {
+        writeData(Data(value.utf8))
+    }
+
+    mutating func writeDate(_ value: Date) {
+        let ticks = Int64((value.timeIntervalSince1970 * 10_000_000.0).rounded()) + 621_355_968_000_000_000
+        writeInt64(ticks)
+    }
+
+    mutating func writeOptional<T>(_ value: T?, writer: (inout PolygenBinaryWriter, T) -> Void) {
+        writeBool(value != nil)
+        if let value {
+            writer(&self, value)
+        }
+    }
+
+    mutating func writeList<T>(_ value: [T], writer: (inout PolygenBinaryWriter, T) -> Void) {
+        precondition(value.count <= Int(UInt32.max), "PolyGen binary list length exceeds UInt32.max")
+        writeUInt32(UInt32(value.count))
+        for item in value {
+            writer(&self, item)
+        }
+    }
+}
+
+private func polygenJsonDecoder() -> JSONDecoder {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    return decoder
+}
+
+private func polygenIsEmpty(_ value: String?) -> Bool {
+    value == nil || value == ""
+}
+
+private func polygenRequired(_ value: String?, fieldName: String) throws -> String {
+    guard let value, !value.isEmpty else {
+        throw PolygenLoadError.missingRequiredField(fieldName)
+    }
+    return value
+}
+
+private func polygenReadCsvRows(_ path: String) throws -> [[String: String]] {
+    let content = try String(contentsOfFile: path, encoding: .utf8)
+    let lines = content.split(whereSeparator: \.isNewline).map(String.init)
+    guard let headerLine = lines.first else {
+        return []
+    }
+    let headers = polygenSplitCsvLine(headerLine)
+    return lines.dropFirst().filter { !$0.isEmpty }.map { line in
+        let values = polygenSplitCsvLine(line)
+        var row: [String: String] = [:]
+        for (index, header) in headers.enumerated() {
+            row[header] = index < values.count ? values[index] : ""
+        }
+        return row
+    }
+}
+
+private func polygenSplitCsvLine(_ line: String) -> [String] {
+    var values: [String] = []
+    var current = ""
+    var inQuotes = false
+    var index = line.startIndex
+    while index < line.endIndex {
+        let char = line[index]
+        if char == "\"" {
+            let next = line.index(after: index)
+            if inQuotes && next < line.endIndex && line[next] == "\"" {
+                current.append("\"")
+                index = next
+            } else {
+                inQuotes.toggle()
+            }
+        } else if char == "," && !inQuotes {
+            values.append(current)
+            current = ""
+        } else {
+            current.append(char)
+        }
+        index = line.index(after: index)
+    }
+    values.append(current)
+    return values
+}
+
+private func polygenParseList<T>(_ raw: String?, fieldName: String, parser: (String) throws -> T) throws -> [T] {
+    if polygenIsEmpty(raw) {
+        return []
+    }
+    return try polygenRequired(raw, fieldName: fieldName)
+        .split(separator: ",")
+        .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .map(parser)
+}
+
+private func polygenParseBool(_ raw: String, fieldName: String) throws -> Bool {
+    switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "true", "1", "yes": return true
+    case "false", "0", "no": return false
+    default: throw PolygenLoadError.invalidValue(field: fieldName, value: raw)
+    }
+}
+
+private func polygenParseInteger<T: FixedWidthInteger>(_ raw: String, fieldName: String, as type: T.Type) throws -> T {
+    guard let parsed = T(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        throw PolygenLoadError.invalidValue(field: fieldName, value: raw)
+    }
+    return parsed
+}
+
+private func polygenParseFloating<T: BinaryFloatingPoint & LosslessStringConvertible>(_ raw: String, fieldName: String, as type: T.Type) throws -> T {
+    guard let parsed = T(raw.trimmingCharacters(in: .whitespacesAndNewlines)), parsed.isFinite else {
+        throw PolygenLoadError.invalidValue(field: fieldName, value: raw)
+    }
+    return parsed
+}
+
+private func polygenParseData(_ raw: String, fieldName: String) throws -> Data {
+    guard let data = Data(base64Encoded: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        throw PolygenLoadError.invalidValue(field: fieldName, value: raw)
+    }
+    return data
+}
+
+private func polygenParseDate(_ raw: String, fieldName: String) throws -> Date {
+    guard let date = ISO8601DateFormatter().date(from: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        throw PolygenLoadError.invalidValue(field: fieldName, value: raw)
+    }
+    return date
+}
+
+private func polygenParseEnum<T: RawRepresentable & CaseIterable>(_ raw: String, fieldName: String, as type: T.Type) throws -> T where T.RawValue == Int {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let rawValue = Int(trimmed), let parsed = T(rawValue: rawValue) {
+        return parsed
+    }
+    if let parsed = T.allCases.first(where: { String(describing: $0) == trimmed }) {
+        return parsed
+    }
+    throw PolygenLoadError.invalidValue(field: fieldName, value: raw)
+}
+
+%if has_pack
+enum PolygenPackError: Error, Equatable {
+    case invalidFieldCount(type: String, expected: Int, actual: Int)
+    case invalidValue(field: String, value: String)
+}
+
+%endif
 
 {{body}}
+{{loaders}}

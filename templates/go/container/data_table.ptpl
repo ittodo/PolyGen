@@ -1,16 +1,48 @@
 %-- DataTable for a single struct/table
 %-- Context: struct (StructDef)
+%for idx in struct.indexes
+%if idx.is_composite
+%logic
+let key_type = go_index_key_type(struct, idx);
+%endlogic
+// {{key_type}} is the key for the {{idx.name}} composite index.
+type {{key_type}} struct {
+%for field in idx.fields
+%logic
+let field_type = go_lang_type(field.field_type);
+%endlogic
+	{{field.name | pascal_case}} {{field_type}}
+%endfor
+}
+%blank
+%endif
+%endfor
 // {{struct.name | suffix("Table")}} is a data table for {{struct.name}}.
 type {{struct.name | suffix("Table")}} struct {
 	rows []*{{struct.name}}
 %for idx in struct.indexes
 %logic
-let idx_type = go_lang_type(idx.field_type);
+let idx_type = go_index_key_type(struct, idx);
+let idx_member = go_index_member_name(idx);
 %endlogic
 %if idx.is_unique
-	{{idx.field_name | pascal_case | prefix("by")}} *UniqueIndex[{{idx_type}}, *{{struct.name}}]
+	{{idx_member}} *UniqueIndex[{{idx_type}}, *{{struct.name}}]
 %else
-	{{idx.field_name | pascal_case | prefix("by")}} *GroupIndex[{{idx_type}}, *{{struct.name}}]
+	{{idx_member}} *GroupIndex[{{idx_type}}, *{{struct.name}}]
+%endif
+%endfor
+%for item in struct.items
+%if item.is_field
+%logic
+let field = as_field(item);
+%endlogic
+%if go_search_supported(field)
+%logic
+let search_type = go_search_key_type(field);
+let search_var = go_search_var_name(field);
+%endlogic
+	{{search_var}} *GroupIndex[{{search_type}}, *{{struct.name}}]
+%endif
 %endif
 %endfor
 }

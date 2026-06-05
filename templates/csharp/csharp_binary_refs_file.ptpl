@@ -196,14 +196,24 @@ fn can_read_direct(t) {
     return false;
 }
 
-fn is_supported_index(idx) {
-    if idx.is_composite { return false; }
-    let t = idx.field_type;
+fn is_supported_index_type(t) {
     if t.is_option || t.is_list { return false; }
     if t.lang_type == "string" || t.lang_type == "timestamp" { return true; }
     if t.is_enum { return true; }
     if t.is_primitive && t.lang_type != "bytes" { return true; }
     return false;
+}
+
+fn is_supported_index(idx) {
+    if idx.fields.len() == 0 {
+        return false;
+    }
+    for i in 0..idx.fields.len() {
+        if !is_supported_index_type(idx.fields[i].field_type) {
+            return false;
+        }
+    }
+    return true;
 }
 
 fn key_type(t) {
@@ -213,6 +223,36 @@ fn key_type(t) {
     return cs_type(t.lang_type);
 }
 
+fn index_key_type(idx) {
+    if idx.fields.len() > 1 {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += key_type(idx.fields[i].field_type);
+        }
+        result += ")";
+        return result;
+    }
+    key_type(idx.fields[0].field_type)
+}
+
+fn index_key_expr(idx, row_expr) {
+    if idx.fields.len() > 1 {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += row_expr + "." + idx.fields[i].name;
+        }
+        result += ")";
+        return result;
+    }
+    row_expr + "." + idx.fields[0].name
+}
+
 fn write_key_stmt(t, key_expr, writer_expr) {
     if t.lang_type == "string" { return "BinaryRefFormat.WriteString(" + writer_expr + ", " + key_expr + ");"; }
     if t.lang_type == "timestamp" { return writer_expr + ".Write(" + key_expr + ".Ticks);"; }
@@ -220,11 +260,41 @@ fn write_key_stmt(t, key_expr, writer_expr) {
     return writer_expr + ".Write(" + key_expr + ");";
 }
 
+fn index_write_key_stmt(idx, key_expr, writer_expr) {
+    if idx.fields.len() > 1 {
+        let code = "";
+        for i in 0..idx.fields.len() {
+            let item = i + 1;
+            code += write_key_stmt(idx.fields[i].field_type, key_expr + ".Item" + item, writer_expr);
+            if i + 1 < idx.fields.len() {
+                code += " ";
+            }
+        }
+        return code;
+    }
+    write_key_stmt(idx.fields[0].field_type, key_expr, writer_expr)
+}
+
 fn read_key_expr(t, reader_expr) {
     if t.lang_type == "string" { return "BinaryRefFormat.ReadString(" + reader_expr + ")"; }
     if t.lang_type == "timestamp" { return "new DateTime(" + reader_expr + ".ReadInt64(), DateTimeKind.Utc)"; }
     if t.is_enum { return "BinaryUtils.ReadEnumInt32<" + full_enum_type(t) + ">(" + reader_expr + ")"; }
     return read_expr(t.lang_type, reader_expr);
+}
+
+fn index_read_key_expr(idx, reader_expr) {
+    if idx.fields.len() > 1 {
+        let result = "(";
+        for i in 0..idx.fields.len() {
+            if i > 0 {
+                result += ", ";
+            }
+            result += read_key_expr(idx.fields[i].field_type, reader_expr);
+        }
+        result += ")";
+        return result;
+    }
+    read_key_expr(idx.fields[0].field_type, reader_expr)
 }
 
 fn search_base_type(t) {
@@ -476,34 +546,8 @@ fn collect_inline_enums(s) {
     inline_enums
 }
 
-fn collect_tables_from_namespace(ns) {
-    let tables = [];
-    for item in ns.items {
-        if item.is_struct() {
-            let s = item.as_struct();
-            if !s.is_embed {
-                tables.push(s);
-            }
-        } else if item.is_namespace() {
-            let child_tables = collect_tables_from_namespace(item.as_namespace());
-            for child in child_tables {
-                tables.push(child);
-            }
-        }
-    }
-    tables
-}
-
-let all_tables = [];
-for ns in file.namespaces {
-    let ns_tables = collect_tables_from_namespace(ns);
-    for s in ns_tables {
-        all_tables.push(s);
-    }
-}
-
 let entries = [];
-for s in all_tables {
+for s in file.all_tables {
     let inline_enums = collect_inline_enums(s);
     let current_ns = namespace_from_fqn(s);
     let fields = [];
@@ -529,11 +573,11 @@ for s in all_tables {
                 def: idx,
                 var_name: to_camel(idx.name),
                 method_suffix: idx.name,
-                key_type: key_type(idx.field_type),
-                field_name: idx.field_name,
+                key_type: index_key_type(idx),
+                key_expr: index_key_expr(idx, "row.Row"),
                 is_unique_literal: if idx.is_unique { "true" } else { "false" },
-                write_key: write_key_stmt(idx.field_type, "kv.Key", "bw"),
-                read_key: read_key_expr(idx.field_type, "br")
+                write_key: index_write_key_stmt(idx, "kv.Key", "bw"),
+                read_key: index_read_key_expr(idx, "br")
             });
         }
     }
@@ -888,7 +932,7 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             {
                 var map = new Dictionary<{{idx.key_type}}, int>();
                 foreach (var row in rows)
-                    map[row.Row.{{idx.field_name}}] = row.Offset;
+                    map[{{idx.key_expr}}] = row.Offset;
                 bw.Write(map.Count);
                 foreach (var kv in map)
                 {
@@ -901,10 +945,11 @@ namespace {{binary_ref_namespace}}.BinaryRefs
                 var map = new Dictionary<{{idx.key_type}}, List<int>>();
                 foreach (var row in rows)
                 {
-                    if (!map.TryGetValue(row.Row.{{idx.field_name}}, out var offsets))
+                    var key = {{idx.key_expr}};
+                    if (!map.TryGetValue(key, out var offsets))
                     {
                         offsets = new List<int>();
-                        map[row.Row.{{idx.field_name}}] = offsets;
+                        map[key] = offsets;
                     }
                     offsets.Add(row.Offset);
                 }

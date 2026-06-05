@@ -3,6 +3,7 @@
 package polygen
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
@@ -392,10 +393,19 @@ type CsvRow struct {
 	values  []string
 }
 
+// Get returns the raw column value and whether the column exists in this row.
+func (r *CsvRow) Get(column string) (string, bool) {
+	idx, ok := r.headers[column]
+	if !ok || idx >= len(r.values) {
+		return "", false
+	}
+	return r.values[idx], true
+}
+
 // GetString gets a string value by column name.
 func (r *CsvRow) GetString(column string) string {
-	if idx, ok := r.headers[column]; ok && idx < len(r.values) {
-		return r.values[idx]
+	if val, ok := r.Get(column); ok {
+		return val
 	}
 	return ""
 }
@@ -767,6 +777,363 @@ func (w *BinaryWriter) WriteBytes(val []byte) error {
 	}
 	_, err := w.writer.Write(val)
 	return err
+}
+
+// WriteRaw writes raw bytes without a length prefix.
+func (w *BinaryWriter) WriteRaw(val []byte) error {
+	_, err := w.writer.Write(val)
+	return err
+}
+
+// ============ BinaryRef v2 ============
+
+var binaryRefMagic = []byte{0x50, 0x47, 0x42, 0x52, 0x45, 0x46, 0x31, 0x00}
+
+const binaryRefVersion int32 = 2
+
+// BinaryDocumentOwner owns the bytes shared by lazy BinaryRef rows.
+type BinaryDocumentOwner struct {
+	Bytes []byte
+}
+
+// NewBinaryDocumentOwner creates a binary document owner.
+func NewBinaryDocumentOwner(input []byte) *BinaryDocumentOwner {
+	return &BinaryDocumentOwner{Bytes: input}
+}
+
+// BinaryRefCursor reads a BinaryRef document from a byte slice.
+type BinaryRefCursor struct {
+	bytes  []byte
+	offset int
+}
+
+// NewBinaryRefCursor creates a cursor at offset zero.
+func NewBinaryRefCursor(input []byte) *BinaryRefCursor {
+	return &BinaryRefCursor{bytes: input}
+}
+
+// Position returns the current cursor offset.
+func (r *BinaryRefCursor) Position() int { return r.offset }
+
+// Skip advances the cursor by length bytes.
+func (r *BinaryRefCursor) Skip(length int) error {
+	if err := BinaryRefCheckRange(r.bytes, r.offset, length); err != nil {
+		return err
+	}
+	r.offset += length
+	return nil
+}
+
+func (r *BinaryRefCursor) read(length int) ([]byte, error) {
+	if err := BinaryRefCheckRange(r.bytes, r.offset, length); err != nil {
+		return nil, err
+	}
+	out := r.bytes[r.offset : r.offset+length]
+	r.offset += length
+	return out, nil
+}
+
+func (r *BinaryRefCursor) ReadUint8() (uint8, error) {
+	b, err := r.read(1)
+	if err != nil {
+		return 0, err
+	}
+	return b[0], nil
+}
+
+func (r *BinaryRefCursor) ReadInt8() (int8, error) {
+	v, err := r.ReadUint8()
+	return int8(v), err
+}
+
+func (r *BinaryRefCursor) ReadUint16() (uint16, error) {
+	b, err := r.read(2)
+	if err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint16(b), nil
+}
+
+func (r *BinaryRefCursor) ReadInt16() (int16, error) {
+	v, err := r.ReadUint16()
+	return int16(v), err
+}
+
+func (r *BinaryRefCursor) ReadUint32() (uint32, error) {
+	b, err := r.read(4)
+	if err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint32(b), nil
+}
+
+func (r *BinaryRefCursor) ReadInt32() (int32, error) {
+	v, err := r.ReadUint32()
+	return int32(v), err
+}
+
+func (r *BinaryRefCursor) ReadUint64() (uint64, error) {
+	b, err := r.read(8)
+	if err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint64(b), nil
+}
+
+func (r *BinaryRefCursor) ReadInt64() (int64, error) {
+	v, err := r.ReadUint64()
+	return int64(v), err
+}
+
+func (r *BinaryRefCursor) ReadFloat32() (float32, error) {
+	v, err := r.ReadUint32()
+	return math.Float32frombits(v), err
+}
+
+func (r *BinaryRefCursor) ReadFloat64() (float64, error) {
+	v, err := r.ReadUint64()
+	return math.Float64frombits(v), err
+}
+
+func (r *BinaryRefCursor) ReadBool() (bool, error) {
+	v, err := r.ReadUint8()
+	return v != 0, err
+}
+
+func (r *BinaryRefCursor) ReadBytes() ([]byte, error) {
+	length, err := r.ReadInt32()
+	if err != nil {
+		return nil, err
+	}
+	if length < 0 {
+		return nil, fmt.Errorf("negative binary payload length")
+	}
+	return r.read(int(length))
+}
+
+func (r *BinaryRefCursor) ReadString() (string, error) {
+	b, err := r.ReadBytes()
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// BinaryRefWriteHeader writes the BinaryRef v2 document header.
+func BinaryRefWriteHeader(writer *BinaryWriter) error {
+	if err := writer.WriteRaw(binaryRefMagic); err != nil {
+		return err
+	}
+	return writer.WriteInt32(binaryRefVersion)
+}
+
+// BinaryRefReadHeader validates the BinaryRef v2 document header.
+func BinaryRefReadHeader(reader *BinaryRefCursor) error {
+	magic, err := reader.read(len(binaryRefMagic))
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(magic, binaryRefMagic) {
+		return fmt.Errorf("invalid PolyGen binary ref header")
+	}
+	version, err := reader.ReadInt32()
+	if err != nil {
+		return err
+	}
+	if version != binaryRefVersion {
+		return fmt.Errorf("unsupported PolyGen binary ref version: %d", version)
+	}
+	return nil
+}
+
+// BinaryRefCheckRange validates that [offset, offset+length) is inside buffer.
+func BinaryRefCheckRange(buffer []byte, offset int, length int) error {
+	if offset < 0 || length < 0 || offset > len(buffer) || length > len(buffer)-offset {
+		return fmt.Errorf("binary ref offset is outside the document")
+	}
+	return nil
+}
+
+// BinaryRefGetFieldOffset returns the absolute offset of a field or -1 if absent.
+func BinaryRefGetFieldOffset(buffer []byte, rowOffset int, fieldIndex int) (int, error) {
+	if err := BinaryRefCheckRange(buffer, rowOffset, 4); err != nil {
+		return -1, err
+	}
+	fieldCount := int(int32(binary.LittleEndian.Uint32(buffer[rowOffset : rowOffset+4])))
+	if fieldCount < 0 {
+		return -1, fmt.Errorf("negative binary field count")
+	}
+	if fieldIndex < 0 || fieldIndex >= fieldCount {
+		return -1, nil
+	}
+	tableOffset := rowOffset + 4
+	if err := BinaryRefCheckRange(buffer, tableOffset, fieldCount*4); err != nil {
+		return -1, err
+	}
+	relative := int(int32(binary.LittleEndian.Uint32(buffer[tableOffset+fieldIndex*4 : tableOffset+fieldIndex*4+4])))
+	if relative < 0 {
+		return -1, nil
+	}
+	absolute := rowOffset + relative
+	if err := BinaryRefCheckRange(buffer, absolute, 0); err != nil {
+		return -1, err
+	}
+	return absolute, nil
+}
+
+// BinaryRefRequireFieldOffset returns a field offset or an error if it is absent.
+func BinaryRefRequireFieldOffset(buffer []byte, rowOffset int, fieldIndex int) (int, error) {
+	offset, err := BinaryRefGetFieldOffset(buffer, rowOffset, fieldIndex)
+	if err != nil {
+		return -1, err
+	}
+	if offset < 0 {
+		return -1, fmt.Errorf("missing required binary field at index %d", fieldIndex)
+	}
+	return offset, nil
+}
+
+func BinaryRefReadBytesAt(buffer []byte, offset int) ([]byte, error) {
+	if err := BinaryRefCheckRange(buffer, offset, 4); err != nil {
+		return nil, err
+	}
+	length := int(int32(binary.LittleEndian.Uint32(buffer[offset : offset+4])))
+	if length < 0 {
+		return nil, fmt.Errorf("negative binary payload length")
+	}
+	payloadOffset := offset + 4
+	if err := BinaryRefCheckRange(buffer, payloadOffset, length); err != nil {
+		return nil, err
+	}
+	return buffer[payloadOffset : payloadOffset+length], nil
+}
+
+func BinaryRefReadStringAt(buffer []byte, offset int) (string, error) {
+	b, err := BinaryRefReadBytesAt(buffer, offset)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func BinaryRefReadBoolAt(buffer []byte, offset int) (bool, error) {
+	v, err := BinaryRefReadUint8At(buffer, offset)
+	return v != 0, err
+}
+
+func BinaryRefReadUint8At(buffer []byte, offset int) (uint8, error) {
+	if err := BinaryRefCheckRange(buffer, offset, 1); err != nil {
+		return 0, err
+	}
+	return buffer[offset], nil
+}
+
+func BinaryRefReadInt8At(buffer []byte, offset int) (int8, error) {
+	v, err := BinaryRefReadUint8At(buffer, offset)
+	return int8(v), err
+}
+
+func BinaryRefReadUint16At(buffer []byte, offset int) (uint16, error) {
+	if err := BinaryRefCheckRange(buffer, offset, 2); err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint16(buffer[offset : offset+2]), nil
+}
+
+func BinaryRefReadInt16At(buffer []byte, offset int) (int16, error) {
+	v, err := BinaryRefReadUint16At(buffer, offset)
+	return int16(v), err
+}
+
+func BinaryRefReadUint32At(buffer []byte, offset int) (uint32, error) {
+	if err := BinaryRefCheckRange(buffer, offset, 4); err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint32(buffer[offset : offset+4]), nil
+}
+
+func BinaryRefReadInt32At(buffer []byte, offset int) (int32, error) {
+	v, err := BinaryRefReadUint32At(buffer, offset)
+	return int32(v), err
+}
+
+func BinaryRefReadUint64At(buffer []byte, offset int) (uint64, error) {
+	if err := BinaryRefCheckRange(buffer, offset, 8); err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint64(buffer[offset : offset+8]), nil
+}
+
+func BinaryRefReadInt64At(buffer []byte, offset int) (int64, error) {
+	v, err := BinaryRefReadUint64At(buffer, offset)
+	return int64(v), err
+}
+
+func BinaryRefReadFloat32At(buffer []byte, offset int) (float32, error) {
+	v, err := BinaryRefReadUint32At(buffer, offset)
+	return math.Float32frombits(v), err
+}
+
+func BinaryRefReadFloat64At(buffer []byte, offset int) (float64, error) {
+	v, err := BinaryRefReadUint64At(buffer, offset)
+	return math.Float64frombits(v), err
+}
+
+// BinaryRefRowBuilder builds a lazy row frame with field offsets.
+type BinaryRefRowBuilder struct {
+	fields [][]byte
+}
+
+// NewBinaryRefRowBuilder creates a row builder for fieldCount fields.
+func NewBinaryRefRowBuilder(fieldCount int) (*BinaryRefRowBuilder, error) {
+	if fieldCount < 0 {
+		return nil, fmt.Errorf("negative binary field count")
+	}
+	return &BinaryRefRowBuilder{fields: make([][]byte, fieldCount)}, nil
+}
+
+// SetField writes a field payload into the row builder.
+func (b *BinaryRefRowBuilder) SetField(index int, write func(*BinaryWriter) error) error {
+	if index < 0 || index >= len(b.fields) {
+		return fmt.Errorf("binary field index is outside the row")
+	}
+	var buf bytes.Buffer
+	writer := NewBinaryWriter(&buf)
+	if err := write(writer); err != nil {
+		return err
+	}
+	b.fields[index] = buf.Bytes()
+	return nil
+}
+
+// Bytes serializes the row frame.
+func (b *BinaryRefRowBuilder) Bytes() ([]byte, error) {
+	var buf bytes.Buffer
+	writer := NewBinaryWriter(&buf)
+	if err := writer.WriteInt32(int32(len(b.fields))); err != nil {
+		return nil, err
+	}
+	cursor := 4 + len(b.fields)*4
+	for _, field := range b.fields {
+		if field == nil {
+			if err := writer.WriteInt32(-1); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := writer.WriteInt32(int32(cursor)); err != nil {
+				return nil, err
+			}
+			cursor += len(field)
+		}
+	}
+	for _, field := range b.fields {
+		if field != nil {
+			if err := writer.WriteRaw(field); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return buf.Bytes(), nil
 }
 
 // ============ Index Types ============

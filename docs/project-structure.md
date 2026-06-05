@@ -94,7 +94,7 @@ static/
 
 ```
 tests/
-├── integration/          # 통합 테스트 스키마 (10개 케이스)
+├── integration/          # 통합 테스트 스키마 (11개 케이스)
 │   ├── 01_basic_types/
 │   ├── 02_imports/
 │   ├── 03_nested_namespaces/
@@ -104,12 +104,15 @@ tests/
 │   ├── 07_indexes/
 │   ├── 08_complex_schema/
 │   ├── 09_sqlite/
-│   └── 10_pack_embed/
+│   ├── 10_pack_embed/
+│   └── 11_relations_indexes/
 ├── runners/              # 언어별/DB/descriptor 통합 테스트 러너
-│   ├── run_all.bat       # Windows 전체/부분 runner 실행
-│   ├── run_all.sh        # POSIX 전체/부분 runner 실행
-│   ├── verify_runner_matrix.py      # Windows/POSIX runner 목록 동기화 검증
-│   ├── test_verify_runner_matrix.py # runner matrix 검증 회귀 테스트
+│   ├── run_all.bat       # Windows 전체/부분/optional toolchain runner 실행
+│   ├── run_all.sh        # POSIX 전체/부분/optional toolchain runner 실행
+│   ├── verify_runner_matrix.py       # Windows/POSIX runner 목록과 optional gate wiring 검증
+│   ├── test_verify_runner_matrix.py  # runner matrix 검증 회귀 테스트
+│   ├── check_optional_toolchains.py  # Kotlin/Swift/Unreal optional toolchain readiness 진단
+│   ├── run_optional_toolchains.py    # 준비된 optional toolchain runner만 실행
 │   ├── csharp/           # C# 테스트 러너 + 테스트 코드
 │   ├── rust/             # Rust 테스트 러너
 │   ├── typescript/       # TypeScript 테스트 러너

@@ -4,7 +4,7 @@ expression: all_asts
 ---
 [
     AstRoot {
-        path: "tests/schemas\\migration_baseline.poly",
+        path: "tests/schemas/migration_baseline.poly",
         file_imports: [],
         definitions: [
             Namespace(

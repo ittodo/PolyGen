@@ -4,6 +4,12 @@ use polygen::{build_ir_from_asts, parse_and_merge_schemas};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+fn normalize_snapshot_paths(asts: &mut [polygen::AstRoot]) {
+    for ast in asts {
+        ast.path = PathBuf::from(ast.path.to_string_lossy().replace('\\', "/"));
+    }
+}
+
 #[test]
 fn test_ast_snapshots() -> Result<()> {
     for entry in WalkDir::new("tests/schemas")
@@ -15,7 +21,8 @@ fn test_ast_snapshots() -> Result<()> {
         let schema_name = schema_path.file_stem().unwrap().to_str().unwrap();
 
         // Test AST generation
-        let all_asts = parse_and_merge_schemas(schema_path, None)?; // Pass None for output_dir in tests
+        let mut all_asts = parse_and_merge_schemas(schema_path, None)?; // Pass None for output_dir in tests
+        normalize_snapshot_paths(&mut all_asts);
         assert_debug_snapshot!(format!("{}_ast", schema_name), all_asts);
 
         // Test IR generation
@@ -178,7 +185,13 @@ namespace demo.catalog {
 
     let kotlin =
         std::fs::read_to_string(temp_dir.path().join("kotlin/kotlin/multi_target_smoke.kt"))?;
-    assert!(kotlin.contains("@Serializable\nenum class DemoCatalogItemKind(val value: Int)"));
+    assert!(kotlin.contains(
+        "@Serializable(with = DemoCatalogItemKindSerializer::class)\nenum class DemoCatalogItemKind(val value: Int)"
+    ));
+    assert!(
+        kotlin.contains("object DemoCatalogItemKindSerializer : KSerializer<DemoCatalogItemKind>")
+    );
+    assert!(kotlin.contains("fun fromNameOrValue(raw: String): DemoCatalogItemKind"));
     assert!(kotlin.contains("data class DemoCatalogStats("));
     assert!(kotlin.contains("val tags: List<String> = emptyList()"));
     assert!(kotlin.contains("data class DemoCatalogItem("));
@@ -187,8 +200,12 @@ namespace demo.catalog {
     let swift =
         std::fs::read_to_string(temp_dir.path().join("swift/swift/multi_target_smoke.swift"))?;
     assert!(swift.contains("enum DemoCatalogItemKind: Int, Codable, CaseIterable, Hashable"));
+    assert!(swift.contains("init(from decoder: Decoder) throws"));
+    assert!(swift.contains(
+        "if let rawValue = try? container.decode(Int.self), let value = DemoCatalogItemKind(rawValue: rawValue)"
+    ));
     assert!(swift.contains("struct DemoCatalogStats: Codable, Hashable"));
-    assert!(swift.contains("let tags: [String] = []"));
+    assert!(swift.contains("var tags: [String] = []"));
     assert!(swift.contains("struct DemoCatalogItem: Codable, Hashable"));
 
     let swiftdata = std::fs::read_to_string(
@@ -532,6 +549,10 @@ namespace test.binary {
     assert!(schema.contains("0 => Ok(Self::Unknown),"));
     assert!(schema.contains("1 => Ok(Self::Active),"));
     assert!(schema.contains("other => Err(other),"));
+    assert!(schema.contains("impl std::str::FromStr for BinaryState"));
+    assert!(schema.contains("\"Unknown\" => Ok(Self::Unknown),"));
+    assert!(schema.contains("\"Active\" => Ok(Self::Active),"));
+    assert!(schema.contains("trimmed.parse::<i32>()"));
 
     let loaders = find_generated_file_containing_ext(
         &temp_dir.path().join("out"),
@@ -540,8 +561,16 @@ namespace test.binary {
     )?;
     assert!(!loaders.contains("transmute"));
     assert!(!loaders.contains("optional_state: row.get_i32(\"optional_state\").map"));
-    assert!(loaders
-        .contains("optional_state: row.get_optional(\"optional_state\").map(|s| s.parse::<i32>()"));
+    assert!(!loaders.contains("state: row.get_i32(\"state\")"));
+    assert!(loaders.contains(
+        "state: row.get(\"state\").ok_or_else(|| LoadError::Parse(\"state\".into())).and_then(|s| s.parse::<crate::rust_enum::test_binary::BinaryState>()"
+    ));
+    assert!(loaders.contains(
+        "optional_state: row.get_optional(\"optional_state\").map(|s| s.parse::<crate::rust_enum::test_binary::BinaryState>()"
+    ));
+    assert!(loaders.contains(
+        "state_history: row.get(\"state_history\").map(|s| s.split(',').filter(|v| !v.trim().is_empty()).map(|v| v.trim().parse::<crate::rust_enum::test_binary::BinaryState>()"
+    ));
     assert!(loaders.contains("crate::rust_enum::test_binary::BinaryState::try_from(v).map_err"));
     assert!(loaders.contains(
         "reader.read_i32().and_then(|v| crate::rust_enum::test_binary::BinaryState::try_from(v).map_err"

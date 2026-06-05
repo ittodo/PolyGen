@@ -220,6 +220,65 @@ void test_social_system() {
     std::cout << "    PASS" << std::endl;
 }
 
+game::character::Player make_validation_player(uint32_t id, const std::string& name, uint16_t level) {
+    game::character::Player player;
+    player.id = id;
+    player.name = name;
+    player.level = level;
+    player.experience = 0;
+    player.stats.hp = 100;
+    player.stats.max_hp = 100;
+    player.stats.mp = 50;
+    player.stats.max_mp = 50;
+    player.stats.strength = 10;
+    player.stats.agility = 8;
+    player.stats.intelligence = 5;
+    player.stats.vitality = 12;
+    player.position.x = 0.0f;
+    player.position.y = 0.0f;
+    player.position.z = 0.0f;
+    player.status = game::character::Player::Status::Online;
+    player.guild_id = std::nullopt;
+    return player;
+}
+
+bool has_validation_error(
+    const polygen::ValidationResult& result,
+    const std::string& constraint_type,
+    const std::string& field_name) {
+    for (const auto& error : result.errors()) {
+        if (error.constraint_type == constraint_type && error.field_name == field_name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void test_container_validation_constraints() {
+    std::cout << "  Testing container field validation..." << std::endl;
+
+    schema_container::SchemaContainer invalid_fields;
+    invalid_fields.players.add_row(make_validation_player(
+        1,
+        "A name that is definitely longer than thirty two chars",
+        101));
+
+    auto invalid_result = invalid_fields.validate_all();
+    assert(!invalid_result.is_valid());
+    assert(invalid_result.error_count() == 2);
+    assert(has_validation_error(invalid_result, "MaxLength", "name"));
+    assert(has_validation_error(invalid_result, "Range", "level"));
+
+    schema_container::SchemaContainer invalid_regex;
+    invalid_regex.players.add_row(make_validation_player(2, "Invalid!", 10));
+
+    auto regex_result = invalid_regex.validate_all();
+    assert(!regex_result.is_valid());
+    assert(has_validation_error(regex_result, "Regex", "name"));
+
+    std::cout << "    PASS" << std::endl;
+}
+
 void test_container_integration() {
     std::cout << "  Testing container integration..." << std::endl;
 
@@ -330,6 +389,7 @@ int main() {
     test_item_types();
     test_inventory_system();
     test_social_system();
+    test_container_validation_constraints();
     test_container_integration();
     test_binary_complex();
 

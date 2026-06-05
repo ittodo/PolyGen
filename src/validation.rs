@@ -391,23 +391,19 @@ fn validate_timestamp_constraints(
 
     for constraint in &rf.constraints {
         match constraint {
-            Constraint::AutoCreate(_) => {
-                if !is_timestamp {
-                    return Err(ValidationError::InvalidConstraint {
-                        field: field_name,
-                        constraint: "auto_create".to_string(),
-                        message: "auto_create can only be used with timestamp type".to_string(),
-                    });
-                }
+            Constraint::AutoCreate(_) if !is_timestamp => {
+                return Err(ValidationError::InvalidConstraint {
+                    field: field_name,
+                    constraint: "auto_create".to_string(),
+                    message: "auto_create can only be used with timestamp type".to_string(),
+                });
             }
-            Constraint::AutoUpdate(_) => {
-                if !is_timestamp {
-                    return Err(ValidationError::InvalidConstraint {
-                        field: field_name,
-                        constraint: "auto_update".to_string(),
-                        message: "auto_update can only be used with timestamp type".to_string(),
-                    });
-                }
+            Constraint::AutoUpdate(_) if !is_timestamp => {
+                return Err(ValidationError::InvalidConstraint {
+                    field: field_name,
+                    constraint: "auto_update".to_string(),
+                    message: "auto_update can only be used with timestamp type".to_string(),
+                });
             }
             _ => {}
         }
@@ -2117,12 +2113,33 @@ fn validate_search_annotations_for_kind(
             }
             if !matches!(
                 target_value,
-                "csharp" | "csharp_binary_ref" | "csharp_container"
+                "csharp"
+                    | "csharp_binary_ref"
+                    | "csharp_container"
+                    | "rust"
+                    | "rust_container"
+                    | "cpp"
+                    | "cpp_container"
+                    | "cpp_binary_ref"
+                    | "typescript"
+                    | "typescript_container"
+                    | "typescript_binary_ref"
+                    | "go"
+                    | "go_container"
+                    | "go_binary_ref"
+                    | "python"
+                    | "python_container"
+                    | "kotlin"
+                    | "kotlin_container"
+                    | "swift"
+                    | "swift_container"
+                    | "unreal"
+                    | "unreal_registry"
             ) {
                 return invalid_search(
                     target,
                     "target",
-                    "unsupported search target; expected csharp, csharp_binary_ref, or csharp_container",
+                    "unsupported search target; expected csharp, csharp_binary_ref, csharp_container, rust, rust_container, cpp, cpp_container, cpp_binary_ref, typescript, typescript_container, typescript_binary_ref, go, go_container, go_binary_ref, python, python_container, kotlin, kotlin_container, swift, swift_container, unreal, or unreal_registry",
                 );
             }
         }

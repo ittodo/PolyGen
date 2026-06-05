@@ -154,7 +154,7 @@ fn array_to_files(arr: &Array) -> Vec<FileDef> {
 
 fn find_embedded_struct<'a>(s: &'a StructDef, name: &str) -> Option<&'a StructDef> {
     s.items.iter().find_map(|it| match it {
-        StructItem::EmbeddedStruct(es) if es.name == name => Some(es),
+        StructItem::EmbeddedStruct(es) if es.name == name => Some(es.as_ref()),
         _ => None,
     })
 }

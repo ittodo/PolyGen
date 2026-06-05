@@ -220,7 +220,7 @@ impl ContextValue {
                         .items
                         .iter()
                         .filter_map(|item| match item {
-                            NamespaceItem::Struct(s) => Some(ContextValue::Struct(s.clone())),
+                            NamespaceItem::Struct(s) => Some(ContextValue::Struct((**s).clone())),
                             _ => None,
                         })
                         .collect();
@@ -238,7 +238,7 @@ impl ContextValue {
                 "is_comment" => ContextValue::Bool(matches!(item, NamespaceItem::Comment(_))),
                 "is_namespace" => ContextValue::Bool(matches!(item, NamespaceItem::Namespace(_))),
                 "as_struct" => match item {
-                    NamespaceItem::Struct(s) => ContextValue::Struct(s.clone()),
+                    NamespaceItem::Struct(s) => ContextValue::Struct((**s).clone()),
                     _ => ContextValue::Null,
                 },
                 "as_enum" => match item {
@@ -453,7 +453,7 @@ impl ContextValue {
                     _ => ContextValue::Null,
                 },
                 "as_embedded_struct" => match item {
-                    StructItem::EmbeddedStruct(s) => ContextValue::Struct(s.clone()),
+                    StructItem::EmbeddedStruct(s) => ContextValue::Struct((**s).clone()),
                     _ => ContextValue::Null,
                 },
                 "as_inline_enum" => match item {
@@ -851,11 +851,11 @@ fn collect_tables_from_namespaces(namespaces: &[NamespaceDef], out: &mut Vec<Con
             match item {
                 NamespaceItem::Struct(s) => {
                     if !s.name.ends_with("__Enum") {
-                        out.push(ContextValue::Struct(s.clone()));
+                        out.push(ContextValue::Struct((**s).clone()));
                     }
                 }
                 NamespaceItem::Namespace(child_ns) => {
-                    collect_tables_from_namespaces(&[*child_ns.clone()], out);
+                    collect_tables_from_namespaces(std::slice::from_ref(child_ns.as_ref()), out);
                 }
                 _ => {}
             }
