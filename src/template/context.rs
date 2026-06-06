@@ -44,6 +44,10 @@ pub enum ContextValue {
     Index(IndexDef),
     /// An index field definition (part of a composite index).
     IndexField(IndexFieldDef),
+    /// A row ref definition.
+    Ref(RefDef),
+    /// A field mapping inside a row ref definition.
+    RefField(RefFieldDef),
     /// A relation definition.
     Relation(RelationDef),
     /// A foreign key definition.
@@ -297,6 +301,12 @@ impl ContextValue {
                     s.indexes
                         .iter()
                         .map(|idx| ContextValue::Index(idx.clone()))
+                        .collect(),
+                ),
+                "refs" => ContextValue::List(
+                    s.refs
+                        .iter()
+                        .map(|row_ref| ContextValue::Ref(row_ref.clone()))
                         .collect(),
                 ),
                 "relations" => ContextValue::List(
@@ -691,6 +701,11 @@ impl ContextValue {
             },
             ContextValue::Index(idx) => match name {
                 "name" => ContextValue::String(idx.name.clone()),
+                "schema_name" => match &idx.schema_name {
+                    Some(name) => ContextValue::String(name.clone()),
+                    None => ContextValue::Null,
+                },
+                "has_schema_name" => ContextValue::Bool(idx.schema_name.is_some()),
                 "is_unique" => ContextValue::Bool(idx.is_unique),
                 "is_composite" => ContextValue::Bool(idx.is_composite()),
                 "field_count" => ContextValue::Int(idx.field_count() as i64),
@@ -711,6 +726,38 @@ impl ContextValue {
             ContextValue::IndexField(ifd) => match name {
                 "name" => ContextValue::String(ifd.name.clone()),
                 "field_type" => ContextValue::TypeRef(ifd.field_type.clone()),
+                _ => ContextValue::Null,
+            },
+            ContextValue::Ref(row_ref) => match name {
+                "name" => ContextValue::String(row_ref.name.clone()),
+                "source_table_fqn" => ContextValue::String(row_ref.source_table_fqn.clone()),
+                "target_table_fqn" => ContextValue::String(row_ref.target_table_fqn.clone()),
+                "target_table_name" => ContextValue::String(row_ref.target_table_name.clone()),
+                "target_kind" => ContextValue::String(row_ref.target_kind.clone()),
+                "target_name" => ContextValue::String(row_ref.target_name.clone()),
+                "target_method_suffix" => {
+                    ContextValue::String(row_ref.target_method_suffix.clone())
+                }
+                "local_key_expr" => ContextValue::String(row_ref.local_key_expr.clone()),
+                "fields" => ContextValue::List(
+                    row_ref
+                        .fields
+                        .iter()
+                        .map(|field| ContextValue::RefField(field.clone()))
+                        .collect(),
+                ),
+                "is_unique" => ContextValue::Bool(row_ref.is_unique),
+                "reverse" => match &row_ref.reverse {
+                    Some(reverse) => ContextValue::String(reverse.clone()),
+                    None => ContextValue::Null,
+                },
+                "has_reverse" => ContextValue::Bool(row_ref.reverse.is_some()),
+                _ => ContextValue::Null,
+            },
+            ContextValue::RefField(field) => match name {
+                "local_field" => ContextValue::String(field.local_field.clone()),
+                "target_field" => ContextValue::String(field.target_field.clone()),
+                "field_type" => ContextValue::TypeRef(field.field_type.clone()),
                 _ => ContextValue::Null,
             },
             ContextValue::Relation(rel) => match name {
@@ -912,6 +959,7 @@ mod tests {
                 search_index: None,
             }))],
             indexes: vec![],
+            refs: vec![],
             relations: vec![],
         }
     }

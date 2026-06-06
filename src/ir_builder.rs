@@ -8,6 +8,7 @@ use heck::ToPascalCase;
 mod constraints;
 mod indexes;
 mod metadata;
+mod refs;
 mod relations;
 mod renames;
 mod type_names;
@@ -19,6 +20,7 @@ use metadata::{
     convert_annotation_to_ir, extract_cache_strategy, extract_datasource, extract_pack_separator,
     extract_search_index, extract_soft_delete_field, is_readonly,
 };
+use refs::{build_refs_from_annotations, resolve_refs};
 use relations::resolve_relations;
 use renames::convert_rename;
 use type_names::{
@@ -91,6 +93,9 @@ pub fn build_ir(asts: &[ast_model::AstRoot]) -> ir_model::SchemaContext {
 
     // Resolve reverse relations from foreign_key ... as definitions
     resolve_relations(&mut context);
+
+    // Resolve table-level @ref targets against named @index/@search metadata.
+    resolve_refs(&mut context);
 
     context
 }
@@ -259,6 +264,8 @@ fn convert_table_to_struct(
     let annotation_indexes = build_indexes_from_annotations(&header_items, &items);
     indexes.extend(annotation_indexes);
 
+    let refs = build_refs_from_annotations(&header_items, &items, current_ns, &fqn);
+
     StructDef {
         name,
         fqn,
@@ -272,6 +279,7 @@ fn convert_table_to_struct(
         items,
         header: header_items,
         indexes,
+        refs,
         relations: Vec::new(), // Relations are populated in post-processing
     }
 }

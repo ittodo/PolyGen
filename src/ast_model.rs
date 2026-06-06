@@ -360,6 +360,10 @@ pub enum Literal {
     Boolean(bool),
     /// An identifier (used for enum values in annotations).
     Identifier(String),
+    /// A dotted path used by annotations such as `target: Table.index`.
+    Path(Vec<String>),
+    /// A tuple/list value used by annotations such as `fields: (a, b)`.
+    Tuple(Vec<Literal>),
 }
 
 impl fmt::Display for Literal {
@@ -370,6 +374,15 @@ impl fmt::Display for Literal {
             Literal::Float(fl) => write!(f, "{}", fl),
             Literal::Boolean(b) => write!(f, "{}", b),
             Literal::Identifier(id) => write!(f, "{}", id),
+            Literal::Path(path) => write!(f, "{}", path.join(".")),
+            Literal::Tuple(values) => {
+                let rendered = values
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "({rendered})")
+            }
         }
     }
 }

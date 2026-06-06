@@ -26,6 +26,11 @@ output = "PolygenHotReload.h"
 per_file = false
 
 [[templates.extra]]
+template = "unreal_source_refs_file.ptpl"
+output = "PolygenSourceRefs.h"
+per_file = false
+
+[[templates.extra]]
 template = "unreal_registry_file.ptpl"
 output = "PolygenRegistry.h"
 per_file = false

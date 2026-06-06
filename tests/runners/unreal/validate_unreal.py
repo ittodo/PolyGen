@@ -102,6 +102,8 @@ def validate_header(path: Path) -> None:
         validate_registry(path)
     elif path.name == "PolygenHotReload.h":
         validate_hot_reload(path)
+    elif path.name == "PolygenSourceRefs.h":
+        validate_source_refs(path)
     elif path.name.endswith("RedisKeys.h"):
         validate_redis_keys(path)
     else:
@@ -360,7 +362,7 @@ def validate_registry(path: Path) -> None:
             "TMap<FString, TArray<int32>> CategorySearchByName;": "string exact search storage",
             "TMap<uint8, TArray<int32>> CategorySearchByRank;": "numeric exact search storage",
             "TMap<EPolygenCategoryKind, TArray<int32>> CategorySearchByKind;": "enum exact search storage",
-            "TMap<FString, TArray<int32>> PostSearchByTitle;": "search postings storage",
+            "TMap<FString, TArray<int32>> PostSearchByTitleSearch;": "named search postings storage",
             "void SetUsers(const TArray<FPolygenUser>& InRows)": "Blueprint set user rows API",
             "const TArray<FPolygenUser>& GetUsers() const": "Blueprint get user rows API",
             "int32 GetUsersCount() const": "Blueprint user count API",
@@ -369,13 +371,13 @@ def validate_registry(path: Path) -> None:
             "TArray<FPolygenCategory> SearchCategoryByName(FString Query) const": "string exact search API",
             "TArray<FPolygenCategory> SearchCategoryByRank(uint8 Query) const": "numeric exact search API",
             "TArray<FPolygenCategory> SearchCategoryByKind(EPolygenCategoryKind Query) const": "enum exact search API",
-            "TArray<FPolygenPost> SearchPostByTitle(const FString& Query) const": "search query API",
+            "TArray<FPolygenPost> SearchPostByTitleSearch(const FString& Query) const": "named search query API",
             "UserByUsername.Add(Row.username, RowIndex);": "unique index population",
             "PostByAuthorId.FindOrAdd(Row.author_id).Add(RowIndex);": "group index population",
             "CategorySearchByName.FindOrAdd(PolygenRegistryDetail::NormalizeString(Row.name, TEXT(\"lower_trim\"))).Add(RowIndex);": "string exact search population",
             "CategorySearchByRank.FindOrAdd(Row.rank).Add(RowIndex);": "numeric exact search population",
             "CategorySearchByKind.FindOrAdd(Row.kind).Add(RowIndex);": "enum exact search population",
-            "PostSearchByTitle.FindOrAdd(Token).Add(RowIndex);": "search postings population",
+            "PostSearchByTitleSearch.FindOrAdd(Token).Add(RowIndex);": "named search postings population",
             "bool GetPostAuthor(const FPolygenPost& Row, FPolygenUser& OutRow) const": "post author navigation API",
             "return GetUserById(Row.author_id, OutRow);": "post author navigation lookup",
             "bool GetPostCategory(const FPolygenPost& Row, FPolygenCategory& OutRow) const": "post category navigation API",
@@ -455,6 +457,43 @@ def validate_hot_reload(path: Path) -> None:
             require(f"TArray<{struct_name}> {table_name}Data;" in text, path, 0, f"missing storage for {table_name}")
             require(f"bool Load{table_name}Data()" in text, path, 0, f"missing load function for {table_name}")
             require(f"On{table_name}Reloaded.Broadcast({table_name}Data);" in text, path, 0, f"missing broadcast for {table_name}")
+
+
+def validate_source_refs(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    require('#include "CoreMinimal.h"' in text, path, 0, "source refs missing CoreMinimal include")
+    require('#include "JsonObjectConverter.h"' in text, path, 0, "source refs missing JSON converter include")
+    require('#include "Misc/Paths.h"' in text, path, 0, "source refs missing paths include")
+    require("#if WITH_EDITOR" in text, path, 0, "source refs must be editor-only")
+    require("class FPolygenSourceDocument" in text, path, 0, "source refs missing source document")
+    require("bool LoadAll(const FString& InBasePath)" in text, path, 0, "source refs missing LoadAll")
+    require("bool SaveChanges()" in text, path, 0, "source refs missing SaveChanges")
+    require("void MarkDirty(FName TableName)" in text, path, 0, "source refs missing dirty tracking")
+    require("PolygenSourceRefsEnsureDirectory" in text, path, 0, "source refs missing save directory guard")
+    require("PolygenSourceRefsSaveJsonArray" in text, path, 0, "source refs missing JSON save helper")
+
+    if "07_indexes" in path.parts:
+        required_fragments = {
+            "class FPolygenUserSourceRef": "user source ref",
+            "FPolygenUserSourceRef GetUserById(int32 InKey)": "user source lookup",
+            "FPolygenUserSourceRef AddUser(const FPolygenUser& Row)": "user source add",
+            "bool RemoveUserById(int32 InKey)": "user source remove",
+            "FPolygenUser* FindMutableUser(int32 InKey)": "mutable user lookup",
+            "void SetUsername(FString Value)": "user setter",
+            "TMap<int32, int32> UserById;": "source primary-key index",
+            "FPaths::FileExists(UserCsvPath)": "CSV file-exists load guard",
+            "PolygenLoaders::SaveToCsv(UserCsvPath, UserData)": "CSV source save",
+            "class FPolygenPostTagSourceRef": "keyless source ref",
+            "TArray<FPolygenPostTagSourceRef> GetPostTagRefs()": "keyless source ref list",
+            "FPolygenPostTagSourceRef GetPostTagBySourceRefId(int32 InSourceRefId)": "keyless source lookup",
+            "bool RemovePostTagBySourceRefId(int32 InSourceRefId)": "keyless source remove",
+            "int32 GetSourceRefId() const": "keyless source id accessor",
+            "TMap<int32, int32> PostTagBySourceRefId;": "keyless source id index",
+        }
+        for fragment, description in required_fragments.items():
+            require(fragment in text, path, 0, f"source refs missing {description}")
+        require("void SetId(int32 Value)" not in text, path, 0, "source refs must not generate primary-key setters")
+        require("Key = Value;" not in text, path, 0, "source refs must not mutate ref keys")
 
 
 def validate_redis_keys(path: Path) -> None:

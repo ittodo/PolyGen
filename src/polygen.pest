@@ -105,13 +105,17 @@ tz_offset       = @{ ("+" | "-") ~ ASCII_DIGIT+ ~ (":" ~ ASCII_DIGIT{2})? }
 // Annotations
 // ===========
 // Annotations support both positional arguments and key-value parameters:
-//   @load(csv: "data.csv")           - key-value only
-//   @index(name, level)              - positional only (field names)
-//   @index(name, level, unique: true) - mixed
+//   @load(csv: "data.csv")                     - key-value only
+//   @index(name, level)                        - positional only (field names)
+//   @index(name, level, unique: true)          - mixed
+//   @ref(target: A.name_id, fields: (a, b))    - path and tuple values
 annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_args_list? ~ ")")? }
 annotation_args_list   = { annotation_arg ~ ("," ~ annotation_arg)* }
-annotation_arg         = { annotation_param | literal }
-annotation_param       = { IDENT ~ ":" ~ literal }
+annotation_arg         = { annotation_param | annotation_value }
+annotation_param       = { IDENT ~ ":" ~ annotation_value }
+annotation_value       = { annotation_tuple | annotation_path | literal }
+annotation_tuple       = { "(" ~ annotation_value ~ ("," ~ annotation_value)* ~ ","? ~ ")" }
+annotation_path        = { IDENT ~ "." ~ IDENT ~ ("." ~ IDENT)* }
 
 // Literals
 // ========

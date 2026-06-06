@@ -8,6 +8,8 @@ namespace test.indexes {
     }
 
     /// User table with primary key and unique constraint
+    @index(display_name, id, unique: true, as: display_identity)
+    @index(display_name, as: by_display_name)
     table User {
         id: u32 primary_key;
         username: string unique;
@@ -31,11 +33,28 @@ table Category {
     /// Post with foreign keys
     table Post {
         id: u32 primary_key;
-        @search
+        @search(name: title_search)
         title: string;
         content: string;
         author_id: u32 foreign_key(User.id);
         category_id: u32 foreign_key(Category.id);
+    }
+
+    /// Table-level refs to named indexes.
+    @ref(name: user, target: User.display_identity, fields: (display_name, user_id))
+    @ref(name: display_matches, target: User.by_display_name, fields: (display_query))
+    table UserLookup {
+        id: u32 primary_key;
+        display_name: string;
+        display_query: string;
+        user_id: u32;
+    }
+
+    /// Table-level ref to a named search index.
+    @ref(name: title_matches, target: Post.title_search, fields: (query))
+    table PostSearch {
+        id: u32 primary_key;
+        query: string;
     }
 
     /// Comment with multiple foreign keys

@@ -21,6 +21,10 @@
 %for field in struct.fk_fields
 %include "detail/struct_fk_nav" with field
 %endfor
+%-- Forward navigation properties (from table-level @ref)
+%for row_ref in struct.refs
+%include "detail/struct_ref_nav" with row_ref
+%endfor
 %-- Reverse navigation properties (from relations)
 %for rel in struct.relations
 %include "detail/struct_relation_nav" with rel

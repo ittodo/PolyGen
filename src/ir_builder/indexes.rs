@@ -13,6 +13,7 @@ pub(super) fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
             if field.is_primary_key || field.is_unique {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
+                    schema_name: None,
                     fields: vec![IndexFieldDef {
                         name: field.name.clone(),
                         field_type: field.field_type.clone(),
@@ -23,6 +24,7 @@ pub(super) fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
             } else if field.foreign_key.is_some() {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
+                    schema_name: None,
                     fields: vec![IndexFieldDef {
                         name: field.name.clone(),
                         field_type: field.field_type.clone(),
@@ -64,6 +66,11 @@ pub(super) fn build_indexes_from_annotations(
                     .params
                     .iter()
                     .any(|p| p.key == "unique" && (p.value == "true" || p.value == "1"));
+                let schema_name = ann
+                    .params
+                    .iter()
+                    .find(|p| p.key == "as")
+                    .map(|p| p.value.clone());
 
                 // Build field definitions from positional args
                 let fields: Vec<IndexFieldDef> = ann
@@ -90,6 +97,7 @@ pub(super) fn build_indexes_from_annotations(
 
                     indexes.push(IndexDef {
                         name,
+                        schema_name,
                         fields,
                         is_unique,
                         source: "annotation".to_string(),

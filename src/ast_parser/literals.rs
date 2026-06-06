@@ -6,15 +6,40 @@ use pest::iterators::Pair;
 /// Helper function to parse a literal value
 pub fn parse_literal(pair: Pair<Rule>) -> Result<Literal, AstBuildError> {
     // A literal can be passed as a wrapper pair (e.g., from a `default` value)
-    // or as a direct token pair (e.g., from an annotation parameter).
-    // This handles both cases by consuming the pair to get an inner token,
-    // or falling back to a clone of the original pair if it has no inner token.
-    let cloned_pair = pair.clone();
-    let token_pair = pair.into_inner().next().unwrap_or(cloned_pair);
-    let rule = token_pair.as_rule();
-    let text = token_pair.as_str();
+    // or as an annotation value, which additionally supports dotted paths and tuples.
+    match pair.as_rule() {
+        Rule::literal | Rule::annotation_value => {
+            let (line, col) = pair.line_col();
+            let inner = pair
+                .into_inner()
+                .next()
+                .ok_or(AstBuildError::MissingElement {
+                    rule: Rule::literal,
+                    element: "literal value".to_string(),
+                    line,
+                    col,
+                })?;
+            return parse_literal(inner);
+        }
+        Rule::annotation_tuple => {
+            let mut values = Vec::new();
+            for value_pair in pair.into_inner() {
+                values.push(parse_literal(value_pair)?);
+            }
+            return Ok(Literal::Tuple(values));
+        }
+        Rule::annotation_path => {
+            return Ok(Literal::Path(
+                pair.as_str().split('.').map(str::to_string).collect(),
+            ));
+        }
+        _ => {}
+    }
 
-    let (line, col) = token_pair.line_col();
+    let rule = pair.as_rule();
+    let text = pair.as_str();
+
+    let (line, col) = pair.line_col();
 
     let literal = match rule {
         Rule::STRING_LITERAL => {

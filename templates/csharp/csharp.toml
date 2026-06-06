@@ -60,6 +60,9 @@ template = "csharp_binary_writers_file.ptpl"
 template = "csharp_binary_refs_file.ptpl"
 
 [[templates.extra]]
+template = "csharp_source_refs_file.ptpl"
+
+[[templates.extra]]
 template = "csharp_csv_columns_file.ptpl"
 
 [[templates.extra]]

@@ -1,6 +1,6 @@
 # PolyGen 언어 지원 가이드
 
-> 최종 업데이트: 2026-06-05
+> 최종 업데이트: 2026-06-06
 
 이 문서는 PolyGen에서 새로운 언어를 지원할 때 구현해야 하는 기능들을 정리합니다.
 
@@ -416,7 +416,7 @@ impl GameContainer {
 | **Swift** | ✅ | ✅ | ✅ | Codable/SwiftData + Redis key helper |
 | **MySQL** | ✅ | - | - | DDL만 |
 | **PostgreSQL** | ✅ | - | - | DDL만 |
-| **Unreal** | ✅ | ✅ | ✅ | USTRUCT/UENUM/Loaders + Redis key helper |
+| **Unreal** | ✅ | ✅ | ✅ | USTRUCT/UENUM/Loaders + Editor SourceRefs + Redis key helper |
 | **Redis** | ✅ | - | - | cache key schema descriptor + ttlSeconds + Lua/C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal key helpers |
 | **Protocol Buffers** | ✅ | - | - | proto3 `.proto` |
 | **MessagePack** | ✅ | - | - | array encoding schema descriptor |
@@ -444,6 +444,19 @@ Level 1~3는 언어 지원의 최소 단위입니다. C#은 여기에 더해 운
 | Redis helper | `@cache`/`@datasource("redis"|"cache")` key helper와 TTL 반영 |
 | BinaryRef | indexed binary package, lazy row reference, shared document lifetime/ownership |
 | `@search` | in-memory container postings, BinaryRef postings, `SearchBy<Field>` 계열 조회 API |
+| `@ref` | named `@index`/`@search` 대상 row navigation metadata와 forward lookup API |
+
+C#은 named `@index`/`@search`를 target으로 삼는 table-level `@ref`를 Container row와
+BinaryRef row의 forward navigation으로 생성합니다. unique index target은 nullable 단일
+row/ref를 반환하고, non-unique index와 search target은 목록을 반환합니다.
+
+C#은 BinaryRef 자체와 별도로 `SourceRefs` 산출물을 생성합니다. SourceRefs는
+editor/tooling 전용 mutable view이며, CSV/JSON 원본을 수정한 뒤 BinaryRef 캐시를
+재생성하는 흐름을 담당합니다. primary key가 있는 table은 실제 key를 ref key로 쓰고,
+primary key가 없는 source table은 문서가 열려 있는 동안만 유효한 `SourceRefId`를
+사용합니다. 이 key들은 ref identity이므로 SourceRefs에서는 수정할 수 없고, identity를
+바꾸려면 새 row를 추가한 뒤 기존 row를 제거해야 합니다. 따라서 게임 런타임용 lazy ref와
+authoring용 mutable ref를 같은 API 축으로 보지 않습니다.
 
 ### Parity Matrix
 
@@ -475,7 +488,7 @@ gate 실행 증거를 확보했습니다. 따라서 아래 항목은 기능 산�
 |------|-----------|------------------------|-----------|
 | Kotlin | `tests\runners\kotlin\run_tests.bat` 11/11 통과. `POLYGEN_KOTLIN_COMPILE=1`으로 01-11 전체 generated `.kt` compile gate 통과. `POLYGEN_KOTLIN_RUNTIME=1`으로 06 CSV/JSON/Binary, 07 Container/Search/BinaryRef, 08 Validation, 09 SQLite, 10 Pack/Binary, 11 composite index/navigation/BinaryRef runtime assertions 통과. `run_all --verify`는 Kotlin runtime helper command/harness regression도 실행 | Kotlin 2.4.0 compiler, kotlinx.serialization 1.11.0, kotlinx.datetime 0.8.0-0.6.x-compat, sqlite-jdbc 3.53.2.0으로 runtime 증거 확보 완료 | 완료 |
 | Swift | `tests\runners\swift\run_tests.bat` 11/11 통과. `POLYGEN_SWIFT_COMPILE=1`으로 01-11 전체 generated `.swift` portable core typecheck gate 통과. `POLYGEN_SWIFT_RUNTIME=1`으로 06 CSV/JSON/Binary, 07 Container/Search/BinaryRef, 08 Validation, 09 SQLite fake connection, 10 Pack/Binary, 11 composite index/navigation/BinaryRef runtime assertions 통과. `run_optional_toolchains.py swift`도 Swift readiness 자동 주입으로 통과 | Swift 6.3.2 compiler, `Windows.sdk`, runtime PATH 자동 탐지로 runtime 증거 확보 완료. SwiftData 파일은 portable core typecheck/runtime compile에서 기본 제외하고 `POLYGEN_SWIFT_INCLUDE_SWIFTDATA=1`일 때 별도 포함 | 완료 |
-| Unreal | `tests\runners\unreal\run_tests.bat` 11/11 통과. USTRUCT/UENUM, loader/hot reload, Registry index/search/navigation/validation, `@pack`, Redis helper 구조 검증과 `.generated.h` 마지막 include 규칙, generated `Polygen*.h` 로컬 include 해석, regex `Internationalization/Regex.h` include 검증 포함. `POLYGEN_UNREAL_COMPILE=1` + `POLYGEN_UNREAL_FIXTURE_ROOT=target\polygen-unreal-fixture`로 UE 5.7 설치(`D:\EpicGames\UE_5.7`)의 UnrealBuildTool/UnrealHeaderTool smoke gate 01-11 전체 통과. 생성 타입은 UHT engine-name 충돌을 피하기 위해 `FPolygen*`/`EPolygen*` reflected name을 사용하고, explicit 0 값이 없는 enum에는 `PolygenInvalid = 0`을 추가. `prepare_unreal_fixture.py`는 명시 root에 최소 UBT smoke project를 생성하고, readiness checker/compile helper는 준비된 `POLYGEN_UNREAL_FIXTURE_ROOT`와 Epic Launcher manifest에서 env/UBT를 자동 구성할 수 있음. `run_all --verify`는 `compile_unreal.py` env/header copy/engine root/Epic manifest UBT discovery/UBT command helper/fixture/helper/local include regression도 실행 | Unreal은 C# BinaryRef/SQLite를 의도적으로 복제하지 않으므로 Binary/BinaryRef는 `none`, SQLite는 `n/a` 유지. Registry/Search/Validation/Pack은 UBT/UHT compile 증거를 확보했지만 Blueprint runtime behavior assertion은 아직 별도 자동화하지 않았으므로 engine-specific partial 축은 유지 | 필요 시 Editor/AutomationSpec 기반 Blueprint-callable runtime smoke와 DataAsset/DataTable integration gate 추가 |
+| Unreal | `tests\runners\unreal\run_tests.bat` 11/11 통과. USTRUCT/UENUM, loader/hot reload, editor SourceRefs, Registry index/search/navigation/validation, `@pack`, Redis helper 구조 검증과 `.generated.h` 마지막 include 규칙, generated `Polygen*.h` 로컬 include 해석, regex `Internationalization/Regex.h` include 검증 포함. 기존 core generated headers는 `POLYGEN_UNREAL_COMPILE=1` + `POLYGEN_UNREAL_FIXTURE_ROOT=target\polygen-unreal-fixture`로 UE 5.7 설치(`D:\EpicGames\UE_5.7`)의 UnrealBuildTool/UnrealHeaderTool smoke gate 01-11 전체 통과 증거를 확보했다. 생성 타입은 UHT engine-name 충돌을 피하기 위해 `FPolygen*`/`EPolygen*` reflected name을 사용하고, explicit 0 값이 없는 enum에는 `PolygenInvalid = 0`을 추가. `prepare_unreal_fixture.py`는 명시 root에 최소 UBT smoke project를 생성하고, readiness checker/compile helper는 준비된 `POLYGEN_UNREAL_FIXTURE_ROOT`와 Epic Launcher manifest에서 env/UBT를 자동 구성할 수 있음. `run_all --verify`는 `compile_unreal.py` env/header copy/engine root/Epic manifest UBT discovery/UBT command helper/fixture/helper/local include regression도 실행 | Unreal은 C# BinaryRef/SQLite를 의도적으로 복제하지 않으므로 Binary/BinaryRef는 `none`, SQLite는 `n/a` 유지. SourceRefs는 `WITH_EDITOR` authoring layer이고 BinaryRef parity가 아니며 현재 구조 검증 범위다. Registry/Search/Validation/Pack은 UBT/UHT compile 증거를 확보했지만 Blueprint runtime behavior assertion은 아직 별도 자동화하지 않았으므로 engine-specific partial 축은 유지 | 필요 시 Editor/AutomationSpec 기반 Blueprint-callable runtime smoke, SourceRefs UBT/UHT smoke, DataAsset/DataTable integration gate 추가 |
 
 ### Unreal Parity Policy
 
@@ -488,13 +501,15 @@ Unreal은 C#의 `DataContainer`, BinaryRef, SQLite accessor API를 그대로 복
 | 타입 | `TArray<T>`, `FString`, `TArray<uint8>` 등 UE 타입을 우선하고, `UPROPERTY` 제약 때문에 일부 unsigned 정수는 엔진 친화 타입으로 매핑 |
 | 로더 | JSON은 `FJsonObjectConverter` 기반을 우선 지원하고, CSV는 scalar 및 `@pack` embed 중심으로 유지 |
 | Hot reload | `FPolygenHotReloadManager`, load source 기반 delegate, Editor file watching을 Unreal 고유 Container 대체 축으로 유지 |
+| SourceRefs | `WITH_EDITOR` 전용 `FPolygenSourceDocument`와 mutable row ref를 생성해 `.sources.toml`의 CSV/JSON 원본을 수정하고 저장합니다. primary key가 없는 source table은 session-only `SourceRefId`로 row를 잡고, 모든 ref key는 immutable입니다. BinaryRef를 직접 편집하는 기능은 아니며, 원본 변경 후 다른 캐시/registry가 다시 로드되는 authoring 흐름입니다. |
 | Container/index | read-only registry/index subsystem을 생성합니다. 내부 저장은 `TArray<Row>`와 `TMap<Key, int32>`/`TMap<Key, TArray<int32>>`, 외부 API는 Blueprint callable `Set<Table>s`, `Get<Table>By<Field>`, `Get<Table>sBy<Field>` helper입니다. |
 | Navigation | C#의 row navigation property 대신 registry가 `Get<Table><FieldAlias>` forward FK helper와 `Find<Table><Alias>` reverse relation helper를 Blueprint callable API로 생성합니다. |
 | Validation | C#의 예외 중심 API 대신 `bool`/diagnostic array 또는 UE log-friendly result 타입을 우선합니다. Registry는 field constraint(`MaxLength`, `Range`, `Regex`), unique/primary duplicate, FK diagnostic을 분리 제공하고 `ValidateAll`로 합산합니다. |
 | `@pack` | embed USTRUCT에 `Pack`, `Unpack`, `TryUnpack`을 생성하고 field count, finite float, unsigned negative 입력을 방어합니다. |
 | Binary/SQLite | near-term parity 대상이 아닙니다. Unreal에서는 DataTable/DataAsset/JSON asset pipeline을 우선합니다. |
 | Redis | 기존 key helper를 유지하고 Blueprint 노출은 필요성이 확인된 뒤 추가합니다. |
-| `@search` | registry가 `TMap<Key, TArray<int32>>`/`TMap<FString, TArray<int32>>` postings를 만들고 `Search<Table>By<Field>` Blueprint query helper를 생성합니다. BinaryRef/DataAsset 검색은 별도 범위입니다. |
+| `@search` | registry가 `TMap<Key, TArray<int32>>`/`TMap<FString, TArray<int32>>` postings를 만들고 `Search<Table>By<Field>` 또는 `@search(name: alias)` 기반 `Search<Table>By<Alias>` Blueprint query helper를 생성합니다. BinaryRef/DataAsset 검색은 별도 범위입니다. |
+| `@ref` | schema/IR metadata는 보존하지만 현재 Unreal Registry는 C# row property 방식의 table-level `@ref` navigation을 생성하지 않습니다. FK forward/reverse helper는 기존 Navigation 축으로 유지합니다. |
 
 따라서 matrix에서 Unreal의 SQLite는 `n/a`, Binary/BinaryRef는 `none`, Container/Navigation/Search는
 엔진 전용 read-only registry 범위까지만 `partial`로 둡니다.

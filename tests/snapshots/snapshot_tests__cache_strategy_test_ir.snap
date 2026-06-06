@@ -152,6 +152,7 @@ SchemaContext {
                                 indexes: [
                                     IndexDef {
                                         name: "ById",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "id",
@@ -175,6 +176,7 @@ SchemaContext {
                                         source: "constraint",
                                     },
                                 ],
+                                refs: [],
                                 relations: [],
                             },
                         ),
@@ -317,6 +319,7 @@ SchemaContext {
                                 indexes: [
                                     IndexDef {
                                         name: "ById",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "id",
@@ -340,6 +343,7 @@ SchemaContext {
                                         source: "constraint",
                                     },
                                 ],
+                                refs: [],
                                 relations: [],
                             },
                         ),
@@ -521,6 +525,7 @@ SchemaContext {
                                 indexes: [
                                     IndexDef {
                                         name: "ById",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "id",
@@ -545,6 +550,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByPlayerId",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "player_id",
@@ -569,6 +575,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByItemId",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "item_id",
@@ -592,6 +599,7 @@ SchemaContext {
                                         source: "constraint",
                                     },
                                 ],
+                                refs: [],
                                 relations: [],
                             },
                         ),
@@ -724,6 +732,7 @@ SchemaContext {
                                 indexes: [
                                     IndexDef {
                                         name: "ById",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "id",
@@ -747,6 +756,7 @@ SchemaContext {
                                         source: "constraint",
                                     },
                                 ],
+                                refs: [],
                                 relations: [],
                             },
                         ),
@@ -885,6 +895,7 @@ SchemaContext {
                                 indexes: [
                                     IndexDef {
                                         name: "BySessionId",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "session_id",
@@ -909,6 +920,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByPlayerId",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "player_id",
@@ -932,6 +944,7 @@ SchemaContext {
                                         source: "constraint",
                                     },
                                 ],
+                                refs: [],
                                 relations: [],
                             },
                         ),

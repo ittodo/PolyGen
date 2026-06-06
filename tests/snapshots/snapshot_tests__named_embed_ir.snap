@@ -119,6 +119,7 @@ SchemaContext {
                                     ),
                                 ],
                                 indexes: [],
+                                refs: [],
                                 relations: [],
                             },
                         ),

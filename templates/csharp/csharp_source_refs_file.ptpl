@@ -1,0 +1,547 @@
+%logic
+// C# source-backed mutable row references.
+// These refs are intended for editor/tooling code: they update CSV/JSON sources
+// and can regenerate the read-only BinaryRef cache on SaveChanges().
+
+fn to_pascal(name) {
+    let parts = name.split("_");
+    let result = "";
+    for part in parts {
+        if part.len() > 0 {
+            let first = part.sub_string(0, 1);
+            first = first.to_upper();
+            let rest = part.sub_string(1);
+            result += first + rest;
+        }
+    }
+    result
+}
+
+fn cs_full_type(t) {
+    if t.is_option {
+        return cs_full_type(t.inner) + "?";
+    }
+    if t.is_list {
+        return "List<" + cs_full_type(t.inner) + ">";
+    }
+    if t.lang_type == "string" { return "string"; }
+    if t.lang_type == "bytes" { return "byte[]"; }
+    if t.lang_type == "timestamp" { return "DateTime"; }
+    if t.is_primitive { return cs_type(t.lang_type); }
+    if t.is_enum { return "global::" + t.fqn; }
+    return "global::" + t.fqn;
+}
+
+fn fields_of(s) {
+    let result = [];
+    for item in s.items {
+        if item.is_field() {
+            result.push(item.as_field());
+        }
+    }
+    result
+}
+
+fn pk_field_of(s) {
+    for field in fields_of(s) {
+        if field.is_primary_key {
+            return field;
+        }
+    }
+    return ();
+}
+
+fn csv_mapper_type(s) {
+    let ns = "";
+    if s.fqn.contains(".") {
+        let parts = s.fqn.split(".");
+        for i in 0..(parts.len - 1) {
+            if i > 0 {
+                ns += ".";
+            }
+            ns += parts[i];
+        }
+    }
+    if ns == "" {
+        return "global::Csv." + s.name;
+    }
+    return "global::Csv." + ns + "." + s.name;
+}
+
+fn row_type(s) {
+    "global::" + s.fqn
+}
+
+fn table_property(s) {
+    s.name + "s"
+}
+
+let source_tables = [];
+for s in file.all_tables {
+    let pk = pk_field_of(s);
+    let csv_path = "";
+    let json_path = "";
+    if s.load != () {
+        if s.load.csv != () {
+            csv_path = s.load.csv;
+        }
+        if s.load.json != () {
+            json_path = s.load.json;
+        }
+    }
+    if csv_path != "" || json_path != "" {
+        let has_primary_key = pk != ();
+        let key_type = "long";
+        let pk_index = "";
+        let pk_name = "";
+        let pk_pascal = "";
+        if has_primary_key {
+            key_type = cs_full_type(pk.field_type);
+            pk_index = "By" + to_pascal(pk.name);
+            pk_name = pk.name;
+            pk_pascal = to_pascal(pk.name);
+        }
+        let field_entries = [];
+        for field in fields_of(s) {
+            field_entries.push(#{
+                def: field,
+                name: field.name,
+                field_type: cs_full_type(field.field_type),
+                is_primary_key: field.is_primary_key
+            });
+        }
+        source_tables.push(#{
+            def: s,
+            pk: pk,
+            has_primary_key: has_primary_key,
+            key_type: key_type,
+            pk_index: pk_index,
+            pk_name: pk_name,
+            pk_pascal: pk_pascal,
+            row_type: row_type(s),
+            table_prop: table_property(s),
+            ref_name: s.name + "SourceRef",
+            table_name: s.name + "SourceTable",
+            csv_mapper: csv_mapper_type(s),
+            csv_path: csv_path,
+            json_path: json_path,
+            dirty_name: s.name,
+            fields: field_entries
+        });
+    }
+}
+
+let has_source_tables = source_tables.len() > 0;
+%endlogic
+// Source-backed mutable row refs are compiled in normal .NET tooling and Unity Editor,
+// but excluded from Unity player builds.
+#if UNITY_EDITOR || !UNITY_5_3_OR_NEWER
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using Polygen.Common;
+using {{file.container_name}}.Container;
+
+namespace {{file.container_name}}.SourceRefs
+{
+%if has_source_tables
+    public sealed class {{file.container_name}}SourceDocument
+    {
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+        {
+            IncludeFields = true,
+            WriteIndented = true
+        };
+
+        private readonly HashSet<string> _dirtyTables = new(StringComparer.Ordinal);
+
+        public {{file.container_name}}DataContainer Container { get; }
+        public string RootDirectory { get; }
+        public string? BinaryRefPath { get; set; }
+
+%for table in source_tables
+        private string? _{{table.def.name}}CsvPath;
+        private string? _{{table.def.name}}JsonPath;
+%if !table.has_primary_key
+        private readonly Dictionary<long, {{table.row_type}}> _{{table.def.name}}RowsBySourceRefId = new();
+        private readonly Dictionary<{{table.row_type}}, long> _{{table.def.name}}SourceRefIds = new();
+        private long _{{table.def.name}}NextSourceRefId = 1;
+%endif
+        public {{table.table_name}} {{table.table_prop}} { get; }
+
+%endfor
+        private {{file.container_name}}SourceDocument(string rootDirectory, string? binaryRefPath)
+        {
+            RootDirectory = rootDirectory;
+            BinaryRefPath = binaryRefPath;
+            Container = new {{file.container_name}}DataContainer(rootDirectory);
+%for table in source_tables
+            {{table.table_prop}} = new {{table.table_name}}(this);
+%endfor
+        }
+
+        public static {{file.container_name}}SourceDocument Open(
+            string rootDirectory = ".",
+            string? binaryRefPath = null,
+            char separator = ',',
+            CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+        {
+            var document = new {{file.container_name}}SourceDocument(rootDirectory, binaryRefPath);
+            document.LoadSources(separator, gapMode);
+            return document;
+        }
+
+        private void LoadSources(char separator, CsvUtils.GapMode gapMode)
+        {
+%for table in source_tables
+%if table.csv_path != ""
+            _{{table.def.name}}CsvPath = Path.Combine(RootDirectory, "{{table.csv_path}}");
+%endif
+%if table.json_path != ""
+            _{{table.def.name}}JsonPath = Path.Combine(RootDirectory, "{{table.json_path}}");
+%endif
+%if table.csv_path != ""
+            if (PatternLoader.ResolvePattern(RootDirectory, "{{table.csv_path}}", ".csv").Count > 0)
+            {
+                {{file.container_name}}DataLoader.Load{{table.def.name}}sFromCsvPattern(Container, "{{table.csv_path}}", separator, gapMode);
+            }
+%if table.json_path != ""
+            else if (PatternLoader.ResolvePattern(RootDirectory, "{{table.json_path}}", ".json").Count > 0)
+            {
+                {{file.container_name}}DataLoader.Load{{table.def.name}}sFromJsonPattern(Container, "{{table.json_path}}");
+            }
+%endif
+%else
+%if table.json_path != ""
+            if (PatternLoader.ResolvePattern(RootDirectory, "{{table.json_path}}", ".json").Count > 0)
+            {
+                {{file.container_name}}DataLoader.Load{{table.def.name}}sFromJsonPattern(Container, "{{table.json_path}}");
+            }
+%endif
+%endif
+%if table.csv_path == "" && table.json_path == ""
+            // {{table.def.name}} has no configured source path.
+%endif
+%if !table.has_primary_key
+            Reset{{table.def.name}}SourceRefIds();
+%endif
+%endfor
+        }
+
+        public void SaveChanges(char separator = ',', CsvUtils.GapMode gapMode = CsvUtils.GapMode.Break)
+        {
+            Container.ValidateOrThrow();
+%for table in source_tables
+            if (_dirtyTables.Contains("{{table.dirty_name}}"))
+            {
+                Save{{table.def.name}}Source(separator, gapMode);
+            }
+%endfor
+            if (!string.IsNullOrWhiteSpace(BinaryRefPath))
+            {
+                BinaryRefs.{{file.container_name}}BinaryRefContext.SaveBinary(BinaryRefPath!, Container);
+#if UNITY_EDITOR
+                RefreshUnityAsset(BinaryRefPath!);
+#endif
+            }
+
+            _dirtyTables.Clear();
+        }
+
+%for table in source_tables
+        private void Save{{table.def.name}}Source(char separator, CsvUtils.GapMode gapMode)
+        {
+            var saved = false;
+            if (!string.IsNullOrWhiteSpace(_{{table.def.name}}CsvPath))
+            {
+                RequireSingleFileSource(_{{table.def.name}}CsvPath!, "{{table.def.name}}", "CSV");
+                Directory.CreateDirectory(Path.GetDirectoryName(_{{table.def.name}}CsvPath!) ?? ".");
+                {{table.csv_mapper}}.WriteCsv(Container.{{table.table_prop}}.All, _{{table.def.name}}CsvPath!, separator, gapMode);
+#if UNITY_EDITOR
+                RefreshUnityAsset(_{{table.def.name}}CsvPath!);
+#endif
+                saved = true;
+            }
+            if (!string.IsNullOrWhiteSpace(_{{table.def.name}}JsonPath))
+            {
+                RequireSingleFileSource(_{{table.def.name}}JsonPath!, "{{table.def.name}}", "JSON");
+                Directory.CreateDirectory(Path.GetDirectoryName(_{{table.def.name}}JsonPath!) ?? ".");
+                File.WriteAllText(
+                    _{{table.def.name}}JsonPath!,
+                    JsonSerializer.Serialize(Container.{{table.table_prop}}.All, JsonOptions));
+#if UNITY_EDITOR
+                RefreshUnityAsset(_{{table.def.name}}JsonPath!);
+#endif
+                saved = true;
+            }
+            if (!saved)
+            {
+                throw new InvalidOperationException("{{table.def.name}} has no CSV or JSON source path to save.");
+            }
+        }
+
+%endfor
+        private static void RequireSingleFileSource(string path, string tableName, string sourceKind)
+        {
+            if (path.Contains("*") || path.Contains("?") || Directory.Exists(path))
+            {
+                throw new InvalidOperationException(
+                    $"{tableName} {sourceKind} source must be a single file path before mutable refs can save it: {path}");
+            }
+        }
+
+        internal void MarkDirty(string tableName)
+        {
+            _dirtyTables.Add(tableName);
+            RebuildIndexes();
+        }
+
+        private void RebuildIndexes()
+        {
+%for table in source_tables
+            Rebuild{{table.def.name}}Indexes();
+%endfor
+        }
+
+%for table in source_tables
+%if table.has_primary_key
+        internal {{table.row_type}}? Find{{table.def.name}}({{table.key_type}} key)
+        {
+            return Container.{{table.table_prop}}.{{table.pk_index}}[key];
+        }
+%else
+        internal {{table.row_type}}? Find{{table.def.name}}(long sourceRefId)
+        {
+            return _{{table.def.name}}RowsBySourceRefId.TryGetValue(sourceRefId, out var row) ? row : null;
+        }
+
+        internal long Get{{table.def.name}}SourceRefId({{table.row_type}} row)
+        {
+            if (_{{table.def.name}}SourceRefIds.TryGetValue(row, out var sourceRefId))
+            {
+                return sourceRefId;
+            }
+
+            sourceRefId = _{{table.def.name}}NextSourceRefId++;
+            _{{table.def.name}}SourceRefIds[row] = sourceRefId;
+            _{{table.def.name}}RowsBySourceRefId[sourceRefId] = row;
+            return sourceRefId;
+        }
+
+        internal IReadOnlyList<{{table.ref_name}}> Get{{table.def.name}}Refs()
+        {
+            return Container.{{table.table_prop}}.All
+                .Select(row => new {{table.ref_name}}(this, Get{{table.def.name}}SourceRefId(row)))
+                .ToList();
+        }
+
+        private void Reset{{table.def.name}}SourceRefIds()
+        {
+            _{{table.def.name}}RowsBySourceRefId.Clear();
+            _{{table.def.name}}SourceRefIds.Clear();
+            _{{table.def.name}}NextSourceRefId = 1;
+            foreach (var row in Container.{{table.table_prop}}.All)
+            {
+                Get{{table.def.name}}SourceRefId(row);
+            }
+        }
+
+        private void Prune{{table.def.name}}SourceRefIds(IReadOnlyList<{{table.row_type}}> liveRows)
+        {
+            var live = new HashSet<{{table.row_type}}>(liveRows);
+            foreach (var pair in _{{table.def.name}}SourceRefIds.ToList())
+            {
+                if (!live.Contains(pair.Key))
+                {
+                    _{{table.def.name}}SourceRefIds.Remove(pair.Key);
+                    _{{table.def.name}}RowsBySourceRefId.Remove(pair.Value);
+                }
+            }
+        }
+%endif
+
+        internal void Replace{{table.def.name}}Rows(IEnumerable<{{table.row_type}}> rows)
+        {
+            var snapshot = rows.ToList();
+            Container.{{table.table_prop}}.Clear();
+            foreach (var row in snapshot)
+            {
+                Container.{{table.table_prop}}.Add(row);
+            }
+%if !table.has_primary_key
+            Prune{{table.def.name}}SourceRefIds(snapshot);
+            foreach (var row in snapshot)
+            {
+                Get{{table.def.name}}SourceRefId(row);
+            }
+%endif
+            _dirtyTables.Add("{{table.dirty_name}}");
+        }
+
+        private void Rebuild{{table.def.name}}Indexes()
+        {
+            var rows = Container.{{table.table_prop}}.All.ToList();
+            Container.{{table.table_prop}}.Clear();
+            foreach (var row in rows)
+            {
+                Container.{{table.table_prop}}.Add(row);
+            }
+%if !table.has_primary_key
+            Prune{{table.def.name}}SourceRefIds(rows);
+            foreach (var row in rows)
+            {
+                Get{{table.def.name}}SourceRefId(row);
+            }
+%endif
+        }
+
+%endfor
+#if UNITY_EDITOR
+        private static void RefreshUnityAsset(string path)
+        {
+            var normalized = path.Replace('\\', '/');
+            if (normalized.StartsWith("Assets/", StringComparison.Ordinal))
+            {
+                UnityEditor.AssetDatabase.ImportAsset(normalized);
+            }
+            else
+            {
+                UnityEditor.AssetDatabase.Refresh();
+            }
+        }
+#endif
+    }
+
+%for table in source_tables
+    public sealed class {{table.table_name}}
+    {
+        private readonly {{file.container_name}}SourceDocument _document;
+
+        internal {{table.table_name}}({{file.container_name}}SourceDocument document)
+        {
+            _document = document;
+        }
+
+        public IReadOnlyList<{{table.row_type}}> All => _document.Container.{{table.table_prop}}.All;
+
+%if table.has_primary_key
+        public {{table.ref_name}} GetBy{{table.pk_pascal}}({{table.key_type}} key)
+        {
+            return new {{table.ref_name}}(_document, key);
+        }
+%else
+        public IReadOnlyList<{{table.ref_name}}> AllRefs => _document.Get{{table.def.name}}Refs();
+
+        public {{table.ref_name}} GetBySourceRefId(long sourceRefId)
+        {
+            return new {{table.ref_name}}(_document, sourceRefId);
+        }
+%endif
+
+        public {{table.ref_name}} Add({{table.row_type}} row)
+        {
+            _document.Container.{{table.table_prop}}.Add(row);
+%if table.has_primary_key
+            _document.MarkDirty("{{table.dirty_name}}");
+            return new {{table.ref_name}}(_document, row.{{table.pk_name}});
+%else
+            var sourceRefId = _document.Get{{table.def.name}}SourceRefId(row);
+            _document.MarkDirty("{{table.dirty_name}}");
+            return new {{table.ref_name}}(_document, sourceRefId);
+%endif
+        }
+
+%if table.has_primary_key
+        public bool RemoveBy{{table.pk_pascal}}({{table.key_type}} key)
+        {
+            if (_document.Find{{table.def.name}}(key) == null)
+            {
+                return false;
+            }
+
+            _document.Replace{{table.def.name}}Rows(
+                _document.Container.{{table.table_prop}}.All
+                    .Where(row => !EqualityComparer<{{table.key_type}}>.Default.Equals(row.{{table.pk_name}}, key)));
+            return true;
+        }
+%else
+        public bool RemoveBySourceRefId(long sourceRefId)
+        {
+            var target = _document.Find{{table.def.name}}(sourceRefId);
+            if (target == null)
+            {
+                return false;
+            }
+
+            _document.Replace{{table.def.name}}Rows(
+                _document.Container.{{table.table_prop}}.All
+                    .Where(row => !ReferenceEquals(row, target)));
+            return true;
+        }
+%endif
+    }
+
+    public sealed class {{table.ref_name}}
+    {
+        private readonly {{file.container_name}}SourceDocument _document;
+        private {{table.key_type}} _key;
+
+        internal {{table.ref_name}}({{file.container_name}}SourceDocument document, {{table.key_type}} key)
+        {
+            _document = document;
+            _key = key;
+        }
+
+%if !table.has_primary_key
+        public long SourceRefId => _key;
+
+%endif
+        public bool Exists => _document.Find{{table.def.name}}(_key) != null;
+
+        private {{table.row_type}} Row =>
+            _document.Find{{table.def.name}}(_key)
+            ?? throw new InvalidOperationException("{{table.def.name}} row not found for key " + _key);
+
+%for field in table.fields
+        public {{field.field_type}} {{field.name}}
+        {
+            get => Row.{{field.name}};
+%if !field.is_primary_key
+            set
+            {
+                var row = Row;
+                row.{{field.name}} = value;
+                _document.MarkDirty("{{table.dirty_name}}");
+            }
+%endif
+        }
+
+%endfor
+        public {{table.row_type}} ToOwned()
+        {
+            var source = Row;
+            return new {{table.row_type}}
+            {
+%for field in table.fields
+                {{field.name}} = source.{{field.name}},
+%endfor
+            };
+        }
+    }
+
+%endfor
+%else
+    public sealed class {{file.container_name}}SourceDocument
+    {
+        public static {{file.container_name}}SourceDocument Open(string rootDirectory = ".", string? binaryRefPath = null)
+        {
+            _ = rootDirectory;
+            _ = binaryRefPath;
+            return new {{file.container_name}}SourceDocument();
+        }
+    }
+%endif
+}
+#endif

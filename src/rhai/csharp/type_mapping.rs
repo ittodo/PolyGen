@@ -214,6 +214,7 @@ mod tests {
             })],
             header: vec![],
             indexes: vec![],
+            refs: vec![],
             relations: vec![],
         }
     }

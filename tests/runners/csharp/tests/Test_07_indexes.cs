@@ -211,10 +211,22 @@ class Program
             post_id = 100,
             tag_id = 50
         });
+        container.UserLookups.Add(new test.indexes.UserLookup
+        {
+            id = 2000,
+            display_name = "Alice",
+            display_query = "Alice",
+            user_id = 1
+        });
+        container.PostSearchs.Add(new test.indexes.PostSearch
+        {
+            id = 3000,
+            query = "binary"
+        });
 
-        var containerTitleMatches = container.Posts.SearchByTitle("binary");
-        Assert(containerTitleMatches.Count == 1, "container SearchByTitle should find one binary post");
-        Assert(containerTitleMatches[0].id == 100, "container SearchByTitle post id");
+        var containerTitleMatches = container.Posts.SearchByTitleSearch("binary");
+        Assert(containerTitleMatches.Count == 1, "container SearchByTitleSearch should find one binary post");
+        Assert(containerTitleMatches[0].id == 100, "container SearchByTitleSearch post id");
 
         var containerNameMatches = container.Categorys.SearchByName("tech");
         Assert(containerNameMatches.Count == 1, "container SearchByName should find category");
@@ -231,6 +243,15 @@ class Program
         var containerKindMatches = container.Categorys.SearchByKind(test.indexes.CategoryKind.Public);
         Assert(containerKindMatches.Count == 1, "container SearchByKind should find category");
         Assert(containerKindMatches[0].id == 10, "container SearchByKind category id");
+
+        var containerLookup = container.UserLookups.ById[2000];
+        Assert(containerLookup != null, "container lookup should be indexed by id");
+        Assert(containerLookup!.User != null, "container unique @ref should resolve user");
+        Assert(containerLookup.User!.username == "alice", "container unique @ref username");
+        Assert(containerLookup.DisplayMatches.Count == 1, "container non-unique @ref should return matches");
+        var containerPostSearch = container.PostSearchs.ById[3000];
+        Assert(containerPostSearch != null, "container post search should be indexed by id");
+        Assert(containerPostSearch!.TitleMatches.Count == 1, "container @search @ref should return matches");
 
         var path = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(),
@@ -265,9 +286,9 @@ class Program
             Assert(postsByAlice.Count == 2, "FindByAuthorId should return two posts");
             Assert(postsByAlice[0].title == "Binary refs", "first post title");
 
-            var binaryTitleMatches = ctx.Posts.SearchByTitle("binary");
-            Assert(binaryTitleMatches.Count == 1, "SearchByTitle should find one binary post");
-            Assert(binaryTitleMatches[0].id == 100, "SearchByTitle post id");
+            var binaryTitleMatches = ctx.Posts.SearchByTitleSearch("binary");
+            Assert(binaryTitleMatches.Count == 1, "SearchByTitleSearch should find one binary post");
+            Assert(binaryTitleMatches[0].id == 100, "SearchByTitleSearch post id");
 
             var techDescriptionMatches = ctx.Categorys.SearchByDescription("tech");
             Assert(techDescriptionMatches.Count == 1, "SearchByDescription should find category");
@@ -284,6 +305,18 @@ class Program
             var postTags = ctx.PostTags.FindByPostId(100);
             Assert(postTags.Count == 1, "FindByPostId should return one post tag");
             Assert(postTags[0].tag_id == 50, "post tag id");
+
+            var userLookup = ctx.UserLookups.GetById(2000);
+            Assert(userLookup != null, "GetById should find user lookup");
+            Assert(userLookup!.User != null, "unique @ref should resolve a user");
+            Assert(userLookup.User!.username == "alice", "unique @ref user username");
+            Assert(userLookup.DisplayMatches.Count == 1, "non-unique @ref should return display matches");
+            Assert(userLookup.DisplayMatches[0].id == 1, "non-unique @ref user id");
+
+            var postSearch = ctx.PostSearchs.GetById(3000);
+            Assert(postSearch != null, "GetById should find post search");
+            Assert(postSearch!.TitleMatches.Count == 1, "@search @ref should return title matches");
+            Assert(postSearch.TitleMatches[0].id == 100, "@search @ref post id");
 
             Assert(ctx.Users.GetById(999) == null, "missing unique index should return null");
             Assert(ctx.Posts.FindByAuthorId(999).Count == 0, "missing group index should return empty list");
@@ -303,6 +336,79 @@ class Program
         passed++;
     }
 
+    static void TestSourceRefsSaveSourcesAndBinaryRef()
+    {
+        Console.WriteLine("  Testing source-backed mutable refs...");
+
+        var dir = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "polygen-csharp-source-refs-" + Guid.NewGuid().ToString("N"));
+        var binaryPath = System.IO.Path.Combine(dir, "schema.bin");
+
+        try
+        {
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllText(
+                System.IO.Path.Combine(dir, "users.csv"),
+                "id,username,email,display_name" + Environment.NewLine +
+                "1,alice,alice@example.com,Alice" + Environment.NewLine);
+            System.IO.File.WriteAllText(
+                System.IO.Path.Combine(dir, "categories.csv"),
+                "id,name,description,rank,kind" + Environment.NewLine +
+                "10,general,General posts,1,Public" + Environment.NewLine);
+            System.IO.File.WriteAllText(
+                System.IO.Path.Combine(dir, "posts.csv"),
+                "id,title,content,author_id,category_id" + Environment.NewLine +
+                "100,Hello,First post,1,10" + Environment.NewLine);
+            System.IO.File.WriteAllText(
+                System.IO.Path.Combine(dir, "tags.csv"),
+                "id,name" + Environment.NewLine +
+                "50,csharp" + Environment.NewLine +
+                "51,unity" + Environment.NewLine);
+            System.IO.File.WriteAllText(
+                System.IO.Path.Combine(dir, "post_tags.csv"),
+                "post_id,tag_id" + Environment.NewLine +
+                "100,50" + Environment.NewLine);
+
+            var document = Schema.SourceRefs.SchemaSourceDocument.Open(dir, binaryPath);
+            var alice = document.Users.GetById(1);
+            Assert(alice.Exists, "source ref should find alice");
+            var idProperty = typeof(Schema.SourceRefs.UserSourceRef).GetProperty("id");
+            Assert(idProperty != null && !idProperty.CanWrite, "source ref primary key should be immutable");
+            alice.display_name = "Alice Updated";
+
+            var link = document.PostTags.AllRefs[0];
+            var sourceRefId = link.SourceRefId;
+            link.tag_id = 51;
+            Assert(document.PostTags.GetBySourceRefId(sourceRefId).tag_id == 51, "session virtual key should find edited keyless row");
+
+            document.SaveChanges();
+
+            var csv = System.IO.File.ReadAllText(System.IO.Path.Combine(dir, "users.csv"));
+            Assert(csv.Contains("Alice Updated"), "SaveChanges should update CSV source");
+            var postTagCsv = System.IO.File.ReadAllText(System.IO.Path.Combine(dir, "post_tags.csv"));
+            Assert(postTagCsv.Contains("100,51"), "SaveChanges should update keyless CSV source");
+            Assert(System.IO.File.Exists(System.IO.Path.Combine(dir, "users.json")), "SaveChanges should sync JSON source");
+            Assert(System.IO.File.Exists(binaryPath), "SaveChanges should rebuild BinaryRef cache");
+
+            var ctx = Schema.BinaryRefs.SchemaBinaryRefContext.OpenBinary(binaryPath);
+            var reopenedAlice = ctx.Users.GetById(1);
+            Assert(reopenedAlice != null, "rebuilt BinaryRef should find alice");
+            Assert(reopenedAlice!.display_name == "Alice Updated", "rebuilt BinaryRef should reflect source ref edit");
+            Assert(ctx.PostTags.FindByTagId(51).Count == 1, "rebuilt BinaryRef should reflect keyless source ref edit");
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(dir))
+            {
+                System.IO.Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        Console.WriteLine("    PASS");
+        passed++;
+    }
+
     static void Main()
     {
         Console.WriteLine("=== Test Case 07: Indexes ===");
@@ -313,6 +419,7 @@ class Program
         TestJunctionTable();
         TestBinarySerialization();
         TestBinaryRefLoad();
+        TestSourceRefsSaveSourcesAndBinaryRef();
 
         if (failed > 0)
         {

@@ -138,5 +138,11 @@ fn literal_to_string(lit: &ast_model::Literal) -> String {
         ast_model::Literal::Float(f) => f.to_string(),
         ast_model::Literal::Boolean(b) => b.to_string(),
         ast_model::Literal::Identifier(id) => id.clone(),
+        ast_model::Literal::Path(path) => path.join("."),
+        ast_model::Literal::Tuple(values) => values
+            .iter()
+            .map(literal_to_string)
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }

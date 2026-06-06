@@ -1,6 +1,6 @@
 # PolyGen 문서 인덱스
 
-> 최종 업데이트: 2026-06-03
+> 최종 업데이트: 2026-06-06
 
 `docs/`는 PolyGen의 스펙, 설계, 개발 가이드의 원본입니다. 개발 전에 관련 문서를
 먼저 확인하고, 구현을 바꾸면 같은 작업 안에서 문서를 갱신합니다.
@@ -14,7 +14,7 @@
 | 전체 구조 파악 | `source-structure.md`, `project-structure.md` |
 | `.poly` 표면 문법 변경 | `schema-language.md` |
 | `.poly` 어노테이션, 제약조건 변경 | `schema-annotations.md` |
-| CSV/JSON load path 설정 변경 | `sources-config.md` |
+| CSV/JSON load/save source path 설정 변경 | `sources-config.md` |
 | PolyTemplate 문법/엔진 변경 | `polytemplate-guide.md`, `polytemplate-spec.md` |
 | 템플릿 커스터마이징/Rhai helper 변경 | `template-customization.md` |
 | 새 언어/타겟 추가 | `targets/language-support.md` |
@@ -33,7 +33,7 @@
 | `project-structure.md` | 저장소 디렉터리 구조 |
 | `schema-language.md` | 사람이 읽는 `.poly` 스키마 언어 문법 |
 | `schema-annotations.md` | `.poly` 어노테이션/속성 스펙 |
-| `sources-config.md` | `.sources.toml` 기반 CSV/JSON load path 설정 |
+| `sources-config.md` | `.sources.toml` 기반 CSV/JSON load/save source path 설정 |
 | `polytemplate-guide.md` | PolyTemplate 작성 가이드 |
 | `polytemplate-spec.md` | PolyTemplate 언어 상세 스펙 |
 | `template-customization.md` | Rhai/템플릿 커스터마이징 가이드 |

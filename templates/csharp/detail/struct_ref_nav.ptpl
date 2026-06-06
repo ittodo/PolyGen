@@ -1,0 +1,42 @@
+%-- Forward navigation property from table-level @ref. Context: row_ref
+%blank
+%if row_ref.target_kind == "search"
+    /// <summary>
+    /// Search ref to {{row_ref.target_table_name}} rows.
+    /// </summary>
+    public IReadOnlyList<global::{{row_ref.target_table_fqn}}> {{row_ref.name}}
+    {
+        get
+        {
+            if (_container is Schema.Container.IHas{{row_ref.target_table_name}}Table c)
+                return c.{{row_ref.target_table_name}}s.SearchBy{{row_ref.target_method_suffix}}({{row_ref.local_key_expr}});
+            return Array.Empty<global::{{row_ref.target_table_fqn}}>();
+        }
+    }
+%elif row_ref.is_unique
+    /// <summary>
+    /// Row ref to {{row_ref.target_table_name}}.
+    /// </summary>
+    public global::{{row_ref.target_table_fqn}}? {{row_ref.name}}
+    {
+        get
+        {
+            if (_container is Schema.Container.IHas{{row_ref.target_table_name}}Table c)
+                return c.{{row_ref.target_table_name}}s.{{row_ref.target_method_suffix}}[{{row_ref.local_key_expr}}];
+            return null;
+        }
+    }
+%else
+    /// <summary>
+    /// Row refs to {{row_ref.target_table_name}} rows.
+    /// </summary>
+    public IReadOnlyList<global::{{row_ref.target_table_fqn}}> {{row_ref.name}}
+    {
+        get
+        {
+            if (_container is Schema.Container.IHas{{row_ref.target_table_name}}Table c)
+                return c.{{row_ref.target_table_name}}s.{{row_ref.target_method_suffix}}[{{row_ref.local_key_expr}}];
+            return Array.Empty<global::{{row_ref.target_table_fqn}}>();
+        }
+    }
+%endif

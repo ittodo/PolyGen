@@ -264,6 +264,7 @@ SchemaContext {
                                 indexes: [
                                     IndexDef {
                                         name: "ById",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "id",
@@ -288,6 +289,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByName",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "name",
@@ -312,6 +314,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByGuildIdLevel",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "guild_id",
@@ -353,6 +356,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByRegionGuildIdLevel",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "region",
@@ -411,6 +415,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByEmail",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "email",
@@ -434,6 +439,7 @@ SchemaContext {
                                         source: "annotation",
                                     },
                                 ],
+                                refs: [],
                                 relations: [],
                             },
                         ),

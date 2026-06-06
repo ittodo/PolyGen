@@ -175,6 +175,7 @@ SchemaContext {
                                 indexes: [
                                     IndexDef {
                                         name: "ById",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "id",
@@ -199,6 +200,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByCode",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "code",
@@ -223,6 +225,7 @@ SchemaContext {
                                     },
                                     IndexDef {
                                         name: "ByCategoryId",
+                                        schema_name: None,
                                         fields: [
                                             IndexFieldDef {
                                                 name: "category_id",
@@ -246,6 +249,7 @@ SchemaContext {
                                         source: "constraint",
                                     },
                                 ],
+                                refs: [],
                                 relations: [],
                             },
                         ),

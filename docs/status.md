@@ -1,6 +1,6 @@
 # PolyGen Status
 
-> 최종 업데이트: 2026-06-05
+> 최종 업데이트: 2026-06-06
 
 ---
 
@@ -41,7 +41,7 @@
 - [x] Rust - 모듈, Struct, Enum, CSV/Binary 로더, Container, Validation
 - [x] TypeScript - 인터페이스, Enum, Zod 스키마, Validation
 - [x] Go - Struct, Enum, CSV/JSON/Binary 로더, Container, Validation, Redis key helper
-- [x] Unreal Engine - USTRUCT/UENUM 매크로, CSV/JSON 로더, Hot Reload, Redis key helper
+- [x] Unreal Engine - USTRUCT/UENUM 매크로, CSV/JSON 로더, Editor SourceRefs, Hot Reload, Redis key helper
 - [x] 통합 테스트 프레임워크 (11개 테스트 케이스)
 - [x] C#/C++/Rust 통합 runner 필수 테스트 디렉터리/파일 누락 시 실패 처리 (Windows/POSIX)
 - [x] 통합 runner 실패 전환 후 잔여 `Skipped` 요약/카운터 제거
@@ -92,6 +92,8 @@
 
 #### 고급 어노테이션
 - [x] `.sources.toml` 외부 load source 설정 도입 (`@load` 관심사 분리, legacy 호환)
+- [x] C# SourceRefs editor/tooling mutable refs 생성 (`SaveChanges()`에서 CSV/JSON 원본 저장, keyless `SourceRefId`, BinaryRef 캐시 재생성)
+- [x] Unreal `WITH_EDITOR` SourceRefs 생성 (`.sources.toml` CSV/JSON 원본 저장용 mutable refs, keyless `SourceRefId`)
 - [x] `@load` 대상/인자 의미 검증 (table 전용, csv/json named string)
 - [x] `@taggable` 대상/인자 의미 검증 (table 전용, no args)
 - [x] `@link_rows` 대상/인자 의미 검증 (table 전용, positional target 1개)
@@ -99,6 +101,7 @@
 - [x] `@cache` strategy/ttl 의미 검증 (알 수 없는 전략, 음수 TTL, 중복 파라미터 차단)
 - [x] `@datasource` 대상/값 의미 검증 (namespace/table 전용, 지원 datasource 제한)
 - [x] `@index` 대상/필드 의미 검증 (table 전용, 같은 table의 indexable regular field)
+- [x] named `@index`/`@search` 대상 table-level `@ref` 문법/검증/IR 및 C# Container/BinaryRef forward navigation
 - [x] `@pack` 대상/구분자 의미 검증 (embed 전용, 한 글자 separator)
 - [x] `@readonly` 어노테이션
 - [x] `@readonly` 대상/인자 의미 검증 (table 전용, no args)

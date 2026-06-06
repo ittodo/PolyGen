@@ -29,6 +29,12 @@ fn ref_name(s) {
     n + "Ref"
 }
 
+fn ref_name_from_fqn(fqn) {
+    let n = fqn + "";
+    n.replace(".", "_");
+    n + "Ref"
+}
+
 fn table_name(s) {
     ref_name(s) + "Table"
 }
@@ -392,6 +398,41 @@ fn search_read_key_expr(f, reader_expr) {
     return read_key_expr(search_base_type(f.field_type), reader_expr);
 }
 
+fn ref_key_expr(row_ref) {
+    if row_ref.fields.len() == 1 {
+        return row_ref.fields[0].local_field;
+    }
+
+    let expr = "(";
+    for i in 0..row_ref.fields.len() {
+        if i > 0 {
+            expr += ", ";
+        }
+        expr += row_ref.fields[i].local_field;
+    }
+    expr += ")";
+    return expr;
+}
+
+fn ref_return_type(row_ref) {
+    let target_ref = ref_name_from_fqn(row_ref.target_table_fqn);
+    if row_ref.is_unique {
+        return target_ref + "?";
+    }
+    return "IReadOnlyList<" + target_ref + ">";
+}
+
+fn ref_call_expr(row_ref, context_expr, key_expr) {
+    let table_expr = context_expr + "." + row_ref.target_table_name + "s";
+    if row_ref.target_kind == "search" {
+        return table_expr + ".SearchBy" + row_ref.target_method_suffix + "(" + key_expr + ")";
+    }
+    if row_ref.is_unique {
+        return table_expr + ".Get" + row_ref.target_method_suffix + "(" + key_expr + ")";
+    }
+    return table_expr + ".Find" + row_ref.target_method_suffix + "(" + key_expr + ")";
+}
+
 fn field_property_code(f, field_index, current_ns, current_struct_name, inline_enums) {
     let ft = f.field_type;
     let base = if ft.is_option { ft.inner } else { ft };
@@ -611,6 +652,19 @@ for s in file.all_tables {
         }
     }
 
+    let refs = [];
+    for row_ref in s.refs {
+        if row_ref.target_kind == "index" || row_ref.target_kind == "search" {
+            let key_expr = ref_key_expr(row_ref);
+            refs.push(#{
+                def: row_ref,
+                name: row_ref.name,
+                return_type: ref_return_type(row_ref),
+                call_expr: ref_call_expr(row_ref, "_context", key_expr)
+            });
+        }
+    }
+
     entries.push(#{
         def: s,
         ns_name: current_ns,
@@ -623,7 +677,8 @@ for s in file.all_tables {
         indexes: indexes,
         index_count: indexes.len(),
         search_indexes: search_indexes,
-        search_index_count: search_indexes.len()
+        search_index_count: search_indexes.len(),
+        refs: refs
     });
 }
 
@@ -747,11 +802,13 @@ namespace {{binary_ref_namespace}}.BinaryRefs
     {
         private readonly BinaryDocumentOwner _owner;
         private readonly int _rowOffset;
+        private readonly {{context_name}} _context;
 
-        internal {{entry.ref_name}}(BinaryDocumentOwner owner, int rowOffset)
+        internal {{entry.ref_name}}(BinaryDocumentOwner owner, int rowOffset, {{context_name}} context)
         {
             _owner = owner;
             _rowOffset = rowOffset;
+            _context = context;
         }
 
         private int RequiredFieldOffset(int fieldIndex) => BinaryRefFormat.RequireFieldOffset(_owner.Span, _rowOffset, fieldIndex);
@@ -759,6 +816,10 @@ namespace {{binary_ref_namespace}}.BinaryRefs
 
 %for field_entry in entry.fields
 {{field_entry.property_code}}
+
+%endfor
+%for row_ref in entry.refs
+        public {{row_ref.return_type}} {{row_ref.name}} => {{row_ref.call_expr}};
 
 %endfor
         public global::{{entry.def.fqn}} ToOwned()
@@ -787,6 +848,7 @@ namespace {{binary_ref_namespace}}.BinaryRefs
     {
         private readonly BinaryDocumentOwner _owner;
         private readonly int[] _rowOffsets;
+        private {{context_name}}? _context;
 %for idx in entry.indexes
 %if idx.def.is_unique
         private readonly Dictionary<{{idx.key_type}}, int> _{{idx.var_name}};
@@ -823,6 +885,14 @@ namespace {{binary_ref_namespace}}.BinaryRefs
 %endfor
         }
 
+        internal void SetContext({{context_name}} context)
+        {
+            _context = context;
+        }
+
+        private {{context_name}} Context =>
+            _context ?? throw new InvalidOperationException("BinaryRef table is not attached to a context.");
+
         public int Count => _rowOffsets.Length;
 
         public IEnumerable<{{entry.ref_name}}> All
@@ -830,24 +900,24 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             get
             {
                 for (var i = 0; i < _rowOffsets.Length; i++)
-                    yield return new {{entry.ref_name}}(_owner, _rowOffsets[i]);
+                    yield return new {{entry.ref_name}}(_owner, _rowOffsets[i], Context);
             }
         }
 
-        public {{entry.ref_name}} At(int index) => new {{entry.ref_name}}(_owner, _rowOffsets[index]);
+        public {{entry.ref_name}} At(int index) => new {{entry.ref_name}}(_owner, _rowOffsets[index], Context);
 
 %for idx in entry.indexes
 %if idx.def.is_unique
         public {{entry.ref_name}}? Get{{idx.method_suffix}}({{idx.key_type}} key)
         {
-            return _{{idx.var_name}}.TryGetValue(key, out var offset) ? new {{entry.ref_name}}(_owner, offset) : null;
+            return _{{idx.var_name}}.TryGetValue(key, out var offset) ? new {{entry.ref_name}}(_owner, offset, Context) : null;
         }
 
         public bool TryGet{{idx.method_suffix}}({{idx.key_type}} key, out {{entry.ref_name}}? row)
         {
             if (_{{idx.var_name}}.TryGetValue(key, out var offset))
             {
-                row = new {{entry.ref_name}}(_owner, offset);
+                row = new {{entry.ref_name}}(_owner, offset, Context);
                 return true;
             }
             row = null;
@@ -861,7 +931,7 @@ namespace {{binary_ref_namespace}}.BinaryRefs
 
             var rows = new {{entry.ref_name}}[offsets.Length];
             for (var i = 0; i < offsets.Length; i++)
-                rows[i] = new {{entry.ref_name}}(_owner, offsets[i]);
+                rows[i] = new {{entry.ref_name}}(_owner, offsets[i], Context);
             return rows;
         }
 %endif
@@ -886,7 +956,7 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             var matches = BinaryRefSearch.Intersect(postings);
             var rows = new {{entry.ref_name}}[matches.Length];
             for (var i = 0; i < matches.Length; i++)
-                rows[i] = new {{entry.ref_name}}(_owner, _rowOffsets[matches[i]]);
+                rows[i] = new {{entry.ref_name}}(_owner, _rowOffsets[matches[i]], Context);
             return rows;
         }
 %else
@@ -902,7 +972,7 @@ namespace {{binary_ref_namespace}}.BinaryRefs
 
             var rows = new {{entry.ref_name}}[ordinals.Length];
             for (var i = 0; i < ordinals.Length; i++)
-                rows[i] = new {{entry.ref_name}}(_owner, _rowOffsets[ordinals[i]]);
+                rows[i] = new {{entry.ref_name}}(_owner, _rowOffsets[ordinals[i]], Context);
             return rows;
         }
 %endif
@@ -1157,6 +1227,7 @@ namespace {{binary_ref_namespace}}.BinaryRefs
             _owner = owner;
 %for entry in entries
             this.{{entry.def.name}}s = {{entry.def.name}}s;
+            this.{{entry.def.name}}s.SetContext(this);
 %endfor
         }
 

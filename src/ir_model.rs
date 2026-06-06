@@ -127,6 +127,8 @@ pub struct StructDef {
     pub items: Vec<StructItem>,
     /// Indexes defined on this struct (from primary_key, unique, foreign_key, @index).
     pub indexes: Vec<IndexDef>,
+    /// Row references declared on this struct through table-level @ref annotations.
+    pub refs: Vec<RefDef>,
     /// Reverse relations pointing to this struct (from foreign_key ... as).
     pub relations: Vec<RelationDef>,
 }
@@ -147,6 +149,8 @@ pub struct LoadSourceDef {
 pub struct IndexDef {
     /// Index name (e.g., "ById", "ByNameLevel", "ByPlayerId").
     pub name: String,
+    /// Optional schema-level alias used by @ref targets (from `@index(..., as: alias)`).
+    pub schema_name: Option<String>,
     /// Fields that make up this index (1 for single, 2+ for composite).
     pub fields: Vec<IndexFieldDef>,
     /// Whether this is a unique index (single result) or group index (list result).
@@ -192,6 +196,8 @@ pub struct IndexFieldDef {
 pub struct SearchIndexDef {
     /// Generated method/index suffix. Defaults to the field name in PascalCase.
     pub name: String,
+    /// Schema-level search name used by @ref targets before method-name casing.
+    pub schema_name: String,
     /// Search mode: "exact", "ngram", or "word".
     pub mode: String,
     /// N-gram size when mode is "ngram".
@@ -202,6 +208,44 @@ pub struct SearchIndexDef {
     pub normalize: String,
     /// Target artifact for this search index. Defaults to "csharp_binary_ref".
     pub target: String,
+}
+
+/// Row reference declaration generated from table-level `@ref`.
+#[derive(Serialize, Debug, Clone)]
+pub struct RefDef {
+    /// Generated property name on the source row/ref.
+    pub name: String,
+    /// Fully qualified source table name.
+    pub source_table_fqn: String,
+    /// Fully qualified target table name.
+    pub target_table_fqn: String,
+    /// Simple target table name.
+    pub target_table_name: String,
+    /// Target kind: "index" or "search".
+    pub target_kind: String,
+    /// Raw schema target name (named @index alias or @search name).
+    pub target_name: String,
+    /// Generated lookup/search method suffix on the target table.
+    pub target_method_suffix: String,
+    /// Generated local key expression for the source row.
+    pub local_key_expr: String,
+    /// Source and target fields participating in the ref.
+    pub fields: Vec<RefFieldDef>,
+    /// Whether the target resolves to a single row.
+    pub is_unique: bool,
+    /// Optional reverse relation name.
+    pub reverse: Option<String>,
+}
+
+/// A source-to-target field mapping for a row ref.
+#[derive(Serialize, Debug, Clone)]
+pub struct RefFieldDef {
+    /// Local field on the source table.
+    pub local_field: String,
+    /// Target field for index refs. Search refs leave this empty.
+    pub target_field: String,
+    /// Local field type.
+    pub field_type: TypeRef,
 }
 
 /// Reverse relation definition (created from foreign_key ... as).

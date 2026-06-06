@@ -23,7 +23,8 @@ templates/
 │   ├── csharp_file.ptpl       # 메인 클래스/구조체 생성
 │   ├── csharp_binary_readers_file.ptpl  # BinaryReader helpers incl. nullable value types
 │   ├── csharp_binary_writers_file.ptpl  # BinaryWriter helpers incl. bytes cardinality
-│   ├── csharp_binary_refs_file.ptpl  # indexed binary package + lazy row refs + composite lookup + @search postings
+│   ├── csharp_binary_refs_file.ptpl  # indexed binary package + lazy row refs + composite lookup + @search postings + table-level @ref navigation
+│   ├── csharp_source_refs_file.ptpl  # editor/tooling mutable refs backed by sources config CSV/JSON + session SourceRefId for keyless rows + BinaryRef cache rebuild
 │   ├── csharp_csv_columns_file.ptpl  # CSV 컬럼 정의
 │   ├── csharp_container_file.ptpl  # Container + auto_create timezone + composite indexes + @search in-memory postings
 │   ├── csharp_sqlite_accessor_file.ptpl  # SQLite Accessor with recursive namespace datasource inheritance
@@ -32,6 +33,7 @@ templates/
 │   │   ├── namespace_block.ptpl
 │   │   ├── struct_block.ptpl
 │   │   └── enum_block.ptpl
+│   ├── detail/struct_ref_nav.ptpl  # C# Container row table-level @ref forward navigation
 │   ├── detail/                # 세부 렌더링
 │   │   ├── struct_header.ptpl
 │   │   ├── struct_body.ptpl
@@ -147,6 +149,7 @@ templates/
 │   ├── unreal_loaders_file.ptpl  # recursive namespace/embed loader helpers
 │   ├── unreal_registry_file.ptpl  # read-only TArray/TMap registry + Blueprint lookup/search/navigation/validation query API
 │   ├── unreal_hotreload_file.ptpl  # recursive sources config load table collection
+│   ├── unreal_source_refs_file.ptpl  # WITH_EDITOR source-backed mutable refs with session SourceRefId for keyless rows
 │   ├── unreal_redis_keys_file.ptpl
 │   ├── section/
 │   │   ├── namespace_block.ptpl

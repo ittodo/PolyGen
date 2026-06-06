@@ -596,6 +596,7 @@ mod tests {
             header: Vec::new(),
             items: Vec::new(),
             indexes: Vec::new(),
+            refs: Vec::new(),
             relations: Vec::new(),
         }))
     }

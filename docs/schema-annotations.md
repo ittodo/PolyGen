@@ -24,8 +24,11 @@ PolyGen 스키마 언어는 두 가지 메타데이터 시스템을 제공합니
 ```pest
 annotation             = { "@" ~ IDENT ~ ("(" ~ annotation_params_list? ~ ")")? }
 annotation_params_list = { annotation_arg ~ ("," ~ annotation_arg)* }
-annotation_arg         = { annotation_param | literal }
-annotation_param       = { IDENT ~ ":" ~ literal }
+annotation_arg         = { annotation_param | annotation_value }
+annotation_param       = { IDENT ~ ":" ~ annotation_value }
+annotation_value       = { annotation_tuple | annotation_path | literal }
+annotation_tuple       = { "(" ~ annotation_value ~ ("," ~ annotation_value)* ~ ","? ~ ")" }
+annotation_path        = { IDENT ~ "." ~ IDENT ~ ("." ~ IDENT)* }
 ```
 
 **지원 리터럴 타입:**
@@ -34,6 +37,8 @@ annotation_param       = { IDENT ~ ":" ~ literal }
 - 부동소수점: `3.14`
 - 불린: `true`, `false`
 - 식별자: `on_demand`
+- 경로: `User.display_identity`, `game.User.display_identity`
+- 튜플: `(display_name, user_id)`
 
 ### 1.2 Attachment target model
 
@@ -62,8 +67,9 @@ Unknown/custom annotation은 AST metadata로 보존됩니다. Built-in validatio
 
 | 어노테이션 | 파라미터 | Built-in target | 설명 |
 |----------|---------|-----------------|------|
-| `@index` | `(field1, field2, ...)`, `unique: true` | table | exact key lookup/DB index 생성을 위한 table-level index |
+| `@index` | `(field1, field2, ...)`, `unique: true`, `as` | table | exact key lookup/DB index 생성을 위한 table-level index |
 | `@search` | `mode`, `n`, `min`, `normalize`, `name`, `target` | searchable field, inline enum field | Container/BinaryRef/Registry 검색 인덱스 |
+| `@ref` | `name`, `target`, `fields`, `reverse` | table | named `@index`/`@search`에 연결되는 row reference |
 | `@pack` | `separator: ","` | named/nested embed | embed 필드를 단일 문자열로 직렬화 |
 | `@readonly` | 없음 | table | generated mutable container에서 쓰기/저장 제외 |
 | `@soft_delete` | `"deleted_at"` 또는 `field: deleted_at` | table | 논리 삭제 필드 지정 |
@@ -310,7 +316,7 @@ attribute/constraint가 아니라 field-level annotation으로 둡니다.
 | `@search(mode: ngram)` | n-gram 역색인 | string/string? 전용 |
 | `@search(mode: word)` | 단어 토큰 역색인 | string/string? 전용 |
 | `@search(normalize: lower_trim)` | 정규화 정책 지정 | string 계열 mode에 적용 |
-| `@search(name: "DisplayName")` | 생성 API/index 이름 지정 | 실제 문자열 이름이므로 따옴표 사용 |
+| `@search(name: title_search)` | 생성 API/index 이름 지정 | identifier 또는 문자열 사용 |
 
 옵션 값이 enum-like인 경우 따옴표 없는 identifier를 권장합니다.
 
@@ -515,6 +521,7 @@ enum/scalar 값을 exact search bucket으로 묶어서 `SearchByName(...)` 같�
 @index(name, unique: true)      // 유니크 인덱스
 @index(guild_id, level)         // 복합 인덱스 (2개)
 @index(region, guild_id, level) // 복합 인덱스 (3개)
+@index(name, id, unique: true, as: name_id) // @ref 대상 alias
 table Player {
     id: u32 primary_key;
     name: string;
@@ -527,7 +534,9 @@ table Player {
 `@index`는 table 정의에만 사용할 수 있습니다. positional 인자는 같은 table의 regular field를
 참조해야 하며, 한 annotation 안에서 같은 필드를 중복 지정할 수 없습니다. 인덱스 필드는
 array/bytes/struct/embed 타입일 수 없고, scalar 또는 enum 타입이어야 합니다. named parameter는
-`unique`만 허용되며 값은 boolean 또는 `true`, `false`, `1`, `0`입니다.
+`unique`와 `as`를 허용합니다. `unique` 값은 boolean 또는 `true`, `false`, `1`, `0`이고,
+`as`는 같은 table 안에서 중복되지 않는 identifier/string alias입니다. `as` alias는
+`@ref(target: Table.alias, ...)`의 target 이름으로 사용됩니다.
 
 ### 3.2 타겟별 인덱스 지원 정책
 
@@ -634,7 +643,52 @@ table Item {
 | `unique` on `code` | `ByCode` |
 | `foreign_key` on `player_id` | `ByPlayerId` |
 
-### 3.6 제거 대상: 기존 `index` 제약조건
+### 3.6 Table-level `@ref`
+
+`@ref`는 외래 키 제약을 새로 만드는 문법이 아니라, 이미 이름이 붙은 `@index` 또는
+`@search`에 source row field를 연결하는 navigation metadata입니다. FK는 여전히
+`foreign_key(Table.field)`가 담당하고, `@ref`는 복합 exact lookup이나 search 결과처럼
+FK 하나로 표현하기 어려운 authoring/query 연결을 표현합니다.
+
+```poly
+@index(name, id, unique: true, as: name_id)
+@index(name, as: by_name)
+table A {
+    name: string;
+    id: u32;
+}
+
+@ref(name: a, target: A.name_id, fields: (a_name, a_id), reverse: bs)
+@ref(name: matches, target: A.by_name, fields: (query))
+table B {
+    id: u32 primary_key;
+    a_name: string;
+    a_id: u32;
+    query: string;
+}
+```
+
+| 파라미터 | 필수 | 설명 |
+|----------|:---:|------|
+| `name` | ✅ | 생성되는 forward navigation 이름 |
+| `target` | ✅ | `TargetTable.named_index` 또는 `TargetTable.named_search` path |
+| `fields` | ✅ | source table field tuple. 순서는 target index field 순서와 같아야 함 |
+| `reverse` | 선택 | reverse relation 이름 metadata. 현재 FK `as` reverse와 충돌하지 않도록 보존 |
+
+규칙:
+- `target`은 `@index(..., as: alias)` 또는 `@search(name: alias)`로 이름이 붙은 대상만 참조할 수 있습니다.
+- target이 `unique: true` index이면 단일 row ref를, unique가 아니거나 search이면 목록 ref를 생성합니다.
+- `fields`의 개수와 타입은 target index field와 일치해야 합니다. search target은 source field 1개만 허용합니다.
+- `fields`에 들어간 source field는 `primary_key` 또는 `foreign_key` field일 수 없습니다.
+- 같은 source field를 여러 `@ref`가 동시에 사용할 수 없습니다.
+- `@ref name`은 같은 table 안에서 유일해야 하며, FK alias 기반 navigation 이름과 충돌할 수 없습니다.
+- target table의 primary key/unique/index와 named `@index`가 같은 field를 공유하는 것은 허용됩니다.
+
+C# 생성물은 Container row와 BinaryRef row에 forward navigation을 생성합니다. unique index ref는
+nullable 단일 row를 반환하고, non-unique index/search ref는 `IReadOnlyList<T>`를 반환합니다.
+SourceRefs는 원본 CSV/JSON 편집 레이어이므로 현재 `@ref` navigation을 직접 생성하지 않습니다.
+
+### 3.7 제거 대상: 기존 `index` 제약조건
 
 **제거 대상:**
 ```poly
@@ -725,6 +779,7 @@ CREATE TABLE Player (
 |----------|----------|:---:|:---:|:---:|:------:|
 | `@index` | canonical | ✅ | ✅ | ✅ | ✅ |
 | `@search` | canonical | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef, C++ Container/BinaryRef, Rust Container, TypeScript Container/BinaryRef, Go Container/BinaryRef, Python/Kotlin/Swift Container/BinaryRef, Unreal Registry |
+| `@ref` | canonical | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef forward navigation |
 | `@pack` | canonical | ✅ | ✅ | ✅ | ✅ C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal |
 | `@readonly` | canonical | ✅ | ✅ | ✅ | ✅ |
 | `@soft_delete` | canonical | ✅ | ✅ | ✅ | ✅ |

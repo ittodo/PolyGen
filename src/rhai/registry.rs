@@ -38,9 +38,9 @@
 
 use crate::ir_model::{
     self, AnnotationDef, AnnotationParam, EnumDef, EnumItem, EnumMember, FieldDef, FileDef,
-    ForeignKeyDef, IndexDef, LoadSourceDef, NamespaceDef, NamespaceItem, RangeDef, RelationDef,
-    RenameInfo, RenameKind, SchemaContext, SearchIndexDef, StructDef, StructItem, TimezoneRef,
-    TypeRef,
+    ForeignKeyDef, IndexDef, LoadSourceDef, NamespaceDef, NamespaceItem, RangeDef, RefDef,
+    RefFieldDef, RelationDef, RenameInfo, RenameKind, SchemaContext, SearchIndexDef, StructDef,
+    StructItem, TimezoneRef, TypeRef,
 };
 use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 use rhai::{Array, Dynamic, Engine, EvalAltResult, NativeCallContext, Scope};
@@ -218,6 +218,12 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
             .map(|idx| Dynamic::from(idx.clone()))
             .collect::<Vec<Dynamic>>()
     });
+    engine.register_get("refs", |s: &mut StructDef| {
+        s.refs
+            .iter()
+            .map(|row_ref| Dynamic::from(row_ref.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
     engine.register_get("relations", |s: &mut StructDef| {
         s.relations
             .iter()
@@ -268,6 +274,15 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
     // Register IndexDef type and getters
     engine.register_type_with_name::<IndexDef>("IndexDef");
     engine.register_get("name", |idx: &mut IndexDef| idx.name.clone());
+    engine.register_get("schema_name", |idx: &mut IndexDef| {
+        idx.schema_name
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("has_schema_name", |idx: &mut IndexDef| {
+        idx.schema_name.is_some()
+    });
     // Backward compatible: first field name/type for single-field indexes
     engine.register_get("field_name", |idx: &mut IndexDef| {
         idx.field_name().to_string()
@@ -522,6 +537,62 @@ pub(crate) fn register_types_and_getters(engine: &mut Engine) {
         idx.normalize.clone()
     });
     engine.register_get("target", |idx: &mut SearchIndexDef| idx.target.clone());
+    engine.register_get("schema_name", |idx: &mut SearchIndexDef| {
+        idx.schema_name.clone()
+    });
+
+    engine.register_type_with_name::<RefDef>("RefDef");
+    engine.register_get("name", |row_ref: &mut RefDef| row_ref.name.clone());
+    engine.register_get("source_table_fqn", |row_ref: &mut RefDef| {
+        row_ref.source_table_fqn.clone()
+    });
+    engine.register_get("target_table_fqn", |row_ref: &mut RefDef| {
+        row_ref.target_table_fqn.clone()
+    });
+    engine.register_get("target_table_name", |row_ref: &mut RefDef| {
+        row_ref.target_table_name.clone()
+    });
+    engine.register_get("target_kind", |row_ref: &mut RefDef| {
+        row_ref.target_kind.clone()
+    });
+    engine.register_get("target_name", |row_ref: &mut RefDef| {
+        row_ref.target_name.clone()
+    });
+    engine.register_get("target_method_suffix", |row_ref: &mut RefDef| {
+        row_ref.target_method_suffix.clone()
+    });
+    engine.register_get("local_key_expr", |row_ref: &mut RefDef| {
+        row_ref.local_key_expr.clone()
+    });
+    engine.register_get("fields", |row_ref: &mut RefDef| {
+        row_ref
+            .fields
+            .iter()
+            .map(|field| Dynamic::from(field.clone()))
+            .collect::<Vec<Dynamic>>()
+    });
+    engine.register_get("is_unique", |row_ref: &mut RefDef| row_ref.is_unique);
+    engine.register_get("reverse", |row_ref: &mut RefDef| {
+        row_ref
+            .reverse
+            .clone()
+            .map(Dynamic::from)
+            .unwrap_or(Dynamic::UNIT)
+    });
+    engine.register_get("has_reverse", |row_ref: &mut RefDef| {
+        row_ref.reverse.is_some()
+    });
+
+    engine.register_type_with_name::<RefFieldDef>("RefFieldDef");
+    engine.register_get("local_field", |field: &mut RefFieldDef| {
+        field.local_field.clone()
+    });
+    engine.register_get("target_field", |field: &mut RefFieldDef| {
+        field.target_field.clone()
+    });
+    engine.register_get("field_type", |field: &mut RefFieldDef| {
+        field.field_type.clone()
+    });
 
     // Register TimezoneRef type and getters
     engine.register_type_with_name::<TimezoneRef>("TimezoneRef");

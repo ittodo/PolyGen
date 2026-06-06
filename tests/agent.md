@@ -246,7 +246,8 @@ tests/
   - `tests/runners/unreal/test_compile_unreal.py`는 UnrealBuildTool 없이 `compile_unreal.py`의 필수 env 처리, missing project failure, generated header copy, configured engine root/Epic manifest 기반 UBT discovery, prepared fixture root env, UBT command assembly, smoke fixture 생성과 missing generated local include 검출을 fake subprocess/임시 디렉터리로 회귀 검증한다.
   - Unreal 생성 타입명은 UHT engine-name 충돌 방지를 위해 `FPolygen*`/`EPolygen*` reflected name을 사용하며, explicit 0 값이 없는 enum에는 `PolygenInvalid = 0`을 추가한다.
   - `01`-`11` 통합 케이스의 `.h` 산출물을 파싱해 USTRUCT/UENUM, loader 함수, hot reload delegate/load 함수, Redis helper 구조를 검증
-  - `07_indexes`에서 Unreal read-only Registry의 `TArray` row storage, `TMap` unique/group/search postings index, Blueprint callable row/count/lookup/search API, string/number/enum exact search, FK navigation helper, unique/primary duplicate validation, FK validation diagnostic 구조를 검증
+  - `07_indexes`에서 Unreal read-only Registry의 `TArray` row storage, `TMap` unique/group/search postings index, Blueprint callable row/count/lookup/search API, named `@search` API, string/number/enum exact search, FK navigation helper, unique/primary duplicate validation, FK validation diagnostic 구조를 검증
+  - `07_indexes`에서 Unreal `WITH_EDITOR` SourceRefs의 source document, mutable row ref, immutable key, keyless `SourceRefId`, CSV save, JSON save helper 구조를 검증
   - `08_complex_schema`에서 Unreal Registry의 field constraint validation(`MaxLength`, `Range`, `Regex`), `Internationalization/Regex.h` include, `ValidateAll` 합산 구조를 검증
   - `10_pack_embed`에서 Unreal `@pack` embed의 `Pack`, `Unpack`, `TryUnpack` 생성과 invalid input 방어 조각을 검증
   - `11_relations_indexes`에서 Unreal Registry의 FK forward navigation helper, reverse relation alias helper, unique/primary duplicate validation, FK validation diagnostic 구조를 검증
@@ -281,7 +282,8 @@ tests/
   - `03_nested_namespaces`에서 root `SchemaDataContainer`가 깊은 namespace table/index를 포함하는지 검증
   - `04_inline_enums`에서 invalid binary enum discriminant read/write가 `InvalidDataException`으로 거부되는지 검증
   - `06_arrays_and_optionals`에서 binary optional null roundtrip 검증
-  - `07_indexes`에서 C# Container/BinaryRef `@search` ngram/exact postings와 string/number/enum 조회 API 검증
+  - `07_indexes`에서 C# Container/BinaryRef `@search` ngram/exact postings와 string/number/enum 조회 API, named `@index`/`@search` target table-level `@ref` navigation을 검증
+  - `07_indexes`에서 C# SourceRefs가 CSV 원본 수정, immutable key, keyless `SourceRefId`, JSON 동기화, BinaryRef 캐시 재생성을 수행하는 runtime 경로를 검증
   - `08_complex_schema`에서 C# Container `ValidateAll()`의 field constraint(`MaxLength`, `Range`, `Regex`) runtime 경로를 검증
   - `11_relations_indexes`에서 C# table-level composite tuple key index, BinaryRef composite tuple-key lookup, FK navigation helper, reverse relation alias helper, missing FK validation을 검증
   - `09_sqlite`에서 중첩 namespace table이 상위 SQLite datasource를 상속해 `SqliteDbContext`에 포함되는지 검증

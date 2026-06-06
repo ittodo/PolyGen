@@ -87,6 +87,7 @@ pub(super) fn extract_search_index(
             };
             let is_string = base_type.lang_type == "string";
 
+            let mut schema_name = field_name.to_string();
             let mut name = field_name.to_pascal_case();
             let mut mode = if is_string { "ngram" } else { "exact" }.to_string();
             let mut n = 2_u32;
@@ -116,7 +117,10 @@ pub(super) fn extract_search_index(
                             }
                         }
                         "normalize" => normalize = param.value.to_string(),
-                        "name" => name = param.value.to_string().to_pascal_case(),
+                        "name" => {
+                            schema_name = param.value.to_string();
+                            name = schema_name.to_pascal_case();
+                        }
                         "target" => target = param.value.to_string(),
                         _ => {}
                     },
@@ -125,6 +129,7 @@ pub(super) fn extract_search_index(
 
             return Some(SearchIndexDef {
                 name,
+                schema_name,
                 mode,
                 n,
                 min: min.unwrap_or(n),

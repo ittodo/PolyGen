@@ -23,7 +23,7 @@ pub fn validate_ast(definitions: &[Definition]) -> Result<(), ValidationError> {
     let mut field_registry = FieldRegistry::default();
     collect_table_fields(definitions, &mut Vec::new(), &mut field_registry)?;
     // 2. 어노테이션 인자의 의미적 유효성을 확인합니다.
-    validate_all_annotations(definitions, &mut Vec::new(), &registry)?;
+    validate_all_annotations(definitions, &mut Vec::new(), &registry, &field_registry)?;
     // 3. 사용된 타입들이 실제로 정의되었는지 확인합니다.
     validate_all_types(
         definitions,
@@ -358,9 +358,67 @@ fn resolve_type_path(
     None
 }
 
+fn literal_name(literal: &Literal) -> Option<&str> {
+    match literal {
+        Literal::Identifier(value) | Literal::String(value) => Some(value.as_str()),
+        _ => None,
+    }
+}
+
+fn literal_path(literal: &Literal) -> Option<&[String]> {
+    match literal {
+        Literal::Path(path) => Some(path.as_slice()),
+        _ => None,
+    }
+}
+
+fn literal_tuple_names(literal: &Literal) -> Option<Vec<&str>> {
+    match literal {
+        Literal::Tuple(values) => values.iter().map(literal_name).collect(),
+        _ => None,
+    }
+}
+
+fn literal_bool(literal: &Literal) -> Option<bool> {
+    match literal {
+        Literal::Boolean(value) => Some(*value),
+        Literal::Integer(0) => Some(false),
+        Literal::Integer(1) => Some(true),
+        Literal::String(value) | Literal::Identifier(value) => match value.as_str() {
+            "true" | "1" => Some(true),
+            "false" | "0" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn annotation_param<'a>(
+    args: &'a [AnnotationArg],
+    key: &str,
+) -> Option<&'a crate::ast_model::AnnotationParam> {
+    args.iter().find_map(|arg| match arg {
+        AnnotationArg::Named(param) if param.key == key => Some(param),
+        _ => None,
+    })
+}
+
+fn annotation_param_name(args: &[AnnotationArg], key: &str) -> Option<String> {
+    annotation_param(args, key)
+        .and_then(|param| literal_name(&param.value))
+        .map(str::to_string)
+}
+
 #[derive(Default)]
 struct FieldRegistry<'a> {
-    table_fields: HashMap<String, HashMap<String, FieldInfo<'a>>>,
+    tables: HashMap<String, TableRefInfo<'a>>,
+}
+
+#[derive(Default)]
+struct TableRefInfo<'a> {
+    fields: HashMap<String, FieldInfo<'a>>,
+    indexes: HashMap<String, IndexInfo>,
+    searches: HashMap<String, SearchInfo<'a>>,
 }
 
 #[derive(Clone, Copy)]
@@ -368,10 +426,26 @@ struct FieldInfo<'a> {
     field_type: &'a TypeWithCardinality,
     is_primary_key: bool,
     is_unique: bool,
+    is_foreign_key: bool,
+}
+
+#[derive(Clone)]
+struct IndexInfo {
+    fields: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+struct SearchInfo<'a> {
+    field_type: &'a TypeWithCardinality,
 }
 
 impl<'a> FieldRegistry<'a> {
-    fn insert_table(&mut self, table_fqn: String, members: &'a [TableMember]) {
+    fn insert_table(
+        &mut self,
+        table_fqn: String,
+        metadata: &'a [Metadata],
+        members: &'a [TableMember],
+    ) {
         let fields = members
             .iter()
             .filter_map(|member| {
@@ -384,6 +458,10 @@ impl<'a> FieldRegistry<'a> {
                         .constraints
                         .iter()
                         .any(|constraint| matches!(constraint, Constraint::Unique));
+                    let is_foreign_key = field
+                        .constraints
+                        .iter()
+                        .any(|constraint| matches!(constraint, Constraint::ForeignKey(_, _)));
                     return field.name.as_ref().map(|name| {
                         (
                             name.clone(),
@@ -391,6 +469,7 @@ impl<'a> FieldRegistry<'a> {
                                 field_type: &field.field_type,
                                 is_primary_key,
                                 is_unique,
+                                is_foreign_key,
                             },
                         )
                     });
@@ -399,13 +478,86 @@ impl<'a> FieldRegistry<'a> {
             })
             .collect();
 
-        self.table_fields.insert(table_fqn, fields);
+        let mut indexes = HashMap::new();
+        for meta in metadata {
+            let Metadata::Annotation(annotation) = meta else {
+                continue;
+            };
+            if annotation.name.as_deref() != Some("index") {
+                continue;
+            }
+
+            let Some(name) = annotation_param_name(&annotation.args, "as") else {
+                continue;
+            };
+            let index_fields = annotation
+                .args
+                .iter()
+                .filter_map(|arg| match arg {
+                    AnnotationArg::Positional(literal) => literal_name(literal).map(str::to_string),
+                    AnnotationArg::Named(_) => None,
+                })
+                .collect::<Vec<_>>();
+            indexes.insert(
+                name,
+                IndexInfo {
+                    fields: index_fields,
+                },
+            );
+        }
+
+        let mut searches = HashMap::new();
+        for member in members {
+            let TableMember::Field(FieldDefinition::Regular(field)) = member else {
+                continue;
+            };
+            let Some(field_name) = field.name.as_deref() else {
+                continue;
+            };
+            for meta in &field.metadata {
+                let Metadata::Annotation(annotation) = meta else {
+                    continue;
+                };
+                if annotation.name.as_deref() != Some("search") {
+                    continue;
+                }
+                let name = annotation_param_name(&annotation.args, "name")
+                    .unwrap_or_else(|| field_name.to_string());
+                searches.insert(
+                    name,
+                    SearchInfo {
+                        field_type: &field.field_type,
+                    },
+                );
+            }
+        }
+
+        self.tables.insert(
+            table_fqn,
+            TableRefInfo {
+                fields,
+                indexes,
+                searches,
+            },
+        );
     }
 
     fn field_info(&self, table_fqn: &str, field_name: &str) -> Option<FieldInfo<'a>> {
-        self.table_fields
+        self.tables
             .get(table_fqn)
-            .and_then(|fields| fields.get(field_name).copied())
+            .and_then(|table| table.fields.get(field_name).copied())
+    }
+
+    fn index_info(&self, table_fqn: &str, index_name: &str) -> Option<&IndexInfo> {
+        self.tables
+            .get(table_fqn)
+            .and_then(|table| table.indexes.get(index_name))
+    }
+
+    fn search_info(&self, table_fqn: &str, search_name: &str) -> Option<SearchInfo<'a>> {
+        self.tables
+            .get(table_fqn)
+            .and_then(|table| table.searches.get(search_name).copied())
     }
 }
 
@@ -426,7 +578,7 @@ fn collect_table_fields<'a>(
             Definition::Table(t) => {
                 let table_name = required_name(&t.name, "table")?;
                 let table_fqn = qualified_name(path, table_name);
-                field_registry.insert_table(table_fqn, &t.members);
+                field_registry.insert_table(table_fqn, &t.metadata, &t.members);
             }
             Definition::Enum(_) | Definition::Embed(_) => {}
             Definition::Comment(_) | Definition::Annotation(_) => {}
@@ -1350,6 +1502,15 @@ fn validate_metadata_annotations(
                     );
                 }
                 validate_index_annotation(&annotation.args, target)?;
+            } else if annotation.name.as_deref() == Some("ref") {
+                if !allow_table_annotations {
+                    return invalid_ref(
+                        target,
+                        "target",
+                        "@ref can only be used on table definitions",
+                    );
+                }
+                validate_ref_annotation(&annotation.args, target)?;
             } else if annotation.name.as_deref() == Some("load") {
                 if !allow_table_annotations {
                     return invalid_load(
@@ -1407,6 +1568,7 @@ fn validate_builtin_annotation_case(
         "readonly",
         "soft_delete",
         "index",
+        "ref",
         "load",
         "taggable",
         "link_rows",
@@ -1699,6 +1861,7 @@ fn invalid_soft_delete<T>(target: &str, part: &str, message: &str) -> Result<T, 
 fn validate_index_annotation(args: &[AnnotationArg], target: &str) -> Result<(), ValidationError> {
     let mut field_count = 0;
     let mut has_unique = false;
+    let mut has_as = false;
 
     for arg in args {
         match arg {
@@ -1706,20 +1869,33 @@ fn validate_index_annotation(args: &[AnnotationArg], target: &str) -> Result<(),
                 index_field_name(literal, target)?;
                 field_count += 1;
             }
-            AnnotationArg::Named(param) => {
-                if param.key != "unique" {
+            AnnotationArg::Named(param) => match param.key.as_str() {
+                "unique" => {
+                    if has_unique {
+                        return invalid_index(
+                            target,
+                            "unique",
+                            "unique is specified more than once",
+                        );
+                    }
+                    validate_index_unique_literal(&param.value, target)?;
+                    has_unique = true;
+                }
+                "as" => {
+                    if has_as {
+                        return invalid_index(target, "as", "as is specified more than once");
+                    }
+                    validate_name_literal(&param.value, target, "@index", "as")?;
+                    has_as = true;
+                }
+                _ => {
                     return invalid_index(
-                        target,
-                        &param.key,
-                        "unsupported @index parameter; expected field names and optional 'unique'",
-                    );
+                            target,
+                            &param.key,
+                            "unsupported @index parameter; expected field names and optional 'unique' or 'as'",
+                        );
                 }
-                if has_unique {
-                    return invalid_index(target, "unique", "unique is specified more than once");
-                }
-                validate_index_unique_literal(&param.value, target)?;
-                has_unique = true;
-            }
+            },
         }
     }
 
@@ -1731,19 +1907,14 @@ fn validate_index_annotation(args: &[AnnotationArg], target: &str) -> Result<(),
 }
 
 fn validate_index_unique_literal(literal: &Literal, target: &str) -> Result<(), ValidationError> {
-    match literal {
-        Literal::Boolean(_) => Ok(()),
-        Literal::Integer(0 | 1) => Ok(()),
-        Literal::String(value) | Literal::Identifier(value)
-            if matches!(value.as_str(), "true" | "false" | "1" | "0") =>
-        {
-            Ok(())
-        }
-        _ => invalid_index(
+    if literal_bool(literal).is_some() {
+        Ok(())
+    } else {
+        invalid_index(
             target,
             "unique",
             "unique must be a boolean literal or one of true, false, 1, 0",
-        ),
+        )
     }
 }
 
@@ -1776,9 +1947,19 @@ fn validate_index_fields(
         })
         .collect();
 
+    let mut named_indexes = HashSet::new();
     for meta in metadata {
         if let Metadata::Annotation(annotation) = meta {
             if annotation.name.as_deref() == Some("index") {
+                if let Some(name) = annotation_param_name(&annotation.args, "as") {
+                    if !named_indexes.insert(name) {
+                        return invalid_index(
+                            target,
+                            "as",
+                            "named @index aliases must be unique within one table",
+                        );
+                    }
+                }
                 let mut seen = HashSet::new();
                 for arg in &annotation.args {
                     if let AnnotationArg::Positional(literal) = arg {
@@ -1851,6 +2032,341 @@ fn invalid_index<T>(target: &str, part: &str, message: &str) -> Result<T, Valida
     Err(ValidationError::InvalidConstraint {
         field: target.to_string(),
         constraint: format!("@index.{part}"),
+        message: message.to_string(),
+    })
+}
+
+fn validate_ref_annotation(args: &[AnnotationArg], target: &str) -> Result<(), ValidationError> {
+    let mut seen = HashSet::new();
+    let mut has_name = false;
+    let mut has_target = false;
+    let mut has_fields = false;
+
+    for arg in args {
+        let AnnotationArg::Named(param) = arg else {
+            return invalid_ref(target, "args", "@ref only accepts named parameters");
+        };
+
+        if !seen.insert(param.key.as_str()) {
+            return invalid_ref(
+                target,
+                &param.key,
+                "@ref parameter is specified more than once",
+            );
+        }
+
+        match param.key.as_str() {
+            "name" => {
+                validate_name_literal(&param.value, target, "@ref", "name")?;
+                has_name = true;
+            }
+            "target" => {
+                validate_ref_target_literal(&param.value, target)?;
+                has_target = true;
+            }
+            "fields" => {
+                validate_ref_fields_literal(&param.value, target)?;
+                has_fields = true;
+            }
+            "reverse" => {
+                validate_name_literal(&param.value, target, "@ref", "reverse")?;
+            }
+            _ => {
+                return invalid_ref(
+                    target,
+                    &param.key,
+                    "unsupported @ref parameter; expected name, target, fields, or reverse",
+                );
+            }
+        }
+    }
+
+    if !has_name {
+        return invalid_ref(target, "name", "@ref requires a name parameter");
+    }
+    if !has_target {
+        return invalid_ref(target, "target", "@ref requires a target parameter");
+    }
+    if !has_fields {
+        return invalid_ref(target, "fields", "@ref requires a fields parameter");
+    }
+
+    Ok(())
+}
+
+fn validate_ref_target_literal(literal: &Literal, target: &str) -> Result<(), ValidationError> {
+    match literal_path(literal) {
+        Some(path) if path.len() >= 2 => Ok(()),
+        _ => invalid_ref(
+            target,
+            "target",
+            "target must be a dotted path like Table.index_or_search",
+        ),
+    }
+}
+
+fn validate_ref_fields_literal(literal: &Literal, target: &str) -> Result<(), ValidationError> {
+    match literal_tuple_names(literal) {
+        Some(fields) if !fields.is_empty() => Ok(()),
+        _ => invalid_ref(
+            target,
+            "fields",
+            "fields must be a tuple of local field names, such as (field) or (field1, field2)",
+        ),
+    }
+}
+
+fn validate_ref_annotations(
+    metadata: &[Metadata],
+    table: &crate::ast_model::Table,
+    target: &str,
+    namespace_scope: &[String],
+    registry: &TypeRegistry,
+    field_registry: &FieldRegistry<'_>,
+) -> Result<(), ValidationError> {
+    let table_name = required_name(&table.name, "table")?;
+    let mut table_scope = namespace_scope.to_vec();
+    table_scope.push(table_name.to_string());
+    let mut ref_names = HashSet::new();
+    let mut ref_fields = HashSet::new();
+    let mut foreign_key_aliases = HashSet::new();
+
+    for member in &table.members {
+        let TableMember::Field(FieldDefinition::Regular(field)) = member else {
+            continue;
+        };
+        for constraint in &field.constraints {
+            if let Constraint::ForeignKey(_, Some(alias)) = constraint {
+                foreign_key_aliases.insert(alias.as_str());
+            }
+        }
+    }
+
+    for meta in metadata {
+        let Metadata::Annotation(annotation) = meta else {
+            continue;
+        };
+        if annotation.name.as_deref() != Some("ref") {
+            continue;
+        }
+
+        let name = required_annotation_name(&annotation.args, "name", target, "@ref")?;
+        if !ref_names.insert(name.to_string()) {
+            return invalid_ref(target, "name", "@ref names must be unique within one table");
+        }
+        if foreign_key_aliases.contains(name) {
+            return invalid_ref(
+                target,
+                "name",
+                "@ref name conflicts with a foreign_key reverse alias on the same table",
+            );
+        }
+
+        let fields = required_annotation_tuple_names(&annotation.args, "fields", target, "@ref")?;
+        for field_name in &fields {
+            if !ref_fields.insert((*field_name).to_string()) {
+                return invalid_ref(
+                    target,
+                    "fields",
+                    "a local field can participate in only one @ref",
+                );
+            }
+            let Some(info) = local_field_info(table, field_name) else {
+                return invalid_ref(
+                    target,
+                    "fields",
+                    "@ref field must reference a regular field on the same table",
+                );
+            };
+            if info.is_primary_key {
+                return invalid_ref(target, "fields", "@ref fields cannot be primary_key fields");
+            }
+            if info.is_foreign_key {
+                return invalid_ref(target, "fields", "@ref fields cannot be foreign_key fields");
+            }
+        }
+
+        let target_path = required_annotation_path(&annotation.args, "target", target, "@ref")?;
+        let target_name = target_path.last().expect("target path length checked");
+        let target_table_path = &target_path[..target_path.len() - 1];
+        let Some(target_table_fqn) =
+            resolve_type_path(target_table_path, namespace_scope, registry)
+        else {
+            return Err(ValidationError::TypeNotFound(target_table_path.join(".")));
+        };
+        if registry.get_kind(&target_table_fqn) != Some(TypeKind::Struct) {
+            return invalid_ref(target, "target", "@ref target table must be a table");
+        }
+
+        if let Some(index) = field_registry.index_info(&target_table_fqn, target_name) {
+            validate_index_ref_mapping(
+                target,
+                &fields,
+                &table_scope,
+                &target_table_fqn,
+                index,
+                field_registry,
+                registry,
+            )?;
+            continue;
+        }
+
+        if let Some(search) = field_registry.search_info(&target_table_fqn, target_name) {
+            validate_search_ref_mapping(
+                target,
+                &fields,
+                &table_scope,
+                &target_table_fqn,
+                search,
+                field_registry,
+                registry,
+            )?;
+            continue;
+        }
+
+        return invalid_ref(
+            target,
+            "target",
+            "@ref target must reference a named @index alias or @search name",
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_index_ref_mapping(
+    target: &str,
+    local_fields: &[&str],
+    table_scope: &[String],
+    target_table_fqn: &str,
+    index: &IndexInfo,
+    field_registry: &FieldRegistry<'_>,
+    registry: &TypeRegistry,
+) -> Result<(), ValidationError> {
+    if local_fields.len() != index.fields.len() {
+        return invalid_ref(
+            target,
+            "fields",
+            "@ref fields must match the target @index field count",
+        );
+    }
+
+    let local_table_fqn = table_scope.join(".");
+    let target_scope = target_table_fqn
+        .split('.')
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    for (local_field, target_field) in local_fields.iter().zip(index.fields.iter()) {
+        let Some(local_info) = field_registry.field_info(&local_table_fqn, local_field) else {
+            return invalid_ref(
+                target,
+                "fields",
+                "@ref field must reference a regular field on the same table",
+            );
+        };
+        let Some(target_info) = field_registry.field_info(target_table_fqn, target_field) else {
+            return invalid_ref(target, "target", "target @index field does not exist");
+        };
+        if !field_types_are_compatible(
+            local_info.field_type,
+            table_scope,
+            target_info.field_type,
+            &target_scope,
+            registry,
+        ) {
+            return invalid_ref(
+                target,
+                "fields",
+                "@ref field type must match the corresponding target @index field type",
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_search_ref_mapping(
+    target: &str,
+    local_fields: &[&str],
+    table_scope: &[String],
+    target_table_fqn: &str,
+    search: SearchInfo<'_>,
+    field_registry: &FieldRegistry<'_>,
+    registry: &TypeRegistry,
+) -> Result<(), ValidationError> {
+    if local_fields.len() != 1 {
+        return invalid_ref(
+            target,
+            "fields",
+            "@search refs require exactly one local field",
+        );
+    }
+
+    let local_table_fqn = table_scope.join(".");
+    let Some(local_info) = field_registry.field_info(&local_table_fqn, local_fields[0]) else {
+        return invalid_ref(
+            target,
+            "fields",
+            "@ref field must reference a regular field on the same table",
+        );
+    };
+    let target_scope = target_table_fqn
+        .split('.')
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    if !field_types_are_compatible(
+        local_info.field_type,
+        table_scope,
+        search.field_type,
+        &target_scope,
+        registry,
+    ) {
+        return invalid_ref(
+            target,
+            "fields",
+            "@ref field type must match the target @search field type",
+        );
+    }
+
+    Ok(())
+}
+
+fn local_field_info<'a>(
+    table: &'a crate::ast_model::Table,
+    field_name: &str,
+) -> Option<FieldInfo<'a>> {
+    table.members.iter().find_map(|member| {
+        let TableMember::Field(FieldDefinition::Regular(field)) = member else {
+            return None;
+        };
+        let name = field.name.as_deref()?;
+        if name != field_name {
+            return None;
+        }
+        Some(FieldInfo {
+            field_type: &field.field_type,
+            is_primary_key: field
+                .constraints
+                .iter()
+                .any(|constraint| matches!(constraint, Constraint::PrimaryKey)),
+            is_unique: field
+                .constraints
+                .iter()
+                .any(|constraint| matches!(constraint, Constraint::Unique)),
+            is_foreign_key: field
+                .constraints
+                .iter()
+                .any(|constraint| matches!(constraint, Constraint::ForeignKey(_, _))),
+        })
+    })
+}
+
+fn invalid_ref<T>(target: &str, part: &str, message: &str) -> Result<T, ValidationError> {
+    Err(ValidationError::InvalidConstraint {
+        field: target.to_string(),
+        constraint: format!("@ref.{part}"),
         message: message.to_string(),
     })
 }
@@ -1995,6 +2511,76 @@ fn validate_non_empty_name_literal(
             message: "value must be an identifier or string literal".to_string(),
         }),
     }
+}
+
+fn validate_name_literal(
+    literal: &Literal,
+    target: &str,
+    annotation: &str,
+    part: &str,
+) -> Result<(), ValidationError> {
+    let Some(value) = literal_name(literal) else {
+        return Err(ValidationError::InvalidConstraint {
+            field: target.to_string(),
+            constraint: format!("{annotation}.{part}"),
+            message: "value must be an identifier or string literal".to_string(),
+        });
+    };
+
+    if value.trim().is_empty() {
+        return Err(ValidationError::InvalidConstraint {
+            field: target.to_string(),
+            constraint: format!("{annotation}.{part}"),
+            message: "value must not be empty".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn required_annotation_name<'a>(
+    args: &'a [AnnotationArg],
+    key: &str,
+    target: &str,
+    annotation: &str,
+) -> Result<&'a str, ValidationError> {
+    annotation_param(args, key)
+        .and_then(|param| literal_name(&param.value))
+        .ok_or_else(|| ValidationError::InvalidConstraint {
+            field: target.to_string(),
+            constraint: format!("{annotation}.{key}"),
+            message: format!("{key} must be an identifier or string literal"),
+        })
+}
+
+fn required_annotation_path<'a>(
+    args: &'a [AnnotationArg],
+    key: &str,
+    target: &str,
+    annotation: &str,
+) -> Result<&'a [String], ValidationError> {
+    annotation_param(args, key)
+        .and_then(|param| literal_path(&param.value))
+        .ok_or_else(|| ValidationError::InvalidConstraint {
+            field: target.to_string(),
+            constraint: format!("{annotation}.{key}"),
+            message: format!("{key} must be a dotted path"),
+        })
+}
+
+fn required_annotation_tuple_names<'a>(
+    args: &'a [AnnotationArg],
+    key: &str,
+    target: &str,
+    annotation: &str,
+) -> Result<Vec<&'a str>, ValidationError> {
+    annotation_param(args, key)
+        .and_then(|param| literal_tuple_names(&param.value))
+        .ok_or_else(|| ValidationError::InvalidConstraint {
+            field: target.to_string(),
+            constraint: format!("{annotation}.{key}"),
+            message: format!("{key} must be a tuple of identifiers or string literals"),
+        })
 }
 
 fn validate_pack_annotation(args: &[AnnotationArg], target: &str) -> Result<(), ValidationError> {
@@ -2442,6 +3028,7 @@ fn validate_all_annotations(
     definitions: &[Definition],
     path: &mut Vec<String>,
     registry: &TypeRegistry,
+    field_registry: &FieldRegistry<'_>,
 ) -> Result<(), ValidationError> {
     for def in definitions {
         match def {
@@ -2449,7 +3036,7 @@ fn validate_all_annotations(
                 path.extend(ns.path.iter().cloned());
                 let target = path.join(".");
                 validate_metadata_annotations(&ns.metadata, &target, false, true, false, false)?;
-                validate_all_annotations(&ns.definitions, path, registry)?;
+                validate_all_annotations(&ns.definitions, path, registry, field_registry)?;
                 for _ in 0..ns.path.len() {
                     path.pop();
                 }
@@ -2459,6 +3046,7 @@ fn validate_all_annotations(
                 let target = qualified_name(path, table_name);
                 validate_metadata_annotations(&t.metadata, &target, false, true, true, false)?;
                 validate_soft_delete_fields(&t.metadata, t, &target)?;
+                validate_ref_annotations(&t.metadata, t, &target, path, registry, &field_registry)?;
                 path.push(table_name.to_string());
                 validate_index_fields(&t.metadata, t, &target, path, registry)?;
                 validate_member_annotations(&t.members, path, registry)?;
@@ -2664,6 +3252,13 @@ mod tests {
         })]
     }
 
+    fn ref_metadata(args: Vec<AnnotationArg>) -> Vec<Metadata> {
+        vec![Metadata::Annotation(Annotation {
+            name: Some("ref".to_string()),
+            args,
+        })]
+    }
+
     fn load_metadata(args: Vec<AnnotationArg>) -> Vec<Metadata> {
         vec![Metadata::Annotation(Annotation {
             name: Some("load".to_string()),
@@ -2697,6 +3292,25 @@ mod tests {
             key: key.to_string(),
             value,
         })
+    }
+
+    fn ref_args(name: &str, target: Vec<&str>, fields: Vec<&str>) -> Vec<AnnotationArg> {
+        vec![
+            named_arg("name", Literal::Identifier(name.to_string())),
+            named_arg(
+                "target",
+                Literal::Path(target.into_iter().map(String::from).collect()),
+            ),
+            named_arg(
+                "fields",
+                Literal::Tuple(
+                    fields
+                        .into_iter()
+                        .map(|field| Literal::Identifier(field.to_string()))
+                        .collect(),
+                ),
+            ),
+        ]
     }
 
     /// Helper to create a regular field with a path type
@@ -3849,6 +4463,137 @@ mod tests {
     }
 
     #[test]
+    fn test_ref_annotation_to_named_composite_index_is_valid() {
+        let definitions = vec![
+            make_table_with_metadata(
+                "User",
+                index_metadata(vec![
+                    AnnotationArg::Positional(Literal::Identifier("name".to_string())),
+                    AnnotationArg::Positional(Literal::Identifier("id".to_string())),
+                    named_arg("unique", Literal::Boolean(true)),
+                    named_arg("as", Literal::Identifier("name_id".to_string())),
+                ]),
+                vec![
+                    make_field_basic("name", BasicType::String),
+                    make_field_basic("id", BasicType::U32),
+                ],
+            ),
+            make_table_with_metadata(
+                "Lookup",
+                ref_metadata(ref_args(
+                    "user",
+                    vec!["User", "name_id"],
+                    vec!["display_name", "user_id"],
+                )),
+                vec![
+                    make_field_basic("display_name", BasicType::String),
+                    make_field_basic("user_id", BasicType::U32),
+                ],
+            ),
+        ];
+
+        assert!(validate_ast(&definitions).is_ok());
+    }
+
+    #[test]
+    fn test_ref_annotation_rejects_primary_key_local_field() {
+        let definitions = vec![
+            make_table_with_metadata(
+                "User",
+                index_metadata(vec![
+                    AnnotationArg::Positional(Literal::Identifier("id".to_string())),
+                    named_arg("unique", Literal::Boolean(true)),
+                    named_arg("as", Literal::Identifier("by_id".to_string())),
+                ]),
+                vec![make_primary_key_field("id", BasicType::U32)],
+            ),
+            make_table_with_metadata(
+                "Lookup",
+                ref_metadata(ref_args("user", vec!["User", "by_id"], vec!["id"])),
+                vec![make_primary_key_field("id", BasicType::U32)],
+            ),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::InvalidConstraint {
+                field: "Lookup".to_string(),
+                constraint: "@ref.fields".to_string(),
+                message: "@ref fields cannot be primary_key fields".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_ref_annotation_rejects_foreign_key_local_field() {
+        let definitions = vec![
+            make_table_with_metadata(
+                "User",
+                index_metadata(vec![
+                    AnnotationArg::Positional(Literal::Identifier("id".to_string())),
+                    named_arg("unique", Literal::Boolean(true)),
+                    named_arg("as", Literal::Identifier("by_id".to_string())),
+                ]),
+                vec![make_primary_key_field("id", BasicType::U32)],
+            ),
+            make_table_with_metadata(
+                "Lookup",
+                ref_metadata(ref_args("user", vec!["User", "by_id"], vec!["user_id"])),
+                vec![make_field_with_constraints(
+                    "user_id",
+                    BasicType::U32,
+                    vec![Constraint::ForeignKey(
+                        vec!["User".to_string(), "id".to_string()],
+                        None,
+                    )],
+                )],
+            ),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::InvalidConstraint {
+                field: "Lookup".to_string(),
+                constraint: "@ref.fields".to_string(),
+                message: "@ref fields cannot be foreign_key fields".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_ref_annotation_rejects_index_field_count_mismatch() {
+        let definitions = vec![
+            make_table_with_metadata(
+                "User",
+                index_metadata(vec![
+                    AnnotationArg::Positional(Literal::Identifier("name".to_string())),
+                    AnnotationArg::Positional(Literal::Identifier("id".to_string())),
+                    named_arg("unique", Literal::Boolean(true)),
+                    named_arg("as", Literal::Identifier("name_id".to_string())),
+                ]),
+                vec![
+                    make_field_basic("name", BasicType::String),
+                    make_field_basic("id", BasicType::U32),
+                ],
+            ),
+            make_table_with_metadata(
+                "Lookup",
+                ref_metadata(ref_args("user", vec!["User", "name_id"], vec!["name"])),
+                vec![make_field_basic("name", BasicType::String)],
+            ),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::InvalidConstraint {
+                field: "Lookup".to_string(),
+                constraint: "@ref.fields".to_string(),
+                message: "@ref fields must match the target @index field count".to_string(),
+            })
+        );
+    }
+
+    #[test]
     fn test_index_annotation_rejects_embed_target() {
         let definitions = vec![make_embed_with_metadata(
             "Stats",
@@ -3920,8 +4665,9 @@ mod tests {
             Err(ValidationError::InvalidConstraint {
                 field: "Player".to_string(),
                 constraint: "@index.order".to_string(),
-                message: "unsupported @index parameter; expected field names and optional 'unique'"
-                    .to_string(),
+                message:
+                    "unsupported @index parameter; expected field names and optional 'unique' or 'as'"
+                        .to_string(),
             })
         );
     }
