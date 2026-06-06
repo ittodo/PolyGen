@@ -62,6 +62,42 @@ fn test_csv_mappers_snapshot() -> Result<()> {
 }
 
 #[test]
+fn test_csharp_inline_enum_default_is_qualified() -> Result<()> {
+    use polygen::{run, Cli};
+
+    let temp_dir = tempfile::tempdir()?;
+    let schema_path = temp_dir.path().join("inline_enum_default.poly");
+    std::fs::write(
+        &schema_path,
+        r#"
+namespace demo {
+    table Task {
+        state: enum {
+            Todo;
+            Done;
+        } default(Todo);
+    }
+}
+"#,
+    )?;
+
+    let output_dir = temp_dir.path().join("out");
+    run(Cli {
+        command: None,
+        schema_path: Some(schema_path),
+        templates_dir: PathBuf::from("templates"),
+        output_dir: output_dir.clone(),
+        lang: Some("csharp".to_string()),
+        baseline: None,
+        sources: None,
+    })?;
+
+    let generated = std::fs::read_to_string(output_dir.join("csharp/inline_enum_default.cs"))?;
+    assert!(generated.contains("public StateEnum state = StateEnum.Todo;"));
+    Ok(())
+}
+
+#[test]
 fn test_redis_key_helpers_snapshot() -> Result<()> {
     use polygen::{run, Cli};
 

@@ -25,7 +25,7 @@
 //!
 //! - `Option<T>` → unwrapped to inner type `T`
 //! - `List<T>` → `List<T>` with inner type converted
-//! - Inline enums (ending with `__Enum`) → `StructName.EnumName`
+//! - Inline enums (nested in the current struct) → `StructName.EnumName`
 //! - Custom types → passed through as-is
 //!
 //! ---
@@ -33,7 +33,7 @@
 //! 이 모듈은 IR 타입을 C# 타입으로 매핑하는 함수들을 제공합니다.
 //! 기본 타입 변환, 리스트 타입, 옵션 타입, 인라인 열거형 이름을 처리합니다.
 
-use crate::ir_model::{FileDef, StructDef, TypeRef};
+use crate::ir_model::{FileDef, StructDef, StructItem, TypeRef};
 use crate::rhai::common::unwrap_option;
 
 /// Checks if a type string represents a primitive-like type.
@@ -60,13 +60,37 @@ pub fn is_primitive_like(t: &str) -> bool {
     )
 }
 
-/// Checks if a name is an inline enum name (ends with "__Enum").
+/// Checks if a name uses the legacy inline enum suffix.
 ///
-/// English: Inline enums are generated from field constraints.
+/// English: Kept for older generated IR/tests that used `Field__Enum`.
 ///
-/// 한국어: 인라인 열거형은 필드 제약조건에서 생성됩니다.
+/// 한국어: 예전 `Field__Enum` 형식과의 호환을 위해 유지합니다.
 pub fn is_inline_enum_name(name: &str) -> bool {
     name.ends_with("__Enum")
+}
+
+/// Checks whether a name is an inline enum nested in the current struct.
+pub fn is_inline_enum_name_in_struct(ctx_struct: &StructDef, name: &str) -> bool {
+    is_inline_enum_name(name)
+        || ctx_struct
+            .items
+            .iter()
+            .any(|item| matches!(item, StructItem::InlineEnum(e) if e.name == name))
+}
+
+pub fn cs_enum_type_for(
+    files: &[FileDef],
+    ctx_struct: &StructDef,
+    current_ns_name: &str,
+    name: &str,
+) -> Option<String> {
+    if is_inline_enum_name_in_struct(ctx_struct, name) {
+        Some(format!("{}.{}", ctx_struct.name, name))
+    } else if crate::rhai::common::resolve_enum(files, name, current_ns_name).is_some() {
+        Some(name.to_string())
+    } else {
+        None
+    }
 }
 
 /// Maps an IR primitive type to a C# primitive type.
@@ -114,7 +138,7 @@ pub fn cs_type_for(
         return p.to_string();
     }
     // enum type
-    if is_inline_enum_name(core) {
+    if is_inline_enum_name_in_struct(ctx_struct, core) {
         return format!("{}.{}", ctx_struct.name, core);
     }
     // external or same-namespace struct/enum: assume type_string already usable as C# type
@@ -164,5 +188,65 @@ fn cs_map_type_string(type_string: &str) -> String {
         format!("global::{}", type_string)
     } else {
         type_string.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir_model::{EnumDef, NamespaceDef};
+
+    fn struct_with_inline_enum(enum_name: &str) -> StructDef {
+        StructDef {
+            name: "Task".to_string(),
+            fqn: "Task".to_string(),
+            is_embed: false,
+            datasource: None,
+            cache_strategy: None,
+            load: None,
+            is_readonly: false,
+            soft_delete_field: None,
+            pack_separator: None,
+            items: vec![StructItem::InlineEnum(EnumDef {
+                name: enum_name.to_string(),
+                fqn: format!("Task.{enum_name}"),
+                items: vec![],
+            })],
+            header: vec![],
+            indexes: vec![],
+            relations: vec![],
+        }
+    }
+
+    #[test]
+    fn csharp_inline_enum_type_is_nested_in_owner_struct() {
+        let task = struct_with_inline_enum("StateEnum");
+        assert_eq!(cs_type_for(&[], &task, "", "StateEnum"), "Task.StateEnum");
+        assert_eq!(
+            cs_enum_type_for(&[], &task, "", "StateEnum"),
+            Some("Task.StateEnum".to_string())
+        );
+    }
+
+    #[test]
+    fn csharp_named_enum_type_stays_unqualified() {
+        let file = FileDef {
+            path: "test.poly".to_string(),
+            namespaces: vec![NamespaceDef {
+                name: "".to_string(),
+                datasource: None,
+                items: vec![crate::ir_model::NamespaceItem::Enum(EnumDef {
+                    name: "Status".to_string(),
+                    fqn: "Status".to_string(),
+                    items: vec![],
+                })],
+            }],
+            renames: vec![],
+        };
+        let task = struct_with_inline_enum("StateEnum");
+        assert_eq!(
+            cs_enum_type_for(&[file], &task, "", "Status"),
+            Some("Status".to_string())
+        );
     }
 }

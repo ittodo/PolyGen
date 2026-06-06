@@ -4,20 +4,34 @@ use crate::ast_model::{
 };
 use crate::error::ValidationError;
 use crate::type_registry::{TypeKind, TypeRegistry};
+use heck::ToPascalCase;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
 /// AST의 유효성을 검사하는 메인 함수입니다.
 pub fn validate_ast(definitions: &[Definition]) -> Result<(), ValidationError> {
     let mut registry = TypeRegistry::new();
+    let mut hidden_generated_scopes = HashSet::new();
     // 1. 스키마에 정의된 모든 타입의 전체 경로(FQN)를 수집합니다.
-    collect_all_types(definitions, &mut Vec::new(), &mut registry)?;
+    collect_all_types(
+        definitions,
+        &mut Vec::new(),
+        &mut registry,
+        &mut hidden_generated_scopes,
+    )?;
+    validate_inline_generated_name_collisions(definitions, &mut Vec::new(), &registry)?;
     let mut field_registry = FieldRegistry::default();
     collect_table_fields(definitions, &mut Vec::new(), &mut field_registry)?;
     // 2. 어노테이션 인자의 의미적 유효성을 확인합니다.
     validate_all_annotations(definitions, &mut Vec::new(), &registry)?;
     // 3. 사용된 타입들이 실제로 정의되었는지 확인합니다.
-    validate_all_types(definitions, &mut Vec::new(), &registry, &field_registry)?;
+    validate_all_types(
+        definitions,
+        &mut Vec::new(),
+        &registry,
+        &field_registry,
+        &hidden_generated_scopes,
+    )?;
     Ok(())
 }
 
@@ -46,23 +60,32 @@ fn collect_from_members(
     members: &[TableMember],
     path: &mut Vec<String>,
     registry: &mut TypeRegistry,
+    hidden_generated_scopes: &mut HashSet<String>,
 ) -> Result<(), ValidationError> {
+    let reserved_generated_fqns = collect_reserved_generated_type_fqns(members, path)?;
+
     for member in members {
         match member {
             TableMember::Embed(e) => {
                 push_required_name(path, &e.name, "embed")?;
                 let embed_fqn = path.join(".");
+                if reserved_generated_fqns.contains(&embed_fqn) {
+                    return Err(ValidationError::DuplicateDefinition(embed_fqn));
+                }
                 if !registry.register(&embed_fqn, TypeKind::Embed) {
                     return Err(ValidationError::DuplicateDefinition(embed_fqn));
                 }
                 // Recursively collect from the embed's members
-                collect_from_members(&e.members, path, registry)?;
+                collect_from_members(&e.members, path, registry, hidden_generated_scopes)?;
                 path.pop();
             }
             TableMember::Enum(e) => {
                 if let Some(name) = &e.name {
                     path.push(name.clone());
                     let enum_fqn = path.join(".");
+                    if reserved_generated_fqns.contains(&enum_fqn) {
+                        return Err(ValidationError::DuplicateDefinition(enum_fqn));
+                    }
                     if !registry.register(&enum_fqn, TypeKind::Enum) {
                         return Err(ValidationError::DuplicateDefinition(enum_fqn));
                     }
@@ -70,13 +93,12 @@ fn collect_from_members(
                 }
             }
             TableMember::Field(FieldDefinition::InlineEmbed(ief)) => {
-                push_required_name(path, &ief.name, "inline embed")?;
+                let field_name = required_name(&ief.name, "inline embed")?;
+                path.push(inline_embed_name_for_field(field_name));
                 let embed_fqn = path.join(".");
-                if !registry.register(&embed_fqn, TypeKind::Embed) {
-                    return Err(ValidationError::DuplicateDefinition(embed_fqn));
-                }
+                hidden_generated_scopes.insert(embed_fqn);
                 // Recursively collect from the inline embed's members
-                collect_from_members(&ief.members, path, registry)?;
+                collect_from_members(&ief.members, path, registry, hidden_generated_scopes)?;
                 path.pop();
             }
             _ => {} // Other members don't define new types in this context
@@ -85,17 +107,142 @@ fn collect_from_members(
     Ok(())
 }
 
-/// 재귀적으로 모든 타입 정의를 수집하여 `TypeRegistry`에 등록합니다.
-fn collect_all_types(
+fn collect_reserved_generated_type_fqns(
+    members: &[TableMember],
+    owner_path: &[String],
+) -> Result<HashSet<String>, ValidationError> {
+    let mut names = HashSet::new();
+
+    for member in members {
+        let Some(generated_name) = inline_generated_type_name(member)? else {
+            continue;
+        };
+        let generated_fqn = qualified_name(owner_path, &generated_name);
+        if !names.insert(generated_fqn.clone()) {
+            return Err(ValidationError::DuplicateDefinition(generated_fqn));
+        }
+    }
+
+    Ok(names)
+}
+
+fn inline_generated_type_name(member: &TableMember) -> Result<Option<String>, ValidationError> {
+    match member {
+        TableMember::Field(FieldDefinition::InlineEmbed(field)) => Ok(Some(
+            inline_embed_name_for_field(required_name(&field.name, "inline embed")?),
+        )),
+        _ => Ok(inline_enum_field_name(member)?.map(inline_enum_name_for_field)),
+    }
+}
+
+fn inline_enum_field_name(member: &TableMember) -> Result<Option<&str>, ValidationError> {
+    match member {
+        TableMember::Field(FieldDefinition::InlineEnum(field)) => {
+            Ok(Some(required_name(&field.name, "inline enum")?))
+        }
+        TableMember::Field(FieldDefinition::Regular(field))
+            if matches!(field.field_type.base_type, TypeName::InlineEnum(_)) =>
+        {
+            Ok(Some(required_name(&field.name, "inline enum")?))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn inline_enum_name_for_field(field_name: &str) -> String {
+    format!("{}Enum", field_name.to_pascal_case())
+}
+
+fn inline_embed_name_for_field(field_name: &str) -> String {
+    format!("{}Embed", field_name.to_pascal_case())
+}
+
+fn validate_inline_generated_name_collisions(
     definitions: &[Definition],
     path: &mut Vec<String>,
-    registry: &mut TypeRegistry,
+    registry: &TypeRegistry,
 ) -> Result<(), ValidationError> {
     for def in definitions {
         match def {
             Definition::Namespace(ns) => {
                 path.extend(ns.path.iter().cloned());
-                collect_all_types(&ns.definitions, path, registry)?;
+                validate_inline_generated_name_collisions(&ns.definitions, path, registry)?;
+                for _ in 0..ns.path.len() {
+                    path.pop();
+                }
+            }
+            Definition::Table(t) => {
+                push_required_name(path, &t.name, "table")?;
+                validate_inline_generated_name_collisions_in_members(&t.members, path, registry)?;
+                path.pop();
+            }
+            Definition::Embed(e) => {
+                push_required_name(path, &e.name, "embed")?;
+                validate_inline_generated_name_collisions_in_members(&e.members, path, registry)?;
+                path.pop();
+            }
+            Definition::Enum(_) | Definition::Comment(_) | Definition::Annotation(_) => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_inline_generated_name_collisions_in_members(
+    members: &[TableMember],
+    owner_path: &mut Vec<String>,
+    registry: &TypeRegistry,
+) -> Result<(), ValidationError> {
+    for member in members {
+        if let Some(generated_name) = inline_generated_type_name(member)? {
+            let shadows_named_type = registry
+                .find_by_name(&generated_name)
+                .iter()
+                .any(|fqn| registry.get(fqn).is_some());
+
+            if shadows_named_type {
+                return Err(ValidationError::DuplicateDefinition(qualified_name(
+                    owner_path,
+                    &generated_name,
+                )));
+            }
+        }
+
+        match member {
+            TableMember::Embed(e) => {
+                push_required_name(owner_path, &e.name, "embed")?;
+                validate_inline_generated_name_collisions_in_members(
+                    &e.members, owner_path, registry,
+                )?;
+                owner_path.pop();
+            }
+            TableMember::Field(FieldDefinition::InlineEmbed(e)) => {
+                let field_name = required_name(&e.name, "inline embed")?;
+                owner_path.push(inline_embed_name_for_field(field_name));
+                validate_inline_generated_name_collisions_in_members(
+                    &e.members, owner_path, registry,
+                )?;
+                owner_path.pop();
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+/// 재귀적으로 모든 타입 정의를 수집하여 `TypeRegistry`에 등록합니다.
+fn collect_all_types(
+    definitions: &[Definition],
+    path: &mut Vec<String>,
+    registry: &mut TypeRegistry,
+    hidden_generated_scopes: &mut HashSet<String>,
+) -> Result<(), ValidationError> {
+    for def in definitions {
+        match def {
+            Definition::Namespace(ns) => {
+                path.extend(ns.path.iter().cloned());
+                collect_all_types(&ns.definitions, path, registry, hidden_generated_scopes)?;
                 for _ in 0..ns.path.len() {
                     path.pop();
                 }
@@ -108,7 +255,7 @@ fn collect_all_types(
                 }
 
                 path.push(table_name.to_string());
-                collect_from_members(&t.members, path, registry)?;
+                collect_from_members(&t.members, path, registry, hidden_generated_scopes)?;
                 path.pop();
             }
             Definition::Enum(e) => {
@@ -131,7 +278,7 @@ fn collect_all_types(
                     return Err(ValidationError::DuplicateDefinition(fqn));
                 }
                 path.push(embed_name.to_string());
-                collect_from_members(&e.members, path, registry)?;
+                collect_from_members(&e.members, path, registry, hidden_generated_scopes)?;
                 path.pop();
             }
             Definition::Comment(_) => { /* Comments are not types, so we ignore them. */ }
@@ -150,13 +297,36 @@ fn check_type_path(
     type_path: &[String],
     current_scope: &[String],
     registry: &TypeRegistry,
+    hidden_generated_scopes: &HashSet<String>,
 ) -> Result<(), ValidationError> {
     let used_type_str = type_path.join(".");
-    if resolve_type_path(type_path, current_scope, registry).is_some() {
+    if let Some(resolved_fqn) = resolve_type_path(type_path, current_scope, registry) {
+        if is_hidden_generated_reference(&resolved_fqn, current_scope, hidden_generated_scopes) {
+            return Err(ValidationError::TypeNotFound(used_type_str));
+        }
         return Ok(());
     }
 
     Err(ValidationError::TypeNotFound(used_type_str))
+}
+
+fn is_hidden_generated_reference(
+    resolved_fqn: &str,
+    current_scope: &[String],
+    hidden_generated_scopes: &HashSet<String>,
+) -> bool {
+    let current_scope = current_scope.join(".");
+    hidden_generated_scopes.iter().any(|hidden_scope| {
+        is_same_or_child_fqn(resolved_fqn, hidden_scope)
+            && !is_same_or_child_fqn(&current_scope, hidden_scope)
+    })
+}
+
+fn is_same_or_child_fqn(candidate: &str, parent: &str) -> bool {
+    candidate == parent
+        || candidate
+            .strip_prefix(parent)
+            .is_some_and(|suffix| suffix.starts_with('.'))
 }
 
 fn resolve_type_path(
@@ -270,6 +440,7 @@ fn validate_table_members(
     path: &mut Vec<String>,
     registry: &TypeRegistry,
     field_registry: &FieldRegistry<'_>,
+    hidden_generated_scopes: &HashSet<String>,
 ) -> Result<(), ValidationError> {
     // Check for multiple auto_create fields (only one allowed per table)
     validate_single_auto_create(members, path)?;
@@ -280,22 +451,35 @@ fn validate_table_members(
             TableMember::Field(field) => match field {
                 FieldDefinition::Regular(rf) => {
                     if let TypeName::Path(type_path) = &rf.field_type.base_type {
-                        check_type_path(type_path, path, registry)?;
+                        check_type_path(type_path, path, registry, hidden_generated_scopes)?;
                     }
                     // Validate auto_create/auto_update constraints are only on timestamp fields
                     validate_timestamp_constraints(rf)?;
                     validate_field_constraints(rf, path, registry, field_registry)?;
                 }
                 FieldDefinition::InlineEmbed(ief) => {
-                    push_required_name(path, &ief.name, "inline embed")?;
-                    validate_table_members(&ief.members, path, registry, field_registry)?;
+                    let field_name = required_name(&ief.name, "inline embed")?;
+                    path.push(inline_embed_name_for_field(field_name));
+                    validate_table_members(
+                        &ief.members,
+                        path,
+                        registry,
+                        field_registry,
+                        hidden_generated_scopes,
+                    )?;
                     path.pop();
                 }
                 FieldDefinition::InlineEnum(_) => {}
             },
             TableMember::Embed(embed) => {
                 push_required_name(path, &embed.name, "embed")?;
-                validate_table_members(&embed.members, path, registry, field_registry)?;
+                validate_table_members(
+                    &embed.members,
+                    path,
+                    registry,
+                    field_registry,
+                    hidden_generated_scopes,
+                )?;
                 path.pop();
             }
             TableMember::Enum(_) => {}
@@ -423,7 +607,6 @@ fn validate_field_constraints(
     let mut range_value = None;
     let mut has_default = false;
     let mut has_foreign_key = false;
-    let mut has_index = false;
     let mut has_max_length = false;
     let mut has_primary_key = false;
     let mut has_range = false;
@@ -458,17 +641,6 @@ fn validate_field_constraints(
                 }
                 has_unique = true;
                 validate_unique_constraint(&field_name, &rf.field_type, current_scope, registry)?;
-            }
-            Constraint::Index => {
-                if has_index {
-                    return invalid_field_constraint(
-                        &field_name,
-                        "index",
-                        "index is specified more than once",
-                    );
-                }
-                has_index = true;
-                validate_index_constraint(&field_name, &rf.field_type, current_scope, registry)?;
             }
             Constraint::Default(value) => {
                 if has_default {
@@ -581,15 +753,6 @@ fn validate_unique_constraint(
     registry: &TypeRegistry,
 ) -> Result<(), ValidationError> {
     validate_indexable_field_type(field_name, "unique", field_type, current_scope, registry)
-}
-
-fn validate_index_constraint(
-    field_name: &str,
-    field_type: &TypeWithCardinality,
-    current_scope: &[String],
-    registry: &TypeRegistry,
-) -> Result<(), ValidationError> {
-    validate_indexable_field_type(field_name, "index", field_type, current_scope, registry)
 }
 
 fn validate_indexable_field_type(
@@ -1138,6 +1301,8 @@ fn validate_metadata_annotations(
 ) -> Result<(), ValidationError> {
     for meta in metadata {
         if let Metadata::Annotation(annotation) = meta {
+            validate_builtin_annotation_case(annotation, target)?;
+
             if annotation.name.as_deref() == Some("cache") {
                 validate_cache_annotation(&annotation.args, target)?;
             } else if annotation.name.as_deref() == Some("pack") {
@@ -1224,6 +1389,42 @@ fn validate_metadata_annotations(
             }
         }
     }
+    Ok(())
+}
+
+fn validate_builtin_annotation_case(
+    annotation: &crate::ast_model::Annotation,
+    target: &str,
+) -> Result<(), ValidationError> {
+    let Some(name) = annotation.name.as_deref() else {
+        return Ok(());
+    };
+
+    const BUILT_INS: &[&str] = &[
+        "cache",
+        "pack",
+        "datasource",
+        "readonly",
+        "soft_delete",
+        "index",
+        "load",
+        "taggable",
+        "link_rows",
+        "search",
+    ];
+
+    if let Some(expected) = BUILT_INS
+        .iter()
+        .copied()
+        .find(|builtin| name.eq_ignore_ascii_case(builtin) && name != *builtin)
+    {
+        return Err(ValidationError::InvalidConstraint {
+            field: target.to_string(),
+            constraint: format!("@{name}"),
+            message: format!("built-in annotations are lowercase; use '@{expected}'"),
+        });
+    }
+
     Ok(())
 }
 
@@ -2187,8 +2388,8 @@ fn validate_member_annotations(
                     )?;
                 }
                 FieldDefinition::InlineEmbed(ief) => {
-                    let inline_name = required_name(&ief.name, "inline embed")?;
-                    let target = qualified_name(path, inline_name);
+                    let field_name = required_name(&ief.name, "inline embed")?;
+                    let target = qualified_name(path, field_name);
                     validate_metadata_annotations(
                         &ief.metadata,
                         &target,
@@ -2197,7 +2398,7 @@ fn validate_member_annotations(
                         false,
                         false,
                     )?;
-                    path.push(inline_name.to_string());
+                    path.push(inline_embed_name_for_field(field_name));
                     validate_member_annotations(&ief.members, path, registry)?;
                     path.pop();
                 }
@@ -2291,26 +2492,45 @@ fn validate_all_types(
     path: &mut Vec<String>,
     registry: &TypeRegistry,
     field_registry: &FieldRegistry<'_>,
+    hidden_generated_scopes: &HashSet<String>,
 ) -> Result<(), ValidationError> {
     for def in definitions {
         match def {
             Definition::Namespace(ns) => {
                 path.extend(ns.path.iter().cloned());
-                validate_all_types(&ns.definitions, path, registry, field_registry)?;
+                validate_all_types(
+                    &ns.definitions,
+                    path,
+                    registry,
+                    field_registry,
+                    hidden_generated_scopes,
+                )?;
                 for _ in 0..ns.path.len() {
                     path.pop();
                 }
             }
             Definition::Table(t) => {
                 push_required_name(path, &t.name, "table")?;
-                validate_table_members(&t.members, path, registry, field_registry)?;
+                validate_table_members(
+                    &t.members,
+                    path,
+                    registry,
+                    field_registry,
+                    hidden_generated_scopes,
+                )?;
                 path.pop();
             }
             Definition::Enum(_) => { /* Enums do not reference other types */ }
             Definition::Embed(e) => {
                 // Validate types used within the embed's fields.
                 push_required_name(path, &e.name, "embed")?;
-                validate_table_members(&e.members, path, registry, field_registry)?;
+                validate_table_members(
+                    &e.members,
+                    path,
+                    registry,
+                    field_registry,
+                    hidden_generated_scopes,
+                )?;
                 path.pop();
             }
             Definition::Comment(_) => { /* Comments do not reference other types */ }
@@ -2465,6 +2685,13 @@ mod tests {
         })]
     }
 
+    fn custom_annotation_metadata(name: &str, args: Vec<AnnotationArg>) -> Vec<Metadata> {
+        vec![Metadata::Annotation(Annotation {
+            name: Some(name.to_string()),
+            args,
+        })]
+    }
+
     fn named_arg(key: &str, value: Literal) -> AnnotationArg {
         AnnotationArg::Named(AnnotationParam {
             key: key.to_string(),
@@ -2564,6 +2791,37 @@ mod tests {
             cardinality: None,
             field_number: None,
         }))
+    }
+
+    fn make_inline_enum_field(name: &str) -> TableMember {
+        TableMember::Field(FieldDefinition::InlineEnum(InlineEnumField {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            variants: vec![
+                EnumVariant {
+                    metadata: vec![],
+                    name: Some("Todo".to_string()),
+                    value: None,
+                    inline_comment: None,
+                },
+                EnumVariant {
+                    metadata: vec![],
+                    name: Some("Done".to_string()),
+                    value: None,
+                    inline_comment: None,
+                },
+            ],
+            cardinality: None,
+            field_number: None,
+        }))
+    }
+
+    fn make_nested_enum(name: &str) -> TableMember {
+        TableMember::Enum(Enum {
+            metadata: vec![],
+            name: Some(name.to_string()),
+            variants: vec![],
+        })
     }
 
     // ========== Basic Validation Tests ==========
@@ -2682,6 +2940,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_inline_enum_generated_name_rejects_nested_enum_collision() {
+        let definitions = vec![make_table(
+            "Task",
+            vec![
+                make_inline_enum_field("state"),
+                make_nested_enum("StateEnum"),
+            ],
+        )];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::DuplicateDefinition(
+                "Task.StateEnum".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_inline_enum_generated_name_rejects_named_enum_shadowing() {
+        let definitions = vec![
+            make_enum("StateEnum"),
+            make_table("Task", vec![make_inline_enum_field("state")]),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::DuplicateDefinition(
+                "Task.StateEnum".to_string()
+            ))
+        );
+    }
+
     // ========== Type Reference Tests ==========
 
     #[test]
@@ -2703,6 +2994,92 @@ mod tests {
         assert_eq!(
             result,
             Err(ValidationError::TypeNotFound("UndefinedType".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_inline_enum_generated_name_is_not_referenceable() {
+        let definitions = vec![
+            make_table("Task", vec![make_inline_enum_field("state")]),
+            make_table(
+                "TaskAudit",
+                vec![make_field_with_type("state", vec!["Task", "StateEnum"])],
+            ),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::TypeNotFound("Task.StateEnum".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_inline_embed_generated_name_rejects_named_type_shadowing() {
+        let definitions = vec![
+            make_embed("ProfileEmbed", vec![]),
+            make_table("User", vec![make_inline_embed("profile", vec![])]),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::DuplicateDefinition(
+                "User.ProfileEmbed".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_inline_embed_generated_name_is_not_referenceable() {
+        let definitions = vec![
+            make_table("User", vec![make_inline_embed("profile", vec![])]),
+            make_table(
+                "UserAudit",
+                vec![make_field_with_type(
+                    "profile",
+                    vec!["User", "ProfileEmbed"],
+                )],
+            ),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::TypeNotFound(
+                "User.ProfileEmbed".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_inline_embed_nested_type_is_only_referenceable_inside_inline_embed() {
+        let definitions = vec![
+            make_table(
+                "User",
+                vec![make_inline_embed(
+                    "profile",
+                    vec![
+                        TableMember::Embed(Embed {
+                            metadata: vec![],
+                            name: Some("Setting".to_string()),
+                            members: vec![],
+                        }),
+                        make_field_with_type("setting", vec!["Setting"]),
+                    ],
+                )],
+            ),
+            make_table(
+                "UserAudit",
+                vec![make_field_with_type(
+                    "setting",
+                    vec!["User", "ProfileEmbed", "Setting"],
+                )],
+            ),
+        ];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::TypeNotFound(
+                "User.ProfileEmbed.Setting".to_string()
+            ))
         );
     }
 
@@ -2835,7 +3212,7 @@ mod tests {
         assert_eq!(
             result,
             Err(ValidationError::DuplicateDefinition(
-                "User.Profile".to_string()
+                "User.ProfileEmbed".to_string()
             ))
         );
     }
@@ -3026,6 +3403,35 @@ mod tests {
                 message: "strategy is specified more than once".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn test_builtin_annotation_name_rejects_wrong_case() {
+        let definitions = vec![make_table_with_metadata(
+            "Player",
+            custom_annotation_metadata("Search", vec![]),
+            vec![],
+        )];
+
+        assert_eq!(
+            validate_ast(&definitions),
+            Err(ValidationError::InvalidConstraint {
+                field: "Player".to_string(),
+                constraint: "@Search".to_string(),
+                message: "built-in annotations are lowercase; use '@search'".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_custom_annotation_name_may_use_uppercase() {
+        let definitions = vec![make_table_with_metadata(
+            "Player",
+            custom_annotation_metadata("UiPanel", vec![]),
+            vec![],
+        )];
+
+        assert!(validate_ast(&definitions).is_ok());
     }
 
     #[test]
@@ -4390,106 +4796,6 @@ mod tests {
             Err(ValidationError::InvalidConstraint {
                 field: "stats".to_string(),
                 constraint: "unique".to_string(),
-                message: "constraint is not supported for struct or embed fields".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn test_index_constraint_is_valid_on_scalar_field() {
-        let definitions = vec![make_table(
-            "Player",
-            vec![make_field_with_constraints(
-                "guild_id",
-                BasicType::U32,
-                vec![Constraint::Index],
-            )],
-        )];
-
-        assert!(validate_ast(&definitions).is_ok());
-    }
-
-    #[test]
-    fn test_index_constraint_allows_enum_field() {
-        let definitions = vec![
-            make_enum("Status"),
-            make_table(
-                "Player",
-                vec![make_field_with_type_and_constraints(
-                    "status",
-                    TypeName::Path(vec!["Status".to_string()]),
-                    None,
-                    vec![Constraint::Index],
-                )],
-            ),
-        ];
-
-        assert!(validate_ast(&definitions).is_ok());
-    }
-
-    #[test]
-    fn test_index_constraint_rejects_duplicate_index_on_field() {
-        let definitions = vec![make_table(
-            "Player",
-            vec![make_field_with_constraints(
-                "guild_id",
-                BasicType::U32,
-                vec![Constraint::Index, Constraint::Index],
-            )],
-        )];
-
-        assert_eq!(
-            validate_ast(&definitions),
-            Err(ValidationError::InvalidConstraint {
-                field: "guild_id".to_string(),
-                constraint: "index".to_string(),
-                message: "index is specified more than once".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn test_index_constraint_rejects_array_field() {
-        let definitions = vec![make_table(
-            "Player",
-            vec![make_field_with_type_and_constraints(
-                "tags",
-                TypeName::Basic(BasicType::String),
-                Some(Cardinality::Array),
-                vec![Constraint::Index],
-            )],
-        )];
-
-        assert_eq!(
-            validate_ast(&definitions),
-            Err(ValidationError::InvalidConstraint {
-                field: "tags".to_string(),
-                constraint: "index".to_string(),
-                message: "constraint is not supported for array fields".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn test_index_constraint_rejects_embed_field() {
-        let definitions = vec![
-            make_embed("Stats", vec![make_field_basic("hp", BasicType::U32)]),
-            make_table(
-                "Player",
-                vec![make_field_with_type_and_constraints(
-                    "stats",
-                    TypeName::Path(vec!["Stats".to_string()]),
-                    None,
-                    vec![Constraint::Index],
-                )],
-            ),
-        ];
-
-        assert_eq!(
-            validate_ast(&definitions),
-            Err(ValidationError::InvalidConstraint {
-                field: "stats".to_string(),
-                constraint: "index".to_string(),
                 message: "constraint is not supported for struct or embed fields".to_string(),
             })
         );

@@ -12,7 +12,8 @@
 | 작업 | 확인 문서 |
 |------|-----------|
 | 전체 구조 파악 | `source-structure.md`, `project-structure.md` |
-| `.poly` 문법, 어노테이션, 제약조건 변경 | `schema-annotations.md` |
+| `.poly` 표면 문법 변경 | `schema-language.md` |
+| `.poly` 어노테이션, 제약조건 변경 | `schema-annotations.md` |
 | CSV/JSON load path 설정 변경 | `sources-config.md` |
 | PolyTemplate 문법/엔진 변경 | `polytemplate-guide.md`, `polytemplate-spec.md` |
 | 템플릿 커스터마이징/Rhai helper 변경 | `template-customization.md` |
@@ -30,6 +31,7 @@
 |------|------|
 | `source-structure.md` | Rust 소스 모듈 구조와 책임 |
 | `project-structure.md` | 저장소 디렉터리 구조 |
+| `schema-language.md` | 사람이 읽는 `.poly` 스키마 언어 문법 |
 | `schema-annotations.md` | `.poly` 어노테이션/속성 스펙 |
 | `sources-config.md` | `.sources.toml` 기반 CSV/JSON load path 설정 |
 | `polytemplate-guide.md` | PolyTemplate 작성 가이드 |

@@ -1,10 +1,10 @@
-use crate::ast_model::{BasicType, Cardinality, TypeName, TypeWithCardinality};
+use crate::ast_model::{BasicType, TypeName, TypeWithCardinality};
 use crate::error::AstBuildError;
 use crate::Rule;
 use pest::iterators::Pair;
 
 use super::definitions::parse_enum;
-use super::helpers::parse_path;
+use super::helpers::{parse_cardinality, parse_path};
 
 pub fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinality, AstBuildError> {
     let (line, col) = pair.line_col();
@@ -17,21 +17,7 @@ pub fn parse_type_with_cardinality(pair: Pair<Rule>) -> Result<TypeWithCardinali
     })?)?;
     let cardinality = match inner.next() {
         Some(p) => match p.as_rule() {
-            Rule::cardinality => {
-                let (p_line, p_col) = p.line_col();
-                match p.as_str() {
-                    "?" => Some(Cardinality::Optional),
-                    "[]" => Some(Cardinality::Array),
-                    s => {
-                        return Err(AstBuildError::InvalidValue {
-                            element: "cardinality".to_string(),
-                            value: s.to_string(),
-                            line: p_line,
-                            col: p_col,
-                        })
-                    }
-                }
-            }
+            Rule::cardinality => Some(parse_cardinality(p)?),
             found => {
                 let (p_line, p_col) = p.line_col();
                 return Err(AstBuildError::UnexpectedRule {

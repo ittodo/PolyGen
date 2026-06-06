@@ -52,10 +52,11 @@ pub fn register_csharp(engine: &mut Engine) {
     loaders::register_csv_loaders(engine);
 }
 
-fn register_csharp_helpers(engine: &mut Engine) {
+pub(crate) fn register_csharp_helpers(engine: &mut Engine) {
     engine.register_fn("cs_csv_header_name", cs_csv_header_name);
     engine.register_fn("cs_write_csv_expr", cs_write_csv_expr);
     engine.register_fn("cs_map_type", type_mapping::cs_map_type);
+    engine.register_fn("cs_field_default_literal", cs_field_default_literal);
 }
 
 /// Generates the CSV header name for a field.
@@ -109,5 +110,94 @@ fn generate_value_write(t: &TypeRef, access: &str) -> String {
         format!("cols.Add(CsvUtils.ToStringInvariant({}));", access)
     } else {
         "cols.Add(string.Empty);".to_string()
+    }
+}
+
+pub fn cs_field_default_literal(field: FieldDef) -> String {
+    let Some(default_value) = field.default_value.as_deref() else {
+        return String::new();
+    };
+
+    let base_type = field
+        .field_type
+        .inner_type
+        .as_deref()
+        .filter(|_| field.field_type.is_option)
+        .unwrap_or(&field.field_type);
+
+    if base_type.is_enum || base_type.lang_type.ends_with("Enum") {
+        let enum_type = csharp_default_type_name(base_type);
+        if default_value.parse::<i64>().is_ok() {
+            return format!("({enum_type}){default_value}");
+        }
+        return format!("{enum_type}.{default_value}");
+    }
+
+    match base_type.lang_type.as_str() {
+        "f32" => format!("{default_value}f"),
+        "f64" => default_value.to_string(),
+        "u64" | "i64" => format!("{default_value}L"),
+        "string" => format!("\"{default_value}\""),
+        "bool" => default_value.to_lowercase(),
+        _ => default_value.to_string(),
+    }
+}
+
+fn csharp_default_type_name(type_ref: &TypeRef) -> String {
+    if type_ref.lang_type.contains('.') && !type_ref.lang_type.starts_with("global::") {
+        format!("global::{}", type_ref.lang_type)
+    } else {
+        type_ref.lang_type.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir_model::TypeRef;
+
+    fn enum_field(default_value: &str) -> FieldDef {
+        FieldDef {
+            name: "state".to_string(),
+            field_type: TypeRef {
+                original: "StateEnum".to_string(),
+                fqn: "Task.StateEnum".to_string(),
+                namespace_fqn: "Task".to_string(),
+                type_name: "StateEnum".to_string(),
+                parent_type_path: "Task".to_string(),
+                lang_type: "StateEnum".to_string(),
+                is_primitive: false,
+                is_struct: false,
+                is_enum: true,
+                is_option: false,
+                is_list: false,
+                inner_type: None,
+            },
+            attributes: vec![],
+            is_primary_key: false,
+            is_unique: false,
+            is_index: false,
+            foreign_key: None,
+            max_length: None,
+            default_value: Some(default_value.to_string()),
+            range: None,
+            regex_pattern: None,
+            auto_create: None,
+            auto_update: None,
+            search_index: None,
+        }
+    }
+
+    #[test]
+    fn csharp_enum_default_literal_is_qualified() {
+        assert_eq!(
+            cs_field_default_literal(enum_field("Todo")),
+            "StateEnum.Todo"
+        );
+    }
+
+    #[test]
+    fn csharp_enum_integer_default_literal_is_cast() {
+        assert_eq!(cs_field_default_literal(enum_field("1")), "(StateEnum)1");
     }
 }

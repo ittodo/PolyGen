@@ -45,6 +45,7 @@ impl RhaiBridge {
         engine.register_fn("to_snake_case", |s: &str| s.to_snake_case());
         engine.register_fn("to_pascal_case", |s: &str| s.to_pascal_case());
         engine.register_fn("to_camel_case", |s: &str| s.to_lower_camel_case());
+        crate::rhai::csharp::register_csharp_helpers(&mut engine);
 
         let output_buffer = Arc::new(Mutex::new(None));
 
@@ -191,6 +192,7 @@ impl RhaiBridge {
         engine.register_fn("to_snake_case", |s: &str| s.to_snake_case());
         engine.register_fn("to_pascal_case", |s: &str| s.to_pascal_case());
         engine.register_fn("to_camel_case", |s: &str| s.to_lower_camel_case());
+        crate::rhai::csharp::register_csharp_helpers(&mut engine);
 
         Self {
             engine,

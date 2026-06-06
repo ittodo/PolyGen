@@ -8,7 +8,6 @@ use super::type_names::qualify;
 pub(super) struct ConstraintInfo {
     pub(super) is_primary_key: bool,
     pub(super) is_unique: bool,
-    pub(super) is_index: bool,
     pub(super) foreign_key: Option<ForeignKeyDef>,
     pub(super) max_length: Option<u32>,
     pub(super) default_value: Option<String>,
@@ -41,11 +40,8 @@ pub(super) fn extract_constraint_info(
                         target_field,
                         alias: alias.clone(),
                     });
-                    // FK fields get a GroupIndex automatically
-                    info.is_index = true;
                 }
             }
-            ast_model::Constraint::Index => info.is_index = true,
             ast_model::Constraint::MaxLength(len) => info.max_length = Some(*len),
             ast_model::Constraint::Default(lit) => {
                 info.default_value = Some(literal_to_string(lit));

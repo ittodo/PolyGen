@@ -1,14 +1,17 @@
 namespace game.cache {
     @cache(strategy: "write_through", ttl: 120)
+    @index(user_id)
     table Session {
         token: string primary_key;
-        user_id: u32 index;
+        user_id: u32;
     }
 
     @datasource("cache")
+    @index(player_name)
+    @index(score)
     table LeaderboardEntry {
         id: u32 primary_key;
-        player_name: string index;
-        score: u64 index;
+        player_name: string;
+        score: u64;
     }
 }

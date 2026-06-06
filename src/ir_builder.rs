@@ -252,7 +252,7 @@ fn convert_table_to_struct(
         }
     }
 
-    // Build indexes from field constraints
+    // Build indexes from field-derived sources.
     let mut indexes = build_indexes_from_items(&items);
 
     // Build indexes from @index annotations
@@ -293,9 +293,7 @@ fn convert_field_to_ir(
 
             let field_type: TypeRef = match &rf.field_type.base_type {
                 ast_model::TypeName::InlineEnum(e) => {
-                    // Generate a unique name for the inline enum
-                    // For now, let's use FieldName_Enum. We'll need table context later for better names.
-                    let generated_enum_name = format!("{}_Enum", field_name.to_pascal_case());
+                    let generated_enum_name = inline_enum_name_for_field(&field_name);
 
                     // Create the EnumDef using the generated name
                     let enum_fqn = if owner_fqn.is_empty() {
@@ -327,7 +325,7 @@ fn convert_field_to_ir(
                     attributes,
                     is_primary_key: constraint_info.is_primary_key,
                     is_unique: constraint_info.is_unique,
-                    is_index: constraint_info.is_index,
+                    is_index: false,
                     foreign_key: constraint_info.foreign_key,
                     max_length: constraint_info.max_length,
                     default_value: constraint_info.default_value,
@@ -346,7 +344,7 @@ fn convert_field_to_ir(
                 .name
                 .clone()
                 .unwrap_or_else(|| "unnamed_embed".to_string());
-            let struct_name = field_name.to_pascal_case();
+            let struct_name = inline_embed_name_for_field(&field_name);
             let inline_struct = convert_table_to_struct(
                 &ast_model::Table {
                     name: Some(struct_name.clone()),
@@ -384,7 +382,7 @@ fn convert_field_to_ir(
         }
         ast_model::FieldDefinition::InlineEnum(e) => {
             let field_name = e.name.clone().unwrap_or_else(|| "unnamed_enum".to_string());
-            let generated_enum_name = format!("{}__Enum", field_name.to_pascal_case());
+            let generated_enum_name = inline_enum_name_for_field(&field_name);
 
             // Create a temporary Enum from InlineEnumField
             let temp_enum = ast_model::Enum {
@@ -650,6 +648,14 @@ fn build_type_ref(t: &ast_model::TypeWithCardinality, current_ns: &str) -> TypeR
             }
         }
     }
+}
+
+fn inline_enum_name_for_field(field_name: &str) -> String {
+    format!("{}Enum", field_name.to_pascal_case())
+}
+
+fn inline_embed_name_for_field(field_name: &str) -> String {
+    format!("{}Embed", field_name.to_pascal_case())
 }
 
 fn build_type_ref_from_base(
@@ -1203,11 +1209,11 @@ mod tests {
         let ns = &ctx.files[0].namespaces[0];
         let account = require_struct(ns, "Account")?;
 
-        // Find the inline enum (uses double underscore in the name: Role__Enum)
+        // Find the inline enum derived from the field name.
         let has_inline_enum = account
             .items
             .iter()
-            .any(|item| matches!(item, StructItem::InlineEnum(e) if e.name == "Role__Enum"));
+            .any(|item| matches!(item, StructItem::InlineEnum(e) if e.name == "RoleEnum"));
         assert!(has_inline_enum);
 
         // The field should reference the inline enum

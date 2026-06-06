@@ -154,7 +154,7 @@ SchemaContext {
                                             attributes: [],
                                             is_primary_key: false,
                                             is_unique: false,
-                                            is_index: true,
+                                            is_index: false,
                                             foreign_key: Some(
                                                 ForeignKeyDef {
                                                     target_table_fqn: "Category",

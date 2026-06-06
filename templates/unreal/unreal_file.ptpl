@@ -122,7 +122,7 @@ fn generate_struct(s, ns_fqn) {
             } else {
                 // Custom type - determine if enum or struct
                 if t.is_enum || type_name == "Element" || type_name == "Status" || type_name == "ItemType" ||
-                   type_name == "PlayerClass" || type_name == "Status__Enum" {
+                   type_name == "PlayerClass" {
                     ue_type = ue_types::get_enum_name(type_name);
                     is_enum_type = true;
                 } else if type_name.contains("Type") || type_name.contains("Status") || type_name.contains("Kind") ||

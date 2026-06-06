@@ -5,7 +5,7 @@ use crate::error::AstBuildError;
 use crate::Rule;
 use pest::iterators::Pair;
 
-use super::fields::parse_table_member;
+use super::fields::parse_table_body_item;
 use super::helpers::{extract_comment_content, parse_path};
 use super::metadata::parse_metadata;
 
@@ -114,29 +114,7 @@ pub fn parse_namespace_import(pair: Pair<Rule>) -> Result<NamespaceImport, AstBu
 }
 
 pub fn parse_table(pair: Pair<Rule>) -> Result<Table, AstBuildError> {
-    let mut name = String::new();
-    let mut members = Vec::new();
-
-    for p in pair.into_inner() {
-        match p.as_rule() {
-            Rule::IDENT => name = p.as_str().to_string(),
-            Rule::table_member => {
-                members.push(parse_table_member(p)?);
-            }
-            Rule::doc_comment => {
-                members.push(TableMember::Comment(extract_comment_content(p)));
-            }
-            found => {
-                let (line, col) = p.line_col();
-                return Err(AstBuildError::UnexpectedRule {
-                    expected: "IDENT or table_member".to_string(),
-                    found,
-                    line,
-                    col,
-                });
-            }
-        }
-    }
+    let (name, members) = parse_named_member_block(pair, Rule::table, "table name")?;
     Ok(Table {
         metadata: Vec::new(),
         name: Some(name),
@@ -159,70 +137,7 @@ pub fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
     let mut variants = Vec::new();
     for p in inner {
         if p.as_rule() == Rule::enum_variant {
-            let (p_line, p_col) = p.line_col();
-            let mut variant_inner = p.into_inner().peekable();
-            let metadata = parse_metadata(&mut variant_inner)?;
-            let variant_name = variant_inner
-                .next()
-                .ok_or(AstBuildError::MissingElement {
-                    rule: Rule::enum_variant,
-                    element: "name".to_string(),
-                    line: p_line,
-                    col: p_col,
-                })?
-                .as_str()
-                .to_string();
-
-            let mut variant_value: Option<i64> = None;
-            if let Some(value_pair) = variant_inner.peek() {
-                if value_pair.as_rule() == Rule::INTEGER {
-                    let consumed_value_pair =
-                        variant_inner.next().ok_or(AstBuildError::MissingElement {
-                            rule: Rule::enum_variant,
-                            element: "value".to_string(),
-                            line: p_line,
-                            col: p_col,
-                        })?;
-                    variant_value = Some(consumed_value_pair.as_str().parse().map_err(|_| {
-                        AstBuildError::InvalidValue {
-                            element: "enum variant value".to_string(),
-                            value: consumed_value_pair.as_str().to_string(),
-                            line: p_line,
-                            col: p_col,
-                        }
-                    })?);
-                }
-            }
-
-            // Parse optional inline comment from enum_variant_end
-            let mut inline_comment: Option<String> = None;
-            if let Some(end_pair) = variant_inner.peek() {
-                if end_pair.as_rule() == Rule::enum_variant_end {
-                    let end_pair = variant_inner.next().ok_or(AstBuildError::MissingElement {
-                        rule: Rule::enum_variant,
-                        element: "end".to_string(),
-                        line: p_line,
-                        col: p_col,
-                    })?;
-                    let end_text = end_pair.as_str();
-                    // enum_variant_end contains: (";" | ",") ~ spaces ~ inline_comment?
-                    // Extract inline comment if present (starts with //)
-                    if let Some(comment_start) = end_text.find("//") {
-                        let comment_text = &end_text[comment_start..];
-                        let cleaned = comment_text.trim_start_matches("//").trim();
-                        if !cleaned.is_empty() {
-                            inline_comment = Some(cleaned.to_string());
-                        }
-                    }
-                }
-            }
-
-            variants.push(EnumVariant {
-                metadata,
-                name: Some(variant_name),
-                value: variant_value,
-                inline_comment,
-            });
+            variants.push(parse_enum_variant(p)?);
         }
     }
     Ok(Enum {
@@ -232,42 +147,110 @@ pub fn parse_enum(pair: Pair<Rule>) -> Result<Enum, AstBuildError> {
     })
 }
 
-pub fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
+pub fn parse_enum_variant(pair: Pair<Rule>) -> Result<EnumVariant, AstBuildError> {
     let (line, col) = pair.line_col();
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+    let metadata = parse_metadata(&mut inner)?;
     let name = inner
         .next()
         .ok_or(AstBuildError::MissingElement {
-            rule: Rule::embed_def,
+            rule: Rule::enum_variant,
             element: "name".to_string(),
             line,
             col,
         })?
         .as_str()
         .to_string();
-    let mut members = Vec::new();
-    for p in inner {
-        match p.as_rule() {
-            Rule::table_member => {
-                members.push(parse_table_member(p)?);
-            }
-            Rule::doc_comment => {
-                members.push(TableMember::Comment(extract_comment_content(p)));
-            }
-            found => {
-                let (p_line, p_col) = p.line_col();
-                return Err(AstBuildError::UnexpectedRule {
-                    expected: "table_member or doc_comment".to_string(),
-                    found,
-                    line: p_line,
-                    col: p_col,
-                });
-            }
+
+    let value = if matches!(inner.peek().map(Pair::as_rule), Some(Rule::INTEGER)) {
+        let value_pair = inner.next().ok_or(AstBuildError::MissingElement {
+            rule: Rule::enum_variant,
+            element: "value".to_string(),
+            line,
+            col,
+        })?;
+        Some(
+            value_pair
+                .as_str()
+                .parse()
+                .map_err(|_| AstBuildError::InvalidValue {
+                    element: "enum variant value".to_string(),
+                    value: value_pair.as_str().to_string(),
+                    line,
+                    col,
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let inline_comment = match inner.peek() {
+        Some(end_pair) if end_pair.as_rule() == Rule::enum_variant_end => {
+            let end_pair = inner.next().ok_or(AstBuildError::MissingElement {
+                rule: Rule::enum_variant,
+                element: "end".to_string(),
+                line,
+                col,
+            })?;
+            parse_enum_variant_inline_comment(end_pair.as_str())
         }
+        _ => None,
+    };
+
+    Ok(EnumVariant {
+        metadata,
+        name: Some(name),
+        value,
+        inline_comment,
+    })
+}
+
+fn parse_enum_variant_inline_comment(end_text: &str) -> Option<String> {
+    let comment_text = end_text.get(end_text.find("//")? + 2..)?;
+    let cleaned = comment_text.trim();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned.to_string())
     }
+}
+
+pub fn parse_embed(pair: Pair<Rule>) -> Result<Embed, AstBuildError> {
+    let (name, members) = parse_named_member_block(pair, Rule::embed_def, "embed name")?;
     Ok(Embed {
         metadata: Vec::new(),
         name: Some(name),
         members,
     })
+}
+
+fn parse_named_member_block(
+    pair: Pair<Rule>,
+    owner_rule: Rule,
+    name_element: &str,
+) -> Result<(String, Vec<TableMember>), AstBuildError> {
+    let (line, col) = pair.line_col();
+    let mut inner = pair.into_inner();
+    let name = inner.next().ok_or(AstBuildError::MissingElement {
+        rule: owner_rule,
+        element: name_element.to_string(),
+        line,
+        col,
+    })?;
+    if name.as_rule() != Rule::IDENT {
+        let (name_line, name_col) = name.line_col();
+        return Err(AstBuildError::UnexpectedRule {
+            expected: "IDENT".to_string(),
+            found: name.as_rule(),
+            line: name_line,
+            col: name_col,
+        });
+    }
+
+    let name = name.as_str().to_string();
+    let mut members = Vec::new();
+    for p in inner {
+        members.push(parse_table_body_item(p)?);
+    }
+    Ok((name, members))
 }

@@ -303,7 +303,7 @@ IR의 `IndexDef`를 기반으로 생성합니다.
 |----------|------------|-----------|
 | `primary_key` | UniqueIndex | `Option<&T>` |
 | `unique` | UniqueIndex | `Option<&T>` |
-| `index` | GroupIndex | `&[T]` |
+| `@index(field)` | GroupIndex | `&[T]` |
 | `foreign_key` | GroupIndex | `&[T]` |
 
 #### IR 정보 활용

@@ -273,12 +273,12 @@ SchemaContext {
                                         FieldDef {
                                             name: "status",
                                             field_type: TypeRef {
-                                                original: "Status__Enum",
-                                                fqn: "MyGame.Player.Status__Enum",
+                                                original: "StatusEnum",
+                                                fqn: "MyGame.Player.StatusEnum",
                                                 namespace_fqn: "MyGame.Player",
-                                                type_name: "Status__Enum",
+                                                type_name: "StatusEnum",
                                                 parent_type_path: "",
-                                                lang_type: "Status__Enum",
+                                                lang_type: "StatusEnum",
                                                 is_primitive: false,
                                                 is_struct: false,
                                                 is_enum: true,
@@ -302,8 +302,8 @@ SchemaContext {
                                     ),
                                     InlineEnum(
                                         EnumDef {
-                                            name: "Status__Enum",
-                                            fqn: "MyGame.Player.Status__Enum",
+                                            name: "StatusEnum",
+                                            fqn: "MyGame.Player.StatusEnum",
                                             items: [
                                                 Member(
                                                     EnumMember {

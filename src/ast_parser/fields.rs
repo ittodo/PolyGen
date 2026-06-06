@@ -1,16 +1,27 @@
 use crate::ast_model::{
-    Cardinality, Constraint, EnumVariant, FieldDefinition, InlineEmbedField, InlineEnumField,
-    RegularField, TableMember, Timezone,
+    Constraint, Enum, FieldDefinition, InlineEmbedField, InlineEnumField, RegularField,
+    TableMember, Timezone, TypeName, TypeWithCardinality,
 };
 use crate::error::AstBuildError;
 use crate::Rule;
 use pest::iterators::Pair;
 
-use super::definitions::{parse_embed, parse_enum};
-use super::helpers::{extract_comment_content, parse_path};
+use super::definitions::{parse_embed, parse_enum, parse_enum_variant};
+use super::helpers::{extract_comment_content, parse_cardinality, parse_field_number, parse_path};
 use super::literals::parse_literal;
 use super::metadata::parse_metadata;
 use super::types::parse_type_with_cardinality;
+
+pub fn parse_table_body_item(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
+    match pair.as_rule() {
+        Rule::table_member => parse_table_member(pair),
+        Rule::doc_comment => Ok(TableMember::Comment(extract_comment_content(pair))),
+        found => {
+            let (line, col) = pair.line_col();
+            unexpected_rule!(found, "table_member or doc_comment", line, col);
+        }
+    }
+}
 
 pub fn parse_table_member(pair: Pair<Rule>) -> Result<TableMember, AstBuildError> {
     let (line, col) = pair.line_col();
@@ -67,9 +78,7 @@ pub fn parse_field_definition(pair: Pair<Rule>) -> Result<FieldDefinition, AstBu
         Rule::inline_embed_field => {
             FieldDefinition::InlineEmbed(parse_inline_embed_field(inner_pair)?)
         }
-        Rule::inline_enum_field => {
-            FieldDefinition::InlineEnum(parse_inline_enum_field(inner_pair)?)
-        }
+        Rule::inline_enum_field => parse_inline_enum_field(inner_pair)?,
         found => unexpected_rule!(
             found,
             "regular_field, inline_embed_field, or inline_enum_field",
@@ -102,21 +111,7 @@ pub fn parse_regular_field(pair: Pair<Rule>) -> Result<RegularField, AstBuildErr
         match p.as_rule() {
             Rule::constraint => constraints.push(parse_constraint(p)?),
             Rule::field_number => {
-                let (p_line, p_col) = p.line_col();
-                let text = require_next!(
-                    p.into_inner(),
-                    Rule::field_number,
-                    "integer value",
-                    p_line,
-                    p_col
-                )?
-                .as_str();
-                field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
-                    element: "field_number".to_string(),
-                    value: text.to_string(),
-                    line: p_line,
-                    col: p_col,
-                })?);
+                field_number = Some(parse_field_number(p)?);
             }
             found => {
                 let (p_line, p_col) = p.line_col();
@@ -148,7 +143,6 @@ pub fn parse_constraint(pair: Pair<Rule>) -> Result<Constraint, AstBuildError> {
     let constraint = match inner_pair.as_rule() {
         Rule::primary_key => Constraint::PrimaryKey,
         Rule::unique => Constraint::Unique,
-        Rule::index => Constraint::Index,
         Rule::max_length => {
             let text = require_next!(
                 inner_pair.into_inner(),
@@ -319,40 +313,9 @@ pub fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, As
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::IDENT => name = p.as_str().to_string(),
-            Rule::table_member => members.push(parse_table_member(p)?),
-            Rule::cardinality => {
-                let (p_line, p_col) = p.line_col();
-                cardinality = Some(match p.as_str() {
-                    "?" => Cardinality::Optional,
-                    "[]" => Cardinality::Array,
-                    s => {
-                        return Err(AstBuildError::InvalidValue {
-                            element: "cardinality".to_string(),
-                            value: s.to_string(),
-                            line: p_line,
-                            col: p_col,
-                        })
-                    }
-                });
-            }
-            Rule::field_number => {
-                let (p_line, p_col) = p.line_col();
-                let text = require_next!(
-                    p.into_inner(),
-                    Rule::field_number,
-                    "integer value",
-                    p_line,
-                    p_col
-                )?
-                .as_str();
-                field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
-                    element: "field_number".to_string(),
-                    value: text.to_string(),
-                    line: p_line,
-                    col: p_col,
-                })?);
-            }
-            Rule::doc_comment => members.push(TableMember::Comment(extract_comment_content(p))),
+            Rule::table_member | Rule::doc_comment => members.push(parse_table_body_item(p)?),
+            Rule::cardinality => cardinality = Some(parse_cardinality(p)?),
+            Rule::field_number => field_number = Some(parse_field_number(p)?),
             found => {
                 let (p_line, p_col) = p.line_col();
                 unexpected_rule!(
@@ -383,7 +346,7 @@ pub fn parse_inline_embed_field(pair: Pair<Rule>) -> Result<InlineEmbedField, As
     })
 }
 
-pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstBuildError> {
+pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<FieldDefinition, AstBuildError> {
     let (line, col) = pair.line_col();
     let mut inner = pair.into_inner();
 
@@ -393,107 +356,26 @@ pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstB
 
     let mut variants = Vec::new();
     let mut cardinality = None;
+    let mut constraints = Vec::new();
     let mut field_number = None;
 
     for p in inner {
         match p.as_rule() {
             Rule::enum_variant => {
-                let (p_line, p_col) = p.line_col();
-                let mut variant_inner = p.into_inner().peekable();
-                let metadata = parse_metadata(&mut variant_inner)?;
-                let variant_name =
-                    require_next!(variant_inner, Rule::enum_variant, "name", p_line, p_col)?
-                        .as_str()
-                        .to_string();
-
-                let mut variant_value: Option<i64> = None;
-                if let Some(value_pair) = variant_inner.peek() {
-                    if value_pair.as_rule() == Rule::INTEGER {
-                        let consumed_value_pair =
-                            variant_inner.next().ok_or(AstBuildError::MissingElement {
-                                rule: Rule::enum_variant,
-                                element: "value".to_string(),
-                                line: p_line,
-                                col: p_col,
-                            })?;
-                        variant_value =
-                            Some(consumed_value_pair.as_str().parse().map_err(|_| {
-                                AstBuildError::InvalidValue {
-                                    element: "enum variant value".to_string(),
-                                    value: consumed_value_pair.as_str().to_string(),
-                                    line: p_line,
-                                    col: p_col,
-                                }
-                            })?);
-                    }
-                }
-
-                // Parse optional inline comment from enum_variant_end
-                let mut inline_comment: Option<String> = None;
-                if let Some(end_pair) = variant_inner.peek() {
-                    if end_pair.as_rule() == Rule::enum_variant_end {
-                        let end_pair =
-                            variant_inner.next().ok_or(AstBuildError::MissingElement {
-                                rule: Rule::enum_variant,
-                                element: "end".to_string(),
-                                line: p_line,
-                                col: p_col,
-                            })?;
-                        let end_text = end_pair.as_str();
-                        if let Some(comment_start) = end_text.find("//") {
-                            let comment_text = &end_text[comment_start..];
-                            let cleaned = comment_text.trim_start_matches("//").trim();
-                            if !cleaned.is_empty() {
-                                inline_comment = Some(cleaned.to_string());
-                            }
-                        }
-                    }
-                }
-
-                variants.push(EnumVariant {
-                    metadata,
-                    name: Some(variant_name),
-                    value: variant_value,
-                    inline_comment,
-                });
+                variants.push(parse_enum_variant(p)?);
             }
             Rule::cardinality => {
-                let (p_line, p_col) = p.line_col();
-                cardinality = Some(match p.as_str() {
-                    "?" => Cardinality::Optional,
-                    "[]" => Cardinality::Array,
-                    s => {
-                        return Err(AstBuildError::InvalidValue {
-                            element: "cardinality".to_string(),
-                            value: s.to_string(),
-                            line: p_line,
-                            col: p_col,
-                        })
-                    }
-                });
+                cardinality = Some(parse_cardinality(p)?);
             }
+            Rule::constraint => constraints.push(parse_constraint(p)?),
             Rule::field_number => {
-                let (p_line, p_col) = p.line_col();
-                let text = require_next!(
-                    p.into_inner(),
-                    Rule::field_number,
-                    "integer value",
-                    p_line,
-                    p_col
-                )?
-                .as_str();
-                field_number = Some(text.parse().map_err(|_| AstBuildError::InvalidValue {
-                    element: "field_number".to_string(),
-                    value: text.to_string(),
-                    line: p_line,
-                    col: p_col,
-                })?);
+                field_number = Some(parse_field_number(p)?);
             }
             found => {
                 let (p_line, p_col) = p.line_col();
                 unexpected_rule!(
                     found,
-                    "enum_variant, cardinality, or field_number",
+                    "enum_variant, cardinality, constraint, or field_number",
                     p_line,
                     p_col
                 );
@@ -501,11 +383,28 @@ pub fn parse_inline_enum_field(pair: Pair<Rule>) -> Result<InlineEnumField, AstB
         }
     }
 
-    Ok(InlineEnumField {
+    if constraints.is_empty() {
+        return Ok(FieldDefinition::InlineEnum(InlineEnumField {
+            metadata: Vec::new(),
+            name: Some(name),
+            variants,
+            cardinality,
+            field_number,
+        }));
+    }
+
+    Ok(FieldDefinition::Regular(RegularField {
         metadata: Vec::new(),
         name: Some(name),
-        variants,
-        cardinality,
+        field_type: TypeWithCardinality {
+            base_type: TypeName::InlineEnum(Enum {
+                metadata: Vec::new(),
+                name: None,
+                variants,
+            }),
+            cardinality,
+        },
+        constraints,
         field_number,
-    })
+    }))
 }

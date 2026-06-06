@@ -92,12 +92,12 @@ SchemaContext {
                                         FieldDef {
                                             name: "inventory",
                                             field_type: TypeRef {
-                                                original: "List<Inventory>",
-                                                fqn: "Character.Inventory",
+                                                original: "List<InventoryEmbed>",
+                                                fqn: "Character.InventoryEmbed",
                                                 namespace_fqn: "Character",
-                                                type_name: "Inventory",
+                                                type_name: "InventoryEmbed",
                                                 parent_type_path: "",
-                                                lang_type: "List<Inventory>",
+                                                lang_type: "List<InventoryEmbed>",
                                                 is_primitive: false,
                                                 is_struct: true,
                                                 is_enum: false,
@@ -105,12 +105,12 @@ SchemaContext {
                                                 is_list: true,
                                                 inner_type: Some(
                                                     TypeRef {
-                                                        original: "Inventory",
-                                                        fqn: "Character.Inventory",
+                                                        original: "InventoryEmbed",
+                                                        fqn: "Character.InventoryEmbed",
                                                         namespace_fqn: "Character",
-                                                        type_name: "Inventory",
+                                                        type_name: "InventoryEmbed",
                                                         parent_type_path: "",
-                                                        lang_type: "Inventory",
+                                                        lang_type: "InventoryEmbed",
                                                         is_primitive: false,
                                                         is_struct: true,
                                                         is_enum: false,
@@ -136,8 +136,8 @@ SchemaContext {
                                     ),
                                     EmbeddedStruct(
                                         StructDef {
-                                            name: "Inventory",
-                                            fqn: "Character.Inventory",
+                                            name: "InventoryEmbed",
+                                            fqn: "Character.InventoryEmbed",
                                             is_embed: false,
                                             datasource: None,
                                             cache_strategy: None,
@@ -213,12 +213,12 @@ SchemaContext {
                                                     FieldDef {
                                                         name: "properties",
                                                         field_type: TypeRef {
-                                                            original: "List<Properties>",
-                                                            fqn: "Character.Inventory.Properties",
-                                                            namespace_fqn: "Character.Inventory",
-                                                            type_name: "Properties",
+                                                            original: "List<PropertiesEmbed>",
+                                                            fqn: "Character.InventoryEmbed.PropertiesEmbed",
+                                                            namespace_fqn: "Character.InventoryEmbed",
+                                                            type_name: "PropertiesEmbed",
                                                             parent_type_path: "",
-                                                            lang_type: "List<Properties>",
+                                                            lang_type: "List<PropertiesEmbed>",
                                                             is_primitive: false,
                                                             is_struct: true,
                                                             is_enum: false,
@@ -226,12 +226,12 @@ SchemaContext {
                                                             is_list: true,
                                                             inner_type: Some(
                                                                 TypeRef {
-                                                                    original: "Properties",
-                                                                    fqn: "Character.Inventory.Properties",
-                                                                    namespace_fqn: "Character.Inventory",
-                                                                    type_name: "Properties",
+                                                                    original: "PropertiesEmbed",
+                                                                    fqn: "Character.InventoryEmbed.PropertiesEmbed",
+                                                                    namespace_fqn: "Character.InventoryEmbed",
+                                                                    type_name: "PropertiesEmbed",
                                                                     parent_type_path: "",
-                                                                    lang_type: "Properties",
+                                                                    lang_type: "PropertiesEmbed",
                                                                     is_primitive: false,
                                                                     is_struct: true,
                                                                     is_enum: false,
@@ -257,8 +257,8 @@ SchemaContext {
                                                 ),
                                                 EmbeddedStruct(
                                                     StructDef {
-                                                        name: "Properties",
-                                                        fqn: "Character.Inventory.Properties",
+                                                        name: "PropertiesEmbed",
+                                                        fqn: "Character.InventoryEmbed.PropertiesEmbed",
                                                         is_embed: false,
                                                         datasource: None,
                                                         cache_strategy: None,

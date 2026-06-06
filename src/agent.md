@@ -83,7 +83,7 @@ src/
   - C# attribute 문자열, foreign key, range, timezone 값을 변환
 
 - **ir_builder/indexes.rs**: IR 빌더 index 헬퍼
-  - primary key, unique, index constraint에서 `IndexDef` 생성
+  - primary key, unique, foreign_key constraint에서 `IndexDef` 생성
   - `@index` annotation의 field 목록과 unique option을 `IndexDef`로 변환
 
 - **ir_builder/renames.rs**: IR 빌더 rename 헬퍼

@@ -118,7 +118,7 @@ fn adjust_typeref(t: &mut TypeRef, registry: &TypeRegistry, parent_fqn: &str) {
     }
 
     // Strategy 2: Check if this is an inline embedded struct within the parent struct
-    // Try parent_fqn.TypeName (e.g., "test.embed.Person.Details")
+    // Try parent_fqn.TypeName (e.g., "test.embed.Person.DetailsEmbed")
     if !parent_fqn.is_empty() {
         let embedded_fqn = format!("{}.{}", parent_fqn, t.type_name);
         if registry.is_embed(&embedded_fqn) {

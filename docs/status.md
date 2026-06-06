@@ -71,7 +71,7 @@
 - [x] 필드 제약조건 검증 (max_length, range, regex)
 - [x] 스키마 단계 필드 제약조건 의미 검증 (max_length 타입/값, range 타입/bound, regex 패턴)
 - [x] 스키마 단계 primary_key/unique 의미 검증 (중복, cardinality, indexable type)
-- [x] 스키마 단계 field-level index 의미 검증 (deprecated constraint, indexable type)
+- [x] 스키마 단계 `@index` 의미 검증 및 field-level `index` 문법 제거
 - [x] 스키마 단계 default 제약조건 의미 검증 (타입 호환성, 정수 범위, range 연동)
 - [x] 스키마 단계 foreign_key 의미 검증 (대상 table/PK/unique field 존재, 타입 호환성)
 - [x] Default 값 지원 (모든 언어)

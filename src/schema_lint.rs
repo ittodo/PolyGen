@@ -1,5 +1,6 @@
 //! Lightweight schema lint checks.
 
+use heck::ToPascalCase;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -249,7 +250,7 @@ fn collect_inline_embed_container(
     containers: &mut HashMap<String, ContainerRefs>,
 ) {
     if let Some(name) = &field.name {
-        let fqn = qualify(owner_fqn, name);
+        let fqn = qualify(owner_fqn, &inline_embed_name_for_field(name));
         registry.register(&fqn, TypeKind::Embed);
         collect_container(&fqn, &field.members, TypeKind::Embed, registry, containers);
     }
@@ -486,6 +487,10 @@ fn qualify(namespace: &str, name: &str) -> String {
     } else {
         format!("{}.{}", namespace, name)
     }
+}
+
+fn inline_embed_name_for_field(field_name: &str) -> String {
+    format!("{}Embed", field_name.to_pascal_case())
 }
 
 fn split_fqn(fqn: &str) -> Vec<String> {

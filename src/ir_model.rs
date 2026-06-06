@@ -125,7 +125,7 @@ pub struct StructDef {
     pub header: Vec<StructItem>,
     /// Body items (fields, nested types, inline comments).
     pub items: Vec<StructItem>,
-    /// Indexes defined on this struct (from primary_key, unique, index, foreign_key).
+    /// Indexes defined on this struct (from primary_key, unique, foreign_key, @index).
     pub indexes: Vec<IndexDef>,
     /// Reverse relations pointing to this struct (from foreign_key ... as).
     pub relations: Vec<RelationDef>,
@@ -151,7 +151,7 @@ pub struct IndexDef {
     pub fields: Vec<IndexFieldDef>,
     /// Whether this is a unique index (single result) or group index (list result).
     pub is_unique: bool,
-    /// Source of this index: "constraint" (from primary_key/unique/index/foreign_key)
+    /// Source of this index: "constraint" (from primary_key/unique/foreign_key)
     /// or "annotation" (from @index).
     pub source: String,
 }
@@ -245,7 +245,7 @@ pub struct FieldDef {
     pub is_primary_key: bool,
     /// Whether this field has a unique constraint.
     pub is_unique: bool,
-    /// Whether this field has an index constraint.
+    /// Legacy field-level index flag. Canonical schemas use StructDef::indexes.
     pub is_index: bool,
     /// Foreign key reference information, if this field references another table.
     pub foreign_key: Option<ForeignKeyDef>,

@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use crate::ir_model::{IndexDef, IndexFieldDef, StructItem, TypeRef};
 use heck::ToPascalCase;
 
-/// Builds index definitions from struct items by examining field constraints.
+/// Builds index definitions from struct items by examining field-derived index sources.
 pub(super) fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
     let mut indexes = Vec::new();
 
     for item in items {
         if let StructItem::Field(field) = item {
-            // Primary key or unique constraint creates a unique index
+            // Primary key or unique constraint creates a unique index.
             if field.is_primary_key || field.is_unique {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
@@ -20,9 +20,7 @@ pub(super) fn build_indexes_from_items(items: &[StructItem]) -> Vec<IndexDef> {
                     is_unique: true,
                     source: "constraint".to_string(),
                 });
-            }
-            // Index constraint or foreign key creates a group index
-            else if field.is_index {
+            } else if field.foreign_key.is_some() {
                 indexes.push(IndexDef {
                     name: format!("By{}", field.name.to_pascal_case()),
                     fields: vec![IndexFieldDef {

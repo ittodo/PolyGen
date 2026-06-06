@@ -155,7 +155,8 @@ impl ContextValue {
                         .collect(),
                 ),
                 "all_tables" => {
-                    // Collect all non-embed, non-__Enum structs from all namespaces (flat)
+                    // Collect all structs from all namespaces (flat).
+                    // The __Enum suffix check is kept for older IR snapshots.
                     let mut tables = Vec::new();
                     collect_tables_from_namespaces(&f.namespaces, &mut tables);
                     ContextValue::List(tables)
@@ -841,7 +842,7 @@ impl ContextValue {
     }
 }
 
-/// Recursively collects all non-__Enum structs from namespaces.
+/// Recursively collects all structs from namespaces.
 ///
 /// Returns them as ContextValue::Struct entries in a flat list.
 /// Note: embeds ARE included (they may be used as container tables).

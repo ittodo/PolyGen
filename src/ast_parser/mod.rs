@@ -366,6 +366,13 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parse_field_level_index_constraint_is_rejected() {
+        let input = "table User { email: string index; }";
+
+        assert!(Polygen::parse(Rule::main, input).is_err());
+    }
+
     // ========== Enum Tests ==========
 
     #[test]
@@ -618,6 +625,35 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parse_inline_embed_body_comment() {
+        let ast = parse_schema(
+            r#"
+            table User {
+                profile: embed {
+                    bio: string;
+                    // trailing body comment
+                };
+            }
+            "#,
+        );
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let TableMember::Field(FieldDefinition::InlineEmbed(ief)) = &table.members[0] {
+                assert_eq!(ief.members.len(), 2);
+                assert!(matches!(ief.members[0], TableMember::Field(_)));
+                assert_eq!(
+                    ief.members[1],
+                    TableMember::Comment("trailing body comment".to_string())
+                );
+            } else {
+                panic!("Expected InlineEmbed field");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
     // ========== Inline Enum Tests ==========
 
     #[test]
@@ -640,6 +676,38 @@ mod tests {
                 assert_eq!(ief.variants.len(), 3);
             } else {
                 panic!("Expected InlineEnum field");
+            }
+        } else {
+            panic!("Expected Table definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_anonymous_enum_field_with_constraint() {
+        let ast = parse_schema(
+            r#"
+            table Task {
+                state: enum {
+                    Todo;
+                    Done;
+                } default(Todo);
+            }
+            "#,
+        );
+
+        if let Definition::Table(table) = &ast.definitions[0] {
+            if let TableMember::Field(FieldDefinition::Regular(rf)) = &table.members[0] {
+                if let TypeName::InlineEnum(enum_def) = &rf.field_type.base_type {
+                    assert_eq!(enum_def.variants.len(), 2);
+                } else {
+                    panic!("Expected anonymous enum type");
+                }
+                assert_eq!(
+                    rf.constraints,
+                    vec![Constraint::Default(Literal::Identifier("Todo".to_string()))]
+                );
+            } else {
+                panic!("Expected Regular field");
             }
         } else {
             panic!("Expected Table definition");

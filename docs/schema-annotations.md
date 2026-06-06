@@ -12,7 +12,7 @@ PolyGen 스키마 언어는 두 가지 메타데이터 시스템을 제공합니
 |------|------------------------|----------------------------------|
 | **문법** | `@name(key: value)` | `constraint_name` 또는 `constraint(value)` |
 | **목적** | 메타데이터, 런타임 힌트, 코드 생성 | 데이터 무결성, 스키마 정의, 검증 |
-| **적용 대상** | table, embed, enum, field | field만 |
+| **적용 대상** | 문법상 여러 declaration/member/variant, built-in은 target 제한 | field만 |
 | **영향** | 로더, 캐시, 인덱스, 코드 생성 | DB 스키마, 유효성 검증 |
 
 ---
@@ -35,19 +35,55 @@ annotation_param       = { IDENT ~ ":" ~ literal }
 - 불린: `true`, `false`
 - 식별자: `on_demand`
 
-### 1.2 구현된 어노테이션
+### 1.2 Attachment target model
 
-| 어노테이션 | 파라미터 | 적용 대상 | 설명 |
-|----------|---------|----------|------|
-| `@load` | `csv: "path"`, `json: "path"` | table | Legacy 데이터 로더 지정 (`sources-config.md` 권장) |
-| `@taggable` | 없음 | table | 태그 지원 표시 |
-| `@link_rows` | `(TypeName)` | table | 행 연결 (Cross-reference) |
-| `@index` | `(field1, field2, ...)` | table | 인덱스 생성 (단일/복합) |
-| `@pack` | `separator: ","` | embed | embed 필드를 단일 문자열로 직렬화 |
-| `@datasource` | `"sqlite"` 또는 `value: sqlite` | namespace/table | datasource별 산출물 생성 |
-| `@cache` | `strategy`, `ttl` | table | Redis cache descriptor/key helper 생성 |
-| `@readonly` | 없음 | table | 읽기 전용 테이블 표시 |
+Annotation은 두 단계로 이해합니다.
+
+1. **문법상 붙일 수 있는 위치**: parser가 metadata로 보존하는 위치입니다.
+2. **built-in 의미가 있는 target**: PolyGen validation/codegen이 실제 의미를 해석하는 위치입니다.
+
+문법상 attachment point:
+
+| 위치 | 예 |
+|------|----|
+| namespace | `@x namespace game { ... }` |
+| top-level table/embed/enum | `@x table Item { ... }` |
+| nested embed/enum | `@x embed Position { ... }` |
+| regular field | `@x name: string;` |
+| inline embed field | `@x data: embed { ... };` |
+| inline enum field | `@x state: enum { ... };` |
+| enum variant | `@x Active;` |
+
+Unknown/custom annotation은 AST metadata로 보존됩니다. Built-in validation이 의미를
+모르는 annotation은 기본 동작을 바꾸지 않으며, template이나 도구가 custom metadata로
+해석할 수 있습니다.
+
+### 1.3 Canonical built-in annotation target matrix
+
+| 어노테이션 | 파라미터 | Built-in target | 설명 |
+|----------|---------|-----------------|------|
+| `@index` | `(field1, field2, ...)`, `unique: true` | table | exact key lookup/DB index 생성을 위한 table-level index |
+| `@search` | `mode`, `n`, `min`, `normalize`, `name`, `target` | searchable field, inline enum field | Container/BinaryRef/Registry 검색 인덱스 |
+| `@pack` | `separator: ","` | named/nested embed | embed 필드를 단일 문자열로 직렬화 |
+| `@readonly` | 없음 | table | generated mutable container에서 쓰기/저장 제외 |
 | `@soft_delete` | `"deleted_at"` 또는 `field: deleted_at` | table | 논리 삭제 필드 지정 |
+| `@taggable` | 없음 | table | 태그 지원 표시. 유지 여부는 별도 검토 가능 |
+
+Enum variant에도 annotation을 붙일 수 있지만, 현재 built-in annotation은 enum variant를
+semantic target으로 사용하지 않습니다.
+
+### 1.4 Removed / externalized annotation candidates
+
+아래 항목은 기존 코드가 일부 지원하더라도 canonical `.poly` 문법에서는 제거하거나 별도
+설정으로 옮깁니다.
+
+| 기존 항목 | 기존 target | 대체/정리 방향 | 이유 |
+|-----------|-------------|----------------|------|
+| `@datasource` | namespace/table | output/source sidecar config | DB/Redis 산출물 선택은 schema 선언부보다 배포 설정에 가까움 |
+| `@load` | table | `*.sources.toml` | CSV/JSON runtime path는 타입 선언이 아님 |
+| `@cache` | namespace/table 의도 | cache/output config 또는 재설계된 table policy | data/output 설정과 섞여 있고 현재 validation target이 넓음 |
+| `@link_rows` | table | `foreign_key(... ) as ...` relation으로 흡수 검토 | relation 원천을 FK로 단일화 |
+| `@renamed_from` | draft | `.renames` 파일 | 현재 미구현이며 migration rename은 별도 파일로 처리 |
 
 **사용 예제:**
 ```poly
@@ -62,12 +98,65 @@ table Player {
 }
 ```
 
-`@load`는 하위 호환을 위해 유지되는 legacy annotation입니다. 새 스키마에서는
-CSV/JSON 경로를 `.sources.toml`에 작성하는 것을 권장합니다. 자세한 형식은
-[sources-config.md](sources-config.md)를 참고합니다. `@load`를 사용할 경우 table 정의에만 적용할 수 있고,
-`csv`/`json` named string parameter 중 하나 이상을 요구하며, 같은 parameter를 중복 지정할 수 없습니다.
-`@taggable`, `@link_rows`는 table 정의에만 사용할 수 있습니다.
-`@taggable`은 인자를 받지 않습니다. `@link_rows`는 positional target type 1개만 허용합니다.
+CSV/JSON 경로는 `.sources.toml`에 작성합니다. 자세한 형식은
+[sources-config.md](sources-config.md)를 참고합니다.
+`@taggable`은 table 정의에만 사용할 수 있으며 인자를 받지 않습니다.
+
+#### @taggable - 태그 지원 marker
+
+`@taggable`은 table이 외부 tag 시스템과 연결될 수 있음을 표시하는 marker입니다. 인자를
+받지 않고, field 구조나 데이터 무결성에는 영향을 주지 않습니다. tag 저장 방식이나 tag
+데이터의 source path는 schema declaration 밖에서 결정하는 것이 원칙입니다.
+
+```poly
+@taggable
+table Item {
+    id: u32 primary_key;
+    name: string;
+}
+```
+
+#### @load 제거 방향
+
+`@load(csv: "...", json: "...")`는 schema 안에 runtime file path를 넣는 방식이라
+선언부/데이터 설정부 분리 원칙과 맞지 않습니다.
+
+```poly
+// 제거 대상
+@load(csv: "data/items.csv")
+table Item {
+    id: u32 primary_key;
+}
+```
+
+```toml
+# canonical: schema sidecar 설정
+[tables."game.Item".load]
+csv = "data/items.csv"
+```
+
+#### @link_rows 제거/흡수 방향
+
+`@link_rows(Target)`는 relation marker로 도입되었지만, 실제 관계의 원천은
+`foreign_key(... ) as ...`가 더 명확합니다. relation 생성은 field-level FK에서
+파생하는 방향으로 통일합니다.
+
+```poly
+// 제거/흡수 대상
+@link_rows(Skill)
+table PlayerSkill {
+    player_id: u32 foreign_key(Player.id);
+    skill_id: u32 foreign_key(Skill.id);
+}
+```
+
+```poly
+// canonical: FK가 relation의 원천
+table PlayerSkill {
+    player_id: u32 foreign_key(Player.id) as skills;
+    skill_id: u32 foreign_key(Skill.id) as users;
+}
+```
 
 #### @pack - embed 직렬화
 
@@ -96,7 +185,11 @@ Go/Python/Kotlin/Swift 생성물은 `Pack`/`pack`, `Unpack`/`unpack`, `TryUnpack
 Unreal 생성물은 packed embed USTRUCT에 `Pack`, `Unpack`, `TryUnpack`을 만들고 field count,
 finite float, unsigned negative 입력을 방어합니다.
 
-#### @datasource - 데이터소스 지정
+#### @datasource - 데이터소스 지정 (제거/외부화 대상)
+
+`@datasource`는 현재 구현에서 DB/Redis 산출물 생성을 트리거하는 annotation입니다.
+새 canonical 문법에서는 schema 선언부에서 제거하고, output/source sidecar config로
+옮길 대상입니다.
 
 ```poly
 @datasource("sqlite")
@@ -123,9 +216,9 @@ namespace data {
 `@datasource`는 namespace/table에만 사용할 수 있습니다. positional 값 1개 또는
 `value: ...` named parameter 1개만 허용되며, 값은 식별자 또는 문자열이어야 합니다.
 
-### 1.3 데이터/캐시 어노테이션
+### 1.5 데이터/캐시 어노테이션
 
-#### @cache - 캐시 전략
+#### @cache - 캐시 전략 (재설계 대상)
 
 ```poly
 @cache(strategy: full_load)
@@ -155,6 +248,11 @@ Redis descriptor 생성 시 `ttl`은 `ttlSeconds`로 출력됩니다. `strategy`
 검증 단계에서 지원하지 않는 전략, 음수/비정수 TTL, 중복 strategy/ttl, 알 수 없는
 파라미터는 오류로 처리됩니다.
 
+의도상 `@cache`는 namespace/table 정책 metadata입니다. 다만 cache strategy와 datasource
+선택은 output/source 설정에 가까워서, canonical `.poly` annotation으로 남길지 별도
+cache/output config로 옮길지 재설계 대상입니다. 현재 validation은 target 제한도 넓어서
+구현 정리 후보로 둡니다.
+
 #### @readonly - 읽기 전용
 
 ```poly
@@ -183,7 +281,7 @@ table Player {
 - DELETE → `UPDATE deleted_at = NOW()`
 - SELECT시 자동으로 `deleted_at IS NULL` 조건 추가
 
-#### @renamed_from - 이름 변경 (마이그레이션)
+#### @renamed_from - 이름 변경 (Draft / 미구현)
 
 ```poly
 @renamed_from("OldPlayer")
@@ -193,10 +291,10 @@ table Player {
 }
 ```
 
-- 테이블/필드 이름 변경 추적
-- 마이그레이션 SQL 자동 생성
+이 annotation은 현재 built-in annotation target matrix에 포함하지 않습니다. 이름 변경
+마이그레이션은 현재 `.renames` 파일을 사용합니다.
 
-### 1.4 @search - 필드별 역색인 (C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift Container, Unreal Registry, C#/C++/TypeScript/Go/Python/Kotlin/Swift BinaryRef 구현)
+### 1.6 @search - 필드별 역색인 (C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift Container, Unreal Registry, C#/C++/TypeScript/Go/Python/Kotlin/Swift BinaryRef 구현)
 
 `@search`는 각 searchable field에 붙는 역색인(inverted index) 생성 힌트입니다. 데이터 무결성 제약이
 아니라 Container/BinaryRef 같은 산출물에서 검색용 파생 인덱스를 만들기 위한 metadata이므로
@@ -300,12 +398,12 @@ ctx.Items.SearchByEnabled(true);        // exact bool
 
 ---
 
-## 2. 어트리뷰트 (Attribute/Constraint)
+## 2. Field Attributes / Constraints
 
 ### 2.1 문법
 
 ```pest
-constraint      = { primary_key | unique | max_length | default_val | range_val | regex_val | foreign_key_val }
+constraint      = { primary_key | unique | max_length | default_val | range_val | regex_val | foreign_key_val | auto_create | auto_update }
 primary_key     = { "primary_key" }
 unique          = { "unique" }
 max_length      = { "max_length" ~ "(" ~ INTEGER ~ ")" }
@@ -313,32 +411,41 @@ default_val     = { "default" ~ "(" ~ literal ~ ")" }
 range_val       = { "range" ~ "(" ~ literal ~ "," ~ literal ~ ")" }
 regex_val       = { "regex" ~ "(" ~ STRING_LITERAL ~ ")" }
 foreign_key_val = { "foreign_key" ~ "(" ~ path ~ ")" ~ ("as" ~ IDENT)? }
+auto_create     = { "auto_create" ~ ("(" ~ timezone ~ ")")? }
+auto_update     = { "auto_update" ~ ("(" ~ timezone ~ ")")? }
 ```
 
 **특징:**
 - 필드 타입 뒤에 공백으로 구분하여 나열
 - `@` 접두사 없음
 - 여러 제약조건 조합 가능
+- inline enum field도 제약조건이 필요하면 `state: enum { Todo; Done; } default(Todo);`처럼 작성할 수 있으며, AST에서는 regular field의 inline enum 타입으로 정규화됩니다. 생성 enum 이름은 field PascalCase에 `Enum`을 붙인 `StateEnum` 형식입니다. 이 이름은 생성 코드 내부 이름일 뿐 `.poly`의 다른 필드에서 `Task.StateEnum`처럼 참조할 수 없습니다. 같은 이름의 named enum을 가릴 수 있는 경우에는 validation 오류로 거부합니다.
+- inline embed field의 생성 embed 이름은 field PascalCase에 `Embed`를 붙인 `ProfileEmbed` 형식입니다. 이 이름도 생성 코드 내부 이름일 뿐 `.poly`의 다른 필드에서 `User.ProfileEmbed`처럼 참조할 수 없습니다. 같은 이름의 named type을 가릴 수 있는 경우에는 validation 오류로 거부합니다.
 
-### 2.2 구현된 어트리뷰트
+### 2.2 구현된 field attributes / constraints
 
-| 어트리뷰트 | 문법 | 파라미터 | 설명 |
-|-----------|------|---------|------|
-| `primary_key` | `primary_key` | 없음 | 기본 키 |
-| `unique` | `unique` | 없음 | 고유 값 제약 |
-| `max_length` | `max_length(n)` | 정수 | 문자열/바이트 최대 길이 |
-| `default` | `default(value)` | 리터럴 | 기본값 |
-| `range` | `range(min, max)` | 리터럴 2개 | 값 범위 제한 |
-| `regex` | `regex("pattern")` | 문자열 | 정규식 검증 |
-| `foreign_key` | `foreign_key(Table.field) [as alias]` | 경로, 별칭(선택) | 외래 키 참조 |
-| `index` | `index` | 없음 | 단일 필드 인덱스 (deprecated, `@index` 권장) |
-| `auto_create` | `auto_create[(timezone)]` | timezone(선택) | 생성 시각 자동 설정 |
-| `auto_update` | `auto_update[(timezone)]` | timezone(선택) | 갱신 시각 자동 설정 |
+| Attribute | Category | 문법 | 파라미터 | 상태 | 설명 |
+|-----------|----------|------|---------|------|------|
+| `primary_key` | identity | `primary_key` | 없음 | canonical | 기본 키 |
+| `unique` | uniqueness | `unique` | 없음 | canonical | 단일 field 고유 값 제약 |
+| `max_length` | validation | `max_length(n)` | 정수 | canonical | 문자열/바이트 최대 길이 |
+| `range` | validation | `range(min, max)` | 리터럴 2개 | canonical | 값 범위 제한 |
+| `regex` | validation | `regex("pattern")` | 문자열 | canonical | 정규식 검증 |
+| `default` | default/lifecycle | `default(value)` | 리터럴 | canonical | 기본값 |
+| `auto_create` | default/lifecycle | `auto_create[(timezone)]` | timezone(선택) | canonical | 생성 시각 자동 설정 |
+| `auto_update` | default/lifecycle | `auto_update[(timezone)]` | timezone(선택) | canonical | 갱신 시각 자동 설정 |
+| `foreign_key` | relation | `foreign_key(Table.field) [as alias]` | 경로, 별칭(선택) | canonical | 외래 키 참조 |
+
+제거 대상 field attribute:
+
+| Attribute | 기존 문법 | 대체 |
+|-----------|-----------|------|
+| `index` | `name: string index;` | `@index(name)` |
 
 **검증 규칙:**
 - `primary_key`는 table당 하나만 허용됩니다. optional/array 필드, `bytes`, struct/embed 필드에는 사용할 수 없습니다.
 - `unique`는 optional scalar 필드에는 사용할 수 있지만, array 필드, `bytes`, struct/embed 필드에는 사용할 수 없습니다.
-- `index`는 deprecated field-level 단일 인덱스 제약조건입니다. `@index`와 동일하게 array/bytes/struct/embed 필드에는 사용할 수 없고, scalar 또는 enum 필드만 허용됩니다.
+- `index` field constraint는 제거되었습니다. 새 schema에서는 `@index(field)`로 작성하며, 파서는 `name: string index;`를 거부합니다.
 - `max_length`는 `string`/`bytes` 필드에만 사용할 수 있으며 값은 1 이상이어야 합니다.
 - `default`는 배열 필드에는 사용할 수 없습니다. 기본 타입은 타입에 맞는 리터럴만 허용하고, 정수 기본값은 해당 정수 타입의 범위 안에 있어야 합니다. `range`와 함께 쓰는 경우 기본값도 범위 안에 있어야 합니다.
 - `range`는 숫자 필드에만 사용할 수 있습니다. 정수 필드는 정수 bound만 허용하며, unsigned 정수의 최소값은 0 이상이어야 합니다.
@@ -377,9 +484,31 @@ PostgreSQL/SQLite에서도 `auto_create` 기본값과 `auto_update` 기본값/tr
 
 ## 3. 인덱스 설계 (통일)
 
+`@index`는 정확히 일치하는 key lookup을 위한 구조입니다. 테이블의 특정 field 조합을
+key로 보고, generated container에서는 `ByName(...)`, `ByGuildIdLevel(...)` 같은 조회
+API를 만들고, DB 타겟에서는 일반/복합/unique index DDL로 이어집니다.
+
+`@search`는 검색용 역색인입니다. 문자열을 n-gram 또는 word token으로 쪼개거나,
+enum/scalar 값을 exact search bucket으로 묶어서 `SearchByName(...)` 같은 검색 API를
+만듭니다. 데이터 무결성 제약이 아니며, DB unique/index와도 같은 의미가 아닙니다.
+
+| 구분 | `@index` | `@search` |
+|------|----------|-----------|
+| 붙는 위치 | table | field |
+| 목적 | exact key lookup, DB index | generated search API, inverted index |
+| 입력 | field 이름 목록 | mode/options |
+| 결과 API 예 | `ByCode("ITEM_001")`, `ByGuildIdLevel(3, 10)` | `SearchByName("fire")`, `SearchByDescription("ice sword")` |
+| 복합 조건 | field 목록으로 표현 | 검색 옵션과 query token으로 표현 |
+| unique 의미 | `unique: true`로 복합 unique 표현 가능 | 없음 |
+| DB DDL 의미 | 있음 | 없음 또는 target별 검색 구조 |
+
+같은 field에 둘 다 필요할 수 있습니다. 예를 들어 `item_code`는 정확한 코드 조회를 위해
+`@index(item_code, unique: true)`가 맞고, `name`/`description`은 사람이 입력하는 검색어를
+받기 위해 `@search`가 맞습니다.
+
 ### 3.1 인덱스 생성 방법
 
-**어노테이션 `@index` 사용 (권장):**
+**Canonical `@index` 사용:**
 
 ```poly
 @index(name)                    // 단일 필드 인덱스
@@ -505,27 +634,28 @@ table Item {
 | `unique` on `code` | `ByCode` |
 | `foreign_key` on `player_id` | `ByPlayerId` |
 
-### 3.6 기존 `index` 제약조건
+### 3.6 제거 대상: 기존 `index` 제약조건
 
-**변경 전 (deprecated):**
+**제거 대상:**
 ```poly
 table Player {
-    name: string index;  // ⚠️ 유지되지만 @index 권장
+    name: string index;
 }
 ```
 
-**변경 후:**
+**Canonical:**
 ```poly
 @index(name)
 table Player {
-    name: string;        // ✅ 권장
+    name: string;
 }
 ```
 
 **이유:**
 - 복합 인덱스 지원 불가 문제 해결
 - 테이블 레벨에서 인덱스 관리 일원화
-- 기존 `index` 제약조건은 하위 호환을 위해 유지되며, `@index`와 같은 indexable 타입 검증을 적용합니다.
+- 새 schema에서는 `index` field constraint를 사용하지 않습니다.
+- 파서는 더 이상 `index` field constraint를 받지 않으며, table-level `@index(...)`로 통일합니다.
 - 어노테이션/어트리뷰트 역할 명확화
 - 타겟별 지원 정책 적용 가능
 
@@ -540,12 +670,10 @@ table Player {
 | `primary_key` | `[Key]` |
 | `unique` | `[Index(IsUnique = true)]` |
 | `max_length(n)` | `[MaxLength(n)]` |
-| `@load(csv: "...", json: "...")` | `[Load(csv = "...", json = "...")]` |
 | `@taggable` | `[Taggable]` |
 | `@index(name)` | 인덱스 딕셔너리 생성 |
 
 ```csharp
-[Load(csv = "players.csv", json = "players.json")]
 [Taggable]
 public class Player
 {
@@ -593,34 +721,34 @@ CREATE TABLE Player (
 
 ### 5.1 어노테이션
 
-| 어노테이션 | 파싱 | AST | IR | 템플릿 |
-|----------|:---:|:---:|:---:|:------:|
-| `@load` | ✅ | ✅ | ✅ | ✅ |
-| `@taggable` | ✅ | ✅ | ✅ | ✅ |
-| `@link_rows` | ✅ | ✅ | ✅ | ✅ |
-| `@index` | ✅ | ✅ | ✅ | ✅ |
-| `@datasource` | ✅ | ✅ | ✅ | ✅ |
-| `@cache` | ✅ | ✅ | ✅ | ✅ |
-| `@pack` | ✅ | ✅ | ✅ | ✅ C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal |
-| `@readonly` | ✅ | ✅ | ✅ | ✅ |
-| `@soft_delete` | ✅ | ✅ | ✅ | ✅ |
-| `@search` | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef, C++ Container/BinaryRef, Rust Container, TypeScript Container/BinaryRef, Go Container/BinaryRef, Python/Kotlin/Swift Container/BinaryRef, Unreal Registry |
-| `@renamed_from` | ❌ | ❌ | ❌ | ❌ |
+| 어노테이션 | 스펙 상태 | 파싱 | AST | IR | 템플릿 |
+|----------|----------|:---:|:---:|:---:|:------:|
+| `@index` | canonical | ✅ | ✅ | ✅ | ✅ |
+| `@search` | canonical | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef, C++ Container/BinaryRef, Rust Container, TypeScript Container/BinaryRef, Go Container/BinaryRef, Python/Kotlin/Swift Container/BinaryRef, Unreal Registry |
+| `@pack` | canonical | ✅ | ✅ | ✅ | ✅ C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal |
+| `@readonly` | canonical | ✅ | ✅ | ✅ | ✅ |
+| `@soft_delete` | canonical | ✅ | ✅ | ✅ | ✅ |
+| `@taggable` | current | ✅ | ✅ | ✅ | ✅ |
+| `@load` | 제거/외부화 대상 | ✅ | ✅ | ✅ | ✅ |
+| `@datasource` | 제거/외부화 대상 | ✅ | ✅ | ✅ | ✅ |
+| `@cache` | 재설계 대상 | ✅ | ✅ | ✅ | ✅ |
+| `@link_rows` | 제거/흡수 대상 | ✅ | ✅ | ✅ | ✅ |
+| `@renamed_from` | 미구현 | ❌ | ❌ | ❌ | ❌ |
 
 ### 5.2 어트리뷰트
 
-| 어트리뷰트 | 파싱 | AST | IR | C# | MySQL |
-|-----------|:---:|:---:|:---:|:---:|:-----:|
-| `primary_key` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `unique` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `max_length` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `default` | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
-| `range` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `regex` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `foreign_key` | ✅ | ✅ | ✅ | ✅ | ⚠️ |
-| `index` | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
-| `auto_create` | ✅ | ✅ | ✅ | ⚠️ | ✅ |
-| `auto_update` | ✅ | ✅ | ✅ | ⚠️ | ✅ |
+| 어트리뷰트 | 스펙 상태 | 파싱 | AST | IR | C# | MySQL |
+|-----------|----------|:---:|:---:|:---:|:---:|:-----:|
+| `primary_key` | canonical | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `unique` | canonical | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `max_length` | canonical | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `default` | canonical | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
+| `range` | canonical | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `regex` | canonical | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `foreign_key` | canonical | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+| `auto_create` | canonical | ✅ | ✅ | ✅ | ⚠️ | ✅ |
+| `auto_update` | canonical | ✅ | ✅ | ✅ | ⚠️ | ✅ |
+| `index` | 제거됨 | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **범례:** ✅ 완료 | 🚧 진행중 | ⚠️ 부분 구현 | ❌ 미구현
 
@@ -630,15 +758,16 @@ CREATE TABLE Player (
 
 | 구성 요소 | 파일 |
 |----------|------|
-| 어노테이션 문법 | `src/polygen.pest:90-94` |
-| 어트리뷰트 문법 | `src/polygen.pest:78-88` |
-| AST 어노테이션 | `src/ast_model.rs:116-134` |
-| AST 어트리뷰트 | `src/ast_model.rs:211-230` |
-| 어노테이션 파싱 | `src/ast_parser/metadata.rs:12-82` |
-| 어트리뷰트 파싱 | `src/ast_parser/fields.rs:106-147` |
-| IR 어노테이션 | `src/ir_model.rs:189-205` |
-| IR 어트리뷰트 | `src/ir_model.rs:125-154` |
-| Rhai 등록 | `src/rhai/registry.rs:228-277, 394-405` |
+| 어노테이션 문법 | `src/polygen.pest` |
+| 어트리뷰트 문법 | `src/polygen.pest` |
+| AST 어노테이션 | `src/ast_model.rs` |
+| AST 어트리뷰트 | `src/ast_model.rs` |
+| 어노테이션 파싱 | `src/ast_parser/metadata.rs` |
+| 어트리뷰트 파싱 | `src/ast_parser/fields.rs` |
+| 공통 토큰 파싱 helper | `src/ast_parser/helpers.rs` |
+| IR 어노테이션 | `src/ir_model.rs` |
+| IR 어트리뷰트 | `src/ir_model.rs` |
+| Rhai 등록 | `src/rhai/registry.rs` |
 
 ---
 

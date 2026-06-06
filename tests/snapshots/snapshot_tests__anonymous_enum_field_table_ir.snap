@@ -90,12 +90,12 @@ SchemaContext {
                                         FieldDef {
                                             name: "unit",
                                             field_type: TypeRef {
-                                                original: "Unit__Enum",
-                                                fqn: "OrderItem.Unit__Enum",
+                                                original: "UnitEnum",
+                                                fqn: "OrderItem.UnitEnum",
                                                 namespace_fqn: "OrderItem",
-                                                type_name: "Unit__Enum",
+                                                type_name: "UnitEnum",
                                                 parent_type_path: "",
-                                                lang_type: "Unit__Enum",
+                                                lang_type: "UnitEnum",
                                                 is_primitive: false,
                                                 is_struct: false,
                                                 is_enum: true,
@@ -119,8 +119,8 @@ SchemaContext {
                                     ),
                                     InlineEnum(
                                         EnumDef {
-                                            name: "Unit__Enum",
-                                            fqn: "OrderItem.Unit__Enum",
+                                            name: "UnitEnum",
+                                            fqn: "OrderItem.UnitEnum",
                                             items: [
                                                 Member(
                                                     EnumMember {

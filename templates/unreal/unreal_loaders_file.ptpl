@@ -7,7 +7,7 @@ import "templates/unreal/rhai_utils/type_mapping" as ue_types;
 // Check if type name looks like an enum
 fn is_likely_enum(type_name) {
     if type_name == "Element" || type_name == "Status" || type_name == "ItemType" ||
-       type_name == "PlayerClass" || type_name == "Status__Enum" {
+       type_name == "PlayerClass" {
         return true;
     }
     if type_name.contains("Type") || type_name.contains("Status") ||

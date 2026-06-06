@@ -42,9 +42,9 @@
 //! 중첩 구조체, 리스트, 열거형, 크로스 네임스페이스 타입 참조의 복잡성을 처리합니다.
 
 use crate::ir_model::{FieldDef, FileDef, StructDef, StructItem};
-use crate::rhai::common::{resolve_enum, resolve_struct, resolve_struct_with_ns, unwrap_option};
+use crate::rhai::common::{resolve_struct, resolve_struct_with_ns, unwrap_option};
 use crate::rhai::csharp::type_mapping::{
-    cs_type_for, is_inline_enum_name, is_primitive_like, map_cs_primitive,
+    cs_enum_type_for, cs_type_for, is_primitive_like, map_cs_primitive,
 };
 use rhai::{Array, Dynamic, Engine};
 
@@ -375,12 +375,7 @@ fn gen_read_assign_indexed(
             return code;
         }
         // enum list
-        if is_inline_enum_name(inner) || resolve_enum(files, inner, current_ns_name).is_some() {
-            let enum_ty = if is_inline_enum_name(inner) {
-                format!("{}.{}", ctx_struct.name, inner)
-            } else {
-                inner.to_string()
-            };
+        if let Some(enum_ty) = cs_enum_type_for(files, ctx_struct, current_ns_name, inner) {
             code.push_str(&format!(
                 "{{ var list = new List<{et}>(); int i=0; for(;;i++) {{ int __idx; if (!map.TryGetValue({pref} + \"{fname}[\"+i+\"]\", out __idx)) {{ if (i==0) break; else break; }} if (__idx < 0 || __idx >= row.Length) break; var __cell = row[__idx]; if (string.IsNullOrEmpty(__cell)) {{ if (i==0 || gap==0) break; else continue; }} list.Add(DataSourceFactory.ConvertValue<{et}>(__cell)); }} {obj}.{fname} = list; }}\n",
                 et = enum_ty,
@@ -502,12 +497,7 @@ fn gen_read_assign_indexed(
         return code;
     }
     // enum
-    if is_inline_enum_name(&t) || resolve_enum(files, &t, current_ns_name).is_some() {
-        let enum_ty = if is_inline_enum_name(&t) {
-            format!("{}.{}", ctx_struct.name, t)
-        } else {
-            t
-        };
+    if let Some(enum_ty) = cs_enum_type_for(files, ctx_struct, current_ns_name, &t) {
         code.push_str(&format!(
             "{{ int __idx; string __cell=null; if (map.TryGetValue({pref} + \"{fname}\", out __idx) && __idx>=0 && __idx < row.Length) __cell = row[__idx]; {obj}.{fname} = DataSourceFactory.ConvertValue<{ety}>(__cell); }}\n",
             pref = prefix_var,
@@ -647,12 +637,7 @@ fn generate_read_assign_for_field(
             return code;
         }
         // list of enums
-        if is_inline_enum_name(inner) || resolve_enum(files, inner, current_ns_name).is_some() {
-            let enum_ty = if is_inline_enum_name(inner) {
-                format!("{}.{}", ctx_struct.name, inner)
-            } else {
-                inner.to_string()
-            };
+        if let Some(enum_ty) = cs_enum_type_for(files, ctx_struct, current_ns_name, inner) {
             code.push_str(&format!(
                 "{{ var list = new List<{et}>(); var key = {pref} + \"{fn}[0]\"; string cell; if (row.TryGetValue(key, out cell) && !string.IsNullOrEmpty(cell)) {{ list.Add(DataSourceFactory.ConvertValue<{et}>(cell)); }} {obj}.{fn} = list; }}\n",
                 et = enum_ty,
@@ -756,12 +741,7 @@ fn generate_read_assign_for_field(
         return code;
     }
     // enum
-    if is_inline_enum_name(&t) || resolve_enum(files, &t, current_ns_name).is_some() {
-        let enum_ty = if is_inline_enum_name(&t) {
-            format!("{}.{}", ctx_struct.name, t)
-        } else {
-            t
-        };
+    if let Some(enum_ty) = cs_enum_type_for(files, ctx_struct, current_ns_name, &t) {
         code.push_str(&format!(
             "{obj}.{fn} = DataSourceFactory.ConvertSingleValue<{ety}>(row, {pref} + \"{fn}\");\n",
             obj = obj_expr,
@@ -922,7 +902,7 @@ fn generate_append_code(
         ));
         return code;
     }
-    if t.ends_with("__Enum") || resolve_enum(files, &t, current_ns_name).is_some() {
+    if cs_enum_type_for(files, ctx_struct, current_ns_name, &t).is_some() {
         code.push_str(&format!("cols.Add(({}).ToString());\n", expr_prefix));
         return code;
     }

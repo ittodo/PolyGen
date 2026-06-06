@@ -10,10 +10,11 @@
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 NEWLINE    = _{ "\n" | "\r\n" | "\r" }
 
-// Comments - position-based semantics:
-// - Comments BEFORE an item (on their own line) → doc_comment (attached to next item)
-// - Comments AFTER ; or , on the SAME line → inline_comment (attached to current item)
-// Both // and /// are treated the same - meaning is determined by position, not syntax.
+// Comments:
+// - Leading line/block comments can be attached to definitions, fields, and enum variants.
+// - Standalone comments inside table/embed bodies are preserved as comment members.
+// - Enum variant terminators capture same-line `//` comments as inline comments.
+// Both `//` and `///` are accepted; attachment is determined by grammar position.
 doc_comment   =  { block_comment | line_comment }
 block_comment =  { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 line_comment  = @{ "//" ~ (!NEWLINE ~ ANY)* }
@@ -54,7 +55,7 @@ field_definition = { inline_enum_field | inline_embed_field | regular_field }
 
 regular_field      = { IDENT ~ ":" ~ type_with_cardinality ~ constraint* ~ field_number? }
 inline_embed_field = { IDENT ~ ":" ~ "embed" ~ "{" ~ (table_member | WHITESPACE | doc_comment)* ~ "}" ~ cardinality? ~ field_number? }
-inline_enum_field = { IDENT ~ ":" ~ "enum" ~ "{" ~ enum_variant* ~ "}" ~ cardinality? ~ field_number? }
+inline_enum_field = { IDENT ~ ":" ~ "enum" ~ "{" ~ enum_variant* ~ "}" ~ cardinality? ~ constraint* ~ field_number? }
 
 field_number = { "=" ~ INTEGER }
 
@@ -72,15 +73,17 @@ inline_comment     = @{ "//" ~ (!NEWLINE ~ ANY)* }
 // =====
 type_with_cardinality = { type_name ~ cardinality? }
 cardinality           = { "[]" | "?" }
+// `anonymous_enum_def` is kept in `type_name` for type-level inline enum handling.
+// The AST builder normalizes constrained `IDENT: enum { ... } constraint;` fields
+// to regular fields with `TypeName::InlineEnum`.
 type_name             = { basic_type | path | anonymous_enum_def }
 basic_type            = { "string" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "bytes" | "timestamp" }
 
 // Constraints
 // ===========
-constraint      = { primary_key | unique | index | max_length | default_val | range_val | regex_val | foreign_key_val | auto_create | auto_update }
+constraint      = { primary_key | unique | max_length | default_val | range_val | regex_val | foreign_key_val | auto_create | auto_update }
 primary_key     = { "primary_key" }
 unique          = { "unique" }
-index           = { "index" }
 max_length      = { "max_length" ~ "(" ~ INTEGER ~ ")" }
 default_val     = { "default" ~ "(" ~ literal ~ ")" }
 range_val       = { "range" ~ "(" ~ literal ~ "," ~ literal ~ ")" }
