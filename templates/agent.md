@@ -49,7 +49,7 @@ templates/
 ├── cpp/                       # C++ 헤더 전용 생성
 │   ├── cpp.toml
 │   ├── cpp_file.ptpl          # 구조체/Enum 헤더
-│   ├── cpp_container_file.ptpl  # recursive namespace Container (인덱스, FK navigation, 검증, @search postings, sources config load)
+│   ├── cpp_container_file.ptpl  # recursive namespace Container (인덱스, FK/@ref navigation, 검증, @search postings, sources config load)
 │   ├── cpp_loaders_file.ptpl  # recursive namespace CSV/JSON/Binary loader incl. checked enum cardinality and enum name/numeric CSV/JSON parsing
 │   ├── cpp_binary_refs_file.ptpl  # indexed binary lazy refs + save/open + composite lookup + @search API with shared BinaryDocument lifetime and checked enum direct/key reads
 │   ├── cpp_sqlite_accessor_file.ptpl  # recursive namespace SQLite accessor
@@ -67,7 +67,7 @@ templates/
 ├── rust/                      # Rust 모듈 생성
 │   ├── rust.toml
 │   ├── rust_file.ptpl
-│   ├── rust_container_file.ptpl  # recursive namespace Container + field/unique/FK validation + FK/reverse navigation + composite indexes + @search postings + sources config load
+│   ├── rust_container_file.ptpl  # recursive namespace Container + field/unique/FK validation + FK/reverse/@ref navigation + composite indexes + @search postings + sources config load
 │   ├── rust_binary_refs_file.ptpl  # shared binary document refs + single/composite indexes + @search postings via checked BinaryIO materialization
 │   ├── rust_loaders_file.ptpl  # recursive namespace CSV/Binary loader incl. checked enum/scalar/list, enum name/numeric CSV parsing, and CSV JSON-cell embed/list parsing
 │   ├── rust_sqlite_accessor_file.ptpl  # recursive namespace SQLite accessor
@@ -86,7 +86,7 @@ templates/
 │   ├── typescript.toml
 │   ├── typescript_file.ptpl  # interfaces + CSV/JSON loaders + checked row Binary I/O + @pack support via zod companion
 │   ├── typescript_zod_file.ptpl  # Zod schema + checked @pack unpack helpers
-│   ├── typescript_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse navigation + composite indexes + @search postings + sources config load
+│   ├── typescript_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse/@ref navigation + composite indexes + @search postings + sources config load
 │   ├── typescript_binary_refs_file.ptpl  # indexed binary refs + checked enum values + @search read/write postings + composite key lookup
 │   ├── typescript_sqlite_accessor_file.ptpl  # recursive namespace SQLite accessor
 │   ├── typescript_redis_keys_file.ptpl
@@ -100,7 +100,7 @@ templates/
 ├── go/                        # Go 패키지 생성
 │   ├── go.toml
 │   ├── go_file.ptpl
-│   ├── go_container_file.ptpl  # Container + field/unique/FK validation + FK/reverse navigation + composite indexes + @search in-memory postings
+│   ├── go_container_file.ptpl  # Container + field/unique/FK validation + FK/reverse/@ref navigation + composite indexes + @search in-memory postings
 │   ├── go_loaders_file.ptpl  # CSV/JSON/Binary loaders + checked enum Binary I/O + enum name/numeric and JSON-cell embed/list CSV parsing
 │   ├── go_binary_refs_file.ptpl  # indexed binary refs + checked enum values + @search read/write postings + composite key lookup
 │   ├── go_sqlite_accessor_file.ptpl  # database/sql SQLite accessor for @datasource("sqlite")
@@ -113,7 +113,7 @@ templates/
 ├── python/                    # Python dataclass/Pydantic/SQLAlchemy 생성
 │   ├── python.toml
 │   ├── python_file.ptpl  # dataclass + CSV/JSON loaders + checked enum Binary I/O + @pack pack/unpack/try_unpack
-│   ├── python_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse navigation + composite indexes + @search postings + sources config load
+│   ├── python_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse/@ref navigation + composite indexes + @search postings + sources config load
 │   ├── python_binary_refs_file.ptpl  # lazy BinaryRef document/table refs + generated index/search/composite lookup + checked enum values
 │   ├── python_pydantic_file.ptpl
 │   ├── python_sqlalchemy_file.ptpl
@@ -125,7 +125,7 @@ templates/
 ├── kotlin/                    # Kotlin data class/kotlinx.serialization 생성
 │   ├── kotlin.toml
 │   ├── kotlin_file.ptpl  # data class + CSV/JSON loaders with enum name/numeric parsing + checked enum Binary I/O + @pack pack/unpack/tryUnpack helpers
-│   ├── kotlin_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse navigation + composite indexes + @search postings + collision-safe local names + sources config load
+│   ├── kotlin_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse/@ref navigation + composite indexes + @search postings + collision-safe local names + sources config load
 │   ├── kotlin_sqlite_accessor_file.ptpl  # java.sql accessor for @datasource("sqlite") tables
 │   ├── kotlin_binary_refs_file.ptpl  # lazy BinaryRef document/table refs + generated index/search/composite lookup via checked row Binary I/O
 │   ├── kotlin_redis_keys_file.ptpl
@@ -135,7 +135,7 @@ templates/
 ├── swift/                     # Swift Codable/SwiftData 생성
 │   ├── swift.toml
 │   ├── swift_file.ptpl  # Codable struct + CSV/JSON loaders with enum name/numeric parsing + checked enum Binary I/O + @pack pack/unpack/tryUnpack helpers
-│   ├── swift_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse navigation + composite indexes + @search postings + collision-safe local names + sources config load
+│   ├── swift_container_file.ptpl  # in-memory Container + field/unique/FK validation + FK/reverse/@ref navigation + composite indexes + @search postings + collision-safe local names + sources config load
 │   ├── swift_sqlite_accessor_file.ptpl  # protocol-based SQLite accessor for @datasource("sqlite") tables
 │   ├── swift_binary_refs_file.ptpl  # lazy BinaryRef document/table refs + generated index/search/composite lookup via checked row Binary I/O
 │   ├── swift_swiftdata_file.ptpl
@@ -147,7 +147,7 @@ templates/
 │   ├── unreal.toml
 │   ├── unreal_file.ptpl  # UHT-safe FPolygen*/EPolygen* USTRUCT/UENUM + enum zero default + @pack Pack/Unpack/TryUnpack helpers
 │   ├── unreal_loaders_file.ptpl  # recursive namespace/embed loader helpers
-│   ├── unreal_registry_file.ptpl  # read-only TArray/TMap registry + Blueprint lookup/search/navigation/validation query API
+│   ├── unreal_registry_file.ptpl  # read-only TArray/TMap registry + Blueprint lookup/search/FK/@ref navigation/validation query API
 │   ├── unreal_hotreload_file.ptpl  # recursive sources config load table collection
 │   ├── unreal_source_refs_file.ptpl  # WITH_EDITOR source-backed mutable refs with session SourceRefId for keyless rows
 │   ├── unreal_redis_keys_file.ptpl

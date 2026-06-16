@@ -684,9 +684,11 @@ table B {
 - `@ref name`은 같은 table 안에서 유일해야 하며, FK alias 기반 navigation 이름과 충돌할 수 없습니다.
 - target table의 primary key/unique/index와 named `@index`가 같은 field를 공유하는 것은 허용됩니다.
 
-C# 생성물은 Container row와 BinaryRef row에 forward navigation을 생성합니다. unique index ref는
-nullable 단일 row를 반환하고, non-unique index/search ref는 `IReadOnlyList<T>`를 반환합니다.
-SourceRefs는 원본 CSV/JSON 편집 레이어이므로 현재 `@ref` navigation을 직접 생성하지 않습니다.
+생성물 지원 범위:
+- C# Container row와 BinaryRef row는 forward navigation을 생성합니다. unique index ref는 nullable 단일 row를, non-unique index/search ref는 `IReadOnlyList<T>`를 반환합니다.
+- C++, Rust, TypeScript, Go, Python, Kotlin, Swift Container는 root container helper를 생성합니다. helper 이름은 언어별 기존 navigation 규칙을 따르며, unique index ref는 단일 row/optional pointer를, non-unique index/search ref는 목록을 반환합니다.
+- Unreal Registry는 단일 필드 index/search target에 대해 Blueprint-callable helper를 생성합니다. composite index target은 Registry composite key 지원이 추가될 때 확장 대상입니다.
+- SourceRefs는 원본 CSV/JSON 편집 레이어이므로 현재 `@ref` navigation을 직접 생성하지 않습니다.
 
 ### 3.7 제거 대상: 기존 `index` 제약조건
 
@@ -779,7 +781,7 @@ CREATE TABLE Player (
 |----------|----------|:---:|:---:|:---:|:------:|
 | `@index` | canonical | ✅ | ✅ | ✅ | ✅ |
 | `@search` | canonical | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef, C++ Container/BinaryRef, Rust Container, TypeScript Container/BinaryRef, Go Container/BinaryRef, Python/Kotlin/Swift Container/BinaryRef, Unreal Registry |
-| `@ref` | canonical | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef forward navigation |
+| `@ref` | canonical | ✅ | ✅ | ✅ | ⚠️ C# Container/BinaryRef, C++/Rust/TypeScript/Go/Python/Kotlin/Swift Container, Unreal Registry 단일 필드 index/search forward navigation |
 | `@pack` | canonical | ✅ | ✅ | ✅ | ✅ C#/C++/Rust/TypeScript/Go/Python/Kotlin/Swift/Unreal |
 | `@readonly` | canonical | ✅ | ✅ | ✅ | ✅ |
 | `@soft_delete` | canonical | ✅ | ✅ | ✅ | ✅ |

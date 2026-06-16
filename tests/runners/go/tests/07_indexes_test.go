@@ -70,15 +70,43 @@ func TestContainerSearchIndexes(t *testing.T) {
 	if got := container.Categorys.SearchByKind(CategoryKindPublic); len(got) != 1 || got[0] != category {
 		t.Fatalf("enum exact search returned %#v", got)
 	}
-	if got := container.Posts.SearchByTitle("binary"); len(got) != 1 || got[0] != post {
+	if got := container.Posts.SearchByTitleSearch("binary"); len(got) != 1 || got[0] != post {
 		t.Fatalf("post title token search returned %#v", got)
 	}
-	if got := container.Posts.SearchByTitle("missing"); len(got) != 0 {
+	if got := container.Posts.SearchByTitleSearch("missing"); len(got) != 0 {
 		t.Fatalf("missing token search returned %#v", got)
 	}
 	container.Clear()
-	if got := container.Posts.SearchByTitle("binary"); len(got) != 0 {
+	if got := container.Posts.SearchByTitleSearch("binary"); len(got) != 0 {
 		t.Fatalf("clear should remove search postings, got %#v", got)
+	}
+}
+
+func TestTableLevelRefHelpers(t *testing.T) {
+	container := NewSchemaContainer()
+	user1 := &User{Id: 1, Username: "alice", Email: "alice@example.com", DisplayName: "Alias"}
+	user2 := &User{Id: 2, Username: "bob", Email: "bob@example.com", DisplayName: "Alias"}
+	description := "Binary reference systems"
+	category := &Category{Id: 10, Name: "Technology", Description: &description, Rank: 7, Kind: CategoryKindPublic}
+	post := &Post{Id: 100, Title: "Binary refs", Content: "body", AuthorId: 1, CategoryId: 10}
+	lookup := &UserLookup{Id: 900, DisplayName: "Alias", DisplayQuery: "Alias", UserId: 2}
+	postSearch := &PostSearch{Id: 901, Query: "binary"}
+
+	container.Users.AddRow(user1)
+	container.Users.AddRow(user2)
+	container.Categorys.AddRow(category)
+	container.Posts.AddRow(post)
+	container.UserLookups.AddRow(lookup)
+	container.PostSearchs.AddRow(postSearch)
+
+	if got := container.GetUserLookupUser(lookup); got != user2 {
+		t.Fatalf("composite unique table ref returned %#v", got)
+	}
+	if got := container.FindUserLookupDisplayMatches(lookup); len(got) != 2 || got[0] != user1 || got[1] != user2 {
+		t.Fatalf("non-unique index table ref returned %#v", got)
+	}
+	if got := container.FindPostSearchTitleMatches(postSearch); len(got) != 1 || got[0] != post {
+		t.Fatalf("search table ref returned %#v", got)
 	}
 }
 
@@ -129,7 +157,7 @@ func TestBinaryRefSearchIndexes(t *testing.T) {
 	if got := ctx.Categorys.SearchByKind(CategoryKindPublic); len(got) != 1 {
 		t.Fatalf("binary ref enum exact search returned %#v", got)
 	}
-	if got := ctx.Posts.SearchByTitle("binary"); len(got) != 1 {
+	if got := ctx.Posts.SearchByTitleSearch("binary"); len(got) != 1 {
 		t.Fatalf("binary ref post title token search returned %#v", got)
 	} else {
 		title, err := got[0].Title()
@@ -137,7 +165,7 @@ func TestBinaryRefSearchIndexes(t *testing.T) {
 			t.Fatalf("binary ref title getter = %q, %v", title, err)
 		}
 	}
-	if got := ctx.Posts.SearchByTitle("missing"); len(got) != 0 {
+	if got := ctx.Posts.SearchByTitleSearch("missing"); len(got) != 0 {
 		t.Fatalf("binary ref missing token search returned %#v", got)
 	}
 }
@@ -187,7 +215,7 @@ func TestGeneratedLoaders(t *testing.T) {
 	if got := container.Categorys.SearchByKind(CategoryKindInternal); len(got) != 1 || got[0].Name != "Internal" {
 		t.Fatalf("loaded enum name search returned %#v", got)
 	}
-	if got := container.Posts.SearchByTitle("binary"); len(got) != 1 || got[0].Title != "Binary Reference Guide" {
+	if got := container.Posts.SearchByTitleSearch("binary"); len(got) != 1 || got[0].Title != "Binary Reference Guide" {
 		t.Fatalf("loaded post search returned %#v", got)
 	}
 	if err := container.ValidateOrError(); err != nil {
@@ -213,7 +241,7 @@ func TestGeneratedLoaders(t *testing.T) {
 	if got := sourcesJsonContainer.Categorys.SearchByKind(CategoryKindPublic); len(got) != 1 || got[0].Name != "JsonPublic" {
 		t.Fatalf("sources JSON numeric enum search returned %#v", got)
 	}
-	if got := sourcesJsonContainer.Posts.SearchByTitle("json binary"); len(got) != 1 || got[0].Title != "JSON Binary Reference Guide" {
+	if got := sourcesJsonContainer.Posts.SearchByTitleSearch("json binary"); len(got) != 1 || got[0].Title != "JSON Binary Reference Guide" {
 		t.Fatalf("sources JSON post search returned %#v", got)
 	}
 	post := sourcesJsonContainer.Posts.GetById(101)

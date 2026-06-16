@@ -182,6 +182,35 @@ fn reverse_nav_method_suffix(target_table, relation_name) {
     to_pascal_case(target_table.name) + to_pascal_case(relation_name)
 }
 
+fn ref_nav_method_suffix(source_table, row_ref) {
+    to_pascal_case(source_table.name) + to_pascal_case(row_ref.name)
+}
+
+fn ref_key_expr(row_ref, row_var) {
+    if row_ref.fields.len() == 1 {
+        return row_var + "." + row_ref.fields[0].local_field;
+    }
+    let result = "[";
+    for i in 0..row_ref.fields.len() {
+        if i > 0 {
+            result += ", ";
+        }
+        result += "AnyHashable(" + row_var + "." + row_ref.fields[i].local_field + ")";
+    }
+    result += "]";
+    return result;
+}
+
+fn ref_target_method(row_ref) {
+    if row_ref.target_kind == "search" {
+        return "searchBy" + row_ref.target_method_suffix;
+    }
+    if row_ref.is_unique {
+        return "get" + row_ref.target_method_suffix;
+    }
+    return "find" + row_ref.target_method_suffix;
+}
+
 let all_tables = [];
 for ns in file.namespaces {
     let tables = collect_tables_from_namespace(ns);
@@ -343,6 +372,25 @@ for s in all_tables {
                 source_class: swift::class_name_from_fqn(source_table.fqn),
                 source_member: table_member_name(source_table),
                 source_method: index_method_name("find", rel.source_field)
+            });
+        }
+    }
+}
+
+let ref_navs = [];
+for s in all_tables {
+    for row_ref in s.refs {
+        let target_table = find_table_by_fqn(all_tables, row_ref.target_table_fqn);
+        if target_table != () {
+            ref_navs.push(#{
+                method_prefix: if row_ref.is_unique { "get" } else { "find" },
+                method_suffix: ref_nav_method_suffix(s, row_ref),
+                source_class: swift::class_name_from_fqn(s.fqn),
+                target_class: swift::class_name_from_fqn(target_table.fqn),
+                target_member: table_member_name(target_table),
+                target_method: ref_target_method(row_ref),
+                key_expr: ref_key_expr(row_ref, "row"),
+                is_unique: row_ref.is_unique
             });
         }
     }
@@ -761,5 +809,18 @@ final class {{container_name}} {
         {{nav.source_member}}.{{nav.source_method}}(row.{{nav.target_key_field}})
     }
 
+%endfor
+%for nav in ref_navs
+%if nav.is_unique
+    func {{nav.method_prefix}}{{nav.method_suffix}}(_ row: {{nav.source_class}}) -> {{nav.target_class}}? {
+        {{nav.target_member}}.{{nav.target_method}}({{nav.key_expr}})
+    }
+
+%else
+    func {{nav.method_prefix}}{{nav.method_suffix}}(_ row: {{nav.source_class}}) -> [{{nav.target_class}}] {
+        {{nav.target_member}}.{{nav.target_method}}({{nav.key_expr}})
+    }
+
+%endif
 %endfor
 }

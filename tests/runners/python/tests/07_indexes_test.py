@@ -8,9 +8,11 @@ from .schema import (
     TestIndexesCategory,
     TestIndexesCategoryKind,
     TestIndexesPost,
+    TestIndexesPostSearch,
     TestIndexesPostTag,
     TestIndexesTag,
     TestIndexesUser,
+    TestIndexesUserLookup,
     load_test_indexes_categorys_from_csv,
     load_test_indexes_categorys_from_json,
 )
@@ -73,10 +75,37 @@ def test_indexes_and_foreign_keys() -> None:
     assert container.categorys.search_by_description("reference") == [category]
     assert container.categorys.search_by_rank(7) == [category]
     assert container.categorys.search_by_kind(TestIndexesCategoryKind.Public) == [category]
-    assert container.posts.search_by_title("binary") == [post]
-    assert container.posts.search_by_title("missing") == []
+    assert container.posts.search_by_title_search("binary") == [post]
+    assert container.posts.search_by_title_search("missing") == []
     assert container.validate_all().is_valid()
     container.validate_or_raise()
+
+
+def test_table_level_ref_helpers() -> None:
+    container = SchemaContainer()
+    user1 = TestIndexesUser(id=1, username="alice", email="alice@example.com", display_name="Alias")
+    user2 = TestIndexesUser(id=2, username="bob", email="bob@example.com", display_name="Alias")
+    category = TestIndexesCategory(
+        id=10,
+        name="Technology",
+        description="Binary reference systems",
+        rank=7,
+        kind=TestIndexesCategoryKind.Public,
+    )
+    post = TestIndexesPost(id=100, title="Binary refs", content="body", author_id=1, category_id=10)
+    lookup = TestIndexesUserLookup(id=900, display_name="Alias", display_query="Alias", user_id=2)
+    post_search = TestIndexesPostSearch(id=901, query="binary")
+
+    container.users.add_row(user1)
+    container.users.add_row(user2)
+    container.categorys.add_row(category)
+    container.posts.add_row(post)
+    container.user_lookups.add_row(lookup)
+    container.post_searchs.add_row(post_search)
+
+    assert container.get_user_lookup_user(lookup) is user2
+    assert container.find_user_lookup_display_matches(lookup) == [user1, user2]
+    assert container.find_post_search_title_matches(post_search) == [post]
 
 
 def test_foreign_key_validation_rejects_missing_reference() -> None:
@@ -192,7 +221,7 @@ def test_container_load_from_sources_csv() -> None:
     assert post is not None
     assert container.users.get_by_username("alice") is not None
     assert container.categorys.search_by_name(" technology ") == [container.categorys.get_by_id(10)]
-    assert container.posts.search_by_title("binary") == [post]
+    assert container.posts.search_by_title_search("binary") == [post]
     assert container.get_post_author(post).username == "alice"
     assert container.validate_all().is_valid()
 
@@ -240,7 +269,7 @@ def test_container_load_from_sources_json() -> None:
     assert post is not None
     assert container.users.get_by_username("alice") is not None
     assert container.categorys.search_by_name(" technology ") == [container.categorys.get_by_id(10)]
-    assert container.posts.search_by_title("binary") == [post]
+    assert container.posts.search_by_title_search("binary") == [post]
     assert container.get_post_author(post).username == "alice"
     assert container.validate_all().is_valid()
 
@@ -318,8 +347,8 @@ def test_binary_ref_document_roundtrip_and_lazy_indexes() -> None:
     assert [item.get() for item in reopened.categorys.search_by_description("reference")] == [category]
     assert [item.get() for item in reopened.categorys.search_by_rank(7)] == [category]
     assert [item.get() for item in reopened.categorys.search_by_kind(TestIndexesCategoryKind.Public)] == [category]
-    assert [item.get() for item in reopened.posts.search_by_title("binary")] == [post]
-    assert reopened.posts.search_by_title("missing") == []
+    assert [item.get() for item in reopened.posts.search_by_title_search("binary")] == [post]
+    assert reopened.posts.search_by_title_search("missing") == []
     assert reopened.tags.get_by_id(200).get() == tag
     assert reopened.post_tags.count() == 1
 

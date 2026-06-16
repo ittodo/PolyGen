@@ -92,7 +92,7 @@ tests/
   - `09_sqlite`에서 중첩 namespace table이 상위 `@datasource("sqlite")`를 상속해 accessor에 포함되는지 검증
   - `04_inline_enums`에서 invalid binary enum discriminant가 `InvalidData`로 거부되는지 검증
   - `06_arrays_and_optionals`에서 invalid CSV primitive 배열 item 및 optional primitive 값이 `LoadError`로 거부되는지, `bool[]`의 `yes/no`, `1/0` 입력과 JSON-cell embed list/optional embed/history list 파싱 및 invalid JSON 오류 경로가 유지되는지 검증
-  - `07_indexes`에서 Rust Container FK navigation helper와 `@search` ngram/exact postings 및 string/number/enum 조회 API를 검증
+  - `07_indexes`에서 Rust Container FK navigation helper, table-level `@ref` helper와 `@search` ngram/exact postings 및 string/number/enum 조회 API를 검증
   - `07_indexes`에서 Rust Container `load_from_csv(root)`/`load_from_json(root)`가 sources config 파일명으로 전체 테이블을 로드하고 index/search/FK validation을 갱신하는지 검증
   - `07_indexes`에서 Rust generated CSV loader의 enum name/numeric parser와 invalid enum 오류 경로를 검증
   - `07_indexes`에서 Rust BinaryRef shared document/ref table의 unique/group index와 `@search` postings runtime API, invalid enum discriminant read 거부 경로를 검증
@@ -109,7 +109,7 @@ tests/
   - `tests/run_all.ts`를 `tsx`로 실행해 11개 테스트 모듈의 runtime assertion까지 검증
   - `console.assert`를 throw 방식으로 재정의해 실패가 exit code 1로 전파되도록 검증
   - `03_nested_namespaces`에서 중첩 namespace Zod schema가 valid/invalid 값을 런타임에서 판별하는지 검증
-  - `07_indexes`에서 TypeScript Container/BinaryRef `@search` postings와 string/number/enum 조회 API, BinaryRef invalid enum write 거부, Container FK navigation helper를 검증
+  - `07_indexes`에서 TypeScript Container/BinaryRef `@search` postings와 string/number/enum 조회 API, BinaryRef invalid enum write 거부, Container FK navigation helper와 table-level `@ref` helper를 검증
   - `06_arrays_and_optionals`에서 TypeScript generated CSV/JSON loader의 primitive list, bool list, JSON-cell embed list, optional scalar/embed runtime 경로를 검증
   - `06_arrays_and_optionals`에서 TypeScript generated Binary I/O의 primitive list, bool list, embed list, optional scalar/embed runtime roundtrip을 검증
   - `07_indexes`에서 TypeScript generated Binary I/O의 enum read/write와 invalid enum discriminant read 거부 runtime 경로를 검증
@@ -130,7 +130,7 @@ tests/
   - `04_inline_enums`에서 inline enum 상수/컨테이너 인덱스 smoke test와 invalid binary enum discriminant read/write 거부 경로를 검증
   - `06_arrays_and_optionals`에서 Go generated Binary I/O의 primitive list, embed list, optional embed roundtrip과 table binary loader를 검증
   - `06_arrays_and_optionals`에서 Go CSV primitive list, bool list, JSON-cell embed list/optional embed/history list parsing과 invalid item/JSON 오류 경로를 검증
-  - `07_indexes`에서 unique/group index, FK navigation helper, foreign key validation 성공/실패 경로, Container/BinaryRef `@search` ngram/exact postings와 string/number/enum 조회 API, BinaryRef invalid enum write 거부, Go CSV/JSON generated loader의 enum name/numeric parser와 parse error 경로, Container `LoadFromCsv(root)`/`LoadFromJson(root)` sources config 경로 runtime을 검증
+  - `07_indexes`에서 unique/group index, FK navigation helper, table-level `@ref` helper, foreign key validation 성공/실패 경로, Container/BinaryRef `@search` ngram/exact postings와 string/number/enum 조회 API, BinaryRef invalid enum write 거부, Go CSV/JSON generated loader의 enum name/numeric parser와 parse error 경로, Container `LoadFromCsv(root)`/`LoadFromJson(root)` sources config 경로 runtime을 검증
   - `08_complex_schema`에서 Go Container `ValidateAll()`의 field constraint(`MaxLength`, `Range`, `Regex`)와 unique/primary duplicate validation runtime 경로를 검증
   - `09_sqlite`에서 Go SQLite accessor 타입, table name, load/get 메서드 시그니처와 fake driver 및 `modernc.org/sqlite` in-memory DB 기반 `LoadAll`, `Get<Table>ById`, optional null scan, nested table lookup runtime 경로를 검증
   - `10_pack_embed`에서 Go @pack `Pack`, `Unpack<Type>`, `TryUnpack<Type>` roundtrip과 invalid input 거부 검증
@@ -143,7 +143,7 @@ tests/
   - `tests/runners/python/tests/<case>_test.py`가 있으면 생성 Python 패키지에 복사해 runtime test로 실행
   - `06_arrays_and_optionals`에서 Python generated CSV/JSON loader의 primitive list, bool list, JSON-cell embed list, optional scalar/embed, invalid item 경로를 검증
   - `06_arrays_and_optionals`에서 Python Binary I/O의 primitive list, embed list, optional scalar/embed roundtrip을 검증
-  - `07_indexes`에서 Python Container unique/group index, `@search` postings, FK navigation helper, foreign key validation 성공/실패 경로를 검증
+  - `07_indexes`에서 Python Container unique/group index, `@search` postings, FK navigation helper, table-level `@ref` helper, foreign key validation 성공/실패 경로를 검증
   - `07_indexes`에서 Python Container `load_from_csv(root)`/`load_from_json(root)`가 sources config 파일명으로 전체 테이블을 로드하고 index/search/FK validation을 갱신하는지 검증
   - `07_indexes`에서 Python generated CSV/JSON loader의 enum name/numeric parsing을 검증
   - `07_indexes`에서 Python Binary I/O의 enum roundtrip과 invalid enum discriminant read/write 거부 경로를 검증
@@ -205,7 +205,7 @@ tests/
   - `07_indexes`에서 Kotlin generated CSV/JSON loader의 enum name/numeric parser, custom JSON enum serializer와 optional/scalar parser 구조를 검증
   - `07_indexes`에서 Kotlin Binary I/O의 optional string, enum read/write와 invalid enum discriminant 거부 구조를 검증
   - `07_indexes`에서 Kotlin BinaryRef document save/open payload, lazy `BinaryRef.get()`, unique/group index, `@search` lookup, invalid enum discriminant lazy read 구조를 검증
-  - `07_indexes`에서 Kotlin Container unique/group index API, `@search` postings/API, FK navigation helper, foreign key validation 구조를 검증
+  - `07_indexes`에서 Kotlin Container unique/group index API, `@search` postings/API, FK navigation helper, table-level `@ref` helper, foreign key validation 구조를 검증
   - Kotlin Container validator는 같은 scope의 단순 `val` 지역 변수 재선언을 거부해 `@search` postings 생성 코드의 컴파일 위험을 구조적으로 검증
   - `07_indexes`에서 Kotlin Container `loadFromCsv(root)`/`loadFromJson(root)`가 sources config 파일명으로 table별 loader를 호출하는 구조를 검증
   - `08_complex_schema`에서 Kotlin Container `validateAll()`의 field constraint(`MaxLength`, `Range`, `Regex`)와 unique/primary duplicate validation 구조를 검증
@@ -227,7 +227,7 @@ tests/
   - `07_indexes`에서 Swift generated CSV/JSON loader의 enum name/numeric parser, custom JSON enum decoder와 optional/scalar parser 구조를 검증
   - `07_indexes`에서 Swift Binary I/O의 optional string, enum read/write와 invalid enum discriminant 거부 구조를 검증
   - `07_indexes`에서 Swift BinaryRef document save/open payload, lazy `BinaryRef.get()`, unique/group index, `@search` lookup, invalid enum discriminant lazy read 구조를 검증
-  - `07_indexes`에서 Swift Container table wrapper의 count/all/addRow/loadAll, unique/group index API, `@search` postings/API, FK navigation helper, foreign key validation 구조를 검증
+  - `07_indexes`에서 Swift Container table wrapper의 count/all/addRow/loadAll, unique/group index API, `@search` postings/API, FK navigation helper, table-level `@ref` helper, foreign key validation 구조를 검증
   - Swift Container validator는 같은 scope의 단순 `let`/`var` 지역 변수 재선언을 거부해 `@search` postings 생성 코드의 컴파일 위험을 구조적으로 검증
   - `07_indexes`에서 Swift Container `loadFromCsv(root)`/`loadFromJson(root)`가 sources config 파일명으로 table별 loader를 호출하는 구조를 검증
   - `08_complex_schema`에서 Swift Container `validateAll()`의 field constraint(`MaxLength`, `Range`, `Regex`)와 unique/primary duplicate validation 구조를 검증
@@ -246,7 +246,7 @@ tests/
   - `tests/runners/unreal/test_compile_unreal.py`는 UnrealBuildTool 없이 `compile_unreal.py`의 필수 env 처리, missing project failure, generated header copy, configured engine root/Epic manifest 기반 UBT discovery, prepared fixture root env, UBT command assembly, smoke fixture 생성과 missing generated local include 검출을 fake subprocess/임시 디렉터리로 회귀 검증한다.
   - Unreal 생성 타입명은 UHT engine-name 충돌 방지를 위해 `FPolygen*`/`EPolygen*` reflected name을 사용하며, explicit 0 값이 없는 enum에는 `PolygenInvalid = 0`을 추가한다.
   - `01`-`11` 통합 케이스의 `.h` 산출물을 파싱해 USTRUCT/UENUM, loader 함수, hot reload delegate/load 함수, Redis helper 구조를 검증
-  - `07_indexes`에서 Unreal read-only Registry의 `TArray` row storage, `TMap` unique/group/search postings index, Blueprint callable row/count/lookup/search API, named `@search` API, string/number/enum exact search, FK navigation helper, unique/primary duplicate validation, FK validation diagnostic 구조를 검증
+  - `07_indexes`에서 Unreal read-only Registry의 `TArray` row storage, `TMap` unique/group/search postings index, Blueprint callable row/count/lookup/search API, named `@search` API, 단일 필드 table-level `@ref` helper, string/number/enum exact search, FK navigation helper, unique/primary duplicate validation, FK validation diagnostic 구조를 검증
   - `07_indexes`에서 Unreal `WITH_EDITOR` SourceRefs의 source document, mutable row ref, immutable key, keyless `SourceRefId`, CSV save, JSON save helper 구조를 검증
   - `08_complex_schema`에서 Unreal Registry의 field constraint validation(`MaxLength`, `Range`, `Regex`), `Internationalization/Regex.h` include, `ValidateAll` 합산 구조를 검증
   - `10_pack_embed`에서 Unreal `@pack` embed의 `Pack`, `Unpack`, `TryUnpack` 생성과 invalid input 방어 조각을 검증
@@ -266,7 +266,7 @@ tests/
   - `09_sqlite`에서 중첩 namespace SQLite table 타입이 메인 헤더에 생성되는지 검증
   - `04_inline_enums`에서 invalid binary enum discriminant read/write가 `runtime_error`로 거부되는지 검증
   - `06_arrays_and_optionals`에서 C++ generated CSV loader의 primitive list, bool list, JSON-cell embed list/optional embed/history list parsing과 invalid JSON 오류 경로를 검증
-  - `07_indexes`에서 C++ Container FK navigation helper, Container/BinaryRef `@search` ngram/exact postings와 string/number/enum 조회 API, BinaryRef container save/open roundtrip을 검증
+  - `07_indexes`에서 C++ Container FK navigation helper, table-level `@ref` helper, Container/BinaryRef `@search` ngram/exact postings와 string/number/enum 조회 API, BinaryRef container save/open roundtrip을 검증
   - `07_indexes`에서 C++ Container `load_from_csv(root)`/`load_from_json(root)`가 sources config 파일명으로 전체 테이블을 로드하고 index/search/FK validation을 갱신하는지 검증
   - `07_indexes`에서 C++ generated CSV/JSON loader의 enum name/numeric parser, invalid enum parse error, BinaryRef invalid enum lazy getter/search-key read 거부 경로를 검증
   - `08_complex_schema`에서 C++ Container `validate_all()`의 field constraint(`MaxLength`, `Range`, `Regex`) runtime 경로를 검증

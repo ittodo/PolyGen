@@ -199,8 +199,66 @@ function testContainerSearch(): void {
     console.assert(container.Categorys.searchByDescription("reference").length === 1, "description token search should match");
     console.assert(container.Categorys.searchByRank(7)[0].id === 1, "rank exact search should match");
     console.assert(container.Categorys.searchByKind(TestIndexes.CategoryKind.Internal)[0].id === 2, "enum exact search should match");
-    console.assert(container.Posts.searchByTitle("binary")[0].id === 1, "post title token search should match");
-    console.assert(container.Posts.searchByTitle("missing").length === 0, "missing search should be empty");
+    console.assert(container.Posts.searchByTitleSearch("binary")[0].id === 1, "post title token search should match");
+    console.assert(container.Posts.searchByTitleSearch("missing").length === 0, "missing search should be empty");
+
+    console.log("    PASS");
+}
+
+function testTableLevelRefHelpers(): void {
+    console.log("  Testing table-level ref helpers...");
+
+    const container = new InMemorySchemaContainer({
+        Users: [
+            {
+                id: 1,
+                username: "alice",
+                email: "alice@example.com",
+                displayName: "Alias",
+            },
+            {
+                id: 2,
+                username: "bob",
+                email: "bob@example.com",
+                displayName: "Alias",
+            },
+        ],
+        Categorys: [
+            {
+                id: 10,
+                name: "Technology",
+                description: "Binary reference systems",
+                rank: 7,
+                kind: TestIndexes.CategoryKind.Public,
+            },
+        ],
+        Posts: [
+            {
+                id: 100,
+                title: "Binary refs",
+                content: "Lazy row access",
+                authorId: 1,
+                categoryId: 10,
+            },
+        ],
+    });
+
+    const lookup: TestIndexes.UserLookup = {
+        id: 900,
+        displayName: "Alias",
+        displayQuery: "Alias",
+        userId: 2,
+    };
+    const postSearch: TestIndexes.PostSearch = {
+        id: 901,
+        query: "binary",
+    };
+    container.UserLookups.add(lookup);
+    container.PostSearchs.add(postSearch);
+
+    console.assert(container.getUserLookupUser(lookup)?.username === "bob", "composite unique ref should resolve user");
+    console.assert(container.findUserLookupDisplayMatches(lookup).length === 2, "non-unique index ref should return matches");
+    console.assert(container.findPostSearchTitleMatches(postSearch)[0].id === 100, "search ref should return title matches");
 
     console.log("    PASS");
 }
@@ -374,7 +432,7 @@ function testContainerLoadFromCsv(): void {
         console.assert(container.getPostTagTag(firstPostTag)?.name === "featured", "loaded post tag navigation should resolve");
         console.assert(container.Categorys.searchByDescription("reference").length === 1, "loaded search postings should match");
         console.assert(container.Categorys.searchByKind(TestIndexes.CategoryKind.Internal)[0].id === 2, "loaded enum search should match numeric enum CSV");
-        console.assert(container.Posts.searchByTitle("binary")[0].id === 1, "loaded post title search should match");
+        console.assert(container.Posts.searchByTitleSearch("binary")[0].id === 1, "loaded post title search should match");
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
@@ -473,7 +531,7 @@ function testContainerLoadFromJson(): void {
         console.assert(container.getPostTagTag(firstPostTag)?.name === "featured", "loaded JSON post tag navigation should resolve");
         console.assert(container.Categorys.searchByDescription("reference").length === 1, "loaded JSON search postings should match");
         console.assert(container.Categorys.searchByKind(TestIndexes.CategoryKind.Internal)[0].id === 2, "loaded JSON enum search should match numeric enum");
-        console.assert(container.Posts.searchByTitle("binary")[0].id === 1, "loaded JSON post title search should match");
+        console.assert(container.Posts.searchByTitleSearch("binary")[0].id === 1, "loaded JSON post title search should match");
         console.assert(container.validateAll().isValid, "loaded JSON container should pass validation");
     } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -521,6 +579,8 @@ function testBinaryRefSearch(): void {
             },
         ],
         Comments: [],
+        UserLookups: [],
+        PostSearchs: [],
         Tags: [],
         PostTags: [],
     };
@@ -532,8 +592,8 @@ function testBinaryRefSearch(): void {
     console.assert(context.Categorys.searchByDescription("reference").length === 1, "description token search should match");
     console.assert(context.Categorys.searchByRank(7).length === 1, "rank exact search should match");
     console.assert(context.Categorys.searchByKind(TestIndexes.CategoryKind.Public).length === 1, "enum exact search should match");
-    console.assert(context.Posts.searchByTitle("binary").length === 1, "title token search should match");
-    console.assert(context.Posts.searchByTitle("missing").length === 0, "missing search should be empty");
+    console.assert(context.Posts.searchByTitleSearch("binary").length === 1, "title token search should match");
+    console.assert(context.Posts.searchByTitleSearch("missing").length === 0, "missing search should be empty");
 
     console.log("    PASS");
 }
@@ -562,6 +622,8 @@ function testBinaryRefRejectsInvalidEnumWrite(): void {
         ],
         Posts: [],
         Comments: [],
+        UserLookups: [],
+        PostSearchs: [],
         Tags: [],
         PostTags: [],
     };
@@ -646,11 +708,23 @@ function patchFirstCategoryKind(bytes: Uint8Array, value: number): void {
         const indexCount = readI32(view, cursor);
         for (let index = 0; index < indexCount; index++) {
             const indexName = readString(view, bytes, cursor);
-            readU8(bytes, cursor);
-            if (indexName === "ByUsername" || indexName === "ByEmail" || indexName === "ByName") {
-                skipStringIndex(view, bytes, cursor);
-            } else {
+            const isUnique = readU8(bytes, cursor) !== 0;
+            const isStringKey =
+                indexName === "ByUsername" ||
+                indexName === "ByEmail" ||
+                indexName === "ByName" ||
+                indexName === "ByDisplayNameId" ||
+                indexName === "ByDisplayName";
+            if (isStringKey) {
+                if (isUnique) {
+                    skipStringIndex(view, bytes, cursor);
+                } else {
+                    skipStringPostings(view, bytes, cursor);
+                }
+            } else if (isUnique) {
                 skipI32Index(view, cursor);
+            } else {
+                skipI32Postings(view, cursor);
             }
         }
         const searchIndexCount = readI32(view, cursor);
@@ -701,6 +775,8 @@ function testBinaryRefRejectsInvalidEnumRead(): void {
         ],
         Posts: [],
         Comments: [],
+        UserLookups: [],
+        PostSearchs: [],
         Tags: [],
         PostTags: [],
     };
@@ -767,6 +843,7 @@ testPostWithForeignKeys();
 testCommentWithMultipleForeignKeys();
 testPostTagJunction();
 testContainerSearch();
+testTableLevelRefHelpers();
 testContainerValidation();
 testContainerLoadFromCsv();
 testContainerLoadFromJson();

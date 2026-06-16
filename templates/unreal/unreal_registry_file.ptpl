@@ -322,6 +322,22 @@ fn relation_target_field(source_table, relation) {
     return "id";
 }
 
+fn ref_nav_method_name(source_table, row_ref) {
+    let prefix = if row_ref.is_unique { "Get" } else { "Find" };
+    return prefix + source_table.table_name + to_pascal(row_ref.name);
+}
+
+fn ref_target_lookup_name(row_ref, target_table) {
+    if row_ref.target_kind == "search" {
+        return "Search" + target_table.table_name + "By" + row_ref.target_method_suffix;
+    }
+    let target_field = row_ref.fields[0].target_field;
+    if row_ref.is_unique {
+        return "Get" + target_table.table_name + "By" + to_pascal(target_field);
+    }
+    return "Get" + target_table.plural_name + "By" + to_pascal(target_field);
+}
+
 let tables = [];
 let include_headers = [];
 let include_seen = [];
@@ -355,6 +371,7 @@ let has_tables = tables.len() > 0;
 let has_regex_checks = false;
 let forward_navs = [];
 let reverse_navs = [];
+let ref_navs = [];
 
 for table in tables {
     for check in table.field_checks {
@@ -388,6 +405,21 @@ for table in tables {
                 source_struct_name: source_table.struct_name,
                 target_field: target_field,
                 source_lookup_name: "Get" + source_table.plural_name + "By" + to_pascal(relation.source_field)
+            });
+        }
+    }
+
+    for row_ref in table.struct_def.refs {
+        let target_table = find_table_entry_by_fqn(tables, row_ref.target_table_fqn);
+        if target_table != () && row_ref.fields.len() == 1 {
+            ref_navs.push(#{
+                method_name: ref_nav_method_name(table, row_ref),
+                source_struct_name: table.struct_name,
+                target_struct_name: target_table.struct_name,
+                source_field: row_ref.fields[0].local_field,
+                target_lookup_name: ref_target_lookup_name(row_ref, target_table),
+                is_unique: row_ref.is_unique,
+                is_search: row_ref.target_kind == "search"
             });
         }
     }
@@ -628,6 +660,26 @@ public:
     {
         {{nav.source_lookup_name}}(Row.{{nav.target_field}}, OutRows);
     }
+%blank
+%endfor
+%for nav in ref_navs
+%if nav.is_unique
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    bool {{nav.method_name}}(const {{nav.source_struct_name}}& Row, {{nav.target_struct_name}}& OutRow) const
+    {
+        return {{nav.target_lookup_name}}(Row.{{nav.source_field}}, OutRow);
+    }
+%else
+    UFUNCTION(BlueprintPure, Category = "PolyGen|Registry")
+    void {{nav.method_name}}(const {{nav.source_struct_name}}& Row, TArray<{{nav.target_struct_name}}>& OutRows) const
+    {
+%if nav.is_search
+        OutRows = {{nav.target_lookup_name}}(Row.{{nav.source_field}});
+%else
+        {{nav.target_lookup_name}}(Row.{{nav.source_field}}, OutRows);
+%endif
+    }
+%endif
 %blank
 %endfor
     UFUNCTION(BlueprintCallable, Category = "PolyGen|Registry")

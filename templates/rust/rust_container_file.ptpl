@@ -204,6 +204,37 @@ fn reverse_nav_method_suffix(target_table, relation_name) {
     to_snake_case(target_table.name) + "_" + to_snake_case(relation_name)
 }
 
+fn ref_nav_method_name(source_table, row_ref) {
+    let prefix = if row_ref.is_unique { "get_" } else { "find_" };
+    prefix + to_snake_case(source_table.name) + "_" + to_snake_case(row_ref.name)
+}
+
+fn ref_key_expr(row_ref, row_var) {
+    if row_ref.fields.len() == 1 {
+        let field = row_ref.fields[0];
+        let field_name = to_snake_case(field.local_field);
+        if row_ref.target_kind == "search" && field.field_type.type_name == "string" {
+            return "&" + row_var + "." + field_name;
+        }
+        return row_var + "." + field_name + ".clone()";
+    }
+
+    let result = "(";
+    for i in 0..row_ref.fields.len() {
+        if i > 0 { result += ", "; }
+        result += row_var + "." + to_snake_case(row_ref.fields[i].local_field) + ".clone()";
+    }
+    result += ")";
+    return result;
+}
+
+fn ref_target_method(row_ref) {
+    if row_ref.target_kind == "search" {
+        return "search_by_" + to_snake_case(row_ref.target_method_suffix);
+    }
+    return "get_" + to_snake_case(row_ref.target_method_suffix);
+}
+
 let skip_file = file.path == () || file.path == "";
 
 let schema_mod = "";
@@ -214,6 +245,7 @@ let has_relations = false;
 let relations_body = "";
 let forward_navs = [];
 let reverse_navs = [];
+let ref_navs = [];
 let has_unique_index = false;
 
 if !skip_file {
@@ -618,6 +650,24 @@ if !skip_file {
         }
     }
 
+    for table in all_tables {
+        let struct_def = table.def;
+        for row_ref in struct_def.refs {
+            let target_table = find_table_entry_by_fqn(all_tables, row_ref.target_table_fqn);
+            if target_table != () {
+                ref_navs.push(#{
+                    method_name: ref_nav_method_name(struct_def, row_ref),
+                    source_path: table.path,
+                    target_path: target_table.path,
+                    target_member: target_table.table_name,
+                    target_method: ref_target_method(row_ref),
+                    key_expr: ref_key_expr(row_ref, "row"),
+                    is_unique: row_ref.is_unique
+                });
+            }
+        }
+    }
+
     has_relations = structs_with_relations.len() > 0;
 
     // Pre-compute relations body
@@ -910,6 +960,18 @@ pub mod container {
         pub fn {{nav.method_name}}<'a>(&'a self, row: &{{nav.target_path}}) -> Vec<&'a {{nav.source_path}}> {
             self.{{nav.source_member}}.{{nav.source_method}}(row.{{nav.target_key_field}}.clone())
         }
+%blank
+%endfor
+%for nav in ref_navs
+%if nav.is_unique
+        pub fn {{nav.method_name}}<'a>(&'a self, row: &{{nav.source_path}}) -> Option<&'a {{nav.target_path}}> {
+            self.{{nav.target_member}}.{{nav.target_method}}({{nav.key_expr}})
+        }
+%else
+        pub fn {{nav.method_name}}<'a>(&'a self, row: &{{nav.source_path}}) -> Vec<&'a {{nav.target_path}}> {
+            self.{{nav.target_member}}.{{nav.target_method}}({{nav.key_expr}})
+        }
+%endif
 %blank
 %endfor
     }

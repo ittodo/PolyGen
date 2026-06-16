@@ -3,7 +3,9 @@
 
 use std::io::{Cursor, ErrorKind};
 
-use polygen_test::schema::test_indexes::{Category, CategoryKind, Post, PostTag, Tag, User};
+use polygen_test::schema::test_indexes::{
+    Category, CategoryKind, Post, PostSearch, PostTag, Tag, User, UserLookup,
+};
 use polygen_test::schema_binary_refs::{read_binary_ref_document, write_binary_ref_document};
 use polygen_test::schema_container::container::SchemaContainer;
 use polygen_test::schema_loaders::{BinaryIO, CsvLoadable};
@@ -17,6 +19,7 @@ fn main() {
     test_junction_table();
     test_binary_serialization();
     test_container_search();
+    test_table_level_ref_helpers();
     test_container_load_from_csv_sources();
     test_container_load_from_json_sources();
     test_enum_csv_loader();
@@ -107,7 +110,7 @@ fn test_binary_refs() {
     assert_eq!(posts_by_author.len(), 2);
     assert_eq!(posts_by_author[0].author_id().unwrap(), 1);
 
-    let title_matches = document.posts.search_by_title("binary");
+    let title_matches = document.posts.search_by_title_search("binary");
     assert_eq!(title_matches.len(), 1);
     assert_eq!(title_matches[0].id().unwrap(), 100);
 
@@ -241,7 +244,7 @@ fn test_container_search() {
         .expect("post category should resolve");
     assert_eq!(category.name, "Tech");
 
-    let title_matches = container.posts.search_by_title("binary");
+    let title_matches = container.posts.search_by_title_search("binary");
     assert_eq!(title_matches.len(), 1);
     assert_eq!(title_matches[0].id, 100);
 
@@ -260,6 +263,65 @@ fn test_container_search() {
     let kind_matches = container.categorys.search_by_kind(CategoryKind::Public);
     assert_eq!(kind_matches.len(), 1);
     assert_eq!(kind_matches[0].id, 10);
+
+    println!("    PASS");
+}
+
+fn test_table_level_ref_helpers() {
+    println!("  Testing table-level ref helpers...");
+
+    let mut container = SchemaContainer::new();
+    container.users.add_row(User {
+        id: 1,
+        username: "alice".to_string(),
+        email: "alice@example.com".to_string(),
+        display_name: "Alias".to_string(),
+    });
+    container.users.add_row(User {
+        id: 2,
+        username: "bob".to_string(),
+        email: "bob@example.com".to_string(),
+        display_name: "Alias".to_string(),
+    });
+    container.categorys.add_row(Category {
+        id: 10,
+        name: "Tech".to_string(),
+        description: Some("Technology".to_string()),
+        rank: 7,
+        kind: CategoryKind::Public,
+    });
+    container.posts.add_row(Post {
+        id: 100,
+        title: "Binary refs".to_string(),
+        content: "Lazy row access".to_string(),
+        author_id: 1,
+        category_id: 10,
+    });
+
+    let lookup = UserLookup {
+        id: 900,
+        display_name: "Alias".to_string(),
+        display_query: "Alias".to_string(),
+        user_id: 2,
+    };
+    let post_search = PostSearch {
+        id: 901,
+        query: "binary".to_string(),
+    };
+    container.user_lookups.add_row(lookup.clone());
+    container.post_searchs.add_row(post_search.clone());
+
+    let found_user = container
+        .get_user_lookup_user(&lookup)
+        .expect("composite unique ref should resolve user");
+    assert_eq!(found_user.username, "bob");
+
+    let display_matches = container.find_user_lookup_display_matches(&lookup);
+    assert_eq!(display_matches.len(), 2);
+
+    let title_matches = container.find_post_search_title_matches(&post_search);
+    assert_eq!(title_matches.len(), 1);
+    assert_eq!(title_matches[0].id, 100);
 
     println!("    PASS");
 }
@@ -311,7 +373,7 @@ fn test_container_load_from_csv_sources() {
         1
     );
     assert_eq!(container.posts.get_by_author_id(1).len(), 1);
-    assert_eq!(container.posts.search_by_title("binary").len(), 1);
+    assert_eq!(container.posts.search_by_title_search("binary").len(), 1);
     assert_eq!(container.categorys.search_by_description("tech").len(), 1);
     assert_eq!(container.categorys.search_by_kind(CategoryKind::Public).len(), 1);
     assert!(container.validate_all().is_valid());
@@ -372,7 +434,7 @@ fn test_container_load_from_json_sources() {
         1
     );
     assert_eq!(container.posts.get_by_author_id(1).len(), 1);
-    assert_eq!(container.posts.search_by_title("binary").len(), 1);
+    assert_eq!(container.posts.search_by_title_search("binary").len(), 1);
     assert_eq!(container.categorys.search_by_description("tech").len(), 1);
     assert_eq!(container.categorys.search_by_kind(CategoryKind::Public).len(), 1);
     assert!(container.validate_all().is_valid());

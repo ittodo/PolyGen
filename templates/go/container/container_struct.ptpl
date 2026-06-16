@@ -43,6 +43,33 @@ fn go_reverse_nav_method_suffix(target_table, relation_name) {
 	to_pascal_case(target_table.name) + to_pascal_case(relation_name)
 }
 
+fn go_ref_nav_method_suffix(source_table, row_ref) {
+	to_pascal_case(source_table.name) + to_pascal_case(row_ref.name)
+}
+
+fn go_ref_key_expr(source_table, row_ref, row_var) {
+	if row_ref.fields.len() == 1 {
+		return row_var + "." + to_pascal_case(row_ref.fields[0].local_field);
+	}
+	let result = source_table.name + row_ref.target_method_suffix + "Key{";
+	for i in 0..row_ref.fields.len() {
+		if i > 0 {
+			result += ", ";
+		}
+		let field = row_ref.fields[i];
+		result += to_pascal_case(field.target_field) + ": " + row_var + "." + to_pascal_case(field.local_field);
+	}
+	result += "}";
+	result
+}
+
+fn go_ref_target_method(row_ref) {
+	if row_ref.target_kind == "search" {
+		return "SearchBy" + row_ref.target_method_suffix;
+	}
+	return "Get" + row_ref.target_method_suffix;
+}
+
 let go_all_tables = [];
 for ns in file.namespaces {
 	let tables = go_collect_tables_from_namespace(ns);
@@ -90,6 +117,27 @@ for s in go_all_tables {
 					source_type: source_table.name,
 					source_member: to_pascal_case(source_table.name) + "s",
 					source_method: "GetBy" + to_pascal_case(rel.source_field)
+				});
+			}
+		}
+	}
+}
+
+let go_ref_navs = [];
+for s in go_all_tables {
+	if !s.is_embed {
+		for row_ref in s.refs {
+			let target_table = go_find_table_by_fqn(go_all_tables, row_ref.target_table_fqn);
+			if target_table != () {
+				go_ref_navs.push(#{
+					method_prefix: if row_ref.is_unique { "Get" } else { "Find" },
+					method_suffix: go_ref_nav_method_suffix(s, row_ref),
+					source_type: s.name,
+					target_type: target_table.name,
+					target_member: to_pascal_case(target_table.name) + "s",
+					target_method: go_ref_target_method(row_ref),
+					key_expr: go_ref_key_expr(target_table, row_ref, "row"),
+					is_unique: row_ref.is_unique
 				});
 			}
 		}
@@ -185,5 +233,25 @@ func (c *{{container_name}}) Find{{nav.method_suffix}}(row *{{nav.target_type}})
 	}
 	return c.{{nav.source_member}}.{{nav.source_method}}(row.{{nav.target_key_field}})
 }
+%blank
+%endfor
+%for nav in go_ref_navs
+%if nav.is_unique
+// {{nav.method_prefix}}{{nav.method_suffix}} resolves a table-level ref for a {{nav.source_type}} row.
+func (c *{{container_name}}) {{nav.method_prefix}}{{nav.method_suffix}}(row *{{nav.source_type}}) *{{nav.target_type}} {
+	if row == nil {
+		return nil
+	}
+	return c.{{nav.target_member}}.{{nav.target_method}}({{nav.key_expr}})
+}
+%else
+// {{nav.method_prefix}}{{nav.method_suffix}} resolves a table-level ref list for a {{nav.source_type}} row.
+func (c *{{container_name}}) {{nav.method_prefix}}{{nav.method_suffix}}(row *{{nav.source_type}}) []*{{nav.target_type}} {
+	if row == nil {
+		return nil
+	}
+	return c.{{nav.target_member}}.{{nav.target_method}}({{nav.key_expr}})
+}
+%endif
 %blank
 %endfor

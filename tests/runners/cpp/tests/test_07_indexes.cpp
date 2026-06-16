@@ -482,7 +482,7 @@ void test_container_search() {
     post2.category_id = 10;
     container.posts.add_row(post2);
 
-    auto title_matches = container.posts.search_by_title("binary");
+    auto title_matches = container.posts.search_by_title_search("binary");
     assert(title_matches.size() == 1);
     assert(title_matches[0]->id == 100);
 
@@ -505,6 +505,72 @@ void test_container_search() {
     auto* found_post = container.posts.get_by_id(100);
     assert(found_post != nullptr);
     assert(container.get_post_category(*found_post)->name == "Tech");
+
+    std::cout << "    PASS" << std::endl;
+}
+
+void test_table_level_ref_helpers() {
+    std::cout << "  Testing table-level ref helpers..." << std::endl;
+
+    schema_container::SchemaContainer container;
+
+    User user1;
+    user1.id = 1;
+    user1.username = "alice";
+    user1.email = "alice@example.com";
+    user1.display_name = "Alias";
+    container.users.add_row(user1);
+
+    User user2;
+    user2.id = 2;
+    user2.username = "bob";
+    user2.email = "bob@example.com";
+    user2.display_name = "Alias";
+    container.users.add_row(user2);
+
+    Category category;
+    category.id = 10;
+    category.name = "Tech";
+    category.description = "Technology";
+    category.rank = 7;
+    category.kind = CategoryKind::Public;
+    container.categories.add_row(category);
+
+    Post post;
+    post.id = 100;
+    post.title = "Binary refs";
+    post.content = "Lazy row access";
+    post.author_id = 1;
+    post.category_id = 10;
+    container.posts.add_row(post);
+
+    UserLookup lookup;
+    lookup.id = 900;
+    lookup.display_name = "Alias";
+    lookup.display_query = "Alias";
+    lookup.user_id = 2;
+    container.user_lookups.add_row(lookup);
+
+    PostSearch post_search;
+    post_search.id = 901;
+    post_search.query = "binary";
+    container.post_searches.add_row(post_search);
+
+    auto* found_user = container.get_user_lookup_user(lookup);
+    assert(found_user != nullptr);
+    assert(found_user->username == "bob");
+
+    auto display_matches = container.find_user_lookup_display_matches(lookup);
+    assert(display_matches.size() == 2);
+
+    auto title_matches = container.find_post_search_title_matches(post_search);
+    assert(title_matches.size() == 1);
+    assert(title_matches[0]->id == 100);
+
+    const auto& const_container = container;
+    auto const_title_matches = const_container.find_post_search_title_matches(post_search);
+    assert(const_title_matches.size() == 1);
+    assert(const_title_matches[0]->title == "Binary refs");
 
     std::cout << "    PASS" << std::endl;
 }
@@ -559,7 +625,7 @@ void test_container_load_from_csv_sources() {
     assert(category->rank == 7);
     assert(category->kind == CategoryKind::Public);
 
-    auto title_matches = container.posts.search_by_title("binary");
+    auto title_matches = container.posts.search_by_title_search("binary");
     assert(title_matches.size() == 1);
     assert(title_matches[0]->id == 100);
 
@@ -615,7 +681,7 @@ void test_container_load_from_json_sources() {
     assert(category->rank == 7);
     assert(category->kind == CategoryKind::Public);
 
-    auto title_matches = container.posts.search_by_title("binary");
+    auto title_matches = container.posts.search_by_title_search("binary");
     assert(title_matches.size() == 1);
     assert(title_matches[0]->id == 100);
 
@@ -704,7 +770,7 @@ void test_binary_ref_search() {
     polygen::BinaryReader post_reader(post_bytes);
     auto posts = schema_binary_refs::test_indexes_PostRefTable::read(post_doc, post_reader);
 
-    auto title_matches = posts.search_by_title("binary");
+    auto title_matches = posts.search_by_title_search("binary");
     assert(title_matches.size() == 1);
     assert(title_matches[0].id() == 100);
     assert(title_matches[0].title() == "Binary refs");
@@ -767,7 +833,7 @@ void test_binary_ref_save_roundtrip() {
     auto posts = refs.posts.find_by_author_id(1);
     assert(posts.size() == 1);
     assert(posts[0].title() == "Binary Reference Guide");
-    assert(refs.posts.search_by_title("binary").size() == 1);
+    assert(refs.posts.search_by_title_search("binary").size() == 1);
     assert(refs.post_tags.count() == 1);
 
     std::cout << "    PASS" << std::endl;
@@ -821,6 +887,7 @@ int main() {
     test_iterator();
     test_clear();
     test_container_search();
+    test_table_level_ref_helpers();
     test_container_load_from_csv_sources();
     test_container_load_from_json_sources();
     test_enum_csv_json_loaders();

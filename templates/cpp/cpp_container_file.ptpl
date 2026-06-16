@@ -74,6 +74,35 @@ fn reverse_nav_method_suffix(target_table, relation_name) {
     return cpp_types::to_snake_case(target_table.name) + "_" + cpp_types::to_snake_case(relation_name);
 }
 
+fn ref_nav_method_name(source_table, row_ref) {
+    let prefix = if row_ref.is_unique { "get_" } else { "find_" };
+    return prefix + cpp_types::to_snake_case(source_table.name) + "_" + cpp_types::to_snake_case(row_ref.name);
+}
+
+fn ref_key_expr(row_ref, row_var) {
+    if row_ref.fields.len() == 1 {
+        return row_var + "." + row_ref.fields[0].local_field;
+    }
+
+    let result = "std::make_tuple(";
+    for i in 0..row_ref.fields.len() {
+        if i > 0 { result += ", "; }
+        result += row_var + "." + row_ref.fields[i].local_field;
+    }
+    result += ")";
+    return result;
+}
+
+fn ref_target_method(row_ref) {
+    if row_ref.target_kind == "search" {
+        return "search_by_" + cpp_types::to_snake_case(row_ref.target_method_suffix);
+    }
+    if row_ref.fields.len() == 1 {
+        return "get_by_" + cpp_types::to_snake_case(row_ref.fields[0].target_field);
+    }
+    return "get_" + row_ref.target_method_suffix;
+}
+
 // Pluralize a name (simple version)
 fn pluralize(name) {
     if name.ends_with("y") {
@@ -550,6 +579,7 @@ fn generate_container(base_name, tables) {
     let result = "";
     let container_name = to_pascal_case(base_name) + "Container";
     let forward_navs = [];
+    let ref_navs = [];
     let reverse_navs = [];
 
     for entry in tables {
@@ -574,6 +604,27 @@ fn generate_container(base_name, tables) {
                         });
                     }
                 }
+            }
+        }
+    }
+
+    for entry in tables {
+        let source = entry.struct_def;
+        let source_type = get_cpp_type_from_fqn(source.fqn, source.name);
+        for row_ref in source.refs {
+            let target_entry = find_table_entry_by_fqn(tables, row_ref.target_table_fqn);
+            if target_entry != () {
+                let target = target_entry.struct_def;
+                ref_navs.push(#{
+                    method_name: ref_nav_method_name(source, row_ref),
+                    source_type: source_type,
+                    target_type: get_cpp_type_from_fqn(target.fqn, target.name),
+                    target_member: cpp_types::to_snake_case(pluralize(target.name)),
+                    target_method: ref_target_method(row_ref),
+                    key_expr: ref_key_expr(row_ref, "row"),
+                    is_unique: row_ref.is_unique,
+                    target_kind: row_ref.target_kind
+                });
             }
         }
     }
@@ -706,6 +757,38 @@ fn generate_container(base_name, tables) {
             result += "        return " + nav.target_member + "." + nav.target_method + "(row." + nav.field_name + ");\n";
         }
         result += "    }\n";
+    }
+
+    for nav in ref_navs {
+        result += "\n";
+        if nav.is_unique {
+            result += "    " + nav.target_type + "* " + nav.method_name + "(const " + nav.source_type + "& row) {\n";
+            result += "        return " + nav.target_member + "." + nav.target_method + "(" + nav.key_expr + ");\n";
+            result += "    }\n\n";
+            result += "    const " + nav.target_type + "* " + nav.method_name + "(const " + nav.source_type + "& row) const {\n";
+            result += "        return " + nav.target_member + "." + nav.target_method + "(" + nav.key_expr + ");\n";
+            result += "    }\n";
+        } else if nav.target_kind == "search" {
+            result += "    std::vector<" + nav.target_type + "*> " + nav.method_name + "(const " + nav.source_type + "& row) {\n";
+            result += "        return " + nav.target_member + "." + nav.target_method + "(" + nav.key_expr + ");\n";
+            result += "    }\n\n";
+            result += "    std::vector<const " + nav.target_type + "*> " + nav.method_name + "(const " + nav.source_type + "& row) const {\n";
+            result += "        auto rows = " + nav.target_member + "." + nav.target_method + "(" + nav.key_expr + ");\n";
+            result += "        return std::vector<const " + nav.target_type + "*>(rows.begin(), rows.end());\n";
+            result += "    }\n";
+        } else {
+            result += "    std::vector<" + nav.target_type + "*> " + nav.method_name + "(const " + nav.source_type + "& row) {\n";
+            result += "        const auto& rows = " + nav.target_member + "." + nav.target_method + "(" + nav.key_expr + ");\n";
+            result += "        return std::vector<" + nav.target_type + "*>(rows.begin(), rows.end());\n";
+            result += "    }\n\n";
+            result += "    std::vector<const " + nav.target_type + "*> " + nav.method_name + "(const " + nav.source_type + "& row) const {\n";
+            result += "        const auto& rows = " + nav.target_member + "." + nav.target_method + "(" + nav.key_expr + ");\n";
+            result += "        std::vector<const " + nav.target_type + "*> result;\n";
+            result += "        result.reserve(rows.size());\n";
+            result += "        for (auto* item : rows) result.push_back(item);\n";
+            result += "        return result;\n";
+            result += "    }\n";
+        }
     }
 
     for nav in reverse_navs {

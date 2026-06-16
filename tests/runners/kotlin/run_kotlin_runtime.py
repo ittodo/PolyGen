@@ -73,13 +73,15 @@ private fun assertThat(condition: Boolean, message: String) {
 
 fun main() {
     val container = SchemaContainer()
-    val alice = TestIndexesUser(1, "alice", "alice@example.com", "Alice")
-    val bob = TestIndexesUser(2, "bob", "bob@example.com", "Bob")
+    val alice = TestIndexesUser(1, "alice", "alice@example.com", "Alias")
+    val bob = TestIndexesUser(2, "bob", "bob@example.com", "Alias")
     val category = TestIndexesCategory(10, "Guides", "PolyGen runtime guide category", 5, TestIndexesCategoryKind.Public)
     val post = TestIndexesPost(100, "PolyGen runtime guide", "body", 1, 10)
     val comment = TestIndexesComment(1000, 100, 2, "nice", null)
     val tag = TestIndexesTag(20, "runtime")
     val postTag = TestIndexesPostTag(100, 20)
+    val lookup = TestIndexesUserLookup(900, "Alias", "Alias", 2)
+    val postSearch = TestIndexesPostSearch(901, "runtime guide")
 
     container.users.loadAll(listOf(alice, bob))
     container.categorys.addRow(category)
@@ -87,6 +89,8 @@ fun main() {
     container.comments.addRow(comment)
     container.tags.addRow(tag)
     container.postTags.addRow(postTag)
+    container.userLookups.addRow(lookup)
+    container.postSearchs.addRow(postSearch)
 
     assertThat(container.users.count == 2, "user table count")
     assertThat(container.users.getByUsername("alice") == alice, "unique username lookup")
@@ -95,10 +99,13 @@ fun main() {
     assertThat(container.categorys.searchByRank(5).single().id == 10, "numeric search")
     assertThat(container.categorys.searchByKind(TestIndexesCategoryKind.Public).single().id == 10, "enum search")
     assertThat(container.posts.findByAuthorId(1).single() == post, "group index")
-    assertThat(container.posts.searchByTitle("runtime guide").single() == post, "post title search")
+    assertThat(container.posts.searchByTitleSearch("runtime guide").single() == post, "post title search")
     assertThat(container.getPostAuthor(post) == alice, "post author navigation")
     assertThat(container.getPostCategory(post) == category, "post category navigation")
     assertThat(container.getPostTagTag(postTag) == tag, "junction tag navigation")
+    assertThat(container.getUserLookupUser(lookup) == bob, "table ref composite unique navigation")
+    assertThat(container.findUserLookupDisplayMatches(lookup).size == 2, "table ref group navigation")
+    assertThat(container.findPostSearchTitleMatches(postSearch).single() == post, "table ref search navigation")
     assertThat(container.validateAll().isValid(), "container validation")
 
     val invalid = SchemaContainer()
@@ -110,7 +117,7 @@ fun main() {
     val reopened = BinaryRefDocument.fromByteArray(document.toByteArray())
     assertThat(reopened.users.getByEmail("alice@example.com")!!.get().username == "alice", "binary ref unique lookup")
     assertThat(reopened.categorys.searchByDescription("runtime guide").single().get().id == 10, "binary ref text search")
-    assertThat(reopened.posts.searchByTitle("runtime guide").single().get().id == 100, "binary ref post search")
+    assertThat(reopened.posts.searchByTitleSearch("runtime guide").single().get().id == 100, "binary ref post search")
 }
 ''',
     "08_complex_schema": r'''

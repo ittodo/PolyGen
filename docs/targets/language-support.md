@@ -447,8 +447,11 @@ Level 1~3는 언어 지원의 최소 단위입니다. C#은 여기에 더해 운
 | `@ref` | named `@index`/`@search` 대상 row navigation metadata와 forward lookup API |
 
 C#은 named `@index`/`@search`를 target으로 삼는 table-level `@ref`를 Container row와
-BinaryRef row의 forward navigation으로 생성합니다. unique index target은 nullable 단일
-row/ref를 반환하고, non-unique index와 search target은 목록을 반환합니다.
+BinaryRef row의 forward navigation으로 생성합니다. C++, Rust, TypeScript, Go, Python,
+Kotlin, Swift는 같은 metadata를 root Container helper로 생성합니다. unique index target은
+nullable/optional 단일 row/ref를 반환하고, non-unique index와 search target은 목록을
+반환합니다. Unreal Registry는 단일 필드 index/search target에 대해 Blueprint-callable
+helper를 생성하며, composite index target은 Registry composite key 지원 이후 확장합니다.
 
 C#은 BinaryRef 자체와 별도로 `SourceRefs` 산출물을 생성합니다. SourceRefs는
 editor/tooling 전용 mutable view이며, CSV/JSON 원본을 수정한 뒤 BinaryRef 캐시를
@@ -488,7 +491,7 @@ gate 실행 증거를 확보했습니다. 따라서 아래 항목은 기능 산�
 |------|-----------|------------------------|-----------|
 | Kotlin | `tests\runners\kotlin\run_tests.bat` 11/11 통과. `POLYGEN_KOTLIN_COMPILE=1`으로 01-11 전체 generated `.kt` compile gate 통과. `POLYGEN_KOTLIN_RUNTIME=1`으로 06 CSV/JSON/Binary, 07 Container/Search/BinaryRef, 08 Validation, 09 SQLite, 10 Pack/Binary, 11 composite index/navigation/BinaryRef runtime assertions 통과. `run_all --verify`는 Kotlin runtime helper command/harness regression도 실행 | Kotlin 2.4.0 compiler, kotlinx.serialization 1.11.0, kotlinx.datetime 0.8.0-0.6.x-compat, sqlite-jdbc 3.53.2.0으로 runtime 증거 확보 완료 | 완료 |
 | Swift | `tests\runners\swift\run_tests.bat` 11/11 통과. `POLYGEN_SWIFT_COMPILE=1`으로 01-11 전체 generated `.swift` portable core typecheck gate 통과. `POLYGEN_SWIFT_RUNTIME=1`으로 06 CSV/JSON/Binary, 07 Container/Search/BinaryRef, 08 Validation, 09 SQLite fake connection, 10 Pack/Binary, 11 composite index/navigation/BinaryRef runtime assertions 통과. `run_optional_toolchains.py swift`도 Swift readiness 자동 주입으로 통과 | Swift 6.3.2 compiler, `Windows.sdk`, runtime PATH 자동 탐지로 runtime 증거 확보 완료. SwiftData 파일은 portable core typecheck/runtime compile에서 기본 제외하고 `POLYGEN_SWIFT_INCLUDE_SWIFTDATA=1`일 때 별도 포함 | 완료 |
-| Unreal | `tests\runners\unreal\run_tests.bat` 11/11 통과. USTRUCT/UENUM, loader/hot reload, editor SourceRefs, Registry index/search/navigation/validation, `@pack`, Redis helper 구조 검증과 `.generated.h` 마지막 include 규칙, generated `Polygen*.h` 로컬 include 해석, regex `Internationalization/Regex.h` include 검증 포함. 기존 core generated headers는 `POLYGEN_UNREAL_COMPILE=1` + `POLYGEN_UNREAL_FIXTURE_ROOT=target\polygen-unreal-fixture`로 UE 5.7 설치(`D:\EpicGames\UE_5.7`)의 UnrealBuildTool/UnrealHeaderTool smoke gate 01-11 전체 통과 증거를 확보했다. 생성 타입은 UHT engine-name 충돌을 피하기 위해 `FPolygen*`/`EPolygen*` reflected name을 사용하고, explicit 0 값이 없는 enum에는 `PolygenInvalid = 0`을 추가. `prepare_unreal_fixture.py`는 명시 root에 최소 UBT smoke project를 생성하고, readiness checker/compile helper는 준비된 `POLYGEN_UNREAL_FIXTURE_ROOT`와 Epic Launcher manifest에서 env/UBT를 자동 구성할 수 있음. `run_all --verify`는 `compile_unreal.py` env/header copy/engine root/Epic manifest UBT discovery/UBT command helper/fixture/helper/local include regression도 실행 | Unreal은 C# BinaryRef/SQLite를 의도적으로 복제하지 않으므로 Binary/BinaryRef는 `none`, SQLite는 `n/a` 유지. SourceRefs는 `WITH_EDITOR` authoring layer이고 BinaryRef parity가 아니며 현재 구조 검증 범위다. Registry/Search/Validation/Pack은 UBT/UHT compile 증거를 확보했지만 Blueprint runtime behavior assertion은 아직 별도 자동화하지 않았으므로 engine-specific partial 축은 유지 | 필요 시 Editor/AutomationSpec 기반 Blueprint-callable runtime smoke, SourceRefs UBT/UHT smoke, DataAsset/DataTable integration gate 추가 |
+| Unreal | `tests\runners\unreal\run_tests.bat` 11/11 통과. USTRUCT/UENUM, loader/hot reload, editor SourceRefs, Registry index/search/navigation/validation, 단일 필드 `@ref` Registry helper, `@pack`, Redis helper 구조 검증과 `.generated.h` 마지막 include 규칙, generated `Polygen*.h` 로컬 include 해석, regex `Internationalization/Regex.h` include 검증 포함. 기존 core generated headers는 `POLYGEN_UNREAL_COMPILE=1` + `POLYGEN_UNREAL_FIXTURE_ROOT=target\polygen-unreal-fixture`로 UE 5.7 설치(`D:\EpicGames\UE_5.7`)의 UnrealBuildTool/UnrealHeaderTool smoke gate 01-11 전체 통과 증거를 확보했다. 생성 타입은 UHT engine-name 충돌을 피하기 위해 `FPolygen*`/`EPolygen*` reflected name을 사용하고, explicit 0 값이 없는 enum에는 `PolygenInvalid = 0`을 추가. `prepare_unreal_fixture.py`는 명시 root에 최소 UBT smoke project를 생성하고, readiness checker/compile helper는 준비된 `POLYGEN_UNREAL_FIXTURE_ROOT`와 Epic Launcher manifest에서 env/UBT를 자동 구성할 수 있음. `run_all --verify`는 `compile_unreal.py` env/header copy/engine root/Epic manifest UBT discovery/UBT command helper/fixture/helper/local include regression도 실행 | Unreal은 C# BinaryRef/SQLite를 의도적으로 복제하지 않으므로 Binary/BinaryRef는 `none`, SQLite는 `n/a` 유지. SourceRefs는 `WITH_EDITOR` authoring layer이고 BinaryRef parity가 아니며 현재 구조 검증 범위다. Registry/Search/Validation/Pack은 UBT/UHT compile 증거를 확보했지만 Blueprint runtime behavior assertion과 composite `@ref` Registry key support는 아직 별도 자동화/구현 범위가 아니므로 engine-specific partial 축은 유지 | 필요 시 Editor/AutomationSpec 기반 Blueprint-callable runtime smoke, SourceRefs UBT/UHT smoke, Registry composite key/DataAsset/DataTable integration gate 추가 |
 
 ### Unreal Parity Policy
 
@@ -509,7 +512,7 @@ Unreal은 C#의 `DataContainer`, BinaryRef, SQLite accessor API를 그대로 복
 | Binary/SQLite | near-term parity 대상이 아닙니다. Unreal에서는 DataTable/DataAsset/JSON asset pipeline을 우선합니다. |
 | Redis | 기존 key helper를 유지하고 Blueprint 노출은 필요성이 확인된 뒤 추가합니다. |
 | `@search` | registry가 `TMap<Key, TArray<int32>>`/`TMap<FString, TArray<int32>>` postings를 만들고 `Search<Table>By<Field>` 또는 `@search(name: alias)` 기반 `Search<Table>By<Alias>` Blueprint query helper를 생성합니다. BinaryRef/DataAsset 검색은 별도 범위입니다. |
-| `@ref` | schema/IR metadata는 보존하지만 현재 Unreal Registry는 C# row property 방식의 table-level `@ref` navigation을 생성하지 않습니다. FK forward/reverse helper는 기존 Navigation 축으로 유지합니다. |
+| `@ref` | Registry가 단일 필드 index/search target에 대해 `Get...`/`Find...` Blueprint helper를 생성합니다. Composite index target은 아직 Registry key 지원 범위 밖이며, FK forward/reverse helper는 기존 Navigation 축으로 유지합니다. |
 
 따라서 matrix에서 Unreal의 SQLite는 `n/a`, Binary/BinaryRef는 `none`, Container/Navigation/Search는
 엔진 전용 read-only registry 범위까지만 `partial`로 둡니다.
@@ -576,6 +579,7 @@ validation API**, **Swift `@search` in-memory Container API**, **Swift `@pack`
 pack/unpack/tryUnpack API**, **Swift Container `@search` 지역 변수 충돌 방지와 validator 중복 local 선언 검사**, **Swift SQLite accessor API**, **Unreal 엔진 친화 parity 정책 정의**, **Unreal read-only
 registry/index subsystem과 Blueprint query API**, **Unreal `@search` postings 기반
 Blueprint query API**, **Unreal registry FK/reverse navigation Blueprint helper API**,
+**C++/Rust/TypeScript/Go/Python/Kotlin/Swift Container table-level `@ref` helper API**, **Unreal Registry 단일 필드 table-level `@ref` helper API**,
 **Kotlin/Swift Container regex validation 메시지 quote-safe 생성**, **C#/C++/Rust/Go/TypeScript Container field constraint(`MaxLength`, `Range`, `Regex`) runtime 회귀 검증**, **Unreal Registry field(`MaxLength`, `Range`, `Regex`)/unique/primary/FK validation API와 combined validation 구조 검증**,
 **Python `@pack` Pack/Unpack/TryUnpack API**, **Unreal `@pack`
 Pack/Unpack/TryUnpack USTRUCT API**입니다. 다음 구현

@@ -92,8 +92,8 @@ func assertThat(_ condition: Bool, _ message: String) {
 struct PolygenSwiftRuntimeTest {
     static func main() throws {
         let container = SchemaContainer()
-        let alice = TestIndexesUser(id: 1, username: "alice", email: "alice@example.com", display_name: "Alice")
-        let bob = TestIndexesUser(id: 2, username: "bob", email: "bob@example.com", display_name: "Bob")
+        let alice = TestIndexesUser(id: 1, username: "alice", email: "alice@example.com", display_name: "Alias")
+        let bob = TestIndexesUser(id: 2, username: "bob", email: "bob@example.com", display_name: "Alias")
         let category = TestIndexesCategory(
             id: 10,
             name: " Guides ",
@@ -105,6 +105,8 @@ struct PolygenSwiftRuntimeTest {
         let comment = TestIndexesComment(id: 1000, post_id: 100, author_id: 2, content: "nice", parent_id: nil)
         let tag = TestIndexesTag(id: 20, name: "runtime")
         let postTag = TestIndexesPostTag(post_id: 100, tag_id: 20)
+        let lookup = TestIndexesUserLookup(id: 900, display_name: "Alias", display_query: "Alias", user_id: 2)
+        let postSearch = TestIndexesPostSearch(id: 901, query: "runtime guide")
 
         container.users.loadAll([alice, bob])
         container.categorys.addRow(category)
@@ -112,6 +114,8 @@ struct PolygenSwiftRuntimeTest {
         container.comments.addRow(comment)
         container.tags.addRow(tag)
         container.postTags.addRow(postTag)
+        container.userLookups.addRow(lookup)
+        container.postSearchs.addRow(postSearch)
 
         assertThat(container.users.count == 2, "user table count")
         assertThat(container.users.getByUsername("alice") == alice, "unique username lookup")
@@ -120,10 +124,13 @@ struct PolygenSwiftRuntimeTest {
         assertThat(container.categorys.searchByRank(5).single?.id == 10, "numeric search")
         assertThat(container.categorys.searchByKind(TestIndexesCategoryKind(rawValue: 1)!).single?.id == 10, "enum search")
         assertThat(container.posts.findByAuthorId(1).single == post, "group index")
-        assertThat(container.posts.searchByTitle("runtime guide").single == post, "post title search")
+        assertThat(container.posts.searchByTitleSearch("runtime guide").single == post, "post title search")
         assertThat(container.getPostAuthor(post) == alice, "post author navigation")
         assertThat(container.getPostCategory(post) == category, "post category navigation")
         assertThat(container.getPostTagTag(postTag) == tag, "junction tag navigation")
+        assertThat(container.getUserLookupUser(lookup) == bob, "table ref composite unique navigation")
+        assertThat(container.findUserLookupDisplayMatches(lookup).count == 2, "table ref group navigation")
+        assertThat(container.findPostSearchTitleMatches(postSearch).single == post, "table ref search navigation")
         assertThat(container.validateAll().isValid, "container validation")
 
         let invalid = SchemaContainer()
@@ -135,7 +142,7 @@ struct PolygenSwiftRuntimeTest {
         let reopened = try BinaryRefDocument.fromData(document.toData())
         assertThat(try reopened.users.getByEmail("alice@example.com")?.get().username == "alice", "binary ref unique lookup")
         assertThat(try reopened.categorys.searchByDescription("runtime guide").single?.get().id == 10, "binary ref text search")
-        assertThat(try reopened.posts.searchByTitle("runtime guide").single?.get().id == 100, "binary ref post search")
+        assertThat(try reopened.posts.searchByTitleSearch("runtime guide").single?.get().id == 100, "binary ref post search")
     }
 }
 
