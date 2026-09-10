@@ -1,0 +1,25 @@
+[package]
+name = "polysheet-app"
+version = "0.1.17"
+description = "Git-friendly PolyGen spreadsheet"
+authors = ["PolyGen Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+polygen = { path = "../.." }
+polysheet-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[dev-dependencies]
+tempfile = "3"

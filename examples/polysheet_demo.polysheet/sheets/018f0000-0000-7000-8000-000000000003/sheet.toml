@@ -1,0 +1,6 @@
+id = "018f0000-0000-7000-8000-000000000003"
+name = "Quests"
+kind = "data"
+definition = "demo.polysheet.Quest"
+row_count = 3
+column_count = 7

@@ -58,6 +58,7 @@ pub mod ir_model;
 pub mod lang_config;
 pub mod migration;
 pub mod pipeline;
+pub mod project_schema;
 pub mod rhai;
 pub mod schema_diff;
 pub mod schema_lint;
@@ -74,6 +75,7 @@ pub mod visualize;
 pub use crate::ast_model::AstRoot;
 pub use crate::ir_model::SchemaContext;
 pub use crate::pipeline::{parse_and_merge_schemas, CompilationPipeline, PipelineConfig};
+pub use crate::project_schema::{load_project_schema, LoadedProjectSchema};
 
 #[derive(Parser)]
 #[grammar = "polygen.pest"]

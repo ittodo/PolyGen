@@ -1,6 +1,6 @@
 # Sources Config
 
-> 최종 업데이트: 2026-06-06
+> 최종 업데이트: 2026-09-10
 
 `.poly` files describe schema shape. `*.sources.toml` files describe runtime input paths such as CSV and JSON load sources.
 
@@ -63,3 +63,19 @@ PolyGen validates that:
 - load settings target tables, not embeds
 - `csv` and `json` values are non-empty strings
 - unsupported keys are rejected
+
+## PolySheet editing
+
+PolySheet는 table의 concrete `json` 경로를 데이터 시트의 단일 source of truth로
+사용한다. `.polysheet/` 폴더에는 데이터 행을 복제하지 않는다.
+
+- `@readonly` table은 편집할 수 없다.
+- wildcard/directory JSON path와 CSV-only source는 v1에서 직접 편집할 수 없다.
+- 상대 JSON 경로는 `workbook.toml`의 `data_root`, 명시적 sources 파일의 부모,
+  schema 파일의 부모 순서로 기준 디렉터리를 결정한다.
+- PolySheet 최초 저장은 기존 JSON의 canonical formatting 차이를 미리 보여주고
+  승인된 경우에만 정규화한다.
+- primary key가 없는 source의 stable row ID는 JSON이 아니라
+  `.polysheet/sheets/<id>/rowids.json`에 저장한다.
+
+자세한 형식과 Git 동작은 [tools/polysheet.md](tools/polysheet.md)를 참조한다.

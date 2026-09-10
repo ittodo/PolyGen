@@ -1,6 +1,6 @@
 # PolyGen 문서 인덱스
 
-> 최종 업데이트: 2026-06-06
+> 최종 업데이트: 2026-09-10
 
 `docs/`는 PolyGen의 스펙, 설계, 개발 가이드의 원본입니다. 개발 전에 관련 문서를
 먼저 확인하고, 구현을 바꾸면 같은 작업 안에서 문서를 갱신합니다.
@@ -19,7 +19,7 @@
 | 템플릿 커스터마이징/Rhai helper 변경 | `template-customization.md` |
 | 새 언어/타겟 추가 | `targets/language-support.md` |
 | SQL, datasource, migration 변경 | `targets/sql-support.md` |
-| GUI, LSP, VS Code, poly-viewer 변경 | `tools/README.md` |
+| GUI, PolySheet, LSP, VS Code, poly-viewer 변경 | `tools/README.md` |
 | 사용 예제 추가 | `examples/README.md` |
 | 기능 현황/남은 작업 확인 | `status.md` |
 
@@ -40,7 +40,8 @@
 | `targets/README.md` | 언어/DB/descriptor 타겟 인덱스 |
 | `targets/language-support.md` | 새 언어 지원 추가 절차 |
 | `targets/sql-support.md` | SQL/DB/migration 지원 상세 |
-| `tools/README.md` | GUI/LSP/VS Code/poly-viewer 도구 인덱스 |
+| `tools/README.md` | GUI/PolySheet/LSP/VS Code/poly-viewer 도구 인덱스 |
+| `tools/polysheet.md` | Git 친화적 `.poly`/JSON 스프레드시트 형식과 사용법 |
 | `examples/README.md` | README보다 긴 사용 예제 인덱스 |
 | `status.md` | 현재 기능 현황과 남은 작업 |
 | `json-to-csv-spec.md` | JSON to CSV 변환 스펙 |

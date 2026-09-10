@@ -1,6 +1,6 @@
 # Examples
 
-> 최종 업데이트: 2026-06-03
+> 최종 업데이트: 2026-09-10
 
 이 폴더는 README에 넣기에는 긴 사용 예제를 분리해 둡니다. README에는 짧은 소개와
 최소 예제만 유지하고, 설명이 길어지는 경우 이 폴더에 예제를 추가합니다.
@@ -16,6 +16,7 @@
 | `sources.md` | `.sources.toml` load path 분리 예제 |
 | `pack-embed.md` | `@pack` embed 직렬화 예제 |
 | `search.md` | field-level `@search` 예제 |
+| `polysheet-demo.md` | 바로 열 수 있는 PolySheet 스키마·JSON·프로젝트 예제 |
 | `basic-schema.md` | table, enum, constraint, index를 포함한 기본 스키마와 생성 명령 |
 
 ## 추가 기준

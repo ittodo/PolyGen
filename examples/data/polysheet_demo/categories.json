@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "code": "weapon",
+    "name": "무기",
+    "description": "공격력에 영향을 주는 장비"
+  },
+  {
+    "id": 2,
+    "code": "armor",
+    "name": "방어구",
+    "description": "방어력에 영향을 주는 장비"
+  },
+  {
+    "id": 3,
+    "code": "consumable",
+    "name": "소모품",
+    "description": null
+  }
+]

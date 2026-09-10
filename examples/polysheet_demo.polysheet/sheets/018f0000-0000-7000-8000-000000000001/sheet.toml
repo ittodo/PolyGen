@@ -1,0 +1,6 @@
+id = "018f0000-0000-7000-8000-000000000001"
+name = "Categories"
+kind = "data"
+definition = "demo.polysheet.Category"
+row_count = 3
+column_count = 4

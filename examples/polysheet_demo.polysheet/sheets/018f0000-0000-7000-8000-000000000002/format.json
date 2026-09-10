@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "frozen_rows": 1,
+  "frozen_columns": 1,
+  "column_widths": {
+    "description": 240.0,
+    "name": 150.0,
+    "sku": 150.0,
+    "tags": 180.0
+  },
+  "cells": {}
+}

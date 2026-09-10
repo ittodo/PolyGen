@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "rows": {
+    "pk:u32:number:501": {
+      "reward_count": "=IF(G2,3,1)"
+    },
+    "pk:u32:number:502": {
+      "reward_count": "=IF(G3,3,1)"
+    },
+    "pk:u32:number:503": {
+      "reward_count": "=IF(G4,3,1)"
+    }
+  },
+  "cells": {},
+  "needs_recalculation": false,
+  "bindings": {
+    "pk:u32:number:501": {
+      "reward_count": {
+        "source": "=IF(G2,3,1)",
+        "references": [
+          {
+            "start": 4,
+            "end": 6,
+            "sheet_id": "018f0000-0000-7000-8000-000000000003",
+            "row_id": "pk:u32:number:501",
+            "column_id": "repeatable",
+            "absolute_row": false,
+            "absolute_column": false,
+            "explicit_sheet": false
+          }
+        ]
+      }
+    },
+    "pk:u32:number:502": {
+      "reward_count": {
+        "source": "=IF(G3,3,1)",
+        "references": [
+          {
+            "start": 4,
+            "end": 6,
+            "sheet_id": "018f0000-0000-7000-8000-000000000003",
+            "row_id": "pk:u32:number:502",
+            "column_id": "repeatable",
+            "absolute_row": false,
+            "absolute_column": false,
+            "explicit_sheet": false
+          }
+        ]
+      }
+    },
+    "pk:u32:number:503": {
+      "reward_count": {
+        "source": "=IF(G4,3,1)",
+        "references": [
+          {
+            "start": 4,
+            "end": 6,
+            "sheet_id": "018f0000-0000-7000-8000-000000000003",
+            "row_id": "pk:u32:number:503",
+            "column_id": "repeatable",
+            "absolute_row": false,
+            "absolute_column": false,
+            "explicit_sheet": false
+          }
+        ]
+      }
+    }
+  }
+}

@@ -7,15 +7,55 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "PolySheet: Rust (Tauri)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--manifest-path=${workspaceFolder}/polysheet/src-tauri/Cargo.toml",
+                    "--no-default-features"
+                ],
+                "filter": {
+                    "name": "polysheet-app",
+                    "kind": "bin"
+                }
+            },
+            "cwd": "${workspaceFolder}/polysheet",
+            "preLaunchTask": "PolySheet: Vite dev server",
+            "env": {
+                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--remote-debugging-port=9222"
+            },
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
+            "type": "pwa-msedge",
+            "request": "attach",
+            "name": "PolySheet: Svelte (WebView2)",
+            "address": "127.0.0.1",
+            "port": 9222,
+            "urlFilter": "http://localhost:1421/*",
+            "webRoot": "${workspaceFolder}/polysheet",
+            "sourceMaps": true,
+            "timeout": 120000,
+            "preLaunchTask": "PolySheet: Wait for WebView2 debugger",
+            "skipFiles": [
+                "<node_internals>/**",
+                "${workspaceFolder}/polysheet/node_modules/**"
+            ]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'PolyGen'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=PolyGen",
-                    "--package=PolyGen"
+                    "--bin=polygen",
+                    "--package=polygen"
                 ],
                 "filter": {
-                    "name": "PolyGen",
+                    "name": "polygen",
                     "kind": "bin"
                 }
             },
@@ -32,11 +72,11 @@
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=PolyGen",
-                    "--package=PolyGen"
+                    "--bin=polygen",
+                    "--package=polygen"
                 ],
                 "filter": {
-                    "name": "PolyGen",
+                    "name": "polygen",
                     "kind": "bin"
                 }
             },
@@ -44,6 +84,16 @@
                 "examples/game_schema.poly"
             ],
             "cwd": "${workspaceFolder}"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "PolySheet: Full Stack",
+            "configurations": [
+                "PolySheet: Rust (Tauri)",
+                "PolySheet: Svelte (WebView2)"
+            ],
+            "stopAll": true
         }
     ]
 }

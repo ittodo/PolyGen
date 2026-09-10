@@ -1,0 +1,6 @@
+id = "018f0000-0000-7000-8000-000000000002"
+name = "Items"
+kind = "data"
+definition = "demo.polysheet.Item"
+row_count = 4
+column_count = 11

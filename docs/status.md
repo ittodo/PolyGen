@@ -1,6 +1,6 @@
 # PolyGen Status
 
-> 최종 업데이트: 2026-06-06
+> 최종 업데이트: 2026-09-10
 
 ---
 
@@ -156,6 +156,22 @@
 - [x] 마이그레이션 baseline/SQLite DB 경로 지정
 - [x] Svelte 접근성 경고 정리 (label/ARIA)
 
+#### PolySheet
+- [x] 공개 `load_project_schema` API (import, validation, lint, IR, sources)
+- [x] Tauri 2 + Svelte 5 + Univer Sheets Core 0.25.1 데이터/자유 계산 시트
+- [x] canonical JSON/TOML, 최초 정규화 미리보기·승인, transaction journal 저장
+- [x] primary key canonical ID와 keyless UUIDv7/지문 sidecar
+- [x] 타입 검증, 정확한 `i64`/`u64` 전달, 수식 materialization과 오류 저장 차단
+- [x] stable ID 기반 semantic Git diff와 field-level 3-way merge
+- [x] 명시적 관련 파일 묶음 Stage와 opt-in Git textconv 설정
+- [x] `fmt`, `validate`, `diff`, `merge`, `git-config` CLI
+- [x] Windows x64 Tauri/CLI 빌드 구성
+- [x] 선택 기반 데이터 인스펙터 (필드 정의, 한 행 JSON, 새 행 초안, 최대 100행 비교)
+- [x] stable row ID 기반 JSON→셀 이동과 편집 중 선택 변경 보호
+- [x] 저장·Stage·Diff·Merge 전 전체 시트 동기화와 원자적 셀 편집 batch 적용
+- [x] core/CLI, 프런트엔드, Windows Tauri command 계층 CI 분리 검증
+- [x] update/delete transaction journal과 untrusted journal 무변경 감지·명시 복구 정책
+
 #### LSP 지원
 - [x] Go to Definition, Find References
 - [x] Hover, Document Symbols, Rename
@@ -172,6 +188,14 @@
 ## ❌ 미완료 (우선순위순)
 
 ### 🔴 높은 우선순위
+
+#### PolySheet 출시 강화
+- [ ] 중단 transaction의 정확한 대상 목록을 보여주고 사용자 승인을 받는 복구 UI/CLI
+- [ ] Tauri CSP 확정, 실행 파일·설치 프로그램 코드 서명, 앱 내 updater 연결
+- [ ] Windows 전원 차단 시 디렉터리 metadata 내구성 검증과 플랫폼별 flush 보강
+- [ ] 프런트엔드 chunk 분할과 대용량 워크북 E2E/성능 회귀 테스트
+- [ ] `format.json`과 Univer 서식·보기 상태의 완전한 UI load/edit/save round-trip
+- [ ] 생성 언어별 nullable composite unique 처리 정책 통일
 
 #### C# parity 다중언어 확장
 - [x] field-level `@search` annotation 문법/파싱 확정 (`@search`, `@search(n: 3)`, `@search(mode: exact)`, identifier option 값 허용)
@@ -419,4 +443,4 @@ Python/Kotlin/Swift의 FQN 클래스명 변환은 Rhai `split` 순회 대신 `re
 
 ---
 
-*최종 업데이트: 2026-06-05*
+*최종 업데이트: 2026-09-10*

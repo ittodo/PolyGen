@@ -1,0 +1,29 @@
+[
+  {
+    "id": 501,
+    "title": "첫 번째 장비",
+    "reward_item_id": 1001,
+    "reward_count": 1,
+    "required_level": 1,
+    "repeatable": false,
+    "notes": "튜토리얼 완료 보상"
+  },
+  {
+    "id": 502,
+    "title": "수정 동굴 탐험",
+    "reward_item_id": 1002,
+    "reward_count": 1,
+    "required_level": 20,
+    "repeatable": false,
+    "notes": null
+  },
+  {
+    "id": 503,
+    "title": "매일의 회복 물약",
+    "reward_item_id": 3001,
+    "reward_count": 3,
+    "required_level": 5,
+    "repeatable": true,
+    "notes": "매일 초기화"
+  }
+]

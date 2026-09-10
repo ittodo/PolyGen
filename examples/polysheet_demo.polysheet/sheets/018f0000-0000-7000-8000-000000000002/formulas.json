@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "rows": {
+    "pk:u32:number:1001": {
+      "enabled": "=G2>=1000"
+    },
+    "pk:u32:number:1002": {
+      "enabled": "=G3>=1000"
+    },
+    "pk:u32:number:2001": {
+      "enabled": "=G4>=1000"
+    },
+    "pk:u32:number:3001": {
+      "enabled": "=G5>=1000"
+    }
+  },
+  "cells": {},
+  "needs_recalculation": false,
+  "bindings": {
+    "pk:u32:number:1001": {
+      "enabled": {
+        "source": "=G2>=1000",
+        "references": [
+          {
+            "start": 1,
+            "end": 3,
+            "sheet_id": "018f0000-0000-7000-8000-000000000002",
+            "row_id": "pk:u32:number:1001",
+            "column_id": "price",
+            "absolute_row": false,
+            "absolute_column": false,
+            "explicit_sheet": false
+          }
+        ]
+      }
+    },
+    "pk:u32:number:1002": {
+      "enabled": {
+        "source": "=G3>=1000",
+        "references": [
+          {
+            "start": 1,
+            "end": 3,
+            "sheet_id": "018f0000-0000-7000-8000-000000000002",
+            "row_id": "pk:u32:number:1002",
+            "column_id": "price",
+            "absolute_row": false,
+            "absolute_column": false,
+            "explicit_sheet": false
+          }
+        ]
+      }
+    },
+    "pk:u32:number:2001": {
+      "enabled": {
+        "source": "=G4>=1000",
+        "references": [
+          {
+            "start": 1,
+            "end": 3,
+            "sheet_id": "018f0000-0000-7000-8000-000000000002",
+            "row_id": "pk:u32:number:2001",
+            "column_id": "price",
+            "absolute_row": false,
+            "absolute_column": false,
+            "explicit_sheet": false
+          }
+        ]
+      }
+    },
+    "pk:u32:number:3001": {
+      "enabled": {
+        "source": "=G5>=1000",
+        "references": [
+          {
+            "start": 1,
+            "end": 3,
+            "sheet_id": "018f0000-0000-7000-8000-000000000002",
+            "row_id": "pk:u32:number:3001",
+            "column_id": "price",
+            "absolute_row": false,
+            "absolute_column": false,
+            "explicit_sheet": false
+          }
+        ]
+      }
+    }
+  }
+}

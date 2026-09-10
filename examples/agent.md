@@ -21,6 +21,10 @@ examples/
 │   └── data/items.csv
 ├── character_types.poly     # 캐릭터 타입 정의 예제
 ├── game_schema.poly         # 게임 데이터 스키마 예제
+├── polysheet_demo.poly      # PolySheet 편집·Diff·수식 데모 스키마
+├── polysheet_demo.sources.toml
+├── polysheet_demo.polysheet/ # 바로 열 수 있는 PolySheet 프로젝트
+├── data/polysheet_demo/     # 데모 JSON 원본 데이터
 ├── common_types.poly        # 공통 타입 정의
 ├── csv_colum.txt            # CSV 컬럼 설명 문서
 └── JsonToCsvDemo.cs         # JSON → CSV 변환 데모 C# 코드
@@ -92,6 +96,18 @@ examples/
 - **실행 방법**:
   ```bash
   cargo run -- --schema-path examples/game_schema.poly --lang csharp
+  ```
+
+### polysheet_demo.poly
+- **용도**: PolySheet 데이터 편집, 수식, stable 행·열 참조와 Git Diff 확인
+- **내용**:
+  - Category, Item, Quest JSON 데이터 시트
+  - enum, FK, optional/null, list, embed 필드
+  - `=B1*B2`와 stable 참조가 포함된 계산 시트
+- **열기**: PolySheet에서 `examples/polysheet_demo.polysheet` 폴더 선택
+- **검증**:
+  ```powershell
+  cargo run --manifest-path polysheet/cli/Cargo.toml -- validate examples/polysheet_demo.polysheet
   ```
 
 ### common_types.poly

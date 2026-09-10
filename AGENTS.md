@@ -1,6 +1,6 @@
 # AGENTS.md - PolyGen AI Assistant Guide
 
-> 최종 업데이트: 2026-06-03
+> 최종 업데이트: 2026-09-10
 
 이 문서는 Codex 및 기타 AI 어시스턴트가 PolyGen에서 작업할 때 따라야 하는
 작업 지침입니다. 기능 스펙과 설계 문서의 원본은 `docs/`에 있습니다.
@@ -43,6 +43,7 @@ PolyGen은 `.poly` 스키마 파일을 단일 진실 공급원으로 사용해 �
 | `src/lib.rs` | Clap CLI 정의, 명령어 라우팅 |
 | `src/pipeline.rs` | 파싱, 검증, IR, 코드 생성 파이프라인 조율 |
 | `src/codegen.rs` | 템플릿 기반 코드 생성 오케스트레이션 |
+| `src/project_schema.rs` | GUI/외부 도구용 검증된 스키마 로딩 API |
 
 ---
 
@@ -60,6 +61,7 @@ PolyGen은 `.poly` 스키마 파일을 단일 진실 공급원으로 사용해 �
 | 새 언어/타겟 추가 | `docs/targets/language-support.md` |
 | SQL, migration, datasource 변경 | `docs/targets/sql-support.md` |
 | GUI/LSP/VS Code/poly-viewer 변경 | `docs/tools/` |
+| PolySheet 앱/core/CLI 변경 | `docs/tools/polysheet.md`, `polysheet/README.md` |
 | README보다 긴 사용 예제 추가 | `docs/examples/` |
 | 테스트/runner 변경 | `tests/agent.md`, `tests/runners/` |
 | 정적 런타임 유틸리티 변경 | `static/agent.md` |
@@ -81,6 +83,8 @@ PolyGen은 `.poly` 스키마 파일을 단일 진실 공급원으로 사용해 �
 | Rhai helper 등록 | `src/rhai/registry.rs`, `src/rhai/` |
 | DB migration/introspection | `src/migration.rs`, `src/db_introspection.rs`, `src/schema_metadata.rs` |
 | CSV/JSON load source config | `src/sources_config.rs`, `*.sources.toml` |
+| 외부 도구 스키마 로딩 API | `src/project_schema.rs` |
+| PolySheet 앱/core/CLI | `polysheet/` |
 | 스키마 분석/문서/통계 | `src/visualize.rs`, `src/schema_diff.rs`, `src/schema_lint.rs`, `src/schema_stats.rs` |
 | 통합 runner | `tests/runners/` |
 
@@ -117,6 +121,18 @@ cargo fmt --all
 cargo fmt --all -- --check
 ```
 
+PolySheet:
+
+```bash
+cargo test --manifest-path polysheet/core/Cargo.toml
+cargo test --manifest-path polysheet/cli/Cargo.toml
+cargo test --manifest-path polysheet/src-tauri/Cargo.toml --no-default-features
+cd polysheet
+npm run check
+npm run test
+npm run build
+```
+
 통합 runner:
 
 ```bash
@@ -147,6 +163,7 @@ bash tests/runners/run_all.sh sqlite rust
 | 사용자용 예제 추가 | `README.md`, `docs/examples/README.md`, 필요 시 `examples/agent.md` |
 | 테스트 케이스/runner 추가 | `tests/agent.md`, 필요 시 `docs/README.md` |
 | 정적 런타임 유틸리티 변경 | `static/agent.md` |
+| PolySheet 동작/형식 변경 | `docs/tools/polysheet.md`, `polysheet/README.md`, 필요 시 `docs/examples/` |
 | 기능 완료/우선순위 변경 | `docs/status.md` |
 
 체크리스트:

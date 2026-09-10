@@ -1,0 +1,11 @@
+format_version = 1
+name = "PolySheet Demo"
+schema = "../polysheet_demo.poly"
+sources = "../polysheet_demo.sources.toml"
+data_root = ".."
+sheets = [
+    "018f0000-0000-7000-8000-000000000001",
+    "018f0000-0000-7000-8000-000000000002",
+    "018f0000-0000-7000-8000-000000000003",
+    "018f0000-0000-7000-8000-000000000004",
+]

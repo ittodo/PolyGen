@@ -14,6 +14,7 @@ polygen/
 ├── examples/               # 예제 스키마
 ├── docs/                   # 문서
 ├── gui/                    # Tauri GUI 앱
+├── polysheet/              # Git 친화적 스프레드시트 앱, 코어, CLI
 ├── polygen-lsp/            # LSP 서버
 ├── polygen-vscode/         # VS Code 확장
 ├── tools/                  # 추가 도구
@@ -42,6 +43,7 @@ src/
 ├── ir_builder.rs         # AST → IR 변환
 ├── type_registry.rs      # 타입 레지스트리
 ├── pipeline.rs           # 컴파일 파이프라인
+├── project_schema.rs     # GUI/외부 도구용 스키마 로딩 API
 ├── codegen.rs            # 코드 생성 유틸리티
 ├── template/             # PolyTemplate 파서/렌더러/Rhai bridge
 ├── rhai_generator.rs     # 레거시 Rhai 엔진 호환 레이어
@@ -151,6 +153,16 @@ gui/
 
 .poly 파일을 위한 Language Server Protocol 구현입니다.
 
+### `polysheet/` - PolySheet 데이터 편집기
+
+```text
+polysheet/
+├── core/                  # 직렬화, 검증, row ID, diff/merge, transaction, Git
+├── cli/                   # fmt/validate/diff/merge/git-config CLI
+├── src/                   # Svelte 5 + Univer 프런트엔드
+└── src-tauri/             # Tauri 2 command 계층과 Windows 패키지
+```
+
 ### `polygen-vscode/` - VS Code 확장
 
 .poly 파일 구문 강조 및 LSP 클라이언트를 제공합니다.
@@ -209,4 +221,4 @@ target/
 
 ---
 
-*최종 업데이트: 2026-06-03*
+*최종 업데이트: 2026-09-10*

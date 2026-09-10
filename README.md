@@ -74,6 +74,8 @@ GUI builds are also available from the latest release.
 ## Tools
 
 - Desktop GUI
+- PolySheet: schema-bound JSON spreadsheet with semantic Git diff and field-level merge
+  - Ready-to-open demo: `examples/polysheet_demo.polysheet`
 - Language Server
 - VS Code extension
 - Browser-based `.poly` viewer

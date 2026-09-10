@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "frozen_rows": 1,
+  "frozen_columns": 1,
+  "column_widths": {
+    "code": 130.0,
+    "description": 220.0,
+    "name": 120.0
+  },
+  "cells": {}
+}

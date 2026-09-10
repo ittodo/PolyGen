@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "vadimcn.vscode-lldb",
+        "svelte.svelte-vscode",
+        "rust-lang.rust-analyzer"
+    ]
+}

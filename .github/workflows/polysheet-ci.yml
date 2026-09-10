@@ -1,0 +1,130 @@
+name: PolySheet CI
+
+on:
+  push:
+    paths:
+      - 'polysheet/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+      - 'examples/polysheet_demo.poly'
+      - 'examples/polysheet_demo.sources.toml'
+      - 'examples/polysheet_demo.polysheet/**'
+      - 'examples/data/polysheet_demo/**'
+      - '.github/workflows/polysheet-ci.yml'
+  pull_request:
+    paths:
+      - 'polysheet/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+      - 'examples/polysheet_demo.poly'
+      - 'examples/polysheet_demo.sources.toml'
+      - 'examples/polysheet_demo.polysheet/**'
+      - 'examples/data/polysheet_demo/**'
+      - '.github/workflows/polysheet-ci.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  core-and-cli:
+    name: Core and CLI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: |
+            . -> target
+            polysheet/core -> target
+            polysheet/cli -> target
+
+      - name: Check formatting
+        run: |
+          cargo fmt --manifest-path polysheet/core/Cargo.toml -- --check
+          cargo fmt --manifest-path polysheet/cli/Cargo.toml -- --check
+
+      - name: Clippy
+        run: |
+          cargo clippy --manifest-path polysheet/core/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path polysheet/cli/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run tests
+        run: |
+          cargo test --manifest-path polysheet/core/Cargo.toml
+          cargo test --locked --manifest-path polysheet/cli/Cargo.toml
+
+      - name: Run 100k-row acceptance test
+        run: cargo test --manifest-path polysheet/core/Cargo.toml -- --ignored
+
+      - name: Validate demo project
+        run: cargo run --locked --manifest-path polysheet/cli/Cargo.toml -- validate examples/polysheet_demo.polysheet
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: polysheet
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: polysheet/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Svelte and TypeScript
+        run: npm run check
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Build frontend
+        run: npm run build
+
+  tauri:
+    name: Tauri command layer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: |
+            . -> target
+            polysheet/core -> target
+            polysheet/src-tauri -> target
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path polysheet/src-tauri/Cargo.toml -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --manifest-path polysheet/src-tauri/Cargo.toml --all-targets --no-default-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --locked --manifest-path polysheet/src-tauri/Cargo.toml --no-default-features

@@ -3046,7 +3046,7 @@ fn validate_all_annotations(
                 let target = qualified_name(path, table_name);
                 validate_metadata_annotations(&t.metadata, &target, false, true, true, false)?;
                 validate_soft_delete_fields(&t.metadata, t, &target)?;
-                validate_ref_annotations(&t.metadata, t, &target, path, registry, &field_registry)?;
+                validate_ref_annotations(&t.metadata, t, &target, path, registry, field_registry)?;
                 path.push(table_name.to_string());
                 validate_index_fields(&t.metadata, t, &target, path, registry)?;
                 validate_member_annotations(&t.members, path, registry)?;

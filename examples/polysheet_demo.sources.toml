@@ -1,0 +1,8 @@
+[tables."demo.polysheet.Category".load]
+json = "data/polysheet_demo/categories.json"
+
+[tables."demo.polysheet.Item".load]
+json = "data/polysheet_demo/items.json"
+
+[tables."demo.polysheet.Quest".load]
+json = "data/polysheet_demo/quests.json"

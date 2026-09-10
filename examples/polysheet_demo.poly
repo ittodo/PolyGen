@@ -1,0 +1,45 @@
+// PolySheet 기능을 한 번에 확인하기 위한 게임 데이터 예제.
+namespace demo.polysheet {
+    enum Rarity {
+        Common = 1;
+        Rare = 2;
+        Epic = 3;
+        Legendary = 4;
+    }
+
+    embed ItemStats {
+        attack: i32 default(0);
+        defense: i32 default(0);
+    }
+
+    table Category {
+        id: u32 primary_key;
+        code: string unique max_length(24);
+        name: string max_length(40);
+        description: string? max_length(160);
+    }
+
+    table Item {
+        id: u32 primary_key;
+        category_id: u32 foreign_key(Category.id);
+        sku: string unique max_length(32);
+        name: string max_length(80);
+        rarity: Rarity;
+        price: i64 range(0, 1000000000);
+        description: string? max_length(240);
+        tags: string[];
+        stats: ItemStats;
+        enabled: bool default(true);
+        updated_at: string;
+    }
+
+    table Quest {
+        id: u32 primary_key;
+        title: string max_length(100);
+        reward_item_id: u32? foreign_key(Item.id);
+        reward_count: u16 default(1);
+        required_level: u16 range(1, 999);
+        repeatable: bool default(false);
+        notes: string? max_length(240);
+    }
+}

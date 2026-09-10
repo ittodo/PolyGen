@@ -1,0 +1,78 @@
+[
+  {
+    "id": 1001,
+    "category_id": 1,
+    "sku": "wooden-sword",
+    "name": "나무 검",
+    "rarity": 1,
+    "price": 1200,
+    "description": "초보 모험가용 검",
+    "tags": [
+      "starter",
+      "melee"
+    ],
+    "stats": {
+      "attack": 8,
+      "defense": 0
+    },
+    "enabled": true,
+    "updated_at": "2026-07-25T10:00:00Z"
+  },
+  {
+    "id": 1002,
+    "category_id": 1,
+    "sku": "crystal-blade",
+    "name": "수정 대검",
+    "rarity": 3,
+    "price": 98000,
+    "description": null,
+    "tags": [
+      "two-handed",
+      "crystal"
+    ],
+    "stats": {
+      "attack": 72,
+      "defense": -4
+    },
+    "enabled": true,
+    "updated_at": "2026-07-25T10:10:00Z"
+  },
+  {
+    "id": 2001,
+    "category_id": 2,
+    "sku": "iron-armor",
+    "name": "철 갑옷",
+    "rarity": 2,
+    "price": 24000,
+    "description": "튼튼하지만 무거운 갑옷",
+    "tags": [
+      "heavy",
+      "metal"
+    ],
+    "stats": {
+      "attack": 0,
+      "defense": 35
+    },
+    "enabled": true,
+    "updated_at": "2026-07-25T10:20:00Z"
+  },
+  {
+    "id": 3001,
+    "category_id": 3,
+    "sku": "healing-potion",
+    "name": "회복 물약",
+    "rarity": 1,
+    "price": 350,
+    "description": "체력을 50 회복한다",
+    "tags": [
+      "potion",
+      "healing"
+    ],
+    "stats": {
+      "attack": 0,
+      "defense": 0
+    },
+    "enabled": false,
+    "updated_at": "2026-07-25T10:30:00Z"
+  }
+]

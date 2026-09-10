@@ -1,0 +1,58 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "PolySheet: Vite dev server",
+            "type": "npm",
+            "script": "dev",
+            "path": "polysheet",
+            "isBackground": true,
+            "problemMatcher": [
+                {
+                    "owner": "polysheet-vite",
+                    "pattern": [
+                        {
+                            "regexp": "^(.*?):(\\d+):(\\d+):\\s+(.*)$",
+                            "file": 1,
+                            "line": 2,
+                            "column": 3,
+                            "message": 4
+                        }
+                    ],
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": "^.*VITE.*$",
+                        "endsPattern": "^.*Local:.*http://localhost:1421/.*$"
+                    }
+                }
+            ],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated",
+                "clear": false
+            }
+        },
+        {
+            "label": "PolySheet: Wait for WebView2 debugger",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}/polysheet/scripts/wait-for-webview2.ps1",
+                "-Port",
+                "9222",
+                "-TimeoutSeconds",
+                "120"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated",
+                "clear": true
+            }
+        }
+    ]
+}

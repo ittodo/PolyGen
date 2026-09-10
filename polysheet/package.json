@@ -1,0 +1,42 @@
+{
+  "name": "polysheet",
+  "version": "0.1.17",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "velopack:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-velopack.ps1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
+    "@univerjs/core": "0.25.1",
+    "@univerjs/preset-sheets-core": "0.25.1",
+    "@univerjs/preset-sheets-data-validation": "0.25.1",
+    "@univerjs/presets": "0.25.1",
+    "@univerjs/sheets": "0.25.1",
+    "@univerjs/sheets-data-validation": "0.25.1",
+    "@univerjs/sheets-ui": "0.25.1",
+    "jsonc-parser": "3.3.1",
+    "monaco-editor": "0.53.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "6.2.4",
+    "@tauri-apps/cli": "2.11.4",
+    "svelte": "5.56.8",
+    "svelte-check": "4.7.3",
+    "typescript": "5.8.3",
+    "vite": "7.3.6",
+    "vitest": "3.2.7"
+  }
+}
